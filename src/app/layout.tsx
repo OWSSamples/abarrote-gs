@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import '@shopify/polaris/build/esm/styles.css';
 import './globals.css';
 import { PolarisProvider } from './PolarisProvider';
+import { NeonAuthProvider } from './NeonAuthProvider';
 
 export const metadata: Metadata = {
   title: 'Dashboard de Abarrotes',
@@ -16,7 +17,9 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body>
-        <PolarisProvider>{children}</PolarisProvider>
+        <NeonAuthProvider>
+          <PolarisProvider>{children}</PolarisProvider>
+        </NeonAuthProvider>
       </body>
     </html>
   );

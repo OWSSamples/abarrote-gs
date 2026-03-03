@@ -14,6 +14,7 @@
     "db:seed": "bun run src/db/seed.ts"
   },
   "dependencies": {
+    "@neondatabase/neon-js": "^0.2.0-beta.1",
     "@neondatabase/serverless": "^1.0.2",
     "@shopify/polaris": "^13.9.5",
     "@shopify/polaris-icons": "^9.3.1",
@@ -23,6 +24,7 @@
     "postgres": "^3.4.8",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-router-dom": "^7.13.1",
     "sileo": "^0.1.5",
     "ws": "^8.19.0",
     "zustand": "^5.0.11"

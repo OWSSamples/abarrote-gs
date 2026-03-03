@@ -15,10 +15,12 @@ import {
   Box,
   Divider,
   Modal,
+  Banner,
 } from '@shopify/polaris';
-import { SearchIcon, PrintIcon } from '@shopify/polaris-icons';
+import { SearchIcon, PrintIcon, DeleteIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
+import { useToast } from '@/components/notifications/ToastProvider';
 import type { SaleRecord } from '@/types';
 
 function paymentBadge(method: string) {
@@ -37,11 +39,15 @@ function paymentBadge(method: string) {
 export function SalesHistory() {
   const saleRecords = useDashboardStore((s) => s.saleRecords);
   const storeConfig = useDashboardStore((s) => s.storeConfig);
+  const cancelSale = useDashboardStore((s) => s.cancelSale);
+  const { showSuccess, showError } = useToast();
   const [searchFolio, setSearchFolio] = useState('');
   const [filterMethod, setFilterMethod] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const filteredSales = useMemo(() => {
     return saleRecords
@@ -96,6 +102,19 @@ export function SalesHistory() {
     `);
     printWindow.document.close();
   }, [selectedSale]);
+
+  const handleCancelSale = useCallback(async () => {
+    if (!selectedSale) return;
+    setCancelling(true);
+    try {
+      await cancelSale(selectedSale.id);
+      showSuccess(`Venta ${selectedSale.folio} cancelada — inventario restaurado`);
+      setDetailOpen(false);
+      setSelectedSale(null);
+      setCancelConfirm(false);
+    } catch { showError('Error al cancelar la venta'); }
+    setCancelling(false);
+  }, [selectedSale, cancelSale, showSuccess, showError]);
 
   const methodOptions = [
     { label: 'Todos los métodos', value: '' },
@@ -262,6 +281,25 @@ export function SalesHistory() {
                     <Text as="span" fontWeight="bold">{formatCurrency(selectedSale.change)}</Text>
                   </InlineStack>
                 </>
+              )}
+
+              <Divider />
+
+              {/* Cancel Sale */}
+              {cancelConfirm ? (
+                <Banner tone="critical" title="¿Cancelar esta venta?" onDismiss={() => setCancelConfirm(false)}>
+                  <p style={{ marginBottom: 8 }}>Se revertirá el inventario y se eliminará la venta <strong>{selectedSale.folio}</strong>. Esta acción no se puede deshacer.</p>
+                  <InlineStack gap="200">
+                    <Button variant="primary" tone="critical" onClick={handleCancelSale} loading={cancelling}>Sí, Cancelar Venta</Button>
+                    <Button onClick={() => setCancelConfirm(false)}>No</Button>
+                  </InlineStack>
+                </Banner>
+              ) : (
+                <InlineStack align="end">
+                  <Button variant="plain" tone="critical" icon={DeleteIcon} onClick={() => setCancelConfirm(true)}>
+                    Cancelar / Devolver Venta
+                  </Button>
+                </InlineStack>
               )}
             </BlockStack>
           </Modal.Section>

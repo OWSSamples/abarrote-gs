@@ -23,6 +23,15 @@ import {
   saveStoreConfig as dbSaveStoreConfig,
   fetchInventoryAlerts,
   fetchKPIData,
+  updateProduct as dbUpdateProduct,
+  updateGasto as dbUpdateGasto,
+  deleteGasto as dbDeleteGasto,
+  updateCliente as dbUpdateCliente,
+  deleteCliente as dbDeleteCliente,
+  updatePedidoStatus as dbUpdatePedidoStatus,
+  receivePedido as dbReceivePedido,
+  cancelSale as dbCancelSale,
+  deleteProveedor as dbDeleteProveedor,
 } from '@/app/actions/db-actions';
 
 interface DashboardStore extends DashboardState {
@@ -51,8 +60,22 @@ interface DashboardStore extends DashboardState {
   // Proveedores
   addProveedor: (proveedor: Omit<Proveedor, 'id' | 'ultimoPedido'>) => Promise<void>;
   updateProveedor: (id: string, data: Partial<Proveedor>) => Promise<void>;
+  deleteProveedor: (id: string) => Promise<void>;
   // Store Config
   saveStoreConfig: (data: Partial<StoreConfig>) => Promise<void>;
+  // Edit Product
+  updateProduct: (id: string, data: Partial<Product>) => Promise<void>;
+  // Edit/Delete Gasto
+  updateGasto: (id: string, data: Partial<Gasto>) => Promise<void>;
+  deleteGasto: (id: string) => Promise<void>;
+  // Edit/Delete Cliente
+  updateCliente: (id: string, data: Partial<Cliente>) => Promise<void>;
+  deleteCliente: (id: string) => Promise<void>;
+  // Pedido status + receive
+  updatePedidoStatus: (id: string, estado: 'pendiente' | 'enviado' | 'recibido') => Promise<void>;
+  receivePedido: (id: string) => Promise<void>;
+  // Cancel sale
+  cancelSale: (id: string) => Promise<void>;
 }
 
 export const useDashboardStore = create<DashboardStore>((set, get) => ({
@@ -304,6 +327,127 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       set({ storeConfig: updatedConfig });
     } catch (error) {
       console.error('Error saving store config:', error);
+    }
+  },
+
+  // ==================== EDITAR PRODUCTO ====================
+  updateProduct: async (id, data) => {
+    try {
+      await dbUpdateProduct(id, data);
+      const state = get();
+      const updated = state.products.map(p => p.id === id ? { ...p, ...data } : p);
+      set({ products: updated });
+      const [alerts, kpi] = await Promise.all([fetchInventoryAlerts(), fetchKPIData()]);
+      set({ inventoryAlerts: alerts, kpiData: kpi });
+    } catch (error) {
+      console.error('Error updating product:', error);
+      throw error;
+    }
+  },
+
+  // ==================== EDITAR / ELIMINAR GASTO ====================
+  updateGasto: async (id, data) => {
+    try {
+      await dbUpdateGasto(id, data);
+      const state = get();
+      set({ gastos: state.gastos.map(g => g.id === id ? { ...g, ...data } : g) });
+    } catch (error) {
+      console.error('Error updating gasto:', error);
+      throw error;
+    }
+  },
+
+  deleteGasto: async (id) => {
+    try {
+      await dbDeleteGasto(id);
+      const state = get();
+      set({ gastos: state.gastos.filter(g => g.id !== id) });
+    } catch (error) {
+      console.error('Error deleting gasto:', error);
+      throw error;
+    }
+  },
+
+  // ==================== EDITAR / ELIMINAR CLIENTE ====================
+  updateCliente: async (id, data) => {
+    try {
+      await dbUpdateCliente(id, data);
+      const state = get();
+      set({ clientes: state.clientes.map(c => c.id === id ? { ...c, ...data } : c) });
+    } catch (error) {
+      console.error('Error updating cliente:', error);
+      throw error;
+    }
+  },
+
+  deleteCliente: async (id) => {
+    try {
+      await dbDeleteCliente(id);
+      const state = get();
+      set({
+        clientes: state.clientes.filter(c => c.id !== id),
+        fiadoTransactions: state.fiadoTransactions.filter(t => t.clienteId !== id),
+      });
+    } catch (error) {
+      console.error('Error deleting cliente:', error);
+      throw error;
+    }
+  },
+
+  // ==================== PEDIDO STATUS + RECEPCIÓN ====================
+  updatePedidoStatus: async (id, estado) => {
+    try {
+      await dbUpdatePedidoStatus(id, estado);
+      const state = get();
+      set({ pedidos: state.pedidos.map(p => p.id === id ? { ...p, estado } : p) });
+    } catch (error) {
+      console.error('Error updating pedido status:', error);
+      throw error;
+    }
+  },
+
+  receivePedido: async (id) => {
+    try {
+      await dbReceivePedido(id);
+      const state = get();
+      set({ pedidos: state.pedidos.map(p => p.id === id ? { ...p, estado: 'recibido' as const } : p) });
+      // Refresh stock data
+      const dashData = await fetchDashboardFromDB();
+      set({
+        products: dashData.products,
+        inventoryAlerts: dashData.inventoryAlerts,
+        kpiData: dashData.kpiData,
+      });
+    } catch (error) {
+      console.error('Error receiving pedido:', error);
+      throw error;
+    }
+  },
+
+  // ==================== CANCELAR VENTA ====================
+  cancelSale: async (id) => {
+    try {
+      await dbCancelSale(id);
+      const state = get();
+      set({ saleRecords: state.saleRecords.filter(s => s.id !== id) });
+      // Refresh stock + KPI
+      const [alerts, kpi] = await Promise.all([fetchInventoryAlerts(), fetchKPIData()]);
+      set({ inventoryAlerts: alerts, kpiData: kpi });
+    } catch (error) {
+      console.error('Error canceling sale:', error);
+      throw error;
+    }
+  },
+
+  // ==================== ELIMINAR PROVEEDOR ====================
+  deleteProveedor: async (id) => {
+    try {
+      await dbDeleteProveedor(id);
+      const state = get();
+      set({ proveedores: state.proveedores.filter(p => p.id !== id) });
+    } catch (error) {
+      console.error('Error deleting proveedor:', error);
+      throw error;
     }
   },
 }));

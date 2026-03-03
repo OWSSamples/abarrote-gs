@@ -46,6 +46,7 @@ import { CorteCajaModal, CortesHistory } from '@/components/caja/CorteCajaModal'
 import { FiadoManager } from '@/components/fiado/FiadoManager';
 import { GastosManager } from '@/components/gastos/GastosManager';
 import { ProveedoresManager } from '@/components/suppliers/ProveedoresManager';
+import { PedidosManager } from '@/components/pedidos/PedidosManager';
 import { ReportesView } from '@/components/reports/ReportesView';
 import { ConfiguracionPage } from '@/components/settings/ConfiguracionPage';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
@@ -63,6 +64,7 @@ const SECTION_TITLES: Record<string, string> = {
   fiado: 'Fiado / Crédito',
   expenses: 'Gastos',
   suppliers: 'Proveedores',
+  pedidos: 'Pedidos a Proveedores',
   analytics: 'Análisis',
   reports: 'Reportes',
   settings: 'Configuración',
@@ -79,6 +81,7 @@ const SECTION_SUBTITLES: Record<string, string> = {
   fiado: 'Gestión de crédito a clientes',
   expenses: 'Control de gastos del negocio',
   suppliers: 'Directorio de proveedores',
+  pedidos: 'Gestión de pedidos y recepción de mercancía',
   analytics: 'Gráficas y tendencias',
   reports: 'Resúmenes y métricas',
   settings: 'Configuración del sistema',
@@ -377,6 +380,9 @@ export function DashboardHome() {
 
       case 'suppliers':
         return <ProveedoresManager />;
+
+      case 'pedidos':
+        return <PedidosManager />;
 
       case 'analytics':
         return (

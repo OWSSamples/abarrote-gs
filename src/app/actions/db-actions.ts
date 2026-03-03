@@ -832,6 +832,103 @@ export async function createCorteCaja(data: {
   return corte;
 }
 
+// ==================== EDITAR PRODUCTO ====================
+export async function updateProduct(id: string, data: Partial<Product>): Promise<void> {
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.sku !== undefined) updateData.sku = data.sku;
+  if (data.barcode !== undefined) updateData.barcode = data.barcode;
+  if (data.category !== undefined) updateData.category = data.category;
+  if (data.costPrice !== undefined) updateData.costPrice = String(data.costPrice);
+  if (data.unitPrice !== undefined) updateData.unitPrice = String(data.unitPrice);
+  if (data.minStock !== undefined) updateData.minStock = data.minStock;
+  if (data.currentStock !== undefined) updateData.currentStock = data.currentStock;
+  if (data.isPerishable !== undefined) updateData.isPerishable = data.isPerishable;
+  if (data.expirationDate !== undefined) updateData.expirationDate = data.expirationDate;
+  await db.update(products).set(updateData).where(eq(products.id, id));
+}
+
+// ==================== EDITAR / ELIMINAR GASTO ====================
+export async function updateGasto(id: string, data: Partial<Gasto>): Promise<void> {
+  const updateData: Record<string, unknown> = {};
+  if (data.concepto !== undefined) updateData.concepto = data.concepto;
+  if (data.categoria !== undefined) updateData.categoria = data.categoria;
+  if (data.monto !== undefined) updateData.monto = String(data.monto);
+  if (data.fecha !== undefined) updateData.fecha = new Date(data.fecha);
+  if (data.notas !== undefined) updateData.notas = data.notas;
+  if (data.comprobante !== undefined) updateData.comprobante = data.comprobante;
+  if (Object.keys(updateData).length > 0) {
+    await db.update(gastos).set(updateData).where(eq(gastos.id, id));
+  }
+}
+
+export async function deleteGasto(id: string): Promise<void> {
+  await db.delete(gastos).where(eq(gastos.id, id));
+}
+
+// ==================== EDITAR / ELIMINAR CLIENTE ====================
+export async function updateCliente(id: string, data: Partial<Cliente>): Promise<void> {
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.phone !== undefined) updateData.phone = data.phone;
+  if (data.address !== undefined) updateData.address = data.address;
+  if (data.creditLimit !== undefined) updateData.creditLimit = String(data.creditLimit);
+  if (Object.keys(updateData).length > 0) {
+    await db.update(clientes).set(updateData).where(eq(clientes.id, id));
+  }
+}
+
+export async function deleteCliente(id: string): Promise<void> {
+  // Delete related fiado transactions first
+  await db.delete(fiadoTransactions).where(eq(fiadoTransactions.clienteId, id));
+  await db.delete(clientes).where(eq(clientes.id, id));
+}
+
+// ==================== ACTUALIZAR ESTADO DE PEDIDO ====================
+export async function updatePedidoStatus(id: string, estado: 'pendiente' | 'enviado' | 'recibido'): Promise<void> {
+  await db.update(pedidos).set({ estado }).where(eq(pedidos.id, id));
+}
+
+// ==================== RECIBIR MERCANCÍA (pedido → stock) ====================
+export async function receivePedido(pedidoId: string): Promise<void> {
+  // Mark as received
+  await db.update(pedidos).set({ estado: 'recibido' }).where(eq(pedidos.id, pedidoId));
+  // Get pedido items and increase stock
+  const items = await db.select().from(pedidoItems).where(eq(pedidoItems.pedidoId, pedidoId));
+  for (const item of items) {
+    await db
+      .update(products)
+      .set({
+        currentStock: sql`current_stock + ${item.cantidad}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(products.id, item.productId));
+  }
+}
+
+// ==================== CANCELAR VENTA / DEVOLUCIÓN ====================
+export async function cancelSale(saleId: string): Promise<void> {
+  // Get sale items to reverse stock
+  const items = await db.select().from(saleItems).where(eq(saleItems.saleId, saleId));
+  for (const item of items) {
+    await db
+      .update(products)
+      .set({
+        currentStock: sql`current_stock + ${item.quantity}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(products.id, item.productId));
+  }
+  // Delete sale items then sale record
+  await db.delete(saleItems).where(eq(saleItems.saleId, saleId));
+  await db.delete(saleRecords).where(eq(saleRecords.id, saleId));
+}
+
+// ==================== ELIMINAR PROVEEDOR ====================
+export async function deleteProveedor(id: string): Promise<void> {
+  await db.delete(proveedores).where(eq(proveedores.id, id));
+}
+
 // ==================== FULL DASHBOARD FETCH ====================
 export async function fetchDashboardFromDB() {
   const [

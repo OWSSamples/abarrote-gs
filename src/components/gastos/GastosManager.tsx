@@ -49,7 +49,7 @@ const categoriaBadge: Record<GastoCategoria, { tone: 'info' | 'success' | 'warni
 };
 
 export function GastosManager() {
-  const { gastos, registerGasto, saleRecords } = useDashboardStore();
+  const { gastos, registerGasto, updateGasto, deleteGasto, saleRecords } = useDashboardStore();
   const { showSuccess, showError } = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -63,6 +63,18 @@ export function GastosManager() {
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [notasGasto, setNotasGasto] = useState('');
   const [comprobante, setComprobante] = useState(false);
+
+  // Edit gasto state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [editConcepto, setEditConcepto] = useState('');
+  const [editCategoria, setEditCategoria] = useState<GastoCategoria | ''>('');
+  const [editMonto, setEditMonto] = useState('');
+  const [editFecha, setEditFecha] = useState('');
+  const [editNotas, setEditNotas] = useState('');
+  const [editComprobante, setEditComprobante] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const filteredGastos = useMemo(() => {
     return gastos
@@ -113,6 +125,45 @@ export function GastosManager() {
     setFecha(new Date().toISOString().split('T')[0]);
     setAddOpen(false);
   }, [concepto, categoria, monto, fecha, notasGasto, comprobante, registerGasto, showSuccess, showError]);
+
+  const handleStartEdit = useCallback((gasto: typeof gastos[0]) => {
+    setEditId(gasto.id);
+    setEditConcepto(gasto.concepto);
+    setEditCategoria(gasto.categoria);
+    setEditMonto(String(gasto.monto));
+    setEditFecha(gasto.fecha);
+    setEditNotas(gasto.notas || '');
+    setEditComprobante(gasto.comprobante);
+    setEditOpen(true);
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editConcepto.trim()) { showError('Ingresa el concepto'); return; }
+    if (!editCategoria) { showError('Selecciona una categoría'); return; }
+    if (!editMonto || parseFloat(editMonto) <= 0) { showError('Ingresa un monto válido'); return; }
+    try {
+      await updateGasto(editId, {
+        concepto: editConcepto.trim(),
+        categoria: editCategoria as GastoCategoria,
+        monto: parseFloat(editMonto),
+        fecha: editFecha,
+        notas: editNotas,
+        comprobante: editComprobante,
+      });
+      showSuccess('Gasto actualizado');
+      setEditOpen(false);
+    } catch { showError('Error al actualizar gasto'); }
+  }, [editId, editConcepto, editCategoria, editMonto, editFecha, editNotas, editComprobante, updateGasto, showSuccess, showError]);
+
+  const handleDeleteGasto = useCallback(async (id: string) => {
+    setDeleting(true);
+    try {
+      await deleteGasto(id);
+      showSuccess('Gasto eliminado');
+      setDeleteConfirmId(null);
+    } catch { showError('Error al eliminar'); }
+    setDeleting(false);
+  }, [deleteGasto, showSuccess, showError]);
 
   // Month options for filter
   const monthOptions = useMemo(() => {
@@ -228,6 +279,7 @@ export function GastosManager() {
                 { title: 'Categoría' },
                 { title: 'Monto' },
                 { title: 'Comprobante' },
+                { title: 'Acciones' },
               ]}
               selectable={false}
             >
@@ -252,6 +304,19 @@ export function GastosManager() {
                     <Badge tone={gasto.comprobante ? 'success' : 'attention'}>
                       {gasto.comprobante ? 'Sí' : 'No'}
                     </Badge>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <InlineStack gap="100">
+                      <Button variant="plain" onClick={() => handleStartEdit(gasto)}>Editar</Button>
+                      {deleteConfirmId === gasto.id ? (
+                        <InlineStack gap="100">
+                          <Button variant="plain" tone="critical" onClick={() => handleDeleteGasto(gasto.id)} loading={deleting}>Confirmar</Button>
+                          <Button variant="plain" onClick={() => setDeleteConfirmId(null)}>No</Button>
+                        </InlineStack>
+                      ) : (
+                        <Button variant="plain" tone="critical" onClick={() => setDeleteConfirmId(gasto.id)}>Eliminar</Button>
+                      )}
+                    </InlineStack>
                   </IndexTable.Cell>
                 </IndexTable.Row>
               ))}
@@ -312,6 +377,31 @@ export function GastosManager() {
               checked={comprobante}
               onChange={setComprobante}
             />
+          </FormLayout>
+        </Modal.Section>
+      </Modal>
+
+      {/* Modal: Editar Gasto */}
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Editar Gasto"
+        primaryAction={{ content: 'Guardar Cambios', onAction: handleSaveEdit, disabled: !editConcepto.trim() || !editCategoria || !editMonto }}
+        secondaryActions={[{ content: 'Cancelar', onAction: () => setEditOpen(false) }]}
+      >
+        <Modal.Section>
+          <FormLayout>
+            <TextField label="Concepto" value={editConcepto} onChange={setEditConcepto} autoComplete="off" />
+            <Select
+              label="Categoría"
+              options={[{ label: 'Seleccionar...', value: '' }, ...categoriaFormOptions] as { label: string; value: string }[]}
+              value={editCategoria}
+              onChange={(v) => setEditCategoria(v as GastoCategoria)}
+            />
+            <TextField label="Monto (MXN)" type="number" value={editMonto} onChange={setEditMonto} autoComplete="off" prefix="$" />
+            <TextField label="Fecha" type="date" value={editFecha} onChange={setEditFecha} autoComplete="off" />
+            <TextField label="Notas (opcional)" value={editNotas} onChange={setEditNotas} autoComplete="off" multiline={2} />
+            <Checkbox label="¿Tiene comprobante/factura?" checked={editComprobante} onChange={setEditComprobante} />
           </FormLayout>
         </Modal.Section>
       </Modal>

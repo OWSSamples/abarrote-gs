@@ -17,9 +17,11 @@ import {
   useIndexResourceState,
 } from '@shopify/polaris';
 import { useDashboardStore } from '@/store/dashboardStore';
+import { useToast } from '@/components/notifications/ToastProvider';
 
 export function ProveedoresManager() {
-  const { proveedores, addProveedor } = useDashboardStore();
+  const { proveedores, addProveedor, deleteProveedor } = useDashboardStore();
+  const { showSuccess, showError } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [nombre, setNombre] = useState('');
   const [contacto, setContacto] = useState('');
@@ -28,6 +30,8 @@ export function ProveedoresManager() {
   const [direccion, setDireccion] = useState('');
   const [categoria, setCategoria] = useState('abarrotes');
   const [notas, setNotas] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const resourceName = {
     singular: 'proveedor',
@@ -63,6 +67,17 @@ export function ProveedoresManager() {
     resetForm();
     setModalOpen(false);
   }, [nombre, contacto, telefono, email, direccion, categoria, notas, addProveedor, resetForm]);
+
+  const handleDeleteProveedor = useCallback(async (id: string) => {
+    setDeleting(true);
+    try {
+      const p = proveedores.find(pr => pr.id === id);
+      await deleteProveedor(id);
+      showSuccess(`Proveedor "${p?.nombre}" eliminado`);
+      setDeleteConfirmId(null);
+    } catch { showError('Error al eliminar proveedor'); }
+    setDeleting(false);
+  }, [proveedores, deleteProveedor, showSuccess, showError]);
 
   const categoryOptions = [
     { label: 'Abarrotes', value: 'abarrotes' },
@@ -100,6 +115,16 @@ export function ProveedoresManager() {
           ? new Date(proveedor.ultimoPedido).toLocaleDateString('es-MX')
           : 'Sin pedidos'}
       </IndexTable.Cell>
+      <IndexTable.Cell>
+        {deleteConfirmId === proveedor.id ? (
+          <InlineStack gap="100">
+            <Button variant="plain" tone="critical" onClick={() => handleDeleteProveedor(proveedor.id)} loading={deleting}>Confirmar</Button>
+            <Button variant="plain" onClick={() => setDeleteConfirmId(null)}>No</Button>
+          </InlineStack>
+        ) : (
+          <Button variant="plain" tone="critical" onClick={() => setDeleteConfirmId(proveedor.id)}>Eliminar</Button>
+        )}
+      </IndexTable.Cell>
     </IndexTable.Row>
   ));
 
@@ -136,6 +161,7 @@ export function ProveedoresManager() {
               { title: 'Categoría' },
               { title: 'Estado' },
               { title: 'Último pedido' },
+              { title: 'Acciones' },
             ]}
           >
             {rowMarkup}

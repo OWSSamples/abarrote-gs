@@ -22,7 +22,7 @@ interface SidebarNavProps {
 const SALES_SECTIONS = ['sales', 'sales-history', 'sales-corte'];
 const PRODUCT_SECTIONS = ['inventory', 'catalog'];
 const CUSTOMER_SECTIONS = ['customers', 'fiado'];
-const FINANCE_SECTIONS = ['expenses', 'suppliers'];
+const FINANCE_SECTIONS = ['expenses', 'suppliers', 'pedidos'];
 const ANALYTICS_SECTIONS = ['analytics', 'reports'];
 
 export function SidebarNav({ selected, onSelect, badges }: SidebarNavProps) {
@@ -103,6 +103,12 @@ export function SidebarNav({ selected, onSelect, badges }: SidebarNavProps) {
                 label: 'Proveedores',
                 matches: selected === 'suppliers',
                 onClick: () => onSelect('suppliers'),
+              },
+              {
+                url: '#',
+                label: 'Pedidos',
+                matches: selected === 'pedidos',
+                onClick: () => onSelect('pedidos'),
               },
             ],
           },

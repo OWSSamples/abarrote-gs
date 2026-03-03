@@ -378,6 +378,33 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     };
   }, []);
 
+  const TICKET_WIDTH = 40;
+  const centerLine = (text: string, width = TICKET_WIDTH) => {
+    const t = text.trim();
+    if (t.length >= width) return t;
+    const pad = width - t.length;
+    const left = Math.floor(pad / 2);
+    const right = pad - left;
+    return `${' '.repeat(left)}${t}${' '.repeat(right)}`;
+  };
+
+  const wrapAndCenter = (text: string, width = TICKET_WIDTH) => {
+    const words = text.trim().split(/\s+/);
+    const lines: string[] = [];
+    let current = '';
+    for (const w of words) {
+      const candidate = current ? `${current} ${w}` : w;
+      if (candidate.length > width) {
+        if (current) lines.push(centerLine(current, width));
+        current = w;
+      } else {
+        current = candidate;
+      }
+    }
+    if (current) lines.push(centerLine(current, width));
+    return lines.join('\n');
+  };
+
   const handlePrint = useCallback(() => {
     if (!completedSale) return;
     const d = new Date(completedSale.date);
@@ -393,7 +420,6 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     const totalArticles = completedSale.items.reduce((s, i) => s + i.quantity, 0);
     const dashes = '----------------------------------------';
     const equals = '========================================';
-
     // Helper: right-align $ amount in a fixed-width column
     const fmtAmt = (n: number) => {
       const s = '$ ' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -425,22 +451,22 @@ ${dashes}
     }
 
     const sc = storeConfig;
-    const footerLines = sc.ticketFooter.split('\\n').map((l: string) => `       ${l}`).join('\n');
+    const footerLines = sc.ticketFooter.split('\n').map((l: string) => centerLine(l)).join('\n');
 
     const ticketText = `
-         ${sc.legalName}
-    ${sc.address}
-         C.P. ${sc.postalCode}, ${sc.city}
-       RFC: ${sc.rfc}
-         TEL: ${sc.phone}
-       REGIMEN FISCAL - ${sc.regimenFiscal}
-    ${sc.regimenDescription}
-   ESTE COMPROBANTE NO ES VALIDO PARA
-           EFECTOS FISCALES
+${centerLine(sc.legalName)}
+${centerLine(sc.address)}
+${centerLine(`C.P. ${sc.postalCode}, ${sc.city}`)}
+${centerLine(`RFC: ${sc.rfc}`)}
+${centerLine(`TEL: ${sc.phone}`)}
+${centerLine(`REGIMEN FISCAL - ${sc.regimenFiscal}`)}
+${wrapAndCenter(sc.regimenDescription)}
+${centerLine('ESTE COMPROBANTE NO ES VALIDO PARA')}
+${centerLine('EFECTOS FISCALES')}
 
-  TDA#${sc.storeNumber} OP#${completedSale.cajero.toUpperCase().substring(0, 12).padEnd(12)}  TR# ${completedSale.folio}
-  ${dateStr}              ${timeStr}
-  RFC: SIN R.F.C.
+${centerLine(`TDA#${sc.storeNumber} OP#${completedSale.cajero.toUpperCase().substring(0, 12).padEnd(12)}  TR# ${completedSale.folio}`)}
+${centerLine(`${dateStr}              ${timeStr}`)}
+${centerLine('RFC: SIN R.F.C.')}
 ${dashes}
 ${itemsHtml}${dashes}
   SUBTOTAL               ${fmtAmt(completedSale.subtotal)}
@@ -459,11 +485,11 @@ ${dashes}
 ${dashes}
 
 ${footerLines}
-      Necesitas ayuda ahora?
-           ${sc.ticketServicePhone}
+${centerLine('Necesitas ayuda ahora?')}
+${centerLine(sc.ticketServicePhone)}
 ${dashes}
-        Vigencia ${sc.ticketVigencia}
-    ${dateStr}     ${timeStr}
+${centerLine(`Vigencia ${sc.ticketVigencia}`)}
+${centerLine(`${dateStr}     ${timeStr}`)}
 `;
 
     const printWindow = window.open('', '_blank', 'width=380,height=800');
@@ -538,22 +564,22 @@ pre {
     }
 
     const sc = storeConfig;
-    const footerLines = sc.ticketFooter.split('\\n').map((l: string) => `       ${l}`).join('\n');
+    const footerLines = sc.ticketFooter.split('\n').map((l: string) => centerLine(l)).join('\n');
 
     const previewText = `
-         ${sc.legalName}
-    ${sc.address}
-         C.P. ${sc.postalCode}, ${sc.city}
-       RFC: ${sc.rfc}
-         TEL: ${sc.phone}
-       REGIMEN FISCAL - ${sc.regimenFiscal}
-    ${sc.regimenDescription}
-   ESTE COMPROBANTE NO ES VALIDO PARA
-           EFECTOS FISCALES
+${centerLine(sc.legalName)}
+${centerLine(sc.address)}
+${centerLine(`C.P. ${sc.postalCode}, ${sc.city}`)}
+${centerLine(`RFC: ${sc.rfc}`)}
+${centerLine(`TEL: ${sc.phone}`)}
+${centerLine(`REGIMEN FISCAL - ${sc.regimenFiscal}`)}
+${wrapAndCenter(sc.regimenDescription)}
+${centerLine('ESTE COMPROBANTE NO ES VALIDO PARA')}
+${centerLine('EFECTOS FISCALES')}
 
-  TDA#${sc.storeNumber} OP#${completedSale.cajero.toUpperCase().substring(0, 12).padEnd(12)}  TR# ${completedSale.folio}
-  ${dateStr}              ${timeStr}
-  RFC: SIN R.F.C.
+${centerLine(`TDA#${sc.storeNumber} OP#${completedSale.cajero.toUpperCase().substring(0, 12).padEnd(12)}  TR# ${completedSale.folio}`)}
+${centerLine(`${dateStr}              ${timeStr}`)}
+${centerLine('RFC: SIN R.F.C.')}
 ${dashes}
 ${itemsTxt}${dashes}
   SUBTOTAL               ${fmtAmt(completedSale.subtotal)}
@@ -572,11 +598,11 @@ ${dashes}
 ${dashes}
 
 ${footerLines}
-      Necesitas ayuda ahora?
-           ${sc.ticketServicePhone}
+${centerLine('Necesitas ayuda ahora?')}
+${centerLine(sc.ticketServicePhone)}
 ${dashes}
-        Vigencia ${sc.ticketVigencia}
-    ${dateStr}     ${timeStr}
+${centerLine(`Vigencia ${sc.ticketVigencia}`)}
+${centerLine(`${dateStr}     ${timeStr}`)}
 `;
 
     return (

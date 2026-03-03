@@ -14,7 +14,7 @@ import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
 
 export function ReportesView() {
-  const { saleRecords, gastos, inventoryAlerts, cortesHistory, clientes } = useDashboardStore();
+  const { saleRecords, gastos, inventoryAlerts, cortesHistory, clientes, products } = useDashboardStore();
 
   const stats = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -29,6 +29,32 @@ export function ReportesView() {
     const lowStock = inventoryAlerts.filter(a => a.product.currentStock < a.product.minStock).length;
     const criticalItems = inventoryAlerts.filter(a => a.severity === 'critical').length;
 
+    // Profit calculation using costPrice
+    const productMap = new Map(products.map(p => [p.id, p]));
+    let totalCostOfGoods = 0;
+    let totalRevenue = 0;
+    let totalCostOfGoodsDay = 0;
+    let totalRevenueDay = 0;
+
+    saleRecords.forEach(s => {
+      s.items.forEach(item => {
+        const prod = productMap.get(item.productId);
+        const cost = prod ? prod.costPrice * item.quantity : 0;
+        totalCostOfGoods += cost;
+        totalRevenue += item.subtotal;
+        if (s.date.startsWith(today)) {
+          totalCostOfGoodsDay += cost;
+          totalRevenueDay += item.subtotal;
+        }
+      });
+    });
+
+    const grossProfit = totalRevenue - totalCostOfGoods;
+    const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    const netProfit = grossProfit - totalGastosAll;
+    const grossProfitDay = totalRevenueDay - totalCostOfGoodsDay;
+    const netProfitDay = grossProfitDay - totalGastosDay;
+
     return {
       totalSalesDay,
       totalSalesAll,
@@ -42,8 +68,16 @@ export function ReportesView() {
       criticalItems,
       totalCortes: cortesHistory.length,
       totalClientes: clientes.length,
+      // Profit data
+      totalCostOfGoods,
+      totalRevenue,
+      grossProfit,
+      grossMargin,
+      netProfit,
+      grossProfitDay,
+      netProfitDay,
     };
-  }, [saleRecords, gastos, inventoryAlerts, cortesHistory, clientes]);
+  }, [saleRecords, gastos, inventoryAlerts, cortesHistory, clientes, products]);
 
   const salesByMethod = useMemo(() => {
     const methods: Record<string, number> = { efectivo: 0, tarjeta: 0, transferencia: 0, fiado: 0 };
@@ -196,6 +230,87 @@ export function ReportesView() {
           </BlockStack>
         </Card>
       )}
+
+      {/* Reporte de Utilidad Real */}
+      <Card>
+        <BlockStack gap="300">
+          <Text variant="headingMd" as="h3">💰 Reporte de Utilidad Real (Costo vs Precio)</Text>
+          <Text variant="bodySm" tone="subdued" as="p">
+            Calcula la ganancia real usando el precio de costo registrado de cada producto
+          </Text>
+        </BlockStack>
+      </Card>
+
+      <Layout>
+        <Layout.Section variant="oneThird">
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm" as="h3">Ingresos por Ventas</Text>
+              <Text variant="headingLg" as="p">{formatCurrency(stats.totalRevenue)}</Text>
+              <Text variant="bodySm" tone="subdued" as="p">Total de ventas (sin IVA)</Text>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+        <Layout.Section variant="oneThird">
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm" as="h3">Costo de Mercancía</Text>
+              <Text variant="headingLg" as="p" tone="critical">{formatCurrency(stats.totalCostOfGoods)}</Text>
+              <Text variant="bodySm" tone="subdued" as="p">Costo total de productos vendidos</Text>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+        <Layout.Section variant="oneThird">
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm" as="h3">Ganancia Bruta</Text>
+              <Text variant="headingLg" as="p" tone={stats.grossProfit >= 0 ? 'success' : 'critical'}>
+                {formatCurrency(stats.grossProfit)}
+              </Text>
+              <Badge tone={stats.grossMargin >= 20 ? 'success' : stats.grossMargin >= 10 ? 'warning' : 'critical'}>
+                {`Margen: ${stats.grossMargin.toFixed(1)}%`}
+              </Badge>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
+
+      <Layout>
+        <Layout.Section variant="oneThird">
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm" as="h3">Total Gastos Operativos</Text>
+              <Text variant="headingLg" as="p" tone="critical">{formatCurrency(stats.totalGastosAll)}</Text>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+        <Layout.Section variant="oneThird">
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm" as="h3">Utilidad Neta</Text>
+              <Text variant="headingLg" as="p" tone={stats.netProfit >= 0 ? 'success' : 'critical'}>
+                {formatCurrency(stats.netProfit)}
+              </Text>
+              <Badge tone={stats.netProfit >= 0 ? 'success' : 'critical'}>
+                {stats.netProfit >= 0 ? '✅ Ganancia' : '❌ Pérdida'}
+              </Badge>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+        <Layout.Section variant="oneThird">
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm" as="h3">Utilidad Neta Hoy</Text>
+              <Text variant="headingLg" as="p" tone={stats.netProfitDay >= 0 ? 'success' : 'critical'}>
+                {formatCurrency(stats.netProfitDay)}
+              </Text>
+              <Text variant="bodySm" tone="subdued" as="p">
+                Ganancia bruta hoy: {formatCurrency(stats.grossProfitDay)}
+              </Text>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
     </BlockStack>
   );
 }

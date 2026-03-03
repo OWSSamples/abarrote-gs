@@ -43,6 +43,9 @@ export { GastosManager } from './gastos/GastosManager';
 // Proveedores
 export { ProveedoresManager } from './suppliers/ProveedoresManager';
 
+// Pedidos
+export { PedidosManager } from './pedidos/PedidosManager';
+
 // Reportes
 export { ReportesView } from './reports/ReportesView';
 

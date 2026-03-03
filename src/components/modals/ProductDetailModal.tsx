@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Modal,
   BlockStack,
@@ -13,11 +13,14 @@ import {
   TextField,
   Select,
   Banner,
+  FormLayout,
+  Checkbox,
 } from '@shopify/polaris';
-import { DeleteIcon } from '@shopify/polaris-icons';
+import { DeleteIcon, EditIcon } from '@shopify/polaris-icons';
 import { Product } from '@/types';
 import { formatCurrency, formatDate, getDaysUntil, getStockStatus } from '@/lib/utils';
 import { useDashboardStore } from '@/store/dashboardStore';
+import { useToast } from '@/components/notifications/ToastProvider';
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -38,11 +41,26 @@ export function ProductDetailModal({
   onSave,
 }: ProductDetailModalProps) {
   const [editMode, setEditMode] = useState(false);
+  const [editProductMode, setEditProductMode] = useState(false);
   const [newStock, setNewStock] = useState('');
   const [adjustmentReason, setAdjustmentReason] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const deleteProduct = useDashboardStore((s) => s.deleteProduct);
+  const updateProduct = useDashboardStore((s) => s.updateProduct);
+  const { showSuccess, showError } = useToast();
+
+  // Edit product form state
+  const [editName, setEditName] = useState('');
+  const [editSku, setEditSku] = useState('');
+  const [editBarcode, setEditBarcode] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editCostPrice, setEditCostPrice] = useState('');
+  const [editUnitPrice, setEditUnitPrice] = useState('');
+  const [editMinStock, setEditMinStock] = useState('');
+  const [editIsPerishable, setEditIsPerishable] = useState(false);
+  const [editExpirationDate, setEditExpirationDate] = useState('');
 
   if (!product) return null;
 
@@ -62,15 +80,58 @@ export function ProductDetailModal({
     onClose();
   };
 
+  const handleStartEdit = useCallback(() => {
+    if (!product) return;
+    setEditName(product.name);
+    setEditSku(product.sku);
+    setEditBarcode(product.barcode);
+    setEditCategory(product.category);
+    setEditCostPrice(String(product.costPrice));
+    setEditUnitPrice(String(product.unitPrice));
+    setEditMinStock(String(product.minStock));
+    setEditIsPerishable(product.isPerishable);
+    setEditExpirationDate(product.expirationDate || '');
+    setEditProductMode(true);
+  }, [product]);
+
+  const handleSaveProduct = useCallback(async () => {
+    if (!product) return;
+    if (!editName.trim()) { showError('El nombre es obligatorio'); return; }
+    if (!editUnitPrice || parseFloat(editUnitPrice) <= 0) { showError('El precio de venta debe ser mayor a 0'); return; }
+    setSaving(true);
+    try {
+      await updateProduct(product.id, {
+        name: editName.trim(),
+        sku: editSku.trim(),
+        barcode: editBarcode.trim(),
+        category: editCategory.trim(),
+        costPrice: parseFloat(editCostPrice) || 0,
+        unitPrice: parseFloat(editUnitPrice) || 0,
+        minStock: parseInt(editMinStock) || 0,
+        isPerishable: editIsPerishable,
+        expirationDate: editExpirationDate || null,
+      });
+      showSuccess(`"${editName}" actualizado correctamente`);
+      setEditProductMode(false);
+      setSaving(false);
+      onClose();
+    } catch {
+      showError('Error al guardar los cambios');
+      setSaving(false);
+    }
+  }, [product, editName, editSku, editBarcode, editCategory, editCostPrice, editUnitPrice, editMinStock, editIsPerishable, editExpirationDate, updateProduct, showSuccess, showError, onClose]);
+
   const handleDelete = async () => {
     if (!product) return;
     setDeleting(true);
     try {
       await deleteProduct(product.id);
+      showSuccess(`"${product.name}" eliminado`);
       setShowDeleteConfirm(false);
       setDeleting(false);
       onClose();
     } catch {
+      showError('Error al eliminar producto');
       setDeleting(false);
     }
   };
@@ -92,6 +153,58 @@ export function ProductDetailModal({
     { label: 'Error de sistema', value: 'system_error' },
     { label: 'Otro', value: 'other' },
   ];
+
+  const categoryOptions = [
+    { label: 'Abarrotes Secos', value: 'Abarrotes Secos' },
+    { label: 'Lácteos', value: 'Lácteos' },
+    { label: 'Panadería', value: 'Panadería' },
+    { label: 'Carnes y Embutidos', value: 'Carnes y Embutidos' },
+    { label: 'Frutas y Verduras', value: 'Frutas y Verduras' },
+    { label: 'Bebidas', value: 'Bebidas' },
+    { label: 'Limpieza', value: 'Limpieza' },
+    { label: 'Higiene Personal', value: 'Higiene Personal' },
+    { label: 'Huevos', value: 'Huevos' },
+    { label: 'Tortillería', value: 'Tortillería' },
+  ];
+
+  // Edit product mode
+  if (editProductMode) {
+    return (
+      <Modal
+        open={open}
+        onClose={() => { setEditProductMode(false); onClose(); }}
+        title={`Editar: ${product.name}`}
+        primaryAction={{ content: 'Guardar Cambios', onAction: handleSaveProduct, loading: saving, disabled: !editName.trim() }}
+        secondaryActions={[{ content: 'Cancelar', onAction: () => setEditProductMode(false) }]}
+        size="large"
+      >
+        <Modal.Section>
+          <FormLayout>
+            <TextField label="Nombre del producto" value={editName} onChange={setEditName} autoComplete="off" requiredIndicator />
+            <FormLayout.Group>
+              <TextField label="SKU" value={editSku} onChange={setEditSku} autoComplete="off" />
+              <TextField label="Código de barras" value={editBarcode} onChange={setEditBarcode} autoComplete="off" />
+            </FormLayout.Group>
+            <Select label="Categoría" options={categoryOptions} value={editCategory} onChange={setEditCategory} />
+            <FormLayout.Group>
+              <TextField label="Precio de costo (MXN)" type="number" value={editCostPrice} onChange={setEditCostPrice} autoComplete="off" prefix="$" />
+              <TextField label="Precio de venta (MXN)" type="number" value={editUnitPrice} onChange={setEditUnitPrice} autoComplete="off" prefix="$" requiredIndicator />
+            </FormLayout.Group>
+            <TextField label="Stock mínimo" type="number" value={editMinStock} onChange={setEditMinStock} autoComplete="off" helpText="Cuando el inventario baje de este número se mostrará alerta" />
+            <Checkbox label="Es producto perecedero" checked={editIsPerishable} onChange={setEditIsPerishable} />
+            {editIsPerishable && (
+              <TextField label="Fecha de caducidad" type="date" value={editExpirationDate} onChange={setEditExpirationDate} autoComplete="off" />
+            )}
+            {parseFloat(editUnitPrice) > 0 && parseFloat(editCostPrice) > 0 && (
+              <Banner tone="info">
+                <p>Margen de ganancia: {formatCurrency(parseFloat(editUnitPrice) - parseFloat(editCostPrice))} ({((parseFloat(editUnitPrice) - parseFloat(editCostPrice)) / parseFloat(editCostPrice) * 100).toFixed(1)}%)</p>
+              </Banner>
+            )}
+          </FormLayout>
+        </Modal.Section>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -202,10 +315,26 @@ export function ProductDetailModal({
             <InlineStack gap="400">
               <BlockStack gap="100">
                 <Text as="p" variant="bodySm" tone="subdued">
-                  Precio Unitario
+                  Costo
+                </Text>
+                <Text as="p" variant="headingLg">
+                  {formatCurrency(product.costPrice)}
+                </Text>
+              </BlockStack>
+              <BlockStack gap="100">
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Precio Venta
                 </Text>
                 <Text as="p" variant="headingLg">
                   {formatCurrency(product.unitPrice)}
+                </Text>
+              </BlockStack>
+              <BlockStack gap="100">
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Margen
+                </Text>
+                <Text as="p" variant="headingLg" tone="success">
+                  {product.costPrice > 0 ? `${(((product.unitPrice - product.costPrice) / product.costPrice) * 100).toFixed(0)}%` : '—'}
                 </Text>
               </BlockStack>
               <BlockStack gap="100">
@@ -316,7 +445,14 @@ export function ProductDetailModal({
               </InlineStack>
             </Banner>
           ) : (
-            <InlineStack align="end">
+            <InlineStack align="end" gap="300">
+              <Button
+                variant="plain"
+                icon={EditIcon}
+                onClick={handleStartEdit}
+              >
+                Editar Producto
+              </Button>
               <Button
                 variant="plain"
                 tone="critical"

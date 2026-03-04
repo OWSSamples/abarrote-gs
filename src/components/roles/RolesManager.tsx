@@ -28,53 +28,53 @@ import type { UserRole, UserRoleRecord, PermissionKey } from '@/types';
 import { ROLE_LABELS, ROLE_DESCRIPTIONS, ROLE_PERMISSIONS, PERMISSION_LABELS } from '@/types';
 
 const roleOptions: { label: string; value: UserRole }[] = [
-  { label: '👑 Dueño', value: 'owner' },
-  { label: '🛡️ Administrador', value: 'admin' },
-  { label: '📋 Gerente', value: 'manager' },
-  { label: '💰 Cajero', value: 'cashier' },
-  { label: '👁️ Solo lectura', value: 'viewer' },
+  { label: 'Dueño', value: 'owner' },
+  { label: 'Administrador', value: 'admin' },
+  { label: 'Gerente', value: 'manager' },
+  { label: 'Cajero', value: 'cashier' },
+  { label: 'Solo lectura', value: 'viewer' },
 ];
 
 const roleBadge: Record<UserRole, { tone: 'info' | 'success' | 'warning' | 'critical' | 'attention' | 'new'; label: string }> = {
-  owner: { tone: 'critical', label: '👑 Dueño' },
-  admin: { tone: 'warning', label: '🛡️ Admin' },
-  manager: { tone: 'info', label: '📋 Gerente' },
-  cashier: { tone: 'success', label: '💰 Cajero' },
-  viewer: { tone: 'new', label: '👁️ Lectura' },
+  owner: { tone: 'critical', label: 'Dueño' },
+  admin: { tone: 'warning', label: 'Administrador' },
+  manager: { tone: 'info', label: 'Gerente' },
+  cashier: { tone: 'success', label: 'Cajero' },
+  viewer: { tone: 'new', label: 'Solo lectura' },
 };
 
 // Permission categories for display
 const PERMISSION_GROUPS: { title: string; permissions: PermissionKey[] }[] = [
   {
-    title: '📊 Dashboard',
+    title: 'Dashboard',
     permissions: ['dashboard.view'],
   },
   {
-    title: '🛒 Ventas',
+    title: 'Ventas',
     permissions: ['sales.create', 'sales.view', 'sales.cancel', 'corte.create', 'corte.view'],
   },
   {
-    title: '📦 Inventario',
+    title: 'Inventario',
     permissions: ['inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete'],
   },
   {
-    title: '👥 Clientes',
+    title: 'Clientes',
     permissions: ['customers.view', 'customers.edit', 'fiado.create', 'fiado.view'],
   },
   {
-    title: '💸 Gastos',
+    title: 'Gastos',
     permissions: ['expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete'],
   },
   {
-    title: '🏭 Proveedores y Pedidos',
+    title: 'Proveedores y Pedidos',
     permissions: ['suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create'],
   },
   {
-    title: '📈 Reportes',
+    title: 'Reportes',
     permissions: ['analytics.view', 'reports.view', 'reports.export'],
   },
   {
-    title: '⚙️ Sistema',
+    title: 'Sistema',
     permissions: ['settings.view', 'settings.edit', 'roles.manage'],
   },
 ];
@@ -317,7 +317,7 @@ export function RolesManager() {
       <Card>
         <BlockStack gap="400">
           <InlineStack align="space-between" blockAlign="center">
-            <Text variant="headingMd" as="h2">📋 Referencia de Permisos por Rol</Text>
+            <Text variant="headingMd" as="h2">Referencia de Permisos por Rol</Text>
             <Button
               onClick={() => {
                 setPreviewRole('viewer');
@@ -357,7 +357,7 @@ export function RolesManager() {
       <Card>
         <BlockStack gap="400">
           <InlineStack align="space-between" blockAlign="center">
-            <Text variant="headingMd" as="h2">👥 Usuarios y Roles ({userRoles.length})</Text>
+            <Text variant="headingMd" as="h2">Usuarios y Roles ({userRoles.length})</Text>
             <Button
               variant="primary"
               icon={PersonAddIcon}
@@ -549,7 +549,7 @@ export function RolesManager() {
                         const hasIt = ROLE_PERMISSIONS[previewRole].includes(perm);
                         return (
                           <Badge key={perm} tone={hasIt ? 'success' : undefined}>
-                            {`${hasIt ? '✅' : '❌'} ${PERMISSION_LABELS[perm]}`}
+                            {PERMISSION_LABELS[perm]}
                           </Badge>
                         );
                       })}

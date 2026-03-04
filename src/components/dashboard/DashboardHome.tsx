@@ -20,6 +20,7 @@ import {
   Select,
   IndexTable,
   Badge,
+  ActionList,
 } from '@shopify/polaris';
 import {
   MoneyIcon,
@@ -29,6 +30,8 @@ import {
   ExportIcon,
   RefreshIcon,
   ProductIcon,
+  SettingsIcon,
+  ExitIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { KPICard } from '@/components/kpi/KPICard';
@@ -52,7 +55,7 @@ import { ConfiguracionPage } from '@/components/settings/ConfiguracionPage';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
 import { Product } from '@/types';
 import { useToast } from '@/components/notifications/ToastProvider';
-import { UserMenu } from '@/components/auth/UserMenu';
+import { useAuth } from '@/lib/auth/AuthContext';
 
 const SECTION_TITLES: Record<string, string> = {
   overview: 'Inicio',
@@ -112,6 +115,11 @@ export function DashboardHome() {
   const [pedidoModalOpen, setPedidoModalOpen] = useState(false);
   const [pedidoProveedor, setPedidoProveedor] = useState('');
   const [pedidoNotas, setPedidoNotas] = useState('');
+  const [searchValue, setSearchValue] = useState('');
+  const [searchActive, setSearchActive] = useState(false);
+  const [userMenuActive, setUserMenuActive] = useState(false);
+  const { user, signOut } = useAuth();
+
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     categories: [],
@@ -272,17 +280,92 @@ export function DashboardHome() {
     (alert) => alert.severity === 'critical'
   );
 
-  const topBarMarkup = (
-    <TopBar
-      showNavigationToggle
-      onNavigationToggle={toggleMobileNav}
-      userMenu={
-        <div style={{ marginRight: '12px' }}>
-          <UserMenu />
-        </div>
-      }
-    />
-  );
+  const topBarMarkup = (() => {
+    const userMenuInitials = user?.displayName
+      ? user.displayName
+          .split(' ')
+          .map((n: string) => n[0])
+          .join('')
+          .toUpperCase()
+          .slice(0, 2)
+      : user?.email?.charAt(0).toUpperCase() || 'U';
+
+    const userMenuMarkup = (
+      <TopBar.UserMenu
+        actions={[
+          {
+            items: [
+              {
+                content: 'Configuración',
+                icon: SettingsIcon,
+                onAction: () => handleSectionSelect('settings'),
+              },
+            ],
+          },
+          {
+            items: [
+              {
+                content: 'Cerrar sesión',
+                icon: ExitIcon,
+                onAction: signOut,
+              },
+            ],
+          },
+        ]}
+        name={user?.displayName || user?.email?.split('@')[0] || 'Usuario'}
+        detail={user?.email || ''}
+        initials={userMenuInitials}
+        avatar={user?.photoURL || undefined}
+        open={userMenuActive}
+        onToggle={() => setUserMenuActive((prev) => !prev)}
+      />
+    );
+
+    const searchResultsMarkup = searchValue ? (
+      <ActionList
+        items={Object.entries(SECTION_TITLES)
+          .filter(([, title]) =>
+            title.toLowerCase().includes(searchValue.toLowerCase())
+          )
+          .map(([key, title]) => ({
+            content: title,
+            helpText: SECTION_SUBTITLES[key] || '',
+            onAction: () => {
+              handleSectionSelect(key);
+              setSearchValue('');
+              setSearchActive(false);
+            },
+          }))}
+      />
+    ) : null;
+
+    const searchFieldMarkup = (
+      <TopBar.SearchField
+        onChange={(value) => {
+          setSearchValue(value);
+          setSearchActive(value.length > 0);
+        }}
+        value={searchValue}
+        placeholder="Buscar secciones, productos..."
+        showFocusBorder
+      />
+    );
+
+    return (
+      <TopBar
+        showNavigationToggle
+        onNavigationToggle={toggleMobileNav}
+        userMenu={userMenuMarkup}
+        searchField={searchFieldMarkup}
+        searchResults={searchResultsMarkup}
+        searchResultsVisible={searchActive}
+        onSearchResultsDismiss={() => {
+          setSearchActive(false);
+          setSearchValue('');
+        }}
+      />
+    );
+  })();
 
   const navigationMarkup = (
     <SidebarNav
@@ -425,6 +508,12 @@ export function DashboardHome() {
 
   return (
     <Frame
+      logo={{
+        topBarSource: '/logo.svg',
+        accessibilityLabel: 'Abarrotes GS',
+        url: '#',
+        width: 124,
+      }}
       topBar={topBarMarkup}
       navigation={navigationMarkup}
       showMobileNavigation={mobileNavActive}

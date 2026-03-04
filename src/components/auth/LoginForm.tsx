@@ -3,7 +3,6 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { sileo } from 'sileo';
 import { authClient } from '@/lib/auth/client';
 import { Button } from '@/components/ui/button';
@@ -11,8 +10,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Store } from 'lucide-react';
-
-const Dither = dynamic(() => import('@/components/Dither'), { ssr: false });
 
 export function LoginForm() {
   const router = useRouter();
@@ -49,19 +46,21 @@ export function LoginForm() {
   }, [email, password, router]);
 
   return (
-    <div className="min-h-screen relative flex flex-col items-center justify-center p-4 overflow-hidden">
-      {/* Dither Background */}
+    <div className="min-h-screen relative flex flex-col items-center justify-center p-4 overflow-hidden bg-[#0a0a0a]">
+      {/* Animated Background */}
       <div className="absolute inset-0 z-0">
-        <Dither
-          waveSpeed={0.03}
-          waveFrequency={2}
-          waveAmplitude={0.3}
-          waveColor={[0.1, 0.1, 0.12]}
-          colorNum={4}
-          pixelSize={3}
-          disableAnimation={false}
-          enableMouseInteraction={true}
-          mouseRadius={0.5}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f0f23]" />
+        <div className="absolute inset-0 opacity-30">
+          <div className="absolute top-0 -left-4 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl animate-blob" />
+          <div className="absolute top-0 -right-4 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000" />
+          <div className="absolute -bottom-8 left-20 w-72 h-72 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000" />
+        </div>
+        <div 
+          className="absolute inset-0 opacity-20"
+          style={{
+            backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.15) 1px, transparent 0)`,
+            backgroundSize: '40px 40px'
+          }}
         />
       </div>
 
@@ -69,16 +68,16 @@ export function LoginForm() {
       <div className="relative z-10 flex flex-col items-center">
         {/* Logo */}
         <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-[#27272a]/90 backdrop-blur-sm rounded-lg flex items-center justify-center border border-[#3f3f46]">
-            <Store className="w-4 h-4 text-white" />
+          <div className="w-10 h-10 bg-[#27272a]/80 backdrop-blur-sm rounded-xl flex items-center justify-center border border-[#3f3f46]/50 shadow-lg">
+            <Store className="w-5 h-5 text-white" />
           </div>
-          <span className="text-white text-lg font-medium">Consola</span>
+          <span className="text-white text-xl font-semibold tracking-tight">Consola</span>
         </div>
 
         {/* Card */}
-        <Card className="w-full max-w-[400px] bg-[#27272a]/90 backdrop-blur-sm border-[#3f3f46]">
+        <Card className="w-full max-w-[400px] bg-[#18181b]/80 backdrop-blur-md border-[#27272a] shadow-2xl">
           <CardHeader className="text-center pb-4">
-            <CardTitle className="text-white text-xl">Welcome back</CardTitle>
+            <CardTitle className="text-white text-xl font-semibold">Welcome back</CardTitle>
             <CardDescription className="text-[#a1a1aa]">
               Login with your Apple or Google account
             </CardDescription>
@@ -87,7 +86,7 @@ export function LoginForm() {
             {/* Social Buttons */}
             <Button 
               variant="outline" 
-              className="w-full h-10 bg-[#27272a] border-[#3f3f46] text-white hover:bg-[#3f3f46] hover:text-white"
+              className="w-full h-11 bg-[#27272a]/50 border-[#3f3f46] text-white hover:bg-[#3f3f46] hover:text-white transition-all"
               disabled={isLoading}
             >
               <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
@@ -98,7 +97,7 @@ export function LoginForm() {
 
             <Button 
               variant="outline" 
-              className="w-full h-10 bg-[#27272a] border-[#3f3f46] text-white hover:bg-[#3f3f46] hover:text-white"
+              className="w-full h-11 bg-[#27272a]/50 border-[#3f3f46] text-white hover:bg-[#3f3f46] hover:text-white transition-all"
               disabled={isLoading}
             >
               <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
@@ -116,7 +115,7 @@ export function LoginForm() {
                 <div className="w-full border-t border-[#3f3f46]" />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-[#27272a] px-2 text-[#71717a]">Or continue with</span>
+                <span className="bg-[#18181b] px-2 text-[#71717a]">Or continue with</span>
               </div>
             </div>
 
@@ -133,7 +132,7 @@ export function LoginForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={isLoading}
-                  className="h-10 bg-[#18181b] border-[#3f3f46] text-white placeholder:text-[#71717a] focus:border-[#52525b] focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="h-11 bg-[#0a0a0a] border-[#3f3f46] text-white placeholder:text-[#52525b] focus:border-[#6366f1] focus-visible:ring-1 focus-visible:ring-[#6366f1] transition-all"
                 />
               </div>
 
@@ -155,14 +154,13 @@ export function LoginForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
-                  className="h-10 bg-[#18181b] border-[#3f3f46] text-white placeholder:text-[#71717a] focus:border-[#52525b] focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="h-11 bg-[#0a0a0a] border-[#3f3f46] text-white placeholder:text-[#52525b] focus:border-[#6366f1] focus-visible:ring-1 focus-visible:ring-[#6366f1] transition-all"
                 />
               </div>
 
               <Button 
                 type="submit"
-                variant="outline"
-                className="w-full h-10 bg-[#27272a] border-[#3f3f46] text-white hover:bg-[#3f3f46] hover:text-white mt-2"
+                className="w-full h-11 bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e3] hover:to-[#7c4fe8] text-white font-medium mt-2 transition-all shadow-lg shadow-indigo-500/25"
                 disabled={isLoading}
               >
                 {isLoading ? 'Loading...' : 'Login'}
@@ -172,7 +170,7 @@ export function LoginForm() {
             {/* Sign up link */}
             <p className="text-center text-sm text-[#a1a1aa] pt-2">
               Don&apos;t have an account?{' '}
-              <Link href="/auth/register" className="text-white underline underline-offset-2 hover:no-underline">
+              <Link href="/auth/register" className="text-[#818cf8] hover:text-[#a5b4fc] underline underline-offset-2 hover:no-underline transition-colors">
                 Sign up
               </Link>
             </p>
@@ -180,11 +178,11 @@ export function LoginForm() {
         </Card>
 
         {/* Footer */}
-        <p className="text-[#71717a] text-xs text-center mt-8 max-w-[400px]">
+        <p className="text-[#52525b] text-xs text-center mt-8 max-w-[400px]">
           By clicking continue, you agree to our{' '}
-          <Link href="/terms" className="underline underline-offset-2 hover:text-[#a1a1aa]">Terms of Service</Link>
+          <Link href="/terms" className="underline underline-offset-2 hover:text-[#71717a] transition-colors">Terms of Service</Link>
           {' '}and{' '}
-          <Link href="/privacy" className="underline underline-offset-2 hover:text-[#a1a1aa]">Privacy Policy</Link>.
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-[#71717a] transition-colors">Privacy Policy</Link>.
         </p>
       </div>
     </div>

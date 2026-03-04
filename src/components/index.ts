@@ -55,6 +55,9 @@ export { ReportesView } from './reports/ReportesView';
 // Configuración
 export { ConfiguracionPage } from './settings/ConfiguracionPage';
 
+// Roles
+export { RolesManager } from './roles/RolesManager';
+
 // Navigation
 export { SidebarNav } from './navigation/SidebarNav';
 

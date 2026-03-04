@@ -52,6 +52,7 @@ import { ProveedoresManager } from '@/components/suppliers/ProveedoresManager';
 import { PedidosManager } from '@/components/pedidos/PedidosManager';
 import { ReportesView } from '@/components/reports/ReportesView';
 import { ConfiguracionPage } from '@/components/settings/ConfiguracionPage';
+import { RolesManager } from '@/components/roles/RolesManager';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
 import { Product } from '@/types';
 import { useToast } from '@/components/notifications/ToastProvider';
@@ -71,6 +72,7 @@ const SECTION_TITLES: Record<string, string> = {
   pedidos: 'Pedidos a Proveedores',
   analytics: 'Análisis',
   reports: 'Reportes',
+  roles: 'Usuarios y Roles',
   settings: 'Configuración',
 };
 
@@ -88,6 +90,7 @@ const SECTION_SUBTITLES: Record<string, string> = {
   pedidos: 'Gestión de pedidos y recepción de mercancía',
   analytics: 'Gráficas y tendencias',
   reports: 'Resúmenes y métricas',
+  roles: 'Asigna roles y permisos a tu equipo',
   settings: 'Configuración del sistema',
 };
 
@@ -101,6 +104,7 @@ export function DashboardHome() {
     fetchDashboardData,
     adjustStock,
     createPedido,
+    ensureOwnerRole,
   } = useDashboardStore();
 
   const toast = useToast();
@@ -131,6 +135,13 @@ export function DashboardHome() {
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  // Auto-register role for current user (first user becomes owner)
+  useEffect(() => {
+    if (user) {
+      ensureOwnerRole(user.uid, user.email || '', user.displayName || '');
+    }
+  }, [user, ensureOwnerRole]);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
@@ -497,6 +508,9 @@ export function DashboardHome() {
 
       case 'reports':
         return <ReportesView />;
+
+      case 'roles':
+        return <RolesManager />;
 
       case 'settings':
         return <ConfiguracionPage />;

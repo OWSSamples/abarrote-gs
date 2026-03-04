@@ -15,6 +15,7 @@ import {
   gastos,
   proveedores,
   cortesCaja,
+  userRoles,
 } from '@/db/schema';
 import { eq, gte, lte, and, desc, sql } from 'drizzle-orm';
 import type {
@@ -33,6 +34,8 @@ import type {
   GastoCategoria,
   Proveedor,
   StoreConfig,
+  UserRoleRecord,
+  UserRole,
 } from '@/types';
 import { DEFAULT_STORE_CONFIG } from '@/types';
 
@@ -976,4 +979,171 @@ export async function fetchDashboardFromDB() {
     cortesHistory: cortesHistoryList,
     storeConfig: storeConfigData,
   };
+}
+
+// ==================== ROLES Y PERMISOS ====================
+
+export async function fetchUserRoles(): Promise<UserRoleRecord[]> {
+  const rows = await db.select().from(userRoles).orderBy(userRoles.createdAt);
+  return rows.map((r) => ({
+    id: r.id,
+    firebaseUid: r.firebaseUid,
+    email: r.email,
+    displayName: r.displayName,
+    role: r.role as UserRole,
+    assignedBy: r.assignedBy,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+}
+
+export async function getUserRoleByUid(firebaseUid: string): Promise<UserRoleRecord | null> {
+  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: r.id,
+    firebaseUid: r.firebaseUid,
+    email: r.email,
+    displayName: r.displayName,
+    role: r.role as UserRole,
+    assignedBy: r.assignedBy,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  };
+}
+
+export async function ensureOwnerRole(firebaseUid: string, email: string, displayName: string): Promise<UserRoleRecord> {
+  // Check if any owner exists
+  const existing = await db.select().from(userRoles);
+  
+  // If no roles exist at all, make this user the owner
+  if (existing.length === 0) {
+    const id = crypto.randomUUID();
+    const now = new Date();
+    await db.insert(userRoles).values({
+      id,
+      firebaseUid,
+      email,
+      displayName: displayName || '',
+      role: 'owner',
+      assignedBy: firebaseUid, // self-assigned as first user
+      createdAt: now,
+      updatedAt: now,
+    });
+    return {
+      id,
+      firebaseUid,
+      email,
+      displayName: displayName || '',
+      role: 'owner',
+      assignedBy: firebaseUid,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+  }
+
+  // Check if this user already has a role
+  const userRow = existing.find((r) => r.firebaseUid === firebaseUid);
+  if (userRow) {
+    return {
+      id: userRow.id,
+      firebaseUid: userRow.firebaseUid,
+      email: userRow.email,
+      displayName: userRow.displayName,
+      role: userRow.role as UserRole,
+      assignedBy: userRow.assignedBy,
+      createdAt: userRow.createdAt.toISOString(),
+      updatedAt: userRow.updatedAt.toISOString(),
+    };
+  }
+
+  // User not found — they have no role yet, return null-like default
+  const id = crypto.randomUUID();
+  const now = new Date();
+  await db.insert(userRoles).values({
+    id,
+    firebaseUid,
+    email,
+    displayName: displayName || '',
+    role: 'viewer',
+    assignedBy: 'system',
+    createdAt: now,
+    updatedAt: now,
+  });
+  return {
+    id,
+    firebaseUid,
+    email,
+    displayName: displayName || '',
+    role: 'viewer',
+    assignedBy: 'system',
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+}
+
+export async function assignUserRole(
+  data: { firebaseUid: string; email: string; displayName: string; role: UserRole },
+  assignedByUid: string
+): Promise<UserRoleRecord> {
+  // Check if user already has a role
+  const existingRows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, data.firebaseUid));
+  
+  if (existingRows.length > 0) {
+    // Update existing
+    const now = new Date();
+    await db.update(userRoles)
+      .set({ role: data.role, displayName: data.displayName, email: data.email, updatedAt: now, assignedBy: assignedByUid })
+      .where(eq(userRoles.firebaseUid, data.firebaseUid));
+    return {
+      id: existingRows[0].id,
+      firebaseUid: data.firebaseUid,
+      email: data.email,
+      displayName: data.displayName,
+      role: data.role,
+      assignedBy: assignedByUid,
+      createdAt: existingRows[0].createdAt.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+  }
+
+  // Create new
+  const id = crypto.randomUUID();
+  const now = new Date();
+  await db.insert(userRoles).values({
+    id,
+    firebaseUid: data.firebaseUid,
+    email: data.email,
+    displayName: data.displayName || '',
+    role: data.role,
+    assignedBy: assignedByUid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return {
+    id,
+    firebaseUid: data.firebaseUid,
+    email: data.email,
+    displayName: data.displayName || '',
+    role: data.role,
+    assignedBy: assignedByUid,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+}
+
+export async function updateUserRole(
+  firebaseUid: string,
+  newRole: UserRole,
+  assignedByUid: string
+): Promise<void> {
+  const now = new Date();
+  await db.update(userRoles)
+    .set({ role: newRole, updatedAt: now, assignedBy: assignedByUid })
+    .where(eq(userRoles.firebaseUid, firebaseUid));
+}
+
+export async function removeUserRole(firebaseUid: string): Promise<void> {
+  await db.delete(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
 }

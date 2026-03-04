@@ -217,3 +217,138 @@ export interface Gasto {
   notas: string;
   comprobante: boolean;
 }
+
+// === Roles y Permisos ===
+export type UserRole = 'owner' | 'admin' | 'manager' | 'cashier' | 'viewer';
+
+export interface UserRoleRecord {
+  id: string;
+  firebaseUid: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  assignedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PermissionKey =
+  | 'dashboard.view'
+  | 'sales.create'
+  | 'sales.view'
+  | 'sales.cancel'
+  | 'inventory.view'
+  | 'inventory.edit'
+  | 'inventory.create'
+  | 'inventory.delete'
+  | 'customers.view'
+  | 'customers.edit'
+  | 'fiado.create'
+  | 'fiado.view'
+  | 'expenses.view'
+  | 'expenses.create'
+  | 'expenses.edit'
+  | 'expenses.delete'
+  | 'suppliers.view'
+  | 'suppliers.edit'
+  | 'pedidos.view'
+  | 'pedidos.create'
+  | 'analytics.view'
+  | 'reports.view'
+  | 'reports.export'
+  | 'corte.create'
+  | 'corte.view'
+  | 'settings.view'
+  | 'settings.edit'
+  | 'roles.manage';
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  owner: 'Dueño',
+  admin: 'Administrador',
+  manager: 'Gerente',
+  cashier: 'Cajero',
+  viewer: 'Solo lectura',
+};
+
+export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
+  owner: 'Acceso total al sistema. Puede gestionar roles y toda la configuración.',
+  admin: 'Acceso completo excepto cambiar al dueño. Puede asignar roles menores.',
+  manager: 'Gestión de inventario, proveedores, reportes y gastos.',
+  cashier: 'Punto de venta, cortes de caja y consulta de inventario.',
+  viewer: 'Solo puede ver información. No puede modificar nada.',
+};
+
+export const ROLE_PERMISSIONS: Record<UserRole, PermissionKey[]> = {
+  owner: [
+    'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel',
+    'inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete',
+    'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
+    'expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete',
+    'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
+    'analytics.view', 'reports.view', 'reports.export',
+    'corte.create', 'corte.view',
+    'settings.view', 'settings.edit', 'roles.manage',
+  ],
+  admin: [
+    'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel',
+    'inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete',
+    'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
+    'expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete',
+    'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
+    'analytics.view', 'reports.view', 'reports.export',
+    'corte.create', 'corte.view',
+    'settings.view', 'settings.edit', 'roles.manage',
+  ],
+  manager: [
+    'dashboard.view', 'sales.view',
+    'inventory.view', 'inventory.edit', 'inventory.create',
+    'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
+    'expenses.view', 'expenses.create', 'expenses.edit',
+    'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
+    'analytics.view', 'reports.view', 'reports.export',
+    'corte.view',
+  ],
+  cashier: [
+    'dashboard.view', 'sales.create', 'sales.view',
+    'inventory.view',
+    'customers.view', 'fiado.create', 'fiado.view',
+    'corte.create', 'corte.view',
+  ],
+  viewer: [
+    'dashboard.view', 'sales.view', 'inventory.view',
+    'customers.view', 'fiado.view', 'expenses.view',
+    'suppliers.view', 'pedidos.view', 'analytics.view',
+    'reports.view', 'corte.view',
+  ],
+};
+
+export const PERMISSION_LABELS: Record<PermissionKey, string> = {
+  'dashboard.view': 'Ver dashboard',
+  'sales.create': 'Registrar ventas',
+  'sales.view': 'Ver ventas',
+  'sales.cancel': 'Cancelar ventas',
+  'inventory.view': 'Ver inventario',
+  'inventory.edit': 'Editar inventario',
+  'inventory.create': 'Crear productos',
+  'inventory.delete': 'Eliminar productos',
+  'customers.view': 'Ver clientes',
+  'customers.edit': 'Editar clientes',
+  'fiado.create': 'Registrar fiado/abonos',
+  'fiado.view': 'Ver fiado',
+  'expenses.view': 'Ver gastos',
+  'expenses.create': 'Registrar gastos',
+  'expenses.edit': 'Editar gastos',
+  'expenses.delete': 'Eliminar gastos',
+  'suppliers.view': 'Ver proveedores',
+  'suppliers.edit': 'Editar proveedores',
+  'pedidos.view': 'Ver pedidos',
+  'pedidos.create': 'Crear pedidos',
+  'analytics.view': 'Ver análisis',
+  'reports.view': 'Ver reportes',
+  'reports.export': 'Exportar reportes',
+  'corte.create': 'Hacer corte de caja',
+  'corte.view': 'Ver cortes',
+  'settings.view': 'Ver configuración',
+  'settings.edit': 'Editar configuración',
+  'roles.manage': 'Gestionar roles',
+};

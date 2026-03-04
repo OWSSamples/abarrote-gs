@@ -3,6 +3,7 @@ import {
   DashboardState, KPIData, InventoryAlert, SalesData, MermaRecord, PedidoRecord,
   Product, SaleRecord, SaleItem, CorteCaja, Cliente, FiadoTransaction, Gasto, GastoCategoria,
   Proveedor, StoreConfig, DEFAULT_STORE_CONFIG,
+  UserRoleRecord, UserRole,
 } from '@/types';
 import {
   fetchDashboardFromDB,
@@ -32,6 +33,12 @@ import {
   receivePedido as dbReceivePedido,
   cancelSale as dbCancelSale,
   deleteProveedor as dbDeleteProveedor,
+  fetchUserRoles as dbFetchUserRoles,
+  assignUserRole as dbAssignUserRole,
+  updateUserRole as dbUpdateUserRole,
+  removeUserRole as dbRemoveUserRole,
+  ensureOwnerRole as dbEnsureOwnerRole,
+  getUserRoleByUid as dbGetUserRoleByUid,
 } from '@/app/actions/db-actions';
 
 interface DashboardStore extends DashboardState {
@@ -76,6 +83,15 @@ interface DashboardStore extends DashboardState {
   receivePedido: (id: string) => Promise<void>;
   // Cancel sale
   cancelSale: (id: string) => Promise<void>;
+  // Roles
+  userRoles: UserRoleRecord[];
+  currentUserRole: UserRoleRecord | null;
+  fetchRoles: () => Promise<void>;
+  ensureOwnerRole: (firebaseUid: string, email: string, displayName: string) => Promise<UserRoleRecord>;
+  assignRole: (data: { firebaseUid: string; email: string; displayName: string; role: UserRole }, assignedByUid: string) => Promise<void>;
+  updateRole: (firebaseUid: string, newRole: UserRole, assignedByUid: string) => Promise<void>;
+  removeRole: (firebaseUid: string) => Promise<void>;
+  getUserRole: (firebaseUid: string) => Promise<UserRoleRecord | null>;
 }
 
 export const useDashboardStore = create<DashboardStore>((set, get) => ({
@@ -92,6 +108,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   proveedores: [],
   cortesHistory: [],
   storeConfig: DEFAULT_STORE_CONFIG,
+  userRoles: [],
+  currentUserRole: null,
   isLoading: false,
   error: null,
 
@@ -448,6 +466,76 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     } catch (error) {
       console.error('Error deleting proveedor:', error);
       throw error;
+    }
+  },
+
+  // ==================== ROLES Y PERMISOS ====================
+  fetchRoles: async () => {
+    try {
+      const roles = await dbFetchUserRoles();
+      set({ userRoles: roles });
+    } catch (error) {
+      console.error('Error fetching roles:', error);
+    }
+  },
+
+  ensureOwnerRole: async (firebaseUid, email, displayName) => {
+    try {
+      const role = await dbEnsureOwnerRole(firebaseUid, email, displayName);
+      set({ currentUserRole: role });
+      return role;
+    } catch (error) {
+      console.error('Error ensuring owner role:', error);
+      throw error;
+    }
+  },
+
+  assignRole: async (data, assignedByUid) => {
+    try {
+      const newRole = await dbAssignUserRole(data, assignedByUid);
+      const state = get();
+      const existing = state.userRoles.find(r => r.firebaseUid === data.firebaseUid);
+      if (existing) {
+        set({ userRoles: state.userRoles.map(r => r.firebaseUid === data.firebaseUid ? newRole : r) });
+      } else {
+        set({ userRoles: [...state.userRoles, newRole] });
+      }
+    } catch (error) {
+      console.error('Error assigning role:', error);
+      throw error;
+    }
+  },
+
+  updateRole: async (firebaseUid, newRole, assignedByUid) => {
+    try {
+      await dbUpdateUserRole(firebaseUid, newRole, assignedByUid);
+      const state = get();
+      set({ userRoles: state.userRoles.map(r => r.firebaseUid === firebaseUid ? { ...r, role: newRole, updatedAt: new Date().toISOString() } : r) });
+    } catch (error) {
+      console.error('Error updating role:', error);
+      throw error;
+    }
+  },
+
+  removeRole: async (firebaseUid) => {
+    try {
+      await dbRemoveUserRole(firebaseUid);
+      const state = get();
+      set({ userRoles: state.userRoles.filter(r => r.firebaseUid !== firebaseUid) });
+    } catch (error) {
+      console.error('Error removing role:', error);
+      throw error;
+    }
+  },
+
+  getUserRole: async (firebaseUid) => {
+    try {
+      const role = await dbGetUserRoleByUid(firebaseUid);
+      if (role) set({ currentUserRole: role });
+      return role;
+    } catch (error) {
+      console.error('Error getting user role:', error);
+      return null;
     }
   },
 }));

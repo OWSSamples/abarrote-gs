@@ -184,3 +184,15 @@ export const cortesCaja = pgTable('cortes_caja', {
   notas: text('notas').notNull().default(''),
   status: text('status').notNull().default('abierto'), // abierto, cerrado
 });
+
+// ==================== ROLES Y PERMISOS ====================
+export const userRoles = pgTable('user_roles', {
+  id: text('id').primaryKey(),
+  firebaseUid: text('firebase_uid').notNull(),
+  email: text('email').notNull(),
+  displayName: text('display_name').notNull().default(''),
+  role: text('role').notNull().default('viewer'), // owner, admin, manager, cashier, viewer
+  assignedBy: text('assigned_by').notNull(), // firebase_uid del que asignó
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});

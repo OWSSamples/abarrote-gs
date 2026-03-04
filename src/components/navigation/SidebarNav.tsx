@@ -9,6 +9,7 @@ import {
   FinanceIcon,
   ChartVerticalFilledIcon,
   SettingsIcon,
+  PersonLockFilledIcon,
 } from '@shopify/polaris-icons';
 
 interface SidebarNavProps {
@@ -131,6 +132,12 @@ export function SidebarNav({ selected, onSelect, badges }: SidebarNavProps) {
       <Navigation.Section
         separator
         items={[
+          {
+            label: 'Usuarios y Roles',
+            icon: PersonLockFilledIcon,
+            selected: selected === 'roles',
+            onClick: () => onSelect('roles'),
+          },
           {
             label: 'Configuración',
             icon: SettingsIcon,

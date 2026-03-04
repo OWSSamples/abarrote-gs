@@ -30,6 +30,7 @@ export const storeConfig = pgTable('store_config', {
   ticketServicePhone: text('ticket_service_phone').notNull().default('800-000-0000'),
   ticketVigencia: text('ticket_vigencia').notNull().default('12/2026'),
   storeNumber: text('store_number').notNull().default('001'),
+  ticketBarcodeFormat: text('ticket_barcode_format').notNull().default('CODE128'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 

@@ -129,6 +129,7 @@ export async function fetchStoreConfig(): Promise<StoreConfig> {
     ticketServicePhone: r.ticketServicePhone,
     ticketVigencia: r.ticketVigencia,
     storeNumber: r.storeNumber,
+    ticketBarcodeFormat: r.ticketBarcodeFormat,
   };
 }
 

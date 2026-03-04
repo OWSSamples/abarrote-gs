@@ -28,10 +28,12 @@ export function getDaysUntil(date: string | Date): number {
   return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-export function getStockStatus(stock: number, minStock: number): 'ok' | 'low' | 'out' {
-  if (stock === 0) return 'out'
-  if (stock <= minStock) return 'low'
-  return 'ok'
+export function getStockStatus(stock: number, minStock: number): { status: 'ok' | 'low' | 'out' | 'critical'; percentage: number } {
+  const percentage = minStock > 0 ? Math.min((stock / minStock) * 100, 100) : 100;
+  if (stock === 0) return { status: 'out', percentage: 0 };
+  if (stock <= minStock * 0.25) return { status: 'critical', percentage };
+  if (stock <= minStock) return { status: 'low', percentage };
+  return { status: 'ok', percentage };
 }
 
 export function formatNumber(value: number): string {

@@ -320,8 +320,8 @@ ${config.ticketFooter.split('\\n').map((l: string) => `       ${l}`).join('\n')}
                 color: '#000',
                 background: '#fff',
               }}>{previewText}</pre>
-              <div style={{ textAlign: 'center', padding: '4px 0' }}>
-                <svg ref={(el) => {
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '6px 0', width: '100%' }}>
+                <svg style={{ display: 'block', margin: '0 auto', maxWidth: '260px' }} ref={(el) => {
                   if (el) {
                     try {
                       JsBarcode(el, 'V-00000112345678', {

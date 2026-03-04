@@ -534,12 +534,17 @@ pre {
   padding: 0 6px;
 }
 .barcode-wrapper {
-  text-align: center;
-  padding: 4px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 6px 0;
+  width: 100%;
 }
 .barcode-wrapper img {
-  max-width: 280px;
+  display: block;
+  max-width: 260px;
   height: auto;
+  margin: 0 auto;
 }
 </style></head><body>
 <pre>${ticketText}</pre>
@@ -665,8 +670,8 @@ ${centerLine(`${dateStr}     ${timeStr}`)}
                 color: '#000',
                 background: '#fff',
               }}>{previewText}</pre>
-              <div style={{ textAlign: 'center', padding: '4px 0' }}>
-                <svg ref={(el) => {
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '6px 0', width: '100%' }}>
+                <svg style={{ display: 'block', margin: '0 auto', maxWidth: '260px' }} ref={(el) => {
                   if (el) {
                     try {
                       JsBarcode(el, previewTcCode, {

@@ -50,11 +50,11 @@ export function SalesChart({ data }: SalesChartProps) {
             data={chartData}
             theme="Light"
             tooltipOptions={{
-              valueFormatter: (value: number) => formatCurrency(value),
+              valueFormatter: (value: string | number | null) => formatCurrency(Number(value ?? 0)),
             }}
             yAxisOptions={{
-              labelFormatter: (value: number) =>
-                `$${(value / 1000).toFixed(0)}k`,
+              labelFormatter: (value: string | number | null) =>
+                `$${(Number(value ?? 0) / 1000).toFixed(0)}k`,
             }}
           />
         </div>

@@ -88,6 +88,7 @@ export function RolesManager() {
     assignRole,
     updateRole,
     removeRole,
+    ensureOwnerRole,
   } = useDashboardStore();
   const { showSuccess, showError } = useToast();
 
@@ -108,8 +109,16 @@ export function RolesManager() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchRoles().then(() => setLoading(false));
-  }, [fetchRoles]);
+    const init = async () => {
+      // Ensure current user has a role (first user becomes owner)
+      if (user) {
+        await ensureOwnerRole(user.uid, user.email || '', user.displayName || '');
+      }
+      await fetchRoles();
+      setLoading(false);
+    };
+    init();
+  }, [user, ensureOwnerRole, fetchRoles]);
 
   const canManageRoles = useMemo(() => {
     return currentUserRole?.role === 'owner' || currentUserRole?.role === 'admin';

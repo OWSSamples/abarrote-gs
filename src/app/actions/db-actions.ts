@@ -16,6 +16,7 @@ import {
   proveedores,
   cortesCaja,
   userRoles,
+  roleDefinitions,
 } from '@/db/schema';
 import { eq, gte, lte, and, desc, sql } from 'drizzle-orm';
 import type {
@@ -35,9 +36,10 @@ import type {
   Proveedor,
   StoreConfig,
   UserRoleRecord,
-  UserRole,
+  RoleDefinition,
+  PermissionKey,
 } from '@/types';
-import { DEFAULT_STORE_CONFIG } from '@/types';
+import { DEFAULT_STORE_CONFIG, DEFAULT_SYSTEM_ROLES } from '@/types';
 
 // ==================== HELPERS ====================
 function numVal(v: string | null | undefined): number {
@@ -983,41 +985,135 @@ export async function fetchDashboardFromDB() {
 
 // ==================== ROLES Y PERMISOS ====================
 
-export async function fetchUserRoles(): Promise<UserRoleRecord[]> {
-  const rows = await db.select().from(userRoles).orderBy(userRoles.createdAt);
-  return rows.map((r) => ({
-    id: r.id,
-    firebaseUid: r.firebaseUid,
-    email: r.email,
-    displayName: r.displayName,
-    role: r.role as UserRole,
-    assignedBy: r.assignedBy,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-  }));
+// --- Role Definitions ---
+
+async function seedSystemRoles(): Promise<void> {
+  const existing = await db.select().from(roleDefinitions);
+  if (existing.length > 0) return;
+
+  const now = new Date();
+  for (const role of DEFAULT_SYSTEM_ROLES) {
+    await db.insert(roleDefinitions).values({
+      id: crypto.randomUUID(),
+      name: role.name,
+      description: role.description,
+      permissions: JSON.stringify(role.permissions),
+      isSystem: role.isSystem,
+      createdBy: role.createdBy,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 }
 
-export async function getUserRoleByUid(firebaseUid: string): Promise<UserRoleRecord | null> {
-  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
-  if (rows.length === 0) return null;
-  const r = rows[0];
+function mapRoleDef(r: typeof roleDefinitions.$inferSelect): RoleDefinition {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    permissions: JSON.parse(r.permissions) as PermissionKey[],
+    isSystem: r.isSystem,
+    createdBy: r.createdBy,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  };
+}
+
+export async function fetchRoleDefinitions(): Promise<RoleDefinition[]> {
+  await seedSystemRoles();
+  const rows = await db.select().from(roleDefinitions).orderBy(roleDefinitions.createdAt);
+  return rows.map(mapRoleDef);
+}
+
+export async function createRoleDefinition(
+  data: { name: string; description: string; permissions: PermissionKey[] },
+  createdByUid: string
+): Promise<RoleDefinition> {
+  const id = crypto.randomUUID();
+  const now = new Date();
+  await db.insert(roleDefinitions).values({
+    id,
+    name: data.name,
+    description: data.description,
+    permissions: JSON.stringify(data.permissions),
+    isSystem: false,
+    createdBy: createdByUid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return {
+    id,
+    name: data.name,
+    description: data.description,
+    permissions: data.permissions,
+    isSystem: false,
+    createdBy: createdByUid,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+}
+
+export async function updateRoleDefinition(
+  id: string,
+  data: { name?: string; description?: string; permissions?: PermissionKey[] }
+): Promise<void> {
+  const now = new Date();
+  const updates: Record<string, unknown> = { updatedAt: now };
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.description !== undefined) updates.description = data.description;
+  if (data.permissions !== undefined) updates.permissions = JSON.stringify(data.permissions);
+  await db.update(roleDefinitions).set(updates).where(eq(roleDefinitions.id, id));
+}
+
+export async function deleteRoleDefinition(id: string): Promise<void> {
+  // Only allow deleting non-system roles
+  const rows = await db.select().from(roleDefinitions).where(eq(roleDefinitions.id, id));
+  if (rows.length > 0 && rows[0].isSystem) {
+    throw new Error('No se pueden eliminar roles del sistema');
+  }
+  await db.delete(roleDefinitions).where(eq(roleDefinitions.id, id));
+}
+
+// --- User Role Assignments ---
+
+function mapUserRole(r: typeof userRoles.$inferSelect): UserRoleRecord {
   return {
     id: r.id,
     firebaseUid: r.firebaseUid,
     email: r.email,
     displayName: r.displayName,
-    role: r.role as UserRole,
+    roleId: r.roleId,
     assignedBy: r.assignedBy,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
 }
 
+export async function fetchUserRoles(): Promise<UserRoleRecord[]> {
+  const rows = await db.select().from(userRoles).orderBy(userRoles.createdAt);
+  return rows.map(mapUserRole);
+}
+
+export async function getUserRoleByUid(firebaseUid: string): Promise<UserRoleRecord | null> {
+  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
+  if (rows.length === 0) return null;
+  return mapUserRole(rows[0]);
+}
+
 export async function ensureOwnerRole(firebaseUid: string, email: string, displayName: string): Promise<UserRoleRecord> {
-  // Check if any owner exists
+  // Ensure system roles exist
+  await seedSystemRoles();
+
+  // Get owner role definition
+  const allDefs = await db.select().from(roleDefinitions);
+  const ownerDef = allDefs.find(d => d.isSystem && d.name === 'Propietario');
+  const viewerDef = allDefs.find(d => d.isSystem && d.name === 'Solo lectura');
+
+  if (!ownerDef || !viewerDef) throw new Error('System roles not found');
+
   const existing = await db.select().from(userRoles);
-  
-  // If no roles exist at all, make this user the owner
+
+  // If no user roles exist at all, make this user the owner
   if (existing.length === 0) {
     const id = crypto.randomUUID();
     const now = new Date();
@@ -1026,39 +1122,23 @@ export async function ensureOwnerRole(firebaseUid: string, email: string, displa
       firebaseUid,
       email,
       displayName: displayName || '',
-      role: 'owner',
-      assignedBy: firebaseUid, // self-assigned as first user
+      roleId: ownerDef.id,
+      assignedBy: firebaseUid,
       createdAt: now,
       updatedAt: now,
     });
     return {
-      id,
-      firebaseUid,
-      email,
-      displayName: displayName || '',
-      role: 'owner',
-      assignedBy: firebaseUid,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
+      id, firebaseUid, email, displayName: displayName || '',
+      roleId: ownerDef.id, assignedBy: firebaseUid,
+      createdAt: now.toISOString(), updatedAt: now.toISOString(),
     };
   }
 
   // Check if this user already has a role
   const userRow = existing.find((r) => r.firebaseUid === firebaseUid);
-  if (userRow) {
-    return {
-      id: userRow.id,
-      firebaseUid: userRow.firebaseUid,
-      email: userRow.email,
-      displayName: userRow.displayName,
-      role: userRow.role as UserRole,
-      assignedBy: userRow.assignedBy,
-      createdAt: userRow.createdAt.toISOString(),
-      updatedAt: userRow.updatedAt.toISOString(),
-    };
-  }
+  if (userRow) return mapUserRole(userRow);
 
-  // User not found — they have no role yet, return null-like default
+  // New user with no role — assign viewer
   const id = crypto.randomUUID();
   const now = new Date();
   await db.insert(userRoles).values({
@@ -1066,81 +1146,59 @@ export async function ensureOwnerRole(firebaseUid: string, email: string, displa
     firebaseUid,
     email,
     displayName: displayName || '',
-    role: 'viewer',
+    roleId: viewerDef.id,
     assignedBy: 'system',
     createdAt: now,
     updatedAt: now,
   });
   return {
-    id,
-    firebaseUid,
-    email,
-    displayName: displayName || '',
-    role: 'viewer',
-    assignedBy: 'system',
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
+    id, firebaseUid, email, displayName: displayName || '',
+    roleId: viewerDef.id, assignedBy: 'system',
+    createdAt: now.toISOString(), updatedAt: now.toISOString(),
   };
 }
 
 export async function assignUserRole(
-  data: { firebaseUid: string; email: string; displayName: string; role: UserRole },
+  data: { firebaseUid: string; email: string; displayName: string; roleId: string },
   assignedByUid: string
 ): Promise<UserRoleRecord> {
-  // Check if user already has a role
   const existingRows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, data.firebaseUid));
-  
+
   if (existingRows.length > 0) {
-    // Update existing
     const now = new Date();
     await db.update(userRoles)
-      .set({ role: data.role, displayName: data.displayName, email: data.email, updatedAt: now, assignedBy: assignedByUid })
+      .set({ roleId: data.roleId, displayName: data.displayName, email: data.email, updatedAt: now, assignedBy: assignedByUid })
       .where(eq(userRoles.firebaseUid, data.firebaseUid));
     return {
-      id: existingRows[0].id,
-      firebaseUid: data.firebaseUid,
-      email: data.email,
-      displayName: data.displayName,
-      role: data.role,
-      assignedBy: assignedByUid,
-      createdAt: existingRows[0].createdAt.toISOString(),
-      updatedAt: now.toISOString(),
+      id: existingRows[0].id, firebaseUid: data.firebaseUid,
+      email: data.email, displayName: data.displayName,
+      roleId: data.roleId, assignedBy: assignedByUid,
+      createdAt: existingRows[0].createdAt.toISOString(), updatedAt: now.toISOString(),
     };
   }
 
-  // Create new
   const id = crypto.randomUUID();
   const now = new Date();
   await db.insert(userRoles).values({
-    id,
-    firebaseUid: data.firebaseUid,
-    email: data.email,
-    displayName: data.displayName || '',
-    role: data.role,
-    assignedBy: assignedByUid,
-    createdAt: now,
-    updatedAt: now,
+    id, firebaseUid: data.firebaseUid, email: data.email,
+    displayName: data.displayName || '', roleId: data.roleId,
+    assignedBy: assignedByUid, createdAt: now, updatedAt: now,
   });
   return {
-    id,
-    firebaseUid: data.firebaseUid,
-    email: data.email,
-    displayName: data.displayName || '',
-    role: data.role,
-    assignedBy: assignedByUid,
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
+    id, firebaseUid: data.firebaseUid, email: data.email,
+    displayName: data.displayName || '', roleId: data.roleId,
+    assignedBy: assignedByUid, createdAt: now.toISOString(), updatedAt: now.toISOString(),
   };
 }
 
 export async function updateUserRole(
   firebaseUid: string,
-  newRole: UserRole,
+  newRoleId: string,
   assignedByUid: string
 ): Promise<void> {
   const now = new Date();
   await db.update(userRoles)
-    .set({ role: newRole, updatedAt: now, assignedBy: assignedByUid })
+    .set({ roleId: newRoleId, updatedAt: now, assignedBy: assignedByUid })
     .where(eq(userRoles.firebaseUid, firebaseUid));
 }
 

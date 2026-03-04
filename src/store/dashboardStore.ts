@@ -3,7 +3,7 @@ import {
   DashboardState, KPIData, InventoryAlert, SalesData, MermaRecord, PedidoRecord,
   Product, SaleRecord, SaleItem, CorteCaja, Cliente, FiadoTransaction, Gasto, GastoCategoria,
   Proveedor, StoreConfig, DEFAULT_STORE_CONFIG,
-  UserRoleRecord, UserRole,
+  UserRoleRecord, RoleDefinition, PermissionKey,
 } from '@/types';
 import {
   fetchDashboardFromDB,
@@ -39,6 +39,10 @@ import {
   removeUserRole as dbRemoveUserRole,
   ensureOwnerRole as dbEnsureOwnerRole,
   getUserRoleByUid as dbGetUserRoleByUid,
+  fetchRoleDefinitions as dbFetchRoleDefinitions,
+  createRoleDefinition as dbCreateRoleDefinition,
+  updateRoleDefinition as dbUpdateRoleDefinition,
+  deleteRoleDefinition as dbDeleteRoleDefinition,
 } from '@/app/actions/db-actions';
 
 interface DashboardStore extends DashboardState {
@@ -83,13 +87,19 @@ interface DashboardStore extends DashboardState {
   receivePedido: (id: string) => Promise<void>;
   // Cancel sale
   cancelSale: (id: string) => Promise<void>;
-  // Roles
+  // Role Definitions
+  roleDefinitions: RoleDefinition[];
+  fetchRoleDefinitions: () => Promise<void>;
+  createRoleDefinition: (data: { name: string; description: string; permissions: PermissionKey[] }, createdByUid: string) => Promise<RoleDefinition>;
+  updateRoleDefinition: (id: string, data: { name?: string; description?: string; permissions?: PermissionKey[] }) => Promise<void>;
+  deleteRoleDefinition: (id: string) => Promise<void>;
+  // User Roles
   userRoles: UserRoleRecord[];
   currentUserRole: UserRoleRecord | null;
   fetchRoles: () => Promise<void>;
   ensureOwnerRole: (firebaseUid: string, email: string, displayName: string) => Promise<UserRoleRecord>;
-  assignRole: (data: { firebaseUid: string; email: string; displayName: string; role: UserRole }, assignedByUid: string) => Promise<void>;
-  updateRole: (firebaseUid: string, newRole: UserRole, assignedByUid: string) => Promise<void>;
+  assignRole: (data: { firebaseUid: string; email: string; displayName: string; roleId: string }, assignedByUid: string) => Promise<void>;
+  updateRole: (firebaseUid: string, newRoleId: string, assignedByUid: string) => Promise<void>;
   removeRole: (firebaseUid: string) => Promise<void>;
   getUserRole: (firebaseUid: string) => Promise<UserRoleRecord | null>;
 }
@@ -108,6 +118,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   proveedores: [],
   cortesHistory: [],
   storeConfig: DEFAULT_STORE_CONFIG,
+  roleDefinitions: [],
   userRoles: [],
   currentUserRole: null,
   isLoading: false,
@@ -469,7 +480,51 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
-  // ==================== ROLES Y PERMISOS ====================
+  // ==================== DEFINICIONES DE ROL ====================
+  fetchRoleDefinitions: async () => {
+    try {
+      const defs = await dbFetchRoleDefinitions();
+      set({ roleDefinitions: defs });
+    } catch (error) {
+      console.error('Error fetching role definitions:', error);
+    }
+  },
+
+  createRoleDefinition: async (data, createdByUid) => {
+    try {
+      const newDef = await dbCreateRoleDefinition(data, createdByUid);
+      const state = get();
+      set({ roleDefinitions: [...state.roleDefinitions, newDef] });
+      return newDef;
+    } catch (error) {
+      console.error('Error creating role definition:', error);
+      throw error;
+    }
+  },
+
+  updateRoleDefinition: async (id, data) => {
+    try {
+      await dbUpdateRoleDefinition(id, data);
+      const state = get();
+      set({ roleDefinitions: state.roleDefinitions.map(d => d.id === id ? { ...d, ...data, updatedAt: new Date().toISOString() } : d) });
+    } catch (error) {
+      console.error('Error updating role definition:', error);
+      throw error;
+    }
+  },
+
+  deleteRoleDefinition: async (id) => {
+    try {
+      await dbDeleteRoleDefinition(id);
+      const state = get();
+      set({ roleDefinitions: state.roleDefinitions.filter(d => d.id !== id) });
+    } catch (error) {
+      console.error('Error deleting role definition:', error);
+      throw error;
+    }
+  },
+
+  // ==================== ROLES DE USUARIOS ====================
   fetchRoles: async () => {
     try {
       const roles = await dbFetchUserRoles();
@@ -506,11 +561,11 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
-  updateRole: async (firebaseUid, newRole, assignedByUid) => {
+  updateRole: async (firebaseUid, newRoleId, assignedByUid) => {
     try {
-      await dbUpdateUserRole(firebaseUid, newRole, assignedByUid);
+      await dbUpdateUserRole(firebaseUid, newRoleId, assignedByUid);
       const state = get();
-      set({ userRoles: state.userRoles.map(r => r.firebaseUid === firebaseUid ? { ...r, role: newRole, updatedAt: new Date().toISOString() } : r) });
+      set({ userRoles: state.userRoles.map(r => r.firebaseUid === firebaseUid ? { ...r, roleId: newRoleId, updatedAt: new Date().toISOString() } : r) });
     } catch (error) {
       console.error('Error updating role:', error);
       throw error;

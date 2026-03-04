@@ -219,18 +219,6 @@ export interface Gasto {
 }
 
 // === Roles y Permisos ===
-export type UserRole = 'owner' | 'admin' | 'manager' | 'cashier' | 'viewer';
-
-export interface UserRoleRecord {
-  id: string;
-  firebaseUid: string;
-  email: string;
-  displayName: string;
-  role: UserRole;
-  assignedBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export type PermissionKey =
   | 'dashboard.view'
@@ -262,65 +250,27 @@ export type PermissionKey =
   | 'settings.edit'
   | 'roles.manage';
 
-export const ROLE_LABELS: Record<UserRole, string> = {
-  owner: 'Dueño',
-  admin: 'Administrador',
-  manager: 'Gerente',
-  cashier: 'Cajero',
-  viewer: 'Solo lectura',
-};
+export interface RoleDefinition {
+  id: string;
+  name: string;
+  description: string;
+  permissions: PermissionKey[];
+  isSystem: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
-export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
-  owner: 'Acceso total al sistema. Puede gestionar roles y toda la configuración.',
-  admin: 'Acceso completo excepto cambiar al dueño. Puede asignar roles menores.',
-  manager: 'Gestión de inventario, proveedores, reportes y gastos.',
-  cashier: 'Punto de venta, cortes de caja y consulta de inventario.',
-  viewer: 'Solo puede ver información. No puede modificar nada.',
-};
-
-export const ROLE_PERMISSIONS: Record<UserRole, PermissionKey[]> = {
-  owner: [
-    'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel',
-    'inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete',
-    'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
-    'expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete',
-    'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
-    'analytics.view', 'reports.view', 'reports.export',
-    'corte.create', 'corte.view',
-    'settings.view', 'settings.edit', 'roles.manage',
-  ],
-  admin: [
-    'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel',
-    'inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete',
-    'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
-    'expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete',
-    'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
-    'analytics.view', 'reports.view', 'reports.export',
-    'corte.create', 'corte.view',
-    'settings.view', 'settings.edit', 'roles.manage',
-  ],
-  manager: [
-    'dashboard.view', 'sales.view',
-    'inventory.view', 'inventory.edit', 'inventory.create',
-    'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
-    'expenses.view', 'expenses.create', 'expenses.edit',
-    'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
-    'analytics.view', 'reports.view', 'reports.export',
-    'corte.view',
-  ],
-  cashier: [
-    'dashboard.view', 'sales.create', 'sales.view',
-    'inventory.view',
-    'customers.view', 'fiado.create', 'fiado.view',
-    'corte.create', 'corte.view',
-  ],
-  viewer: [
-    'dashboard.view', 'sales.view', 'inventory.view',
-    'customers.view', 'fiado.view', 'expenses.view',
-    'suppliers.view', 'pedidos.view', 'analytics.view',
-    'reports.view', 'corte.view',
-  ],
-};
+export interface UserRoleRecord {
+  id: string;
+  firebaseUid: string;
+  email: string;
+  displayName: string;
+  roleId: string;
+  assignedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   'dashboard.view': 'Ver dashboard',
@@ -343,12 +293,89 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   'suppliers.edit': 'Editar proveedores',
   'pedidos.view': 'Ver pedidos',
   'pedidos.create': 'Crear pedidos',
-  'analytics.view': 'Ver análisis',
+  'analytics.view': 'Ver analisis',
   'reports.view': 'Ver reportes',
   'reports.export': 'Exportar reportes',
   'corte.create': 'Hacer corte de caja',
   'corte.view': 'Ver cortes',
-  'settings.view': 'Ver configuración',
-  'settings.edit': 'Editar configuración',
+  'settings.view': 'Ver configuracion',
+  'settings.edit': 'Editar configuracion',
   'roles.manage': 'Gestionar roles',
 };
+
+export const PERMISSION_GROUPS: { title: string; permissions: PermissionKey[] }[] = [
+  { title: 'Dashboard', permissions: ['dashboard.view'] },
+  { title: 'Ventas', permissions: ['sales.create', 'sales.view', 'sales.cancel', 'corte.create', 'corte.view'] },
+  { title: 'Inventario', permissions: ['inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete'] },
+  { title: 'Clientes', permissions: ['customers.view', 'customers.edit', 'fiado.create', 'fiado.view'] },
+  { title: 'Gastos', permissions: ['expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete'] },
+  { title: 'Proveedores y Pedidos', permissions: ['suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create'] },
+  { title: 'Reportes', permissions: ['analytics.view', 'reports.view', 'reports.export'] },
+  { title: 'Sistema', permissions: ['settings.view', 'settings.edit', 'roles.manage'] },
+];
+
+export const ALL_PERMISSIONS: PermissionKey[] = [
+  'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel',
+  'inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete',
+  'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
+  'expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete',
+  'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
+  'analytics.view', 'reports.view', 'reports.export',
+  'corte.create', 'corte.view',
+  'settings.view', 'settings.edit', 'roles.manage',
+];
+
+/** Default system roles seeded on first use */
+export const DEFAULT_SYSTEM_ROLES: Omit<RoleDefinition, 'id' | 'createdAt' | 'updatedAt'>[] = [
+  {
+    name: 'Propietario',
+    description: 'Acceso total al sistema. Puede gestionar roles y toda la configuracion.',
+    permissions: [...ALL_PERMISSIONS],
+    isSystem: true,
+    createdBy: 'system',
+  },
+  {
+    name: 'Administrador',
+    description: 'Acceso completo excepto cambiar al propietario.',
+    permissions: ALL_PERMISSIONS.filter(p => p !== 'roles.manage'),
+    isSystem: true,
+    createdBy: 'system',
+  },
+  {
+    name: 'Gerente',
+    description: 'Gestion de inventario, proveedores, reportes y gastos.',
+    permissions: [
+      'dashboard.view', 'sales.view',
+      'inventory.view', 'inventory.edit', 'inventory.create',
+      'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
+      'expenses.view', 'expenses.create', 'expenses.edit',
+      'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
+      'analytics.view', 'reports.view', 'reports.export', 'corte.view',
+    ],
+    isSystem: true,
+    createdBy: 'system',
+  },
+  {
+    name: 'Cajero',
+    description: 'Punto de venta, cortes de caja y consulta de inventario.',
+    permissions: [
+      'dashboard.view', 'sales.create', 'sales.view',
+      'inventory.view', 'customers.view', 'fiado.create', 'fiado.view',
+      'corte.create', 'corte.view',
+    ],
+    isSystem: true,
+    createdBy: 'system',
+  },
+  {
+    name: 'Solo lectura',
+    description: 'Solo puede ver informacion. No puede modificar nada.',
+    permissions: [
+      'dashboard.view', 'sales.view', 'inventory.view',
+      'customers.view', 'fiado.view', 'expenses.view',
+      'suppliers.view', 'pedidos.view', 'analytics.view',
+      'reports.view', 'corte.view',
+    ],
+    isSystem: true,
+    createdBy: 'system',
+  },
+];

@@ -186,13 +186,24 @@ export const cortesCaja = pgTable('cortes_caja', {
 });
 
 // ==================== ROLES Y PERMISOS ====================
+export const roleDefinitions = pgTable('role_definitions', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  permissions: text('permissions').notNull().default('[]'), // JSON array of PermissionKey[]
+  isSystem: boolean('is_system').notNull().default(false),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const userRoles = pgTable('user_roles', {
   id: text('id').primaryKey(),
   firebaseUid: text('firebase_uid').notNull(),
   email: text('email').notNull(),
   displayName: text('display_name').notNull().default(''),
-  role: text('role').notNull().default('viewer'), // owner, admin, manager, cashier, viewer
-  assignedBy: text('assigned_by').notNull(), // firebase_uid del que asignó
+  roleId: text('role_id').notNull(), // references role_definitions.id
+  assignedBy: text('assigned_by').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

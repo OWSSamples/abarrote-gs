@@ -5,7 +5,6 @@ import {
   Modal,
   FormLayout,
   TextField,
-  Select,
   Banner,
   BlockStack,
   InlineStack,
@@ -20,6 +19,8 @@ import {
   Spinner,
   ProgressBar,
 } from '@shopify/polaris';
+import { FormSelect } from '@/components/ui/FormSelect';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { DeleteIcon, PrintIcon, BarcodeIcon } from '@shopify/polaris-icons';
 import JsBarcode from 'jsbarcode';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -47,6 +48,7 @@ const paymentMethodOptions = [
   { label: 'Tarjeta (manual sin terminal)', value: 'tarjeta_manual' },
   { label: 'Transferencia', value: 'transferencia' },
   { label: 'Fiado (crédito a cliente)', value: 'fiado' },
+  { label: 'Puntos de Lealtad (Monedero)', value: 'puntos' },
 ];
 
 const IVA_RATE = 0.16;
@@ -60,6 +62,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const registerFiado = useDashboardStore((s) => s.registerFiado);
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const { showSuccess, showError } = useToast();
+  const currentUserRole = useDashboardStore((s) => s.currentUserRole);
 
   // Merge alert products + store products (deduplicated)
   const allProducts = useMemo(() => {
@@ -76,10 +79,9 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const [items, setItems] = useState<SaleItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState('');
   const [quantity, setQuantity] = useState('1');
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'transferencia' | 'fiado'>('efectivo');
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'transferencia' | 'fiado' | 'puntos'>('efectivo');
   const [amountPaid, setAmountPaid] = useState('');
-  const [cajero, setCajero] = useState('');
-  const [fiadoClienteId, setFiadoClienteId] = useState('');
+  const [clienteId, setClienteId] = useState(''); // Shared for loyalty/fiado
   const [completedSale, setCompletedSale] = useState<SaleRecord | null>(null);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [barcodeError, setBarcodeError] = useState('');
@@ -93,10 +95,12 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const [mpPaymentIntent, setMpPaymentIntent] = useState<PaymentIntent | null>(null);
   const [mpError, setMpError] = useState('');
   const mpPollingRef = useRef<NodeJS.Timeout | null>(null);
+  const handleMPTerminalPaymentRef = useRef<(() => Promise<void>) | null>(null);
 
   // Load MP config from localStorage
   useEffect(() => {
-    setMpConfig(getMPConfig());
+    const config = getMPConfig();
+    setMpConfig(config);
   }, [open]);
 
   const productOptions = useMemo(() => {
@@ -118,7 +122,28 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     const surchargeIva = surcharge * IVA_RATE;
     return surcharge + surchargeIva;
   }, [subtotal, paymentMethod]);
-  const total = useMemo(() => subtotal + iva + cardSurcharge, [subtotal, iva, cardSurcharge]);
+
+  const pointsEarned = useMemo(() => Math.floor(subtotal / 20), [subtotal]);
+  const pointsAvailable = useMemo(() => {
+    if (!clienteId) return 0;
+    const c = clientes.find(cl => cl.id === clienteId);
+    return c ? parseFloat(String(c.points)) : 0;
+  }, [clienteId, clientes]);
+
+  const total = useMemo(() => {
+    let base = subtotal + iva + cardSurcharge;
+    if (paymentMethod === 'puntos') {
+      return Math.max(0, base - pointsAvailable);
+    }
+    return base;
+  }, [subtotal, iva, cardSurcharge, paymentMethod, pointsAvailable]);
+
+  const pointsUsed = useMemo(() => {
+    if (paymentMethod !== 'puntos' || !clienteId) return 0;
+    const base = subtotal + iva + cardSurcharge;
+    return Math.min(pointsAvailable, base);
+  }, [paymentMethod, clienteId, pointsAvailable, subtotal, iva, cardSurcharge]);
+
   const change = useMemo(() => {
     const paid = parseFloat(amountPaid) || 0;
     return Math.max(0, paid - total);
@@ -130,8 +155,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setQuantity('1');
     setPaymentMethod('efectivo');
     setAmountPaid('');
-    setCajero('');
-    setFiadoClienteId('');
+    setClienteId('');
     setCompletedSale(null);
     setBarcodeInput('');
     setBarcodeError('');
@@ -251,29 +275,34 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       showError('Agrega al menos un producto a la venta');
       return;
     }
-    if (!cajero.trim()) {
-      showError('Ingresa el nombre del cajero');
+    if (paymentMethod === 'efectivo' && parseFloat(amountPaid) < total) {
+      showError('El monto pagado es insuficiente');
       return;
     }
-    if (paymentMethod === 'efectivo' && (parseFloat(amountPaid) || 0) < total) {
-      showError('El monto pagado debe ser mayor o igual al total');
-      return;
-    }
-    // Fiado validation
     if (paymentMethod === 'fiado') {
-      if (!fiadoClienteId) {
+      if (!clienteId) {
         showError('Selecciona un cliente para el fiado');
         return;
       }
-      const cliente = clientes.find((c) => c.id === fiadoClienteId);
+      const cliente = clientes.find((c) => c.id === clienteId);
       if (cliente && cliente.balance + total > cliente.creditLimit) {
         showError(`El cliente excede su límite de crédito de ${formatCurrency(cliente.creditLimit)}. Disponible: ${formatCurrency(Math.max(0, cliente.creditLimit - cliente.balance))}`);
         return;
       }
     }
+    if (paymentMethod === 'puntos') {
+      if (!clienteId) {
+        showError('Debes seleccionar un cliente para usar sus puntos');
+        return;
+      }
+      if (pointsAvailable <= 0) {
+        showError('El cliente no tiene puntos disponibles');
+        return;
+      }
+    }
     // If paying with MP terminal, launch terminal flow
     if (paymentMethod === 'tarjeta' && mpConfig.enabled) {
-      handleMPTerminalPayment();
+      handleMPTerminalPaymentRef.current?.();
       return;
     }
 
@@ -288,24 +317,26 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         paymentMethod: paymentMethod === 'tarjeta_manual' ? 'tarjeta' : paymentMethod,
         amountPaid: paymentMethod === 'efectivo' ? parseFloat(amountPaid) || 0 : total,
         change: paymentMethod === 'efectivo' ? change : 0,
-        cajero: cajero.trim(),
-      });
+        cajero: currentUserRole?.employeeNumber || '',
+        pointsEarned,
+        pointsUsed,
+      } as any); // cast as any to include points in Omit type temporarily or update Omit
 
       // If fiado, also register the fiado transaction with itemized products
       if (paymentMethod === 'fiado') {
         const itemDescriptions = items.map((i) => `${i.productName} x${i.quantity}`).join(', ');
-        await registerFiado(fiadoClienteId, total, itemDescriptions, sale.folio, items);
-        const cliente = clientes.find((c) => c.id === fiadoClienteId);
+        await registerFiado(clienteId, total, itemDescriptions, sale.folio, items);
+        const cliente = clientes.find((c) => c.id === clienteId);
         showSuccess(`Venta ${sale.folio} registrada como fiado para ${cliente?.name || 'cliente'}. Total: ${formatCurrency(sale.total)}`);
       } else {
         showSuccess(`Venta ${sale.folio} registrada. Total: ${formatCurrency(sale.total)}`);
       }
 
       setCompletedSale(sale);
-    } catch {
+    } catch (error) {
       showError('Error al registrar la venta');
     }
-  }, [items, cajero, paymentMethod, amountPaid, total, subtotal, iva, cardSurcharge, change, registerSale, registerFiado, fiadoClienteId, clientes, showSuccess, showError, mpConfig]);
+  }, [items, paymentMethod, amountPaid, total, subtotal, iva, cardSurcharge, change, registerSale, registerFiado, clienteId, clientes, showSuccess, showError, mpConfig, currentUserRole?.employeeNumber]);
 
   // ===== Mercado Pago Terminal Flow =====
   const handleMPTerminalPayment = useCallback(async () => {
@@ -349,8 +380,10 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
               paymentMethod: 'tarjeta',
               amountPaid: total,
               change: 0,
-              cajero: cajero.trim(),
-            });
+              cajero: currentUserRole?.employeeNumber || '',
+              pointsEarned: 0,
+              pointsUsed: 0,
+            } as any);
             setCompletedSale(sale);
             showSuccess(`Pago con tarjeta procesado. Venta ${sale.folio}: ${formatCurrency(sale.total)}`);
           } else if (status.status === 'canceled' || status.status === 'error' || status.status === 'expired') {
@@ -366,7 +399,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       setMpProcessing(false);
       setMpError(err instanceof Error ? err.message : 'Error al conectar con la terminal');
     }
-  }, [mpConfig, total, items, subtotal, iva, cardSurcharge, cajero, registerSale, showSuccess, showError]);
+  }, [mpConfig, total, items, subtotal, iva, cardSurcharge, currentUserRole, registerSale, showSuccess, showError]);
 
   const handleCancelMPPayment = useCallback(async () => {
     if (mpPollingRef.current) {
@@ -383,6 +416,11 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setMpStatus('');
     setMpPaymentIntent(null);
   }, [mpConfig, showSuccess]);
+
+  // Assign ref
+  useEffect(() => {
+    handleMPTerminalPaymentRef.current = handleMPTerminalPayment;
+  }, [handleMPTerminalPayment]);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -448,17 +486,24 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       itemsHtml += `    ${item.quantity} pza x $${item.unitPrice.toFixed(2)}${fmtAmt(item.subtotal)}\n`;
     }
 
-    // Fiado section
+    // Fiado/Lealtad section
     let fiadoTxt = '';
-    if (completedSale.paymentMethod === 'fiado' && fiadoClienteId) {
-      const c = clientes.find((cl) => cl.id === fiadoClienteId);
-      if (c) {
+    if (clienteId) {
+      const c = clientes.find((cl) => cl.id === clienteId);
+      if (c && completedSale.paymentMethod === 'fiado') {
         fiadoTxt = `
 ${dashes}
        ** VENTA A CREDITO **
   CLIENTE:        ${c.name.toUpperCase()}
   SALDO ANTERIOR:${fmtAmt(c.balance - completedSale.total)}
   NUEVO SALDO:   ${fmtAmt(c.balance)}
+`;
+      } else if (c) {
+        fiadoTxt = `
+${dashes}
+       ** PROGRAMA LEALTAD **
+  PUNTOS GANADOS:      +${Math.floor(completedSale.total / 20)}
+  PUNTOS TOTALES:      ${Math.floor(parseFloat(String(c.points)))}
 `;
       }
     }
@@ -496,7 +541,8 @@ ${dashes}
        ARTICULOS VENDIDOS    ${totalArticles}
 `;
 
-    const tcCode = `${completedSale.folio}${String(Date.now()).slice(-8)}`;
+    // Generate a consistent code for the barcode (Portfolio + last digits of date/now)
+    const tcCode = completedSale.folio;
 
     // Generate barcode as data URL
     const barcodeCanvas = document.createElement('canvas');
@@ -565,7 +611,7 @@ pre {
 <script>window.onload=()=>{window.print();window.close();}<\/script>
 </body></html>`);
     printWindow.document.close();
-  }, [completedSale, fiadoClienteId, clientes]);
+  }, [completedSale, clienteId, clientes]);
 
   const handleClose = useCallback(() => {
     resetForm();
@@ -601,15 +647,19 @@ pre {
     }
 
     let fiadoTxt = '';
-    if (completedSale.paymentMethod === 'fiado' && fiadoClienteId) {
-      const c = clientes.find((cl) => cl.id === fiadoClienteId);
-      if (c) {
+    if (clienteId) {
+      const c = clientes.find((cl) => cl.id === clienteId);
+      if (c && completedSale.paymentMethod === 'fiado') {
         fiadoTxt = `\n${dashes}\n       ** VENTA A CREDITO **\n  CLIENTE:        ${c.name.toUpperCase()}\n  SALDO ANTERIOR:${fmtAmt(c.balance - completedSale.total)}\n  NUEVO SALDO:   ${fmtAmt(c.balance)}\n`;
+      } else if (c) {
+        fiadoTxt = `\n${dashes}\n       ** PROGRAMA LEALTAD **\n  PUNTOS GANADOS:      +${Math.floor(completedSale.total / 20)}\n  PUNTOS TOTALES:      ${Math.floor(parseFloat(String(c.points)))}\n`;
       }
     }
 
     const sc = storeConfig;
     const footerLines = sc.ticketFooter.split('\n').map((l: string) => centerLine(l)).join('\n');
+    // Use the same consistent code for preview
+    const tcCode = completedSale.folio;
 
     const previewText = `
 ${centerLine(sc.legalName)}
@@ -641,8 +691,6 @@ ${dashes}
        ARTICULOS VENDIDOS    ${totalArticles}
 `;
 
-    const previewTcCode = `${completedSale.folio}${String(Date.now()).slice(-8)}`;
-
     const previewTextAfter = `${dashes}
 
 ${footerLines}
@@ -651,6 +699,7 @@ ${centerLine(sc.ticketServicePhone)}
 ${dashes}
 ${centerLine(`Vigencia ${sc.ticketVigencia}`)}
 ${centerLine(`${dateStr}     ${timeStr}`)}
+${centerLine(`TC: ${tcCode}`)}
 `;
 
     return (
@@ -686,7 +735,7 @@ ${centerLine(`${dateStr}     ${timeStr}`)}
                 <svg style={{ display: 'block', margin: '0 auto', maxWidth: '260px' }} ref={(el) => {
                   if (el) {
                     try {
-                      JsBarcode(el, previewTcCode, {
+                      JsBarcode(el, tcCode, {
                         format: sc.ticketBarcodeFormat || 'CODE128',
                         width: 1.5,
                         height: 40,
@@ -787,10 +836,13 @@ ${centerLine(`${dateStr}     ${timeStr}`)}
               <Text as="h3" variant="headingSm">Agregar producto</Text>
               <InlineStack gap="200" align="end" blockAlign="end">
                 <Box minWidth="300px">
-                  <Select
+                  <SearchableSelect
                     label="Producto"
-                    options={productOptions}
-                    value={selectedProduct}
+                    options={allProducts.map(p => ({
+                      label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
+                      value: p.id
+                    }))}
+                    selected={selectedProduct}
                     onChange={setSelectedProduct}
                   />
                 </Box>
@@ -889,36 +941,55 @@ ${centerLine(`${dateStr}     ${timeStr}`)}
           <FormLayout>
             <TextField
               label="Cajero"
-              value={cajero}
-              onChange={setCajero}
+              value={currentUserRole?.employeeNumber?.replace(/^EMP-/, '') || ''}
+              readOnly
               autoComplete="off"
-              placeholder="Nombre del cajero"
+              placeholder="No. empleado"
+              helpText="Se asigna automáticamente tu número de empleado"
             />
-            <Select
+            <FormSelect
               label="Método de pago"
               options={paymentMethodOptions}
               value={paymentMethod}
-              onChange={(v) => setPaymentMethod(v as 'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'transferencia' | 'fiado')}
+              onChange={(v) => {
+                setPaymentMethod(v as any);
+                if (v !== 'efectivo') setAmountPaid('');
+              }}
             />
+            {/* Loyalty/Client Selection for all methods */}
+            <BlockStack gap="200">
+              <Text as="h3" variant="headingSm">Cliente (para lealtad o fiado)</Text>
+              <SearchableSelect
+                label="Seleccionar Cliente"
+                labelHidden
+                options={clientes.map((c) => ({
+                  label: `${c.name} — Puntos: ${Math.floor(parseFloat(String(c.points)))} — Deuda: ${formatCurrency(c.balance)}`,
+                  value: c.id,
+                }))}
+                selected={clienteId}
+                onChange={setClienteId}
+              />
+              {clienteId && (() => {
+                const c = clientes.find((cl) => cl.id === clienteId);
+                if (!c) return null;
+                return (
+                  <Banner tone="info">
+                    <InlineStack align="space-between">
+                      <Text as="p">Puntos disponibles:</Text>
+                      <Badge tone="success">{Math.floor(parseFloat(String(c.points)))} pts</Badge>
+                    </InlineStack>
+                  </Banner>
+                );
+              })()}
+            </BlockStack>
+
             {paymentMethod === 'fiado' && (
               <BlockStack gap="200">
                 <Banner tone="warning">
                   <p>Esta venta se registrará como <strong>fiado</strong>. El monto se sumará a la deuda del cliente.</p>
                 </Banner>
-                <Select
-                  label="Cliente"
-                  options={[
-                    { label: 'Seleccionar cliente...', value: '' },
-                    ...clientes.map((c) => ({
-                      label: `${c.name}${c.balance > 0 ? ` — Debe: ${formatCurrency(c.balance)}` : ''} (Límite: ${formatCurrency(c.creditLimit)})`,
-                      value: c.id,
-                    })),
-                  ]}
-                  value={fiadoClienteId}
-                  onChange={setFiadoClienteId}
-                />
-                {fiadoClienteId && (() => {
-                  const c = clientes.find((cl) => cl.id === fiadoClienteId);
+                {clienteId && (() => {
+                  const c = clientes.find((cl) => cl.id === clienteId);
                   if (!c) return null;
                   const disponible = Math.max(0, c.creditLimit - c.balance);
                   const excedeCredito = total > 0 && (c.balance + total) > c.creditLimit;
@@ -943,6 +1014,19 @@ ${centerLine(`${dateStr}     ${timeStr}`)}
                 {clientes.length === 0 && (
                   <Banner tone="info">
                     <p>No hay clientes registrados. Agrega clientes desde la sección de <strong>Fiado / Crédito</strong>.</p>
+                  </Banner>
+                )}
+              </BlockStack>
+            )}
+
+            {paymentMethod === 'puntos' && (
+              <BlockStack gap="200">
+                <Banner tone="success">
+                  <p>Usando puntos de lealtad como método de pago.</p>
+                </Banner>
+                {total > 0 && pointsAvailable < (subtotal + iva + cardSurcharge) && (
+                  <Banner tone="warning">
+                    <p>Los puntos no cubren el total. El resto ({formatCurrency(total)}) debe cobrarse por fuera o el cliente debe tener más puntos.</p>
                   </Banner>
                 )}
               </BlockStack>

@@ -2,16 +2,23 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { sileo } from 'sileo';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Store, ArrowLeft, Mail } from 'lucide-react';
+import {
+  Card,
+  FormLayout,
+  TextField,
+  Button,
+  BlockStack,
+  Box,
+  Text,
+  Icon,
+} from '@shopify/polaris';
+import { ArrowLeftIcon, EmailIcon } from '@shopify/polaris-icons';
+import { useToast } from '@/components/notifications/ToastProvider';
 
 export function ForgotPasswordForm() {
+  const toast = useToast();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -20,7 +27,7 @@ export function ForgotPasswordForm() {
     e.preventDefault();
 
     if (!email) {
-      sileo.error({ title: 'Ingresa tu correo electrónico' });
+      toast.showError('Ingresa tu correo electrónico');
       return;
     }
 
@@ -28,139 +35,150 @@ export function ForgotPasswordForm() {
     try {
       await sendPasswordResetEmail(auth, email);
       setEmailSent(true);
-      sileo.success({ title: 'Correo enviado' });
-    } catch (error: unknown) {
-      const err = error as { code?: string };
-      const msg = err.code === 'auth/user-not-found'
-        ? 'No existe una cuenta con este correo'
-        : err.code === 'auth/invalid-email'
-        ? 'Correo electrónico inválido'
-        : 'Error al enviar el correo';
-      sileo.error({ title: msg });
+      toast.showSuccess('Correo de recuperación enviado');
+    } catch {
+      toast.showError('Error al enviar el correo. Verifica que la dirección sea correcta.');
     } finally {
       setIsLoading(false);
     }
-  }, [email]);
+  }, [email, toast]);
 
   const handleResend = useCallback(async () => {
     setIsLoading(true);
     try {
       await sendPasswordResetEmail(auth, email);
-      sileo.success({ title: 'Correo reenviado' });
+      toast.showSuccess('Correo reenviado exitosamente');
     } catch {
-      sileo.error({ title: 'Error al reenviar' });
+      toast.showError('Error al reenviar el correo');
     } finally {
       setIsLoading(false);
     }
-  }, [email]);
+  }, [email, toast]);
+
+  const containerStyle: React.CSSProperties = {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundImage: `linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7)), url('/backgrounds/login_bg.png')`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    padding: '24px'
+  };
 
   if (emailSent) {
     return (
-      <div className="min-h-screen bg-[#18181b] flex flex-col items-center justify-center p-4">
-        {/* Logo */}
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-[#27272a] rounded-lg flex items-center justify-center border border-[#3f3f46]">
-            <Store className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-white text-lg font-medium">Consola</span>
-        </div>
+      <Box width="100%" maxWidth="440px">
+        <Card>
+          <BlockStack gap="600">
+            <BlockStack gap="400" align="center">
+              <div style={{
+                backgroundColor: 'var(--p-color-bg-surface-secondary)',
+                padding: '16px',
+                borderRadius: '50%',
+                width: '64px',
+                height: '64px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <div style={{ width: '32px', height: '32px' }}>
+                  <Icon source={EmailIcon} tone="primary" />
+                </div>
+              </div>
+              <BlockStack gap="200" align="center">
+                <Text as="h1" variant="headingLg">
+                  Revisa tu correo
+                </Text>
+                <Text as="p" variant="bodyMd" tone="subdued">
+                  Hemos enviado un enlace de recuperación a:
+                  <br />
+                  <Text as="span" variant="bodyMd" fontWeight="bold">
+                    {email}
+                  </Text>
+                </Text>
+              </BlockStack>
+            </BlockStack>
 
-        {/* Card */}
-        <Card className="w-full max-w-[400px] bg-[#27272a] border-[#3f3f46]">
-          <CardHeader className="text-center pb-4">
-            <div className="w-12 h-12 bg-[#3f3f46] rounded-full flex items-center justify-center mx-auto mb-2">
-              <Mail className="w-6 h-6 text-white" />
-            </div>
-            <CardTitle className="text-white text-xl">Revisa tu correo</CardTitle>
-            <CardDescription className="text-[#a1a1aa]">
-              Enviamos un enlace de recuperación a
-              <br />
-              <span className="text-white font-medium">{email}</span>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button 
-              variant="outline"
-              className="w-full h-10 bg-[#27272a] border-[#3f3f46] text-white hover:bg-[#3f3f46] hover:text-white"
-              onClick={handleResend}
-              disabled={isLoading}
-            >
-              {isLoading ? 'Enviando...' : 'Reenviar correo'}
-            </Button>
-
-            <Button 
-              variant="ghost"
-              className="w-full h-10 text-[#a1a1aa] hover:text-white hover:bg-transparent"
-              asChild
-            >
-              <Link href="/auth/login">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Volver a iniciar sesión
-              </Link>
-            </Button>
-          </CardContent>
+            <BlockStack gap="200">
+              <Button variant="primary" fullWidth onClick={handleResend} loading={isLoading} size="large">
+                Reenviar correo
+              </Button>
+              <div style={{ textAlign: 'center' }}>
+                <Link href="/auth/login" style={{ textDecoration: 'none' }}>
+                  <Button variant="tertiary" fullWidth icon={ArrowLeftIcon}>
+                    Volver al inicio de sesión
+                  </Button>
+                </Link>
+              </div>
+            </BlockStack>
+          </BlockStack>
         </Card>
-      </div>
+      </Box>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#18181b] flex flex-col items-center justify-center p-4">
-      {/* Logo */}
-      <div className="flex items-center gap-2 mb-8">
-        <div className="w-8 h-8 bg-[#27272a] rounded-lg flex items-center justify-center border border-[#3f3f46]">
-          <Store className="w-4 h-4 text-white" />
-        </div>
-        <span className="text-white text-lg font-medium">Consola</span>
-      </div>
-
-      {/* Card */}
-      <Card className="w-full max-w-[400px] bg-[#27272a] border-[#3f3f46]">
-        <CardHeader className="text-center pb-4">
-          <CardTitle className="text-white text-xl">¿Olvidaste tu contraseña?</CardTitle>
-          <CardDescription className="text-[#a1a1aa]">
-            No te preocupes, te enviaremos instrucciones para restablecerla
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-white text-sm">
-                Correo electrónico
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="tu@ejemplo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-                className="h-10 bg-[#18181b] border-[#3f3f46] text-white placeholder:text-[#71717a] focus:border-[#52525b] focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
+    <Box width="100%" maxWidth="440px">
+      <Card>
+        <BlockStack gap="600">
+          <BlockStack gap="400" align="center">
+            <div style={{
+              padding: '16px 0',
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <img src="/logo_for_kiosko_login.svg" alt="Kiosko" style={{ width: '120px', height: 'auto' }} />
             </div>
+            <BlockStack gap="100" align="center">
+              <Text as="h1" variant="headingLg">
+                ¿Olvidaste tu contraseña?
+              </Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                No te preocupes, te enviaremos instrucciones para restablecerla
+              </Text>
+            </BlockStack>
+          </BlockStack>
 
-            <Button 
-              type="submit"
-              variant="outline"
-              className="w-full h-10 bg-[#27272a] border-[#3f3f46] text-white hover:bg-[#3f3f46] hover:text-white"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Enviando...' : 'Restablecer contraseña'}
-            </Button>
+          <form onSubmit={handleSubmit}>
+            <FormLayout>
+              <TextField
+                label="Correo electrónico"
+                value={email}
+                onChange={setEmail}
+                autoComplete="email"
+                type="email"
+                disabled={isLoading}
+                placeholder="GlobalID@company.com"
+              />
+
+              <Box paddingBlockStart="300">
+                <Button
+                  variant="primary"
+                  submit
+                  fullWidth
+                  loading={isLoading}
+                  size="large"
+                >
+                  Enviar instrucciones
+                </Button>
+              </Box>
+            </FormLayout>
           </form>
 
-          <Button 
-            variant="ghost"
-            className="w-full h-10 text-[#a1a1aa] hover:text-white hover:bg-transparent"
-            asChild
-          >
-            <Link href="/auth/login">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Volver a iniciar sesión
-            </Link>
-          </Button>
-        </CardContent>
+          <Box paddingBlockStart="400" borderBlockStartWidth="025" borderColor="border">
+            <div style={{ textAlign: 'center' }}>
+              <Link href="/auth/login" style={{ textDecoration: 'none' }}>
+                <Button variant="tertiary" icon={ArrowLeftIcon}>
+                  Volver al inicio de sesión
+                </Button>
+              </Link>
+            </div>
+          </Box>
+        </BlockStack>
       </Card>
-    </div>
+    </Box>
   );
 }

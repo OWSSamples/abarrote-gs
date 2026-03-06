@@ -1,5 +1,6 @@
 'use server';
 
+import { cache } from '@/lib/cache';
 import { db } from '@/db';
 import {
   storeConfig,
@@ -17,6 +18,8 @@ import {
   cortesCaja,
   userRoles,
   roleDefinitions,
+  inventoryAudits,
+  inventoryAuditItems,
 } from '@/db/schema';
 import { eq, gte, lte, and, desc, sql } from 'drizzle-orm';
 import type {
@@ -40,6 +43,30 @@ import type {
   PermissionKey,
 } from '@/types';
 import { DEFAULT_STORE_CONFIG, DEFAULT_SYSTEM_ROLES } from '@/types';
+import type { InventoryAudit, InventoryAuditItem } from '@/types';
+
+// ==================== NOTIFICATIONS HELPER ====================
+async function sendNotification(message: string): Promise<void> {
+  try {
+    const config = await fetchStoreConfig();
+    if (!config.enableNotifications || !config.telegramToken || !config.telegramChatId) {
+      return;
+    }
+
+    const url = `https://api.telegram.org/bot${config.telegramToken}/sendMessage`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: config.telegramChatId,
+        text: message,
+        parse_mode: 'HTML',
+      }),
+    });
+  } catch (error) {
+    console.error('Error sending notification:', error);
+  }
+}
 
 // ==================== HELPERS ====================
 function numVal(v: string | null | undefined): number {
@@ -58,7 +85,7 @@ async function getNextFolio(): Promise<string> {
 // ==================== PRODUCTS ====================
 export async function fetchAllProducts(): Promise<Product[]> {
   const rows = await db.select().from(products).orderBy(products.name);
-  return rows.map((r) => ({
+  const result = rows.map((r) => ({
     id: r.id,
     name: r.name,
     sku: r.sku,
@@ -71,10 +98,16 @@ export async function fetchAllProducts(): Promise<Product[]> {
     unitPrice: numVal(r.unitPrice),
     isPerishable: r.isPerishable,
   }));
+
+  return result;
 }
 
 export async function createProduct(data: Omit<Product, 'id'>): Promise<Product> {
   const id = `p${Date.now()}`;
+
+  // Invalidar caché de productos
+  cache.invalidatePattern('products:');
+
   await db.insert(products).values({
     id,
     name: data.name,
@@ -96,6 +129,15 @@ export async function updateProductStock(productId: string, newStock: number): P
 }
 
 export async function deleteProduct(productId: string): Promise<void> {
+  cache.invalidatePattern('products:');
+
+  // Eliminar registros relacionados primero
+  await db.delete(saleItems).where(eq(saleItems.productId, productId));
+  await db.delete(mermaRecords).where(eq(mermaRecords.productId, productId));
+  await db.delete(pedidoItems).where(eq(pedidoItems.productId, productId));
+  await db.delete(fiadoItems).where(eq(fiadoItems.productId, productId));
+
+  // Ahora eliminar el producto
   await db.delete(products).where(eq(products.id, productId));
 }
 
@@ -130,6 +172,9 @@ export async function fetchStoreConfig(): Promise<StoreConfig> {
     ticketVigencia: r.ticketVigencia,
     storeNumber: r.storeNumber,
     ticketBarcodeFormat: r.ticketBarcodeFormat,
+    enableNotifications: r.enableNotifications,
+    telegramToken: r.telegramToken ?? undefined,
+    telegramChatId: r.telegramChatId ?? undefined,
   };
 }
 
@@ -162,16 +207,16 @@ export async function fetchInventoryAlerts(): Promise<InventoryAlert[]> {
       const severity: 'critical' | 'warning' | 'info' = isExpired
         ? 'critical'
         : isLowStock && product.currentStock <= product.minStock * 0.25
-        ? 'critical'
-        : isLowStock || isExpiring
-        ? 'warning'
-        : 'info';
+          ? 'critical'
+          : isLowStock || isExpiring
+            ? 'warning'
+            : 'info';
 
       const alertType: 'low_stock' | 'expiration' | 'expired' = isExpired
         ? 'expired'
         : isLowStock
-        ? 'low_stock'
-        : 'expiration';
+          ? 'low_stock'
+          : 'expiration';
 
       let message = '';
       if (isExpired) message = 'Producto vencido';
@@ -363,8 +408,21 @@ export async function createSale(
     amountPaid: String(saleData.amountPaid),
     change: String(saleData.change),
     cajero: saleData.cajero,
+    pointsEarned: String(saleData.pointsEarned),
+    pointsUsed: String(saleData.pointsUsed),
     date: now,
   });
+
+  // Handle Loyalty Points for Cliente if applicable
+  const clienteId = (saleData as any).clienteId; // We'll need to pass this in POS
+  if (clienteId) {
+    await db.update(clientes)
+      .set({
+        points: sql`points::numeric + ${saleData.pointsEarned} - ${saleData.pointsUsed}`,
+        lastTransaction: now,
+      })
+      .where(eq(clientes.id, clienteId));
+  }
 
   // Insert sale items
   for (const item of saleData.items) {
@@ -389,6 +447,17 @@ export async function createSale(
         updatedAt: now,
       })
       .where(eq(products.id, item.productId));
+
+    // Check for critical stock to notify
+    const p = await db.select().from(products).where(eq(products.id, item.productId)).limit(1);
+    if (p.length > 0 && p[0].currentStock <= p[0].minStock * 0.2) {
+      await sendNotification(
+        `⚠️ <b>STOCK CRÍTICO</b>\n\n` +
+        `Producto: ${p[0].name}\n` +
+        `Stock actual: ${p[0].currentStock}\n` +
+        `Mínimo sugerido: ${p[0].minStock}`
+      );
+    }
   }
 
   return {
@@ -835,7 +904,125 @@ export async function createCorteCaja(data: {
     status: corte.status,
   });
 
+  // Send notification to owner
+  await sendNotification(
+    `💰 <b>CORTE DE CAJA REALIZADO</b>\n\n` +
+    `Cajero: ${corte.cajero}\n` +
+    `Total Ventas: $${numVal(String(corte.totalVentas)).toFixed(2)}\n` +
+    `Efectivo Contado: $${numVal(String(corte.efectivoContado)).toFixed(2)}\n` +
+    `Diferencia: $${numVal(String(corte.diferencia)).toFixed(2)}\n` +
+    `Status: <b>${corte.status.toUpperCase()}</b>\n\n` +
+    (corte.notas ? `Notas: ${corte.notas}` : '')
+  );
+
   return corte;
+}
+
+// ==================== INVENTORY AUDITS ====================
+export async function fetchInventoryAudits(): Promise<InventoryAudit[]> {
+  const rows = await db.select().from(inventoryAudits).orderBy(desc(inventoryAudits.date));
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    date: r.date.toISOString(),
+    auditor: r.auditor,
+    status: r.status as 'draft' | 'completed',
+    notes: r.notes,
+  }));
+}
+
+export async function createInventoryAudit(data: {
+  title: string;
+  auditor: string;
+  notes: string;
+}): Promise<string> {
+  const id = `audit-${Date.now()}`;
+  await db.insert(inventoryAudits).values({
+    id,
+    title: data.title,
+    auditor: data.auditor,
+    notes: data.notes,
+    date: new Date(),
+    status: 'draft',
+  });
+  return id;
+}
+
+export async function getInventoryAudit(id: string): Promise<InventoryAudit | null> {
+  const rows = await db.select().from(inventoryAudits).where(eq(inventoryAudits.id, id));
+  if (rows.length === 0) return null;
+  const audit = rows[0];
+  const items = await db.select().from(inventoryAuditItems).where(eq(inventoryAuditItems.auditId, id));
+
+  return {
+    id: audit.id,
+    title: audit.title,
+    date: audit.date.toISOString(),
+    auditor: audit.auditor,
+    status: audit.status as 'draft' | 'completed',
+    notes: audit.notes,
+    items: items.map(i => ({
+      id: i.id,
+      auditId: i.auditId,
+      productId: i.productId,
+      productName: i.productName,
+      expectedStock: i.expectedStock,
+      countedStock: i.countedStock,
+      difference: i.difference,
+      adjustmentValue: numVal(i.adjustmentValue),
+    })),
+  };
+}
+
+export async function saveAuditItem(data: Omit<InventoryAuditItem, 'id'>): Promise<void> {
+  const id = `ai-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  await db.insert(inventoryAuditItems).values({
+    id,
+    auditId: data.auditId,
+    productId: data.productId,
+    productName: data.productName,
+    expectedStock: data.expectedStock,
+    countedStock: data.countedStock,
+    difference: data.difference,
+    adjustmentValue: String(data.adjustmentValue),
+  });
+}
+
+export async function completeInventoryAudit(id: string): Promise<void> {
+  const audit = await getInventoryAudit(id);
+  if (!audit || audit.status === 'completed') return;
+
+  // Apply adjustments to stock
+  for (const item of audit.items || []) {
+    if (item.difference !== 0) {
+      await db.update(products)
+        .set({ currentStock: item.countedStock, updatedAt: new Date() })
+        .where(eq(products.id, item.productId));
+
+      // If there's a loss, record as merma
+      if (item.difference < 0) {
+        await createMerma({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: Math.abs(item.difference),
+          reason: 'other',
+          date: new Date().toISOString(),
+          value: Math.abs(item.adjustmentValue),
+        });
+      }
+    }
+  }
+
+  await db.update(inventoryAudits)
+    .set({ status: 'completed' })
+    .where(eq(inventoryAudits.id, id));
+
+  await sendNotification(
+    `📋 <b>AUDITORÍA FINALIZADA</b>\n\n` +
+    `Título: ${audit.title}\n` +
+    `Auditor: ${audit.auditor}\n` +
+    `Resultados: Se revisaron ${audit.items?.length || 0} productos.`
+  );
 }
 
 // ==================== EDITAR PRODUCTO ====================
@@ -950,6 +1137,7 @@ export async function fetchDashboardFromDB() {
     gastosList,
     proveedoresList,
     cortesHistoryList,
+    inventoryAuditsList,
     storeConfigData,
   ] = await Promise.all([
     fetchKPIData(),
@@ -964,6 +1152,7 @@ export async function fetchDashboardFromDB() {
     fetchGastos(),
     fetchProveedores(),
     fetchCortesHistory(),
+    fetchInventoryAudits(),
     fetchStoreConfig(),
   ]);
 
@@ -980,6 +1169,7 @@ export async function fetchDashboardFromDB() {
     gastos: gastosList,
     proveedores: proveedoresList,
     cortesHistory: cortesHistoryList,
+    inventoryAudits: inventoryAuditsList,
     storeConfig: storeConfigData,
   };
 }

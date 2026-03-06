@@ -18,6 +18,7 @@ import {
   Spinner,
   Divider,
 } from '@shopify/polaris';
+import { FormSelect } from '@/components/ui/FormSelect';
 import {
   getMPConfig,
   saveMPConfig,
@@ -44,6 +45,10 @@ export function ConfiguracionPage() {
   const [mpTesting, setMpTesting] = useState(false);
   const [mpTestResult, setMpTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [mpDevices, setMpDevices] = useState<{ id: string; operating_mode: string }[]>([]);
+
+  // Telegram config
+  const [tgTesting, setTgTesting] = useState(false);
+  const [tgTestResult, setTgTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     setMpConfig(getMPConfig());
@@ -95,6 +100,36 @@ export function ConfiguracionPage() {
     }
     setMpTesting(false);
   }, [mpConfig.accessToken, mpConfig.deviceId]);
+
+  const handleTGTest = useCallback(async () => {
+    if (!config.telegramToken || !config.telegramChatId) {
+      setTgTestResult({ success: false, message: 'Ingresa Token y Chat ID primero' });
+      return;
+    }
+    setTgTesting(true);
+    setTgTestResult(null);
+    try {
+      const url = `https://api.telegram.org/bot${config.telegramToken}/sendMessage`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: config.telegramChatId,
+          text: '✅ <b>PRUEBA DE CONEXIÓN</b>\n\nTu consola de abarrotes está conectada correctamente a Telegram.',
+          parse_mode: 'HTML',
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setTgTestResult({ success: true, message: 'Notificación enviada con éxito' });
+      } else {
+        setTgTestResult({ success: false, message: `Error de Telegram: ${data.description}` });
+      }
+    } catch (err) {
+      setTgTestResult({ success: false, message: 'Error al conectar con Telegram API' });
+    }
+    setTgTesting(false);
+  }, [config.telegramToken, config.telegramChatId]);
 
   // Generate ticket preview text
   const TW = 40;
@@ -278,7 +313,7 @@ ${center(`Vigencia ${config.ticketVigencia}`)}
                   autoComplete="off"
                   suffix="%"
                 />
-                <Select
+                <FormSelect
                   label="Moneda"
                   options={[
                     { label: 'Peso Mexicano (MXN)', value: 'MXN' },
@@ -382,7 +417,7 @@ ${center(`Vigencia ${config.ticketVigencia}`)}
         >
           <Card>
             <FormLayout>
-              <Select
+              <FormSelect
                 label="Formato de código de barras"
                 options={[
                   { label: 'CODE128 (recomendado — alfanumérico)', value: 'CODE128' },
@@ -450,6 +485,59 @@ ${center(`Vigencia ${config.ticketVigencia}`)}
                 checked={config.autoBackup}
                 onChange={(v) => updateField('autoBackup', v)}
               />
+            </BlockStack>
+          </Card>
+        </Layout.AnnotatedSection>
+
+        <Layout.AnnotatedSection
+          title="Notificaciones Automáticas"
+          description="Configura el envío de alertas críticas (stock bajo, corte de caja) a tu Telegram."
+        >
+          <Card>
+            <BlockStack gap="400">
+              <Checkbox
+                label="Habilitar notificaciones de Telegram"
+                helpText="Envía alertas en tiempo real al propietario"
+                checked={config.enableNotifications}
+                onChange={(v) => updateField('enableNotifications', v)}
+              />
+
+              {config.enableNotifications && (
+                <FormLayout>
+                  <TextField
+                    label="Bot Token de Telegram"
+                    value={config.telegramToken || ''}
+                    onChange={(v) => updateField('telegramToken', v)}
+                    autoComplete="off"
+                    type="password"
+                    placeholder="123456789:ABCDEF..."
+                    helpText="Obtenlo hablando con @BotFather en Telegram"
+                  />
+                  <TextField
+                    label="Chat ID"
+                    value={config.telegramChatId || ''}
+                    onChange={(v) => updateField('telegramChatId', v)}
+                    autoComplete="off"
+                    placeholder="Ej: 987654321"
+                    helpText="ID de chat o grupo donde quieres recibir alertas"
+                  />
+                  <InlineStack gap="200">
+                    <Button onClick={handleTGTest} loading={tgTesting}>
+                      Probar Notificación
+                    </Button>
+                  </InlineStack>
+                  {tgTestResult && (
+                    <Banner tone={tgTestResult.success ? 'success' : 'critical'}>
+                      <p>{tgTestResult.message}</p>
+                    </Banner>
+                  )}
+                  <Banner tone="info">
+                    <p>
+                      <strong>¿Qué notificamos?</strong> Cortes de caja realizados, productos con stock en nivel crítico y auditorías finalizadas.
+                    </p>
+                  </Banner>
+                </FormLayout>
+              )}
             </BlockStack>
           </Card>
         </Layout.AnnotatedSection>

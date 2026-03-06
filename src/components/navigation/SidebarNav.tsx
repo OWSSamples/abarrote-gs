@@ -24,7 +24,7 @@ interface SidebarNavProps {
 }
 
 const SALES_SECTIONS = ['sales', 'sales-history', 'sales-corte'];
-const PRODUCT_SECTIONS = ['inventory', 'catalog'];
+const PRODUCT_SECTIONS = ['inventory', 'catalog', 'inventory-audit'];
 const CUSTOMER_SECTIONS = ['customers', 'fiado'];
 const FINANCE_SECTIONS = ['expenses', 'suppliers', 'pedidos'];
 const ANALYTICS_SECTIONS = ['analytics', 'reports'];
@@ -88,6 +88,12 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
           label: 'Catalogo',
           matches: selected === 'catalog',
           onClick: () => onSelect('catalog'),
+        },
+        {
+          url: '#',
+          label: 'Auditoría',
+          matches: selected === 'inventory-audit',
+          onClick: () => onSelect('inventory-audit'),
         },
       ],
     });

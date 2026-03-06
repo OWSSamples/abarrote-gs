@@ -23,6 +23,10 @@ export interface StoreConfig {
   ticketVigencia: string;
   storeNumber: string;
   ticketBarcodeFormat: string;
+  // Notifications
+  enableNotifications: boolean;
+  telegramToken?: string;
+  telegramChatId?: string;
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -47,6 +51,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   ticketVigencia: '12/2026',
   storeNumber: '001',
   ticketBarcodeFormat: 'CODE128',
+  enableNotifications: false,
 };
 
 export interface Product {
@@ -130,6 +135,8 @@ export interface SaleRecord {
   change: number;
   date: string;
   cajero: string;
+  pointsEarned: number;
+  pointsUsed: number;
 }
 
 export interface DashboardState {
@@ -145,6 +152,7 @@ export interface DashboardState {
   gastos: Gasto[];
   proveedores: Proveedor[];
   cortesHistory: CorteCaja[];
+  inventoryAudits: InventoryAudit[];
   isLoading: boolean;
   error: string | null;
 }
@@ -179,6 +187,7 @@ export interface Cliente {
   creditLimit: number;
   createdAt: string;
   lastTransaction: string | null;
+  points: number;
 }
 
 export interface FiadoTransaction {
@@ -191,6 +200,28 @@ export interface FiadoTransaction {
   saleFolio?: string;
   items?: SaleItem[];
   date: string;
+}
+
+// === Auditoría de Inventario ===
+export interface InventoryAudit {
+  id: string;
+  title: string;
+  date: string;
+  auditor: string;
+  status: 'draft' | 'completed';
+  notes: string;
+  items?: InventoryAuditItem[];
+}
+
+export interface InventoryAuditItem {
+  id: string;
+  auditId: string;
+  productId: string;
+  productName: string;
+  expectedStock: number;
+  countedStock: number;
+  difference: number;
+  adjustmentValue: number;
 }
 
 // === Proveedores ===
@@ -250,7 +281,12 @@ export type PermissionKey =
   | 'corte.view'
   | 'settings.view'
   | 'settings.edit'
-  | 'roles.manage';
+  | 'roles.manage'
+  | 'servicios.view'
+  | 'servicios.create'
+  | 'servicios.edit'
+  | 'inventory.audit'
+  | 'notifications.edit';
 
 export interface RoleDefinition {
   id: string;
@@ -305,6 +341,11 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   'settings.view': 'Ver configuracion',
   'settings.edit': 'Editar configuracion',
   'roles.manage': 'Gestionar roles',
+  'servicios.view': 'Ver servicios',
+  'servicios.create': 'Registrar servicios/recargas',
+  'servicios.edit': 'Editar servicios',
+  'inventory.audit': 'Realizar auditorías de inventario',
+  'notifications.edit': 'Configurar notificaciones',
 };
 
 export const PERMISSION_GROUPS: { title: string; permissions: PermissionKey[] }[] = [
@@ -355,6 +396,7 @@ export const DEFAULT_SYSTEM_ROLES: Omit<RoleDefinition, 'id' | 'createdAt' | 'up
       'expenses.view', 'expenses.create', 'expenses.edit',
       'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
       'analytics.view', 'reports.view', 'reports.export', 'corte.view',
+      'servicios.view', 'servicios.create', 'servicios.edit',
     ],
     isSystem: true,
     createdBy: 'system',
@@ -365,7 +407,7 @@ export const DEFAULT_SYSTEM_ROLES: Omit<RoleDefinition, 'id' | 'createdAt' | 'up
     permissions: [
       'dashboard.view', 'sales.create', 'sales.view',
       'inventory.view', 'customers.view', 'fiado.create', 'fiado.view',
-      'corte.create', 'corte.view',
+      'corte.create', 'corte.view', 'servicios.create', 'servicios.view',
     ],
     isSystem: true,
     createdBy: 'system',
@@ -377,9 +419,24 @@ export const DEFAULT_SYSTEM_ROLES: Omit<RoleDefinition, 'id' | 'createdAt' | 'up
       'dashboard.view', 'sales.view', 'inventory.view',
       'customers.view', 'fiado.view', 'expenses.view',
       'suppliers.view', 'pedidos.view', 'analytics.view',
-      'reports.view', 'corte.view',
+      'reports.view', 'corte.view', 'servicios.view',
     ],
     isSystem: true,
     createdBy: 'system',
   },
 ];
+
+// === Servicios (Recargas y Pagos) ===
+export interface Servicio {
+  id: string;
+  tipo: 'recarga' | 'servicio';
+  categoria: string;
+  nombre: string;
+  monto: number;
+  comision: number;
+  numeroReferencia: string;
+  folio: string;
+  estado: 'completado' | 'pendiente' | 'cancelado';
+  cajero: string;
+  fecha: string;
+}

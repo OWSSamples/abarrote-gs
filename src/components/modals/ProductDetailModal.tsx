@@ -11,11 +11,11 @@ import {
   Divider,
   Button,
   TextField,
-  Select,
   Banner,
   FormLayout,
   Checkbox,
 } from '@shopify/polaris';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { DeleteIcon, EditIcon } from '@shopify/polaris-icons';
 import { Product } from '@/types';
 import { formatCurrency, formatDate, getDaysUntil, getStockStatus } from '@/lib/utils';
@@ -61,6 +61,9 @@ export function ProductDetailModal({
   const [editMinStock, setEditMinStock] = useState('');
   const [editIsPerishable, setEditIsPerishable] = useState(false);
   const [editExpirationDate, setEditExpirationDate] = useState('');
+
+  const stockStatus = product ? getStockStatus(product.currentStock, product.minStock) : null;
+  const daysUntil = product?.expirationDate ? getDaysUntil(product.expirationDate) : null;
 
   const handleSave = useCallback(() => {
     if (!product) return;
@@ -132,13 +135,8 @@ export function ProductDetailModal({
     }
   };
 
-  // Early return AFTER all hooks
-  if (!product) return null;
-
-  const stockStatus = getStockStatus(product.currentStock, product.minStock);
-  const daysUntil = product.expirationDate ? getDaysUntil(product.expirationDate) : null;
-
   const getExpirationBadge = () => {
+    if (!daysUntil) return null;
     if (!daysUntil) return null;
     if (daysUntil <= 0) return <Badge tone="critical">Vencido</Badge>;
     if (daysUntil <= 2) return <Badge tone="critical">{`Vence en ${daysUntil} días`}</Badge>;
@@ -169,6 +167,8 @@ export function ProductDetailModal({
     { label: 'Tortillería', value: 'Tortillería' },
   ];
 
+  if (!product) return null;
+
   // Edit product mode
   if (editProductMode) {
     return (
@@ -187,7 +187,7 @@ export function ProductDetailModal({
               <TextField label="SKU" value={editSku} onChange={setEditSku} autoComplete="off" />
               <TextField label="Código de barras" value={editBarcode} onChange={setEditBarcode} autoComplete="off" />
             </FormLayout.Group>
-            <Select label="Categoría" options={categoryOptions} value={editCategory} onChange={setEditCategory} />
+            <FormSelect label="Categoría" options={categoryOptions} value={editCategory} onChange={setEditCategory} />
             <FormLayout.Group>
               <TextField label="Precio de costo (MXN)" type="number" value={editCostPrice} onChange={setEditCostPrice} autoComplete="off" prefix="$" />
               <TextField label="Precio de venta (MXN)" type="number" value={editUnitPrice} onChange={setEditUnitPrice} autoComplete="off" prefix="$" requiredIndicator />
@@ -216,14 +216,14 @@ export function ProductDetailModal({
       primaryAction={
         editMode
           ? {
-              content: 'Guardar Cambios',
-              onAction: handleSave,
-              disabled: !newStock || !adjustmentReason,
-            }
+            content: 'Guardar Cambios',
+            onAction: handleSave,
+            disabled: !newStock || !adjustmentReason,
+          }
           : {
-              content: 'Ajustar Stock',
-              onAction: () => setEditMode(true),
-            }
+            content: 'Ajustar Stock',
+            onAction: () => setEditMode(true),
+          }
       }
       secondaryActions={[
         {
@@ -289,11 +289,11 @@ export function ProductDetailModal({
                 </Text>
                 <Badge
                   tone={
-                    stockStatus.status === 'critical' || stockStatus.status === 'out'
+                    stockStatus.status === 'critical'
                       ? 'critical'
-                      : stockStatus.status === 'low'
-                      ? 'warning'
-                      : 'success'
+                      : stockStatus.status === 'warning'
+                        ? 'warning'
+                        : 'success'
                   }
                 >
                   {`${Math.round(stockStatus.percentage)}%`}
@@ -404,7 +404,7 @@ export function ProductDetailModal({
                     placeholder={product.currentStock.toString()}
                   />
                   <div style={{ minWidth: 250 }}>
-                    <Select
+                    <FormSelect
                       label="Razón del Ajuste"
                       options={adjustmentReasons}
                       value={adjustmentReason}

@@ -5,7 +5,6 @@ import {
   Modal,
   FormLayout,
   TextField,
-  Select,
   Checkbox,
   Banner,
   BlockStack,
@@ -13,6 +12,7 @@ import {
   Text,
   Box,
 } from '@shopify/polaris';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { CameraScanner } from '@/components/scanner/CameraScanner';
@@ -183,7 +183,7 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
               compact
             />
 
-            <Select
+            <FormSelect
               label="Categoría"
               options={categoryOptions}
               value={category}

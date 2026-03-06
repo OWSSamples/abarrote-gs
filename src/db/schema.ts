@@ -31,6 +31,9 @@ export const storeConfig = pgTable('store_config', {
   ticketVigencia: text('ticket_vigencia').notNull().default('12/2026'),
   storeNumber: text('store_number').notNull().default('001'),
   ticketBarcodeFormat: text('ticket_barcode_format').notNull().default('CODE128'),
+  enableNotifications: boolean('enable_notifications').notNull().default(false),
+  telegramToken: text('telegram_token'),
+  telegramChatId: text('telegram_chat_id'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
@@ -63,6 +66,8 @@ export const saleRecords = pgTable('sale_records', {
   amountPaid: numeric('amount_paid', { precision: 10, scale: 2 }).notNull(),
   change: numeric('change', { precision: 10, scale: 2 }).notNull().default('0'),
   cajero: text('cajero').notNull().default('Cajero 1'),
+  pointsEarned: numeric('points_earned', { precision: 10, scale: 2 }).notNull().default('0'),
+  pointsUsed: numeric('points_used', { precision: 10, scale: 2 }).notNull().default('0'),
   date: timestamp('date').notNull().defaultNow(),
 });
 
@@ -113,6 +118,7 @@ export const clientes = pgTable('clientes', {
   address: text('address').notNull().default(''),
   balance: numeric('balance', { precision: 10, scale: 2 }).notNull().default('0'),
   creditLimit: numeric('credit_limit', { precision: 10, scale: 2 }).notNull().default('0'),
+  points: numeric('points', { precision: 10, scale: 2 }).notNull().default('0'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   lastTransaction: timestamp('last_transaction'),
 });
@@ -186,6 +192,27 @@ export const cortesCaja = pgTable('cortes_caja', {
   status: text('status').notNull().default('abierto'), // abierto, cerrado
 });
 
+// ==================== AUDITORÍAS DE INVENTARIO ====================
+export const inventoryAudits = pgTable('inventory_audits', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  date: timestamp('date').notNull().defaultNow(),
+  auditor: text('auditor').notNull(),
+  status: text('status').notNull().default('draft'), // draft, completed
+  notes: text('notes').notNull().default(''),
+});
+
+export const inventoryAuditItems = pgTable('inventory_audit_items', {
+  id: text('id').primaryKey(),
+  auditId: text('audit_id').notNull().references(() => inventoryAudits.id, { onDelete: 'cascade' }),
+  productId: text('product_id').notNull().references(() => products.id),
+  productName: text('product_name').notNull(),
+  expectedStock: integer('expected_stock').notNull(),
+  countedStock: integer('counted_stock').notNull(),
+  difference: integer('difference').notNull(),
+  adjustmentValue: numeric('adjustment_value', { precision: 10, scale: 2 }).notNull(),
+});
+
 // ==================== ROLES Y PERMISOS ====================
 export const roleDefinitions = pgTable('role_definitions', {
   id: text('id').primaryKey(),
@@ -209,4 +236,33 @@ export const userRoles = pgTable('user_roles', {
   assignedBy: text('assigned_by').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ==================== AUDIT LOGS ====================
+export const auditLogs = pgTable('audit_logs', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  userEmail: text('user_email').notNull(),
+  action: text('action').notNull(),
+  entity: text('entity').notNull(),
+  entityId: text('entity_id').notNull(),
+  changes: text('changes').notNull().default('{}'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  timestamp: timestamp('timestamp').notNull().defaultNow(),
+});
+
+// ==================== SERVICIOS (RECARGAS Y PAGOS) ====================
+export const servicios = pgTable('servicios', {
+  id: text('id').primaryKey(),
+  tipo: text('tipo').notNull(), // 'recarga' | 'servicio'
+  categoria: text('categoria').notNull(), // 'telcel', 'movistar', 'att', 'luz', 'agua', 'gas', 'internet'
+  nombre: text('nombre').notNull(),
+  monto: numeric('monto', { precision: 10, scale: 2 }).notNull(),
+  comision: numeric('comision', { precision: 10, scale: 2 }).notNull().default('0'),
+  numeroReferencia: text('numero_referencia').notNull(), // Número de teléfono o cuenta
+  folio: text('folio').notNull().unique(),
+  estado: text('estado').notNull().default('completado'), // 'completado', 'pendiente', 'cancelado'
+  cajero: text('cajero').notNull(),
+  fecha: timestamp('fecha').notNull().defaultNow(),
 });

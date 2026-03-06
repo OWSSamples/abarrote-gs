@@ -10,22 +10,25 @@ import {
   Modal,
   FormLayout,
   TextField,
-  Select,
   DatePicker,
   Banner,
 } from '@shopify/polaris';
+import { FormSelect } from '@/components/ui/FormSelect';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import {
   PlusIcon,
   ArchiveIcon,
   AdjustIcon,
   ProductIcon,
   CartIcon,
+  MobileIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { usePermissions } from '@/lib/usePermissions';
 import { RegisterProductModal } from '@/components/modals/RegisterProductModal';
 import { SaleTicketModal } from '@/components/modals/SaleTicketModal';
+import { ServiciosModal } from '@/components/modals/ServiciosModal';
 
 export function QuickActions() {
   const { inventoryAlerts, registerMerma, adjustStock, createPedido } = useDashboardStore();
@@ -35,12 +38,14 @@ export function QuickActions() {
   const canManageInventory = !permsLoaded || hasPermission('inventory.edit');
   const canCreateSales = !permsLoaded || hasPermission('sales.create');
   const canManagePedidos = !permsLoaded || hasPermission('pedidos.create');
+  const canManageServicios = !permsLoaded || hasPermission('servicios.create');
 
   const [mermaModalOpen, setMermaModalOpen] = useState(false);
   const [pedidoModalOpen, setPedidoModalOpen] = useState(false);
   const [ajusteModalOpen, setAjusteModalOpen] = useState(false);
   const [registerProductOpen, setRegisterProductOpen] = useState(false);
   const [saleTicketOpen, setSaleTicketOpen] = useState(false);
+  const [serviciosOpen, setServiciosOpen] = useState(false);
 
   // Form states for Merma
   const [mermaProducto, setMermaProducto] = useState('');
@@ -159,7 +164,7 @@ export function QuickActions() {
           <Text as="h3" variant="headingMd">
             Acciones Rápidas
           </Text>
-          
+
           <ButtonGroup>
             {canManageInventory && (
               <Button
@@ -178,6 +183,15 @@ export function QuickActions() {
                 onClick={() => setSaleTicketOpen(true)}
               >
                 Registrar Venta
+              </Button>
+            )}
+            {canManageServicios && (
+              <Button
+                icon={MobileIcon}
+                variant="primary"
+                onClick={() => setServiciosOpen(true)}
+              >
+                Recargas y Servicios
               </Button>
             )}
             {canManageInventory && (
@@ -232,11 +246,11 @@ export function QuickActions() {
                 Registrar una merma afectará el inventario y se reflejará en el cálculo de la tasa de merma del mes.
               </p>
             </Banner>
-            
-            <Select
+
+            <SearchableSelect
               label="Producto"
-              options={[{ label: 'Seleccionar producto...', value: '' }, ...productOptions]}
-              value={mermaProducto}
+              options={productOptions}
+              selected={mermaProducto}
               onChange={setMermaProducto}
             />
 
@@ -256,14 +270,14 @@ export function QuickActions() {
               max={selectedMermaProduct?.currentStock}
               helpText={selectedMermaProduct ? `Máximo: ${selectedMermaProduct.currentStock}` : undefined}
             />
-            
-            <Select
+
+            <FormSelect
               label="Razón de la merma"
               options={razonOptions}
               value={mermaRazon}
               onChange={setMermaRazon}
             />
-            
+
             <div>
               <Text as="p" variant="bodyMd">
                 Fecha de la merma
@@ -378,28 +392,28 @@ export function QuickActions() {
                 Los ajustes de inventario deben estar justificados y serán registrados en el historial.
               </p>
             </Banner>
-            
-            <Select
+
+            <SearchableSelect
               label="Producto"
-              options={[{ label: 'Seleccionar producto...', value: '' }, ...productOptions]}
-              value={ajusteProducto}
+              options={productOptions}
+              selected={ajusteProducto}
               onChange={(value) => {
                 setAjusteProducto(value);
                 setAjusteNuevaCantidad('');
               }}
             />
-            
+
             {selectedAjusteProduct && (
               <TextField
                 label="Cantidad actual"
                 value={selectedAjusteProduct.currentStock.toString()}
-                onChange={() => {}}
+                onChange={() => { }}
                 type="number"
                 autoComplete="off"
                 disabled
               />
             )}
-            
+
             <TextField
               label="Nueva cantidad"
               value={ajusteNuevaCantidad}
@@ -417,8 +431,8 @@ export function QuickActions() {
                 {parseInt(ajusteNuevaCantidad, 10) - selectedAjusteProduct.currentStock} unidades
               </Text>
             )}
-            
-            <Select
+
+            <FormSelect
               label="Razón del ajuste"
               options={ajusteRazonOptions}
               value={ajusteRazon}
@@ -438,6 +452,12 @@ export function QuickActions() {
       <SaleTicketModal
         open={saleTicketOpen}
         onClose={() => setSaleTicketOpen(false)}
+      />
+
+      {/* Modal para Recargas y Servicios */}
+      <ServiciosModal
+        open={serviciosOpen}
+        onClose={() => setServiciosOpen(false)}
       />
     </>
   );

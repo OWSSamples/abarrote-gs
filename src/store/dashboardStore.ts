@@ -3,7 +3,7 @@ import {
   DashboardState, KPIData, InventoryAlert, SalesData, MermaRecord, PedidoRecord,
   Product, SaleRecord, SaleItem, CorteCaja, Cliente, FiadoTransaction, Gasto, GastoCategoria,
   Proveedor, StoreConfig, DEFAULT_STORE_CONFIG,
-  UserRoleRecord, RoleDefinition, PermissionKey,
+  UserRoleRecord, RoleDefinition, PermissionKey, InventoryAudit,
 } from '@/types';
 import {
   fetchDashboardFromDB,
@@ -55,6 +55,7 @@ interface DashboardStore extends DashboardState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   fetchDashboardData: () => Promise<void>;
+  refreshAllData: () => Promise<void>;
   registerMerma: (merma: Omit<MermaRecord, 'id'>) => Promise<void>;
   adjustStock: (productId: string, newStock: number, reason: string) => Promise<void>;
   createPedido: (pedido: Omit<PedidoRecord, 'id' | 'fecha' | 'estado'>) => Promise<void>;
@@ -106,6 +107,10 @@ interface DashboardStore extends DashboardState {
   getUserRole: (firebaseUid: string) => Promise<UserRoleRecord | null>;
   updateUserProfile: (firebaseUid: string, data: { displayName?: string; avatarUrl?: string }) => Promise<UserRoleRecord>;
   checkMidnightCorte: () => Promise<void>;
+  // Inventory Audits
+  inventoryAudits: InventoryAudit[];
+  createInventoryAudit: (data: { title: string; auditor: string; notes: string }) => Promise<string>;
+  completeInventoryAudit: (id: string) => Promise<void>;
 }
 
 export const useDashboardStore = create<DashboardStore>((set, get) => ({
@@ -125,6 +130,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   roleDefinitions: [],
   userRoles: [],
   currentUserRole: null,
+  inventoryAudits: [],
   isLoading: false,
   error: null,
 
@@ -152,6 +158,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         gastos: data.gastos,
         proveedores: data.proveedores,
         cortesHistory: data.cortesHistory,
+        inventoryAudits: data.inventoryAudits,
         storeConfig: data.storeConfig,
         isLoading: false,
       });
@@ -161,6 +168,30 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         error: 'Error al cargar los datos del dashboard. Verifica tu conexión a la base de datos.',
         isLoading: false,
       });
+    }
+  },
+
+  // Helper para refrescar datos completos
+  refreshAllData: async () => {
+    try {
+      const data = await fetchDashboardFromDB();
+      set({
+        kpiData: data.kpiData,
+        products: data.products,
+        inventoryAlerts: data.inventoryAlerts,
+        salesData: data.salesData,
+        saleRecords: data.saleRecords,
+        mermaRecords: data.mermaRecords,
+        pedidos: data.pedidos,
+        clientes: data.clientes,
+        fiadoTransactions: data.fiadoTransactions,
+        gastos: data.gastos,
+        proveedores: data.proveedores,
+        cortesHistory: data.cortesHistory,
+        inventoryAudits: data.inventoryAudits,
+      });
+    } catch (error) {
+      console.error('Error refreshing data:', error);
     }
   },
 
@@ -207,12 +238,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   registerProduct: async (productData) => {
     try {
       const newProduct = await dbCreateProduct(productData);
-      const state = get();
 
-      set({ products: [...state.products, newProduct] });
-
-      const alerts = await fetchInventoryAlerts();
-      set({ inventoryAlerts: alerts });
+      // Refrescar todos los datos para asegurar sincronización
+      await get().refreshAllData();
     } catch (error) {
       console.error('Error registering product:', error);
     }
@@ -222,13 +250,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   deleteProduct: async (productId) => {
     try {
       await dbDeleteProduct(productId);
-      const state = get();
-      set({
-        products: state.products.filter(p => p.id !== productId),
-        inventoryAlerts: state.inventoryAlerts.filter(a => a.product.id !== productId),
-      });
-      const kpi = await fetchKPIData();
-      set({ kpiData: kpi });
+
+      // Refrescar todos los datos
+      await get().refreshAllData();
     } catch (error) {
       console.error('Error deleting product:', error);
       throw error;
@@ -239,12 +263,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   registerSale: async (saleData) => {
     try {
       const newSale = await dbCreateSale(saleData);
-      const state = get();
 
-      set({ saleRecords: [newSale, ...state.saleRecords] });
-
-      const [alerts, kpi] = await Promise.all([fetchInventoryAlerts(), fetchKPIData()]);
-      set({ inventoryAlerts: alerts, kpiData: kpi });
+      // Refrescar todos los datos para sincronizar inventario
+      await get().refreshAllData();
 
       return newSale;
     } catch (error) {
@@ -255,14 +276,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
   getAllProducts: () => {
     const state = get();
-    const alertProducts = state.inventoryAlerts.map((a) => a.product);
-    const allProducts = [...alertProducts];
-    state.products.forEach((p) => {
-      if (!allProducts.find((ap) => ap.id === p.id)) {
-        allProducts.push(p);
-      }
-    });
-    return allProducts;
+    return state.products;
   },
 
   // ==================== CORTE DE CAJA ====================
@@ -367,11 +381,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   updateProduct: async (id, data) => {
     try {
       await dbUpdateProduct(id, data);
-      const state = get();
-      const updated = state.products.map(p => p.id === id ? { ...p, ...data } : p);
-      set({ products: updated });
-      const [alerts, kpi] = await Promise.all([fetchInventoryAlerts(), fetchKPIData()]);
-      set({ inventoryAlerts: alerts, kpiData: kpi });
+
+      // Refrescar todos los datos
+      await get().refreshAllData();
     } catch (error) {
       console.error('Error updating product:', error);
       throw error;
@@ -619,5 +631,18 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     } catch (error) {
       console.error('Error checking midnight corte:', error);
     }
+  },
+
+  createInventoryAudit: async (data) => {
+    const { createInventoryAudit: dbCreate } = await import('@/app/actions/db-actions');
+    const id = await dbCreate(data);
+    await get().refreshAllData();
+    return id;
+  },
+
+  completeInventoryAudit: async (id) => {
+    const { completeInventoryAudit: dbComplete } = await import('@/app/actions/db-actions');
+    await dbComplete(id);
+    await get().refreshAllData();
   },
 }));

@@ -9,7 +9,6 @@ import {
   BlockStack,
   InlineStack,
   TextField,
-  Select,
   Button,
   EmptyState,
   Box,
@@ -17,6 +16,7 @@ import {
   Modal,
   Banner,
 } from '@shopify/polaris';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { SearchIcon, PrintIcon, DeleteIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
@@ -147,7 +147,7 @@ export function SalesHistory() {
               />
             </Box>
             <Box minWidth="180px">
-              <Select
+              <FormSelect
                 label="Método de pago"
                 options={methodOptions}
                 value={filterMethod}

@@ -5,6 +5,7 @@ import {
   Frame,
   Page,
   Layout,
+  Card,
   Banner,
   SkeletonPage,
   SkeletonDisplayText,
@@ -17,11 +18,10 @@ import {
   Modal,
   FormLayout,
   TextField,
-  Select,
   IndexTable,
   Badge,
-  ActionList,
 } from '@shopify/polaris';
+import { FormSelect } from '@/components/ui/FormSelect';
 import {
   MoneyIcon,
   InventoryIcon,
@@ -30,16 +30,14 @@ import {
   ExportIcon,
   RefreshIcon,
   ProductIcon,
-  SettingsIcon,
-  ExitIcon,
-  CashDollarIcon,
-  PersonIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { KPICard } from '@/components/kpi/KPICard';
 import { SalesChart } from '@/components/charts/SalesChart';
 import { HourlySalesChart } from '@/components/charts/HourlySalesChart';
 import { InventoryTable } from '@/components/inventory/InventoryTable';
+import { AllProductsTable } from '@/components/inventory/AllProductsTable';
+import { InventoryAuditView } from '@/components/inventory/InventoryAuditView';
 import { QuickActions } from '@/components/actions/QuickActions';
 import { AdvancedFilters, FilterState } from '@/components/filters/AdvancedFilters';
 import { TopProducts } from '@/components/metrics/TopProducts';
@@ -54,13 +52,13 @@ import { ProveedoresManager } from '@/components/suppliers/ProveedoresManager';
 import { PedidosManager } from '@/components/pedidos/PedidosManager';
 import { ReportesView } from '@/components/reports/ReportesView';
 import { ConfiguracionPage } from '@/components/settings/ConfiguracionPage';
-import { RolesManager } from '@/components/roles/RolesManager';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
-import { ProfileModal } from '@/components/modals/ProfileModal';
 import { Product } from '@/types';
 import { useToast } from '@/components/notifications/ToastProvider';
-import { useAuth } from '@/lib/auth/AuthContext';
-import { usePermissions, SECTION_PERMISSIONS } from '@/lib/usePermissions';
+import { CustomTopBar } from '@/components/navigation/CustomTopBar';
+import { AnalyticsView } from '@/components/analytics/AnalyticsView';
+import { UserMenu } from '@/components/auth/UserMenu';
+import { deleteProduct, updateProduct } from '@/app/actions/db-actions';
 
 const SECTION_TITLES: Record<string, string> = {
   overview: 'Inicio',
@@ -68,6 +66,7 @@ const SECTION_TITLES: Record<string, string> = {
   'sales-history': 'Historial de Ventas',
   'sales-corte': 'Corte de Caja',
   inventory: 'Inventario',
+  'inventory-audit': 'Auditoría de Inventario',
   catalog: 'Catálogo de Productos',
   customers: 'Clientes',
   fiado: 'Fiado / Crédito',
@@ -76,7 +75,6 @@ const SECTION_TITLES: Record<string, string> = {
   pedidos: 'Pedidos a Proveedores',
   analytics: 'Análisis',
   reports: 'Reportes',
-  roles: 'Usuarios y Roles',
   settings: 'Configuración',
 };
 
@@ -86,6 +84,7 @@ const SECTION_SUBTITLES: Record<string, string> = {
   'sales-history': 'Registro de todas las ventas',
   'sales-corte': 'Cierre y conteo de caja',
   inventory: 'Control de existencias',
+  'inventory-audit': 'Revisión y conteo ciego de stock',
   catalog: 'Todos los productos registrados',
   customers: 'Directorio de clientes',
   fiado: 'Gestión de crédito a clientes',
@@ -94,7 +93,6 @@ const SECTION_SUBTITLES: Record<string, string> = {
   pedidos: 'Gestión de pedidos y recepción de mercancía',
   analytics: 'Gráficas y tendencias',
   reports: 'Resúmenes y métricas',
-  roles: 'Asigna roles y permisos a tu equipo',
   settings: 'Configuración del sistema',
 };
 
@@ -102,15 +100,13 @@ export function DashboardHome() {
   const {
     kpiData,
     inventoryAlerts,
+    products,
     salesData,
     isLoading,
     error,
     fetchDashboardData,
     adjustStock,
     createPedido,
-    ensureOwnerRole,
-    fetchRoleDefinitions,
-    checkMidnightCorte,
   } = useDashboardStore();
 
   const toast = useToast();
@@ -125,13 +121,11 @@ export function DashboardHome() {
   const [pedidoModalOpen, setPedidoModalOpen] = useState(false);
   const [pedidoProveedor, setPedidoProveedor] = useState('');
   const [pedidoNotas, setPedidoNotas] = useState('');
-  const [searchValue, setSearchValue] = useState('');
-  const [searchActive, setSearchActive] = useState(false);
-  const [userMenuActive, setUserMenuActive] = useState(false);
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const { user, signOut } = useAuth();
-  const { permissions, isLoaded: permissionsLoaded } = usePermissions();
-
+  const [updateProductOpen, setUpdateProductOpen] = useState(false);
+  const [productToUpdate, setProductToUpdate] = useState<Product | null>(null);
+  const [updateStock, setUpdateStock] = useState('');
+  const [updatePrice, setUpdatePrice] = useState('');
+  const [updateCostPrice, setUpdateCostPrice] = useState('');
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     categories: [],
@@ -142,29 +136,7 @@ export function DashboardHome() {
 
   useEffect(() => {
     fetchDashboardData();
-    fetchRoleDefinitions();
-  }, [fetchDashboardData, fetchRoleDefinitions]);
-
-  // Auto-register role for current user (first user becomes owner)
-  useEffect(() => {
-    if (user) {
-      ensureOwnerRole(user.uid, user.email || '', user.displayName || '');
-    }
-  }, [user, ensureOwnerRole]);
-
-  // Check for auto midnight corte on load
-  useEffect(() => {
-    checkMidnightCorte();
-    // Also schedule check at midnight
-    const now = new Date();
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 5, 0); // 12:00:05 AM next day
-    const msUntilMidnight = midnight.getTime() - now.getTime();
-    const timer = setTimeout(() => {
-      checkMidnightCorte();
-    }, msUntilMidnight);
-    return () => clearTimeout(timer);
-  }, [checkMidnightCorte]);
+  }, [fetchDashboardData]);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
@@ -239,6 +211,43 @@ export function DashboardHome() {
     setPedidoModalOpen(true);
   }, []);
 
+  const handleDeleteProduct = useCallback(async (product: Product) => {
+    if (confirm(`¿Estás seguro de eliminar "${product.name}"?`)) {
+      try {
+        await deleteProduct(product.id);
+        toast.showSuccess(`Producto "${product.name}" eliminado`);
+        fetchDashboardData();
+      } catch (error) {
+        toast.showError('Error al eliminar el producto');
+      }
+    }
+  }, [toast, fetchDashboardData]);
+
+  const handleOpenUpdateProduct = useCallback((product: Product) => {
+    setProductToUpdate(product);
+    setUpdateStock(product.currentStock.toString());
+    setUpdatePrice(product.unitPrice.toString());
+    setUpdateCostPrice(product.costPrice.toString());
+    setUpdateProductOpen(true);
+  }, []);
+
+  const handleUpdateProductSubmit = useCallback(async () => {
+    if (!productToUpdate) return;
+    try {
+      await updateProduct(productToUpdate.id, {
+        currentStock: parseInt(updateStock, 10) || productToUpdate.currentStock,
+        unitPrice: parseFloat(updatePrice) || productToUpdate.unitPrice,
+        costPrice: parseFloat(updateCostPrice) || productToUpdate.costPrice,
+      });
+      toast.showSuccess(`Producto "${productToUpdate.name}" actualizado`);
+      setUpdateProductOpen(false);
+      setProductToUpdate(null);
+      fetchDashboardData();
+    } catch (error) {
+      toast.showError('Error al actualizar el producto');
+    }
+  }, [productToUpdate, updateStock, updatePrice, updateCostPrice, toast, fetchDashboardData]);
+
   const lowStockProducts = inventoryAlerts
     .filter((a) => a.alertType === 'low_stock' || a.product.currentStock < a.product.minStock)
     .map((a) => ({
@@ -285,155 +294,13 @@ export function DashboardHome() {
     setMobileNavActive(false);
   }, []);
 
-  if (isLoading) {
-    return (
-      <SkeletonPage primaryAction title="Dashboard de Abarrotes">
-        <Layout>
-          <Layout.Section>
-            <BlockStack gap="400">
-              <SkeletonDisplayText size="large" />
-              <SkeletonBodyText lines={4} />
-            </BlockStack>
-          </Layout.Section>
-        </Layout>
-      </SkeletonPage>
-    );
-  }
-
-  if (error) {
-    return (
-      <Page title="Dashboard de Abarrotes">
-        <Banner tone="critical" title="Error al cargar el dashboard">
-          <p>{error}</p>
-        </Banner>
-      </Page>
-    );
-  }
-
   const criticalAlerts = inventoryAlerts.filter(
     (alert) => alert.severity === 'critical'
   );
 
-  const topBarMarkup = (() => {
-    const userMenuInitials = user?.displayName
-      ? user.displayName
-          .split(' ')
-          .map((n: string) => n[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2)
-      : user?.email?.charAt(0).toUpperCase() || 'U';
-
-    const userMenuMarkup = (
-      <TopBar.UserMenu
-        actions={[
-          {
-            items: [
-              {
-                content: 'Mi Perfil',
-                icon: PersonIcon,
-                onAction: () => {
-                  setProfileModalOpen(true);
-                  setUserMenuActive(false);
-                },
-              },
-            ],
-          },
-          ...((!permissionsLoaded || permissions.length === 0 || permissions.includes('corte.create'))
-            ? [{
-                items: [
-                  {
-                    content: 'Corte de Caja',
-                    icon: CashDollarIcon,
-                    onAction: () => {
-                      setCorteModalOpen(true);
-                      setUserMenuActive(false);
-                    },
-                  },
-                ],
-              }]
-            : []),
-          ...((!permissionsLoaded || permissions.length === 0 || permissions.includes('settings.view'))
-            ? [{
-                items: [
-                  {
-                    content: 'Configuracion',
-                    icon: SettingsIcon,
-                    onAction: () => handleSectionSelect('settings'),
-                  },
-                ],
-              }]
-            : []),
-          {
-            items: [
-              {
-                content: 'Cerrar sesion',
-                icon: ExitIcon,
-                onAction: signOut,
-              },
-            ],
-          },
-        ]}
-        name={user?.displayName || user?.email?.split('@')[0] || 'Usuario'}
-        detail={user?.email || ''}
-        initials={userMenuInitials}
-        avatar={user?.photoURL || undefined}
-        open={userMenuActive}
-        onToggle={() => setUserMenuActive((prev) => !prev)}
-      />
-    );
-
-    const searchResultsMarkup = searchValue ? (
-      <ActionList
-        items={Object.entries(SECTION_TITLES)
-          .filter(([key, title]) => {
-            if (!title.toLowerCase().includes(searchValue.toLowerCase())) return false;
-            // Respect permissions in search
-            if (permissionsLoaded && permissions.length > 0) {
-              const required = SECTION_PERMISSIONS[key];
-              if (required && !required.some((k) => permissions.includes(k))) return false;
-            }
-            return true;
-          })
-          .map(([key, title]) => ({
-            content: title,
-            helpText: SECTION_SUBTITLES[key] || '',
-            onAction: () => {
-              handleSectionSelect(key);
-              setSearchValue('');
-              setSearchActive(false);
-            },
-          }))}
-      />
-    ) : null;
-
-    const searchFieldMarkup = (
-      <TopBar.SearchField
-        onChange={(value) => {
-          setSearchValue(value);
-          setSearchActive(value.length > 0);
-        }}
-        value={searchValue}
-        placeholder="Buscar secciones, productos..."
-        showFocusBorder
-      />
-    );
-
-    return (
-      <TopBar
-        showNavigationToggle
-        onNavigationToggle={toggleMobileNav}
-        userMenu={userMenuMarkup}
-        searchField={searchFieldMarkup}
-        searchResults={searchResultsMarkup}
-        searchResultsVisible={searchActive}
-        onSearchResultsDismiss={() => {
-          setSearchActive(false);
-          setSearchValue('');
-        }}
-      />
-    );
-  })();
+  const topBarMarkup = (
+    <CustomTopBar userMenu={<UserMenu />} />
+  );
 
   const navigationMarkup = (
     <SidebarNav
@@ -442,23 +309,10 @@ export function DashboardHome() {
       badges={{
         lowStock: kpiData?.lowStockProducts,
       }}
-      permissions={permissionsLoaded ? permissions : undefined}
     />
   );
 
   const renderSectionContent = () => {
-    // Guard: if permissions are loaded, check if user can access this section
-    if (permissionsLoaded && permissions.length > 0) {
-      const required = SECTION_PERMISSIONS[selectedSection];
-      if (required && !required.some((k) => permissions.includes(k))) {
-        return (
-          <Banner tone="warning" title="Acceso restringido">
-            <p>No tienes permisos para acceder a esta seccion. Contacta al propietario o administrador.</p>
-          </Banner>
-        );
-      }
-    }
-
     switch (selectedSection) {
       case 'overview':
         return (
@@ -477,8 +331,6 @@ export function DashboardHome() {
                 <InventoryTable
                   alerts={filteredAlerts}
                   onProductClick={handleProductClick}
-                  onExport={handleTableExport}
-                  onCreatePedido={handleTableCreatePedido}
                 />
               </Layout.Section>
               <Layout.Section variant="oneHalf">
@@ -518,24 +370,34 @@ export function DashboardHome() {
             <InventoryTable
               alerts={filteredAlerts}
               onProductClick={handleProductClick}
+            />
+            <AllProductsTable
+              products={products}
+              onProductClick={handleProductClick}
+              onRegisterProduct={() => setRegisterProductOpen(true)}
               onExport={handleTableExport}
               onCreatePedido={handleTableCreatePedido}
-              onRegisterProduct={() => setRegisterProductOpen(true)}
+              onDeleteProduct={handleDeleteProduct}
+              onUpdateProduct={handleOpenUpdateProduct}
             />
           </BlockStack>
         );
 
+      case 'inventory-audit':
+        return <InventoryAuditView />;
+
       case 'catalog':
         return (
           <BlockStack gap="400">
-            <InventoryTable
-              alerts={inventoryAlerts}
+            <AllProductsTable
+              products={products}
               onProductClick={handleProductClick}
+              onRegisterProduct={() => setRegisterProductOpen(true)}
               onExport={handleTableExport}
               onCreatePedido={handleTableCreatePedido}
-              onRegisterProduct={() => setRegisterProductOpen(true)}
+              onDeleteProduct={handleDeleteProduct}
+              onUpdateProduct={handleOpenUpdateProduct}
             />
-            <TopProducts />
           </BlockStack>
         );
 
@@ -555,32 +417,10 @@ export function DashboardHome() {
         return <PedidosManager />;
 
       case 'analytics':
-        return (
-          <BlockStack gap="400">
-            <Layout>
-              <Layout.Section variant="oneHalf">
-                <SalesChart data={salesData} />
-              </Layout.Section>
-              <Layout.Section variant="oneHalf">
-                <HourlySalesChart />
-              </Layout.Section>
-            </Layout>
-            <Layout>
-              <Layout.Section variant="oneHalf">
-                <TopProducts title="Productos Más Vendidos" />
-              </Layout.Section>
-              <Layout.Section variant="oneHalf">
-                <TopProducts title="Mayor Margen de Ganancia" />
-              </Layout.Section>
-            </Layout>
-          </BlockStack>
-        );
+        return <AnalyticsView />;
 
       case 'reports':
         return <ReportesView />;
-
-      case 'roles':
-        return <RolesManager />;
 
       case 'settings':
         return <ConfiguracionPage />;
@@ -591,215 +431,319 @@ export function DashboardHome() {
   };
 
   return (
-    <Frame
-      logo={{
-        topBarSource: '/logo.svg',
-        contextualSaveBarSource: '/logo.svg',
-        accessibilityLabel: 'Abarrotes GS',
-        url: '#',
-        width: 124,
-      }}
-      topBar={topBarMarkup}
-      navigation={navigationMarkup}
-      showMobileNavigation={mobileNavActive}
-      onNavigationDismiss={toggleMobileNav}
-    >
-      <Page
-        title={SECTION_TITLES[selectedSection] || 'Dashboard'}
-        subtitle={SECTION_SUBTITLES[selectedSection] || 'Gestión de abarrotes'}
-        primaryAction={{
-          content: 'Actualizar',
-          icon: RefreshIcon,
-          onAction: fetchDashboardData,
-        }}
-        secondaryActions={[
-          {
-            content: 'Exportar',
-            icon: ExportIcon,
-            onAction: () => setExportModalOpen(true),
-          },
-        ]}
+    <>
+      {topBarMarkup}
+      <Frame
+        navigation={navigationMarkup}
+        showMobileNavigation={mobileNavActive}
+        onNavigationDismiss={toggleMobileNav}
       >
-        <Layout>
-          {criticalAlerts.length > 0 && (
-            <Layout.Section>
-              <Banner
-                tone="critical"
-                title={`${criticalAlerts.length} productos requieren atención inmediata`}
-              >
-                <p>
-                  Tienes productos críticos por vencimiento o stock muy bajo.
-                  Revisa la sección de Inventario.
-                </p>
-              </Banner>
-            </Layout.Section>
-          )}
+        {error ? (
+          <Page title="Error">
+            <Banner tone="critical" title="Error al cargar el dashboard">
+              <p>{error}</p>
+              <Button onClick={() => window.location.reload()}>Reintentar</Button>
+            </Banner>
+          </Page>
+        ) : isLoading ? (
+          <SkeletonPage
+            title={SECTION_TITLES[selectedSection] || 'Dashboard'}
+            primaryAction
+          >
+            <Layout>
+              <Layout.Section>
+                <InlineStack gap="400" wrap={true}>
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} style={{ flex: '1 1 220px', minWidth: 220 }}>
+                      <Card>
+                        <BlockStack gap="200">
+                          <SkeletonDisplayText size="small" />
+                          <SkeletonDisplayText size="large" />
+                        </BlockStack>
+                      </Card>
+                    </div>
+                  ))}
+                </InlineStack>
+              </Layout.Section>
 
-          <Layout.Section>
-            <InlineStack gap="400" wrap={true}>
-              <div style={{ flex: '1 1 220px', minWidth: 220 }}>
-                <KPICard
-                  title="Ventas del Día"
-                  value={kpiData?.dailySales || 0}
-                  type="currency"
-                  change={kpiData?.dailySalesChange}
-                  changeLabel="vs ayer"
-                  icon={<MoneyIcon />}
-                />
-              </div>
-              <div style={{ flex: '1 1 220px', minWidth: 220 }}>
-                <KPICard
-                  title="Productos Stock Bajo"
-                  value={kpiData?.lowStockProducts || 0}
-                  type="number"
-                  icon={<InventoryIcon />}
-                />
-              </div>
-              <div style={{ flex: '1 1 220px', minWidth: 220 }}>
-                <KPICard
-                  title="Productos por Vencer"
-                  value={kpiData?.expiringProducts || 0}
-                  type="number"
-                  icon={<CalendarIcon />}
-                />
-              </div>
-              <div style={{ flex: '1 1 220px', minWidth: 220 }}>
-                <KPICard
-                  title="Tasa de Merma"
-                  value={kpiData?.mermaRate || 0}
-                  type="percentage"
-                  change={kpiData?.mermaRateChange}
-                  changeLabel="vs mes anterior"
-                  icon={<CartIcon />}
-                />
-              </div>
-            </InlineStack>
-          </Layout.Section>
+              <Layout.Section>
+                <Card>
+                  <BlockStack gap="400">
+                    <SkeletonDisplayText size="small" />
+                    <SkeletonBodyText lines={4} />
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
 
-          <Layout.Section>
-            {renderSectionContent()}
-          </Layout.Section>
-        </Layout>
-      </Page>
+              <Layout.Section variant="oneHalf">
+                <Card>
+                  <BlockStack gap="400">
+                    <SkeletonDisplayText size="small" />
+                    <SkeletonBodyText lines={10} />
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
 
-      <ExportModal
-        open={exportModalOpen}
-        onClose={() => setExportModalOpen(false)}
-        onExport={handleExport}
-      />
-      <CorteCajaModal
-        open={corteModalOpen}
-        onClose={() => setCorteModalOpen(false)}
-      />
-      <ProductDetailModal
-        product={selectedProduct}
-        open={productModalOpen}
-        onClose={() => {
-          setProductModalOpen(false);
-          setSelectedProduct(null);
-        }}
-        onSave={handleProductSave}
-      />
-      <RegisterProductModal
-        open={registerProductOpen}
-        onClose={() => setRegisterProductOpen(false)}
-      />
+              <Layout.Section variant="oneHalf">
+                <Card>
+                  <BlockStack gap="400">
+                    <SkeletonDisplayText size="small" />
+                    <SkeletonBodyText lines={10} />
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
+            </Layout>
+          </SkeletonPage>
+        ) : (
+          <Page
+            title={SECTION_TITLES[selectedSection] || 'Dashboard'}
+            subtitle={SECTION_SUBTITLES[selectedSection] || 'Gestión de abarrotes'}
+            primaryAction={{
+              content: 'Actualizar',
+              icon: RefreshIcon,
+              onAction: fetchDashboardData,
+            }}
+            secondaryActions={[
+              {
+                content: 'Exportar',
+                icon: ExportIcon,
+                onAction: () => setExportModalOpen(true),
+              },
+            ]}
+          >
+            <Layout>
+              {criticalAlerts.length > 0 && (
+                <Layout.Section>
+                  <Banner
+                    tone="critical"
+                    title={`${criticalAlerts.length} productos requieren atención inmediata`}
+                  >
+                    <p>
+                      Tienes productos críticos por vencimiento o stock muy bajo.
+                      Revisa la sección de Inventario.
+                    </p>
+                  </Banner>
+                </Layout.Section>
+              )}
 
-      {/* Modal para Crear Pedido a Proveedor */}
-      <Modal
-        open={pedidoModalOpen}
-        onClose={() => {
-          setPedidoModalOpen(false);
-          setPedidoProveedor('');
-          setPedidoNotas('');
-        }}
-        title="Crear Pedido a Proveedor"
-        primaryAction={{
-          content: 'Crear Pedido',
-          onAction: handlePedidoSubmit,
-          disabled: !pedidoProveedor || lowStockProducts.length === 0,
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancelar',
-            onAction: () => {
-              setPedidoModalOpen(false);
-              setPedidoProveedor('');
-              setPedidoNotas('');
+              {selectedSection === 'overview' && (
+                <Layout.Section>
+                  <InlineStack gap="400" wrap={true}>
+                    <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                      <KPICard
+                        title="Ventas del Día"
+                        value={kpiData?.dailySales || 0}
+                        type="currency"
+                        change={kpiData?.dailySalesChange}
+                        changeLabel="vs ayer"
+                        icon={<MoneyIcon />}
+                      />
+                    </div>
+                    <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                      <KPICard
+                        title="Productos Stock Bajo"
+                        value={kpiData?.lowStockProducts || 0}
+                        type="number"
+                        icon={<InventoryIcon />}
+                      />
+                    </div>
+                    <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                      <KPICard
+                        title="Productos por Vencer"
+                        value={kpiData?.expiringProducts || 0}
+                        type="number"
+                        icon={<CalendarIcon />}
+                      />
+                    </div>
+                    <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                      <KPICard
+                        title="Tasa de Merma"
+                        value={kpiData?.mermaRate || 0}
+                        type="percentage"
+                        change={kpiData?.mermaRateChange}
+                        changeLabel="vs mes anterior"
+                        icon={<CartIcon />}
+                      />
+                    </div>
+                  </InlineStack>
+                </Layout.Section>
+              )}
+
+              <Layout.Section>
+                {renderSectionContent()}
+              </Layout.Section>
+            </Layout>
+          </Page>
+        )}
+
+        <ExportModal
+          open={exportModalOpen}
+          onClose={() => setExportModalOpen(false)}
+          onExport={handleExport}
+        />
+        <CorteCajaModal
+          open={corteModalOpen}
+          onClose={() => setCorteModalOpen(false)}
+        />
+        <ProductDetailModal
+          product={selectedProduct}
+          open={productModalOpen}
+          onClose={() => {
+            setProductModalOpen(false);
+            setSelectedProduct(null);
+          }}
+          onSave={handleProductSave}
+        />
+        <RegisterProductModal
+          open={registerProductOpen}
+          onClose={() => setRegisterProductOpen(false)}
+        />
+
+        {/* Modal para Actualizar Producto */}
+        <Modal
+          open={updateProductOpen}
+          onClose={() => {
+            setUpdateProductOpen(false);
+            setProductToUpdate(null);
+          }}
+          title={productToUpdate ? `Actualizar ${productToUpdate.name}` : 'Actualizar Producto'}
+          primaryAction={{
+            content: 'Guardar Cambios',
+            onAction: handleUpdateProductSubmit,
+          }}
+          secondaryActions={[
+            {
+              content: 'Cancelar',
+              onAction: () => {
+                setUpdateProductOpen(false);
+                setProductToUpdate(null);
+              },
             },
-          },
-        ]}
-        size="large"
-      >
-        <Modal.Section>
-          <BlockStack gap="400">
+          ]}
+        >
+          <Modal.Section>
             <FormLayout>
-              <Select
-                label="Proveedor"
-                options={proveedorOptions}
-                value={pedidoProveedor}
-                onChange={setPedidoProveedor}
-                helpText="Selecciona el proveedor al que se le hará el pedido"
+              <TextField
+                label="Stock Actual"
+                type="number"
+                value={updateStock}
+                onChange={setUpdateStock}
+                autoComplete="off"
+                helpText="Cantidad actual en inventario"
               />
               <TextField
-                label="Notas adicionales"
-                value={pedidoNotas}
-                onChange={setPedidoNotas}
-                multiline={3}
+                label="Precio de Venta"
+                type="number"
+                value={updatePrice}
+                onChange={setUpdatePrice}
                 autoComplete="off"
-                placeholder="Instrucciones especiales, urgencia, etc."
+                prefix="$"
+                helpText="Precio al público"
+              />
+              <TextField
+                label="Precio de Costo"
+                type="number"
+                value={updateCostPrice}
+                onChange={setUpdateCostPrice}
+                autoComplete="off"
+                prefix="$"
+                helpText="Precio de compra al proveedor"
               />
             </FormLayout>
+          </Modal.Section>
+        </Modal>
 
-            {lowStockProducts.length > 0 ? (
-              <BlockStack gap="200">
-                <InlineStack align="space-between">
-                  <Text as="h3" variant="headingMd">
-                    Productos con stock bajo
-                  </Text>
-                  <Badge tone="warning">{`${lowStockProducts.length} productos`}</Badge>
-                </InlineStack>
-                <IndexTable
-                  itemCount={lowStockProducts.length}
-                  headings={[
-                    { title: 'Producto' },
-                    { title: 'Stock actual' },
-                    { title: 'Stock mínimo' },
-                    { title: 'Cantidad a pedir' },
-                  ]}
-                  selectable={false}
-                >
-                  {lowStockProducts.map((p, i) => (
-                    <IndexTable.Row id={p.productId} key={p.productId} position={i}>
-                      <IndexTable.Cell>
-                        <Text as="p" variant="bodyMd" fontWeight="semibold">{p.productName}</Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Text as="p" variant="bodyMd" tone="critical">{p.currentStock}</Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Text as="p" variant="bodyMd">{p.minStock}</Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Badge tone="info">{`${p.cantidad} unidades`}</Badge>
-                      </IndexTable.Cell>
-                    </IndexTable.Row>
-                  ))}
-                </IndexTable>
-              </BlockStack>
-            ) : (
-              <Banner tone="success">
-                <p>No hay productos con stock bajo en este momento.</p>
-              </Banner>
-            )}
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
+        {/* Modal para Crear Pedido a Proveedor */}
+        <Modal
+          open={pedidoModalOpen}
+          onClose={() => {
+            setPedidoModalOpen(false);
+            setPedidoProveedor('');
+            setPedidoNotas('');
+          }}
+          title="Crear Pedido a Proveedor"
+          primaryAction={{
+            content: 'Crear Pedido',
+            onAction: handlePedidoSubmit,
+            disabled: !pedidoProveedor || lowStockProducts.length === 0,
+          }}
+          secondaryActions={[
+            {
+              content: 'Cancelar',
+              onAction: () => {
+                setPedidoModalOpen(false);
+                setPedidoProveedor('');
+                setPedidoNotas('');
+              },
+            },
+          ]}
+          size="large"
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              <FormLayout>
+                <FormSelect
+                  label="Proveedor"
+                  options={proveedorOptions}
+                  value={pedidoProveedor}
+                  onChange={setPedidoProveedor}
+                  helpText="Selecciona el proveedor al que se le hará el pedido"
+                />
+                <TextField
+                  label="Notas adicionales"
+                  value={pedidoNotas}
+                  onChange={setPedidoNotas}
+                  multiline={3}
+                  autoComplete="off"
+                  placeholder="Instrucciones especiales, urgencia, etc."
+                />
+              </FormLayout>
 
-      <ProfileModal
-        open={profileModalOpen}
-        onClose={() => setProfileModalOpen(false)}
-      />
-    </Frame>
+              {lowStockProducts.length > 0 ? (
+                <BlockStack gap="200">
+                  <InlineStack align="space-between">
+                    <Text as="h3" variant="headingMd">
+                      Productos con stock bajo
+                    </Text>
+                    <Badge tone="warning">{`${lowStockProducts.length} productos`}</Badge>
+                  </InlineStack>
+                  <IndexTable
+                    itemCount={lowStockProducts.length}
+                    headings={[
+                      { title: 'Producto' },
+                      { title: 'Stock actual' },
+                      { title: 'Stock mínimo' },
+                      { title: 'Cantidad a pedir' },
+                    ]}
+                    selectable={false}
+                  >
+                    {lowStockProducts.map((p, i) => (
+                      <IndexTable.Row id={p.productId} key={p.productId} position={i}>
+                        <IndexTable.Cell>
+                          <Text as="p" variant="bodyMd" fontWeight="semibold">{p.productName}</Text>
+                        </IndexTable.Cell>
+                        <IndexTable.Cell>
+                          <Text as="p" variant="bodyMd" tone="critical">{p.currentStock}</Text>
+                        </IndexTable.Cell>
+                        <IndexTable.Cell>
+                          <Text as="p" variant="bodyMd">{p.minStock}</Text>
+                        </IndexTable.Cell>
+                        <IndexTable.Cell>
+                          <Badge tone="info">{`${p.cantidad} unidades`}</Badge>
+                        </IndexTable.Cell>
+                      </IndexTable.Row>
+                    ))}
+                  </IndexTable>
+                </BlockStack>
+              ) : (
+                <Banner tone="success">
+                  <p>No hay productos con stock bajo en este momento.</p>
+                </Banner>
+              )}
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+      </Frame>
+    </>
   );
 }

@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import {
   Card,
   IndexTable,
@@ -9,8 +8,6 @@ import {
   ProgressBar,
   BlockStack,
   InlineStack,
-  Button,
-  ButtonGroup,
 } from '@shopify/polaris';
 import { InventoryAlert, Product } from '@/types';
 import { formatDate, getDaysUntil, getStockStatus } from '@/lib/utils';
@@ -18,14 +15,11 @@ import { formatDate, getDaysUntil, getStockStatus } from '@/lib/utils';
 interface InventoryTableProps {
   alerts: InventoryAlert[];
   onProductClick?: (product: Product) => void;
-  onExport?: () => void;
-  onCreatePedido?: () => void;
-  onRegisterProduct?: () => void;
 }
 
-export function InventoryTable({ alerts, onProductClick, onExport, onCreatePedido, onRegisterProduct }: InventoryTableProps) {
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
-
+export function InventoryTable({ alerts, onProductClick }: InventoryTableProps) {
+  const selectedItems: string[] = [];
+  
   const getAlertBadge = (alert: InventoryAlert) => {
     switch (alert.alertType) {
       case 'expiration':
@@ -133,37 +127,17 @@ export function InventoryTable({ alerts, onProductClick, onExport, onCreatePedid
   return (
     <Card>
       <BlockStack gap="400">
-        <InlineStack align="space-between">
-          <BlockStack gap="100">
-            <Text as="h3" variant="headingMd">
-              Inventario Prioritario
-            </Text>
-            <Text as="p" variant="bodySm" tone="subdued">
-              {alerts.length} productos requieren atención inmediata
-            </Text>
-          </BlockStack>
-          
-          <ButtonGroup>
-            <Button size="slim" onClick={onExport}>Exportar</Button>
-            {onRegisterProduct && (
-              <Button variant="primary" tone="success" size="slim" onClick={onRegisterProduct}>
-                Registrar Producto
-              </Button>
-            )}
-            <Button variant="primary" size="slim" onClick={onCreatePedido}>
-              Crear pedido
-            </Button>
-          </ButtonGroup>
-        </InlineStack>
+        <BlockStack gap="100">
+          <Text as="h3" variant="headingMd">
+            Inventario Prioritario
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {alerts.length} productos requieren atención inmediata
+          </Text>
+        </BlockStack>
 
         <IndexTable
           itemCount={alerts.length}
-          selectedItemsCount={selectedItems.length}
-          onSelectionChange={(selectionType, selected) => {
-            if (Array.isArray(selected)) {
-              setSelectedItems(selected);
-            }
-          }}
           headings={[
             { title: 'Producto' },
             { title: 'Stock' },
@@ -171,7 +145,7 @@ export function InventoryTable({ alerts, onProductClick, onExport, onCreatePedid
             { title: 'Tipo Alerta' },
             { title: 'Severidad' },
           ]}
-          selectable
+          selectable={false}
         >
           {rowMarkup}
         </IndexTable>

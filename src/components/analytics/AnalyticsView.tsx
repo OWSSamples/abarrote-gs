@@ -26,7 +26,7 @@ export function AnalyticsView() {
     const now = new Date();
     const mesActual = now.getMonth();
     const añoActual = now.getFullYear();
-    
+
     return saleRecords
       .filter(sale => {
         const fecha = new Date(sale.date);
@@ -83,17 +83,17 @@ export function AnalyticsView() {
     }, {} as Record<string, number>);
 
     return Object.entries(metodos).map(([metodo, total]) => ({
-      metodo: metodo === 'efectivo' ? 'Efectivo' : 
-              metodo === 'tarjeta' ? 'Tarjeta' :
-              metodo === 'transferencia' ? 'Transferencia' :
-              metodo === 'fiado' ? 'Fiado' : metodo,
+      metodo: metodo === 'efectivo' ? 'Efectivo' :
+        metodo === 'tarjeta' ? 'Tarjeta' :
+          metodo === 'transferencia' ? 'Transferencia' :
+            metodo === 'fiado' ? 'Fiado' : metodo,
       total,
     }));
   }, [saleRecords]);
 
   // Top 10 productos más vendidos
   const topProductos = useMemo(() => {
-    const productosVendidos = saleRecords.flatMap(sale => 
+    const productosVendidos = saleRecords.flatMap(sale =>
       sale.items?.map(item => ({
         id: item.productId,
         name: item.productName,
@@ -136,7 +136,7 @@ export function AnalyticsView() {
   const ticketPromedio = saleRecords.length > 0 ? totalVentas / saleRecords.length : 0;
 
   // Productos vendidos
-  const productosVendidos = saleRecords.reduce((sum, sale) => 
+  const productosVendidos = saleRecords.reduce((sum, sale) =>
     sum + (sale.items?.reduce((s, i) => s + i.quantity, 0) || 0), 0
   );
 
@@ -223,7 +223,7 @@ export function AnalyticsView() {
                   theme="Light"
                   xAxisOptions={{
                     labelFormatter: (value) => {
-                      const date = new Date(value);
+                      const date = new Date(String(value ?? ''));
                       return `${date.getDate()}/${date.getMonth() + 1}`;
                     },
                   }}
@@ -315,10 +315,10 @@ export function AnalyticsView() {
                             {producto.currentStock} / {producto.minStock}
                           </Text>
                         </InlineStack>
-                        <ProgressBar 
-                          progress={porcentaje} 
-                          size="small" 
-                          tone={porcentaje <= 25 ? 'critical' : 'warning'} 
+                        <ProgressBar
+                          progress={porcentaje}
+                          size="small"
+                          tone={porcentaje <= 25 ? 'critical' : 'warning'}
                         />
                       </BlockStack>
                     );

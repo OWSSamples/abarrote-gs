@@ -574,6 +574,7 @@ export async function fetchClientes(): Promise<Cliente[]> {
     address: r.address,
     balance: numVal(r.balance),
     creditLimit: numVal(r.creditLimit),
+    points: numVal(r.points),
     createdAt: r.createdAt.toISOString(),
     lastTransaction: r.lastTransaction?.toISOString() ?? null,
   }));

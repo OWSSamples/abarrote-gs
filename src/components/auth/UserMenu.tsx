@@ -1,18 +1,18 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { 
-  ActionList, 
-  Popover, 
-  Avatar, 
-  Text, 
+import {
+  ActionList,
+  Popover,
+  Avatar,
+  Text,
   InlineStack,
   BlockStack,
   Divider,
   Badge,
   Icon,
 } from '@shopify/polaris';
-import { 
+import {
   ProfileIcon,
   ImageIcon,
   PhoneIcon,
@@ -45,11 +45,11 @@ export function UserMenu() {
 
   const initials = user.displayName
     ? user.displayName
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
     : user.email?.charAt(0).toUpperCase() || 'U';
 
   // Detectar método de autenticación
@@ -100,16 +100,16 @@ export function UserMenu() {
           {initials}
         </div>
         <div style={{ textAlign: 'left' }}>
-          <Text as="p" variant="bodyMd" fontWeight="semibold" tone="inverse">
+          <Text as="p" variant="bodyMd" fontWeight="semibold" tone="text-inverse">
             {user.displayName || user.email?.split('@')[0] || 'Usuario'}
           </Text>
           {currentUserRole && (
-            <Text as="p" variant="bodySm" tone="inverse">
+            <Text as="p" variant="bodySm" tone="text-inverse">
               {currentUserRole.roleId === 'owner'
                 ? 'Dueño'
                 : currentUserRole.roleId === 'cashier'
-                ? 'Cajero'
-                : 'Usuario'}
+                  ? 'Cajero'
+                  : 'Usuario'}
             </Text>
           )}
         </div>
@@ -147,8 +147,8 @@ export function UserMenu() {
                   <Badge tone="info">{authProvider}</Badge>
                   {currentUserRole && (
                     <Badge tone="success">
-                      {currentUserRole.roleId === 'owner' ? 'Dueño' : 
-                       currentUserRole.roleId === 'cashier' ? 'Cajero' : 'Usuario'}
+                      {currentUserRole.roleId === 'owner' ? 'Dueño' :
+                        currentUserRole.roleId === 'cashier' ? 'Cajero' : 'Usuario'}
                     </Badge>
                   )}
                 </InlineStack>

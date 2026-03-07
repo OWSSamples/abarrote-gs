@@ -17,6 +17,7 @@ interface SearchableSelectProps {
     placeholder?: string;
     error?: string;
     helpText?: string;
+    labelHidden?: boolean;
 }
 
 export function SearchableSelect({
@@ -27,6 +28,7 @@ export function SearchableSelect({
     placeholder = 'Buscar...',
     error,
     helpText,
+    labelHidden,
 }: SearchableSelectProps) {
     const [inputValue, setInputValue] = useState('');
     const [optionsState, setOptionsState] = useState(options);
@@ -66,6 +68,7 @@ export function SearchableSelect({
         <Autocomplete.TextField
             onChange={updateText}
             label={label}
+            labelHidden={labelHidden}
             value={inputValue || (selected ? options.find(o => o.value === selected)?.label || '' : '')}
             placeholder={placeholder}
             prefix={<Icon source={SearchIcon} tone="subdued" />}

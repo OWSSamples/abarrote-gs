@@ -976,7 +976,7 @@ ${centerLine(`TC: ${tcCode}`)}
                   <Banner tone="info">
                     <InlineStack align="space-between">
                       <Text as="p">Puntos disponibles:</Text>
-                      <Badge tone="success">{Math.floor(parseFloat(String(c.points)))} pts</Badge>
+                      <Badge tone="success">{`${Math.floor(parseFloat(String(c.points)))} pts`}</Badge>
                     </InlineStack>
                   </Banner>
                 );

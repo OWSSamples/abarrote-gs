@@ -42,7 +42,7 @@ const SERVICIOS = [
 export function ServiciosModal({ open, onClose }: ServiciosModalProps) {
   const { showSuccess, showError } = useToast();
   const { currentUserRole } = useDashboardStore();
-  
+
   const [tipo, setTipo] = useState<'recarga' | 'servicio'>('recarga');
   const [categoria, setCategoria] = useState('');
   const [numeroReferencia, setNumeroReferencia] = useState('');
@@ -50,11 +50,11 @@ export function ServiciosModal({ open, onClose }: ServiciosModalProps) {
   const [montoCustom, setMontoCustom] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const categoriaActual = tipo === 'recarga' 
+  const categoriaActual = tipo === 'recarga'
     ? RECARGAS.find(r => r.value === categoria)
     : SERVICIOS.find(s => s.value === categoria);
 
-  const comision = tipo === 'recarga' 
+  const comision = tipo === 'recarga'
     ? parseFloat(monto) * 0.03 // 3% comisión en recargas
     : (SERVICIOS.find(s => s.value === categoria)?.comision || 0);
 
@@ -70,10 +70,10 @@ export function ServiciosModal({ open, onClose }: ServiciosModalProps) {
     try {
       const montoFinal = parseFloat(monto || montoCustom);
       const folio = `SRV-${Date.now()}`;
-      
+
       // Aquí iría la integración con el proveedor de servicios
       // Por ahora solo registramos localmente
-      
+
       const servicio = {
         id: crypto.randomUUID(),
         tipo,
@@ -92,7 +92,7 @@ export function ServiciosModal({ open, onClose }: ServiciosModalProps) {
       console.log('Servicio registrado:', servicio);
 
       showSuccess(`${tipo === 'recarga' ? 'Recarga' : 'Pago'} procesado: ${folio}`);
-      
+
       // Reset form
       setCategoria('');
       setNumeroReferencia('');
@@ -175,7 +175,7 @@ export function ServiciosModal({ open, onClose }: ServiciosModalProps) {
                     variant={monto === String(m) ? 'primary' : 'secondary'}
                     onClick={() => { setMonto(String(m)); setMontoCustom(''); }}
                   >
-                    ${m}
+                    {`$${m}`}
                   </Button>
                 ))}
               </InlineStack>

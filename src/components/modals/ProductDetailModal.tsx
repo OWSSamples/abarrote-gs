@@ -289,20 +289,20 @@ export function ProductDetailModal({
                 </Text>
                 <Badge
                   tone={
-                    stockStatus.status === 'critical'
+                    stockStatus?.status === 'critical'
                       ? 'critical'
-                      : stockStatus.status === 'warning'
+                      : stockStatus?.status === 'low'
                         ? 'warning'
                         : 'success'
                   }
                 >
-                  {`${Math.round(stockStatus.percentage)}%`}
+                  {`${Math.round(stockStatus?.percentage ?? 0)}%`}
                 </Badge>
               </BlockStack>
             </InlineStack>
             <ProgressBar
-              progress={stockStatus.percentage}
-              tone={stockStatus.status === 'critical' ? 'critical' : undefined}
+              progress={stockStatus?.percentage ?? 0}
+              tone={stockStatus?.status === 'critical' ? 'critical' : undefined}
               size="small"
             />
           </BlockStack>

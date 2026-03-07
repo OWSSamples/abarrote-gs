@@ -168,12 +168,13 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
                   helpText="No se puede modificar"
                 />
               </FormLayout.Group>
-              
+
               <FormLayout.Group>
                 <TextField
                   label="Número de empleado"
                   value={currentUserRole?.employeeNumber || 'Sin asignar'}
                   disabled
+                  autoComplete="off"
                   helpText="Asignado por el administrador"
                 />
                 <TextField
@@ -233,21 +234,21 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
                   <Text as="span" variant="bodyMd" tone="subdued">Rol en el sistema</Text>
                   <Badge tone="success" size="large">{roleName}</Badge>
                 </InlineStack>
-                
+
                 <InlineStack align="space-between" blockAlign="center">
                   <Text as="span" variant="bodyMd" tone="subdued">Método de autenticación</Text>
                   <Badge tone="info" size="large">{getAuthProvider()}</Badge>
                 </InlineStack>
-                
+
                 <InlineStack align="space-between" blockAlign="center">
                   <Text as="span" variant="bodyMd" tone="subdued">Miembro desde</Text>
                   <Text as="span" variant="bodyMd" fontWeight="medium">
-                    {currentUserRole 
-                      ? new Date(currentUserRole.createdAt).toLocaleDateString('es-MX', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        }) 
+                    {currentUserRole
+                      ? new Date(currentUserRole.createdAt).toLocaleDateString('es-MX', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })
                       : '—'}
                   </Text>
                 </InlineStack>
@@ -258,7 +259,7 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
           {/* Banner informativo */}
           <Banner tone="info">
             <p>
-              <strong>Cambiar contraseña:</strong> Cierra sesión y usa la opción "Olvidé mi contraseña" 
+              <strong>Cambiar contraseña:</strong> Cierra sesión y usa la opción "Olvidé mi contraseña"
               en la pantalla de inicio de sesión.
             </p>
           </Banner>

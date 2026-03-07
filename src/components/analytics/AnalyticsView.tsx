@@ -228,7 +228,7 @@ export function AnalyticsView() {
                     },
                   }}
                   yAxisOptions={{
-                    labelFormatter: (value) => formatCurrency(value),
+                    labelFormatter: (value) => formatCurrency(Number(value ?? 0)),
                   }}
                 />
               </div>
@@ -249,7 +249,7 @@ export function AnalyticsView() {
                   }))}
                   theme="Light"
                   yAxisOptions={{
-                    labelFormatter: (value) => formatCurrency(value),
+                    labelFormatter: (value) => formatCurrency(Number(value ?? 0)),
                   }}
                 />
               </div>
@@ -258,7 +258,7 @@ export function AnalyticsView() {
         </Layout.Section>
 
         {/* Top 10 Productos */}
-        <Layout.Section oneHalf>
+        <Layout.Section variant="oneHalf">
           <Card>
             <BlockStack gap="400">
               <Text as="h3" variant="headingMd">Top 10 Productos Más Vendidos</Text>
@@ -267,7 +267,7 @@ export function AnalyticsView() {
                   <div key={producto.id}>
                     <InlineStack align="space-between" blockAlign="center">
                       <InlineStack gap="200" blockAlign="center">
-                        <Badge tone={index < 3 ? 'success' : 'info'}>#{index + 1}</Badge>
+                        <Badge tone={index < 3 ? 'success' : 'info'}>{`#${index + 1}`}</Badge>
                         <BlockStack gap="100">
                           <Text as="span" variant="bodyMd" fontWeight="semibold">
                             {producto.name}
@@ -295,7 +295,7 @@ export function AnalyticsView() {
             <BlockStack gap="400">
               <InlineStack align="space-between">
                 <Text as="h3" variant="headingMd">Productos con Stock Bajo</Text>
-                <Badge tone="critical">{productosStockBajo.length}</Badge>
+                <Badge tone="critical">{String(productosStockBajo.length)}</Badge>
               </InlineStack>
               <BlockStack gap="300">
                 {productosStockBajo.length === 0 ? (
@@ -318,7 +318,7 @@ export function AnalyticsView() {
                         <ProgressBar
                           progress={porcentaje}
                           size="small"
-                          tone={porcentaje <= 25 ? 'critical' : 'warning'}
+                          tone={porcentaje <= 25 ? 'critical' : 'highlight'}
                         />
                       </BlockStack>
                     );
@@ -330,7 +330,7 @@ export function AnalyticsView() {
         </Layout.Section>
 
         {/* Resumen de Mermas */}
-        <Layout.Section oneThird>
+        <Layout.Section variant="oneThird">
           <Card>
             <BlockStack gap="200">
               <Text as="p" variant="bodySm" tone="subdued">Mermas Totales</Text>
@@ -346,7 +346,7 @@ export function AnalyticsView() {
         </Layout.Section>
 
         {/* Inventario Total */}
-        <Layout.Section oneThird>
+        <Layout.Section variant="oneThird">
           <Card>
             <BlockStack gap="200">
               <Text as="p" variant="bodySm" tone="subdued">Valor de Inventario</Text>
@@ -364,7 +364,7 @@ export function AnalyticsView() {
         </Layout.Section>
 
         {/* Productos Registrados */}
-        <Layout.Section oneThird>
+        <Layout.Section variant="oneThird">
           <Card>
             <BlockStack gap="200">
               <Text as="p" variant="bodySm" tone="subdued">Catálogo</Text>

@@ -384,6 +384,8 @@ export async function fetchSaleRecords(): Promise<SaleRecord[]> {
       change: numVal(row.change),
       date: row.date.toISOString(),
       cajero: row.cajero,
+      pointsEarned: numVal(row.pointsEarned),
+      pointsUsed: numVal(row.pointsUsed),
     });
   }
 

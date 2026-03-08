@@ -16,6 +16,7 @@ import {
   DropZone,
   Thumbnail,
   Box,
+  FormLayout,
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { DeleteIcon, EditIcon, ImageIcon } from '@shopify/polaris-icons';
@@ -296,7 +297,7 @@ export function ProductDetailModal({
               <Text variant="headingLg" as="h2">{product.name}</Text>
               <InlineStack gap="200">
                 <Badge tone="info">{product.category}</Badge>
-                {stockStatus && <Badge tone={stockStatus.tone}>{stockStatus.label}</Badge>}
+                {stockStatus && <Badge tone={stockStatus.status === 'critical' ? 'critical' : stockStatus.status === 'low' ? 'warning' : 'success'}>{stockStatus.status === 'critical' ? 'Crítico' : stockStatus.status === 'low' ? 'Bajo' : 'Normal'}</Badge>}
               </InlineStack>
             </BlockStack>
           </InlineStack>

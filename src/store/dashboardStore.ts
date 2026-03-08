@@ -37,6 +37,7 @@ import {
   assignUserRole as dbAssignUserRole,
   updateUserRole as dbUpdateUserRole,
   removeUserRole as dbRemoveUserRole,
+  updateUserPin as dbUpdateUserPin,
   ensureOwnerRole as dbEnsureOwnerRole,
   getUserRoleByUid as dbGetUserRoleByUid,
   fetchRoleDefinitions as dbFetchRoleDefinitions,
@@ -45,6 +46,10 @@ import {
   deleteRoleDefinition as dbDeleteRoleDefinition,
   updateUserProfile as dbUpdateUserProfile,
   createAutoCorteCaja as dbCreateAutoCorteCaja,
+  authorizePin as dbAuthorizePin,
+  generateGlobalId as dbGenerateGlobalId,
+  deactivateUser as dbDeactivateUser,
+  reactivateUser as dbReactivateUser,
 } from '@/app/actions/db-actions';
 
 interface DashboardStore extends DashboardState {
@@ -103,9 +108,14 @@ interface DashboardStore extends DashboardState {
   ensureOwnerRole: (firebaseUid: string, email: string, displayName: string) => Promise<UserRoleRecord>;
   assignRole: (data: { firebaseUid: string; email: string; displayName: string; roleId: string }, assignedByUid: string) => Promise<void>;
   updateRole: (firebaseUid: string, newRoleId: string, assignedByUid: string) => Promise<void>;
+  updateUserPin: (firebaseUid: string, pinCode: string) => Promise<void>;
   removeRole: (firebaseUid: string) => Promise<void>;
   getUserRole: (firebaseUid: string) => Promise<UserRoleRecord | null>;
+  generateGlobalId: (firebaseUid: string) => Promise<string>;
+  deactivateUser: (firebaseUid: string) => Promise<void>;
+  reactivateUser: (firebaseUid: string) => Promise<void>;
   updateUserProfile: (firebaseUid: string, data: { displayName?: string; avatarUrl?: string }) => Promise<UserRoleRecord>;
+  authorizePin: (pinCode: string, requiredPermission: PermissionKey) => Promise<{ success: boolean; authorizedByUid?: string; userDisplayName?: string; error?: string }>;
   checkMidnightCorte: () => Promise<void>;
   // Inventory Audits
   inventoryAudits: InventoryAudit[];
@@ -588,6 +598,20 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
+  updateUserPin: async (firebaseUid, pinCode) => {
+    try {
+      await dbUpdateUserPin(firebaseUid, pinCode);
+      const state = get();
+      set({ userRoles: state.userRoles.map(r => r.firebaseUid === firebaseUid ? { ...r, pinCode, updatedAt: new Date().toISOString() } : r) });
+      if (state.currentUserRole?.firebaseUid === firebaseUid) {
+        set({ currentUserRole: { ...state.currentUserRole, pinCode } });
+      }
+    } catch (error) {
+      console.error('Error updating user PIN:', error);
+      throw error;
+    }
+  },
+
   removeRole: async (firebaseUid) => {
     try {
       await dbRemoveUserRole(firebaseUid);
@@ -595,6 +619,54 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       set({ userRoles: state.userRoles.filter(r => r.firebaseUid !== firebaseUid) });
     } catch (error) {
       console.error('Error removing role:', error);
+      throw error;
+    }
+  },
+
+  generateGlobalId: async (firebaseUid) => {
+    try {
+      const globalId = await dbGenerateGlobalId(firebaseUid);
+      const state = get();
+      set({
+        userRoles: state.userRoles.map(r =>
+          r.firebaseUid === firebaseUid ? { ...r, globalId, updatedAt: new Date().toISOString() } : r
+        ),
+      });
+      return globalId;
+    } catch (error) {
+      console.error('Error generating Global ID:', error);
+      throw error;
+    }
+  },
+
+  deactivateUser: async (firebaseUid) => {
+    try {
+      await dbDeactivateUser(firebaseUid);
+      const state = get();
+      const now = new Date().toISOString();
+      set({
+        userRoles: state.userRoles.map(r =>
+          r.firebaseUid === firebaseUid ? { ...r, status: 'baja' as const, deactivatedAt: now, updatedAt: now } : r
+        ),
+      });
+    } catch (error) {
+      console.error('Error deactivating user:', error);
+      throw error;
+    }
+  },
+
+  reactivateUser: async (firebaseUid) => {
+    try {
+      await dbReactivateUser(firebaseUid);
+      const state = get();
+      const now = new Date().toISOString();
+      set({
+        userRoles: state.userRoles.map(r =>
+          r.firebaseUid === firebaseUid ? { ...r, status: 'activo' as const, deactivatedAt: undefined, updatedAt: now } : r
+        ),
+      });
+    } catch (error) {
+      console.error('Error reactivating user:', error);
       throw error;
     }
   },
@@ -622,6 +694,16 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     } catch (error) {
       console.error('Error updating profile:', error);
       throw error;
+    }
+  },
+
+  authorizePin: async (pinCode: string, requiredPermission: PermissionKey) => {
+    try {
+      const result = await dbAuthorizePin(pinCode, requiredPermission);
+      return result;
+    } catch (error) {
+      console.error('Error authorizing PIN in store:', error);
+      return { success: false, error: 'Network error validating PIN' };
     }
   },
 

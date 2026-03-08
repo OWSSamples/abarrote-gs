@@ -84,7 +84,7 @@ export function ServiciosModal({ open, onClose }: ServiciosModalProps) {
         numeroReferencia,
         folio,
         estado: 'completado' as const,
-        cajero: currentUserRole?.employeeNumber || 'Cajero',
+        cajero: currentUserRole?.globalId || currentUserRole?.employeeNumber || 'Cajero',
         fecha: new Date().toISOString(),
       };
 

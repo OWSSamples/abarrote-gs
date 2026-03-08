@@ -12,8 +12,25 @@ import {
   ProgressBar,
   Divider,
   Select,
+  Box,
+  Icon,
+  InlineGrid,
+  Button,
+  ButtonGroup,
 } from '@shopify/polaris';
-import { LineChart } from '@shopify/polaris-viz';
+import {
+  PlusIcon,
+  MinusIcon,
+  CashDollarIcon,
+  ReceiptIcon,
+  ArrowUpIcon,
+  ChartVerticalIcon,
+  CalendarIcon,
+  RefreshIcon,
+  MaximizeIcon,
+  EditIcon
+} from '@shopify/polaris-icons';
+import { LineChart, DonutChart } from '@shopify/polaris-viz';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
 
@@ -141,95 +158,84 @@ export function AnalyticsView() {
   );
 
   return (
-    <Page title="Análisis y Métricas" fullWidth>
-      <Layout>
-        {/* KPIs Principales */}
-        <Layout.Section>
-          <InlineStack gap="400" wrap>
-            <Card>
+    <div style={{ background: '#f4f6f8', minHeight: '100%', paddingBottom: '2rem' }}>
+      <Page
+        title="Informes y estadísticas"
+        subtitle={`Última actualización: ${new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}`}
+        fullWidth
+        primaryAction={{ content: 'Nueva exploración' }}
+        secondaryActions={[
+          { content: '', icon: RefreshIcon },
+          { content: '', icon: MaximizeIcon },
+          { content: '', icon: EditIcon },
+        ]}
+      >
+        <BlockStack gap="400">
+
+          {/* Filters Row */}
+          <InlineStack gap="200">
+            <Button icon={CalendarIcon}>Hoy</Button>
+            <Button icon={CalendarIcon}>{new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</Button>
+            <Button>$ MXN $</Button>
+          </InlineStack>
+
+          {/* ROW 1: KPIs Principales */}
+          <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400">
+            <Card background="bg-surface">
               <BlockStack gap="200">
-                <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                  <Card>
-                    <BlockStack gap="200">
-                      <Text as="p" variant="bodySm" tone="subdued">Ventas Hoy</Text>
-                      <Text as="h2" variant="heading2xl" tone="success">
-                        {formatCurrency(ventasHoy)}
-                      </Text>
-                      <Text as="p" variant="bodySm">
-                        Ayer: {formatCurrency(ventasAyer)}
-                      </Text>
-                    </BlockStack>
-                  </Card>
-                </div>
+                <Text as="p" variant="bodySm" fontWeight="semibold">Ventas brutas</Text>
+                <InlineStack align="start" blockAlign="baseline" gap="200">
+                  <Text as="h3" variant="headingLg">{formatCurrency(totalVentas)}</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">—</Text>
+                </InlineStack>
+              </BlockStack>
+            </Card>
 
-                <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                  <Card>
-                    <BlockStack gap="200">
-                      <Text as="p" variant="bodySm" tone="subdued">Ventas del Mes</Text>
-                      <Text as="h2" variant="heading2xl" tone="success">
-                        {formatCurrency(ventasMesActual)}
-                      </Text>
-                      <Text as="p" variant="bodySm">
-                        {new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
-                      </Text>
-                    </BlockStack>
-                  </Card>
-                </div>
+            <Card background="bg-surface">
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm" fontWeight="semibold">Tasa de clientes habituales</Text>
+                <InlineStack align="start" blockAlign="baseline" gap="200">
+                  <Text as="h3" variant="headingLg">0 %</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">—</Text>
+                </InlineStack>
+              </BlockStack>
+            </Card>
 
-                <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                  <Card>
-                    <BlockStack gap="200">
-                      <Text as="p" variant="bodySm" tone="subdued">Utilidad Bruta</Text>
-                      <Text as="h2" variant="heading2xl" tone={utilidadBruta >= 0 ? 'success' : 'critical'}>
-                        {formatCurrency(utilidadBruta)}
-                      </Text>
-                      <Text as="p" variant="bodySm">Margen: {margenUtilidad.toFixed(1)}%</Text>
-                    </BlockStack>
-                  </Card>
-                </div>
+            <Card background="bg-surface">
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm" fontWeight="semibold">Pedidos preparados</Text>
+                <InlineStack align="start" blockAlign="baseline" gap="200">
+                  <Text as="h3" variant="headingLg">0</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">—</Text>
+                </InlineStack>
+              </BlockStack>
+            </Card>
 
-                <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                  <Card>
-                    <BlockStack gap="200">
-                      <Text as="p" variant="bodySm" tone="subdued">Ticket Promedio</Text>
-                      <Text as="h2" variant="heading2xl">
-                        {formatCurrency(ticketPromedio)}
-                      </Text>
-                      <Text as="p" variant="bodySm">{saleRecords.length} transacciones</Text>
-                    </BlockStack>
-                  </Card>
-                </div>
-              </InlineStack>
-            </Layout.Section>
+            <Card background="bg-surface">
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm" fontWeight="semibold">Pedidos</Text>
+                <InlineStack align="start" blockAlign="baseline" gap="200">
+                  <Text as="h3" variant="headingLg">{saleRecords.length}</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">—</Text>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+          </InlineGrid>
 
-            {/* Gráfica de Ventas */}
+          {/* ROW 2: Historico y Desglose */}
+          <Layout>
+            {/* Main Chart */}
             <Layout.Section>
-              <Card>
+              <Card background="bg-surface">
                 <BlockStack gap="400">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="h3" variant="headingMd">Historial de Ventas</Text>
-                    <Select
-                      label=""
-                      labelHidden
-                      options={[
-                        { label: 'Últimos 7 días', value: '7' },
-                        { label: 'Últimos 15 días', value: '15' },
-                        { label: 'Últimos 30 días', value: '30' },
-                        { label: 'Últimos 60 días', value: '60' },
-                        { label: 'Últimos 90 días', value: '90' },
-                      ]}
-                      value={periodo}
-                      onChange={setPeriodo}
-                    />
+                  <Text as="h3" variant="headingMd">Ventas totales a lo largo del tiempo</Text>
+                  <InlineStack align="start" blockAlign="baseline" gap="200">
+                    <Text as="h2" variant="headingXl">{formatCurrency(totalVentas)}</Text>
+                    <Text as="span" variant="bodySm" tone="subdued">—</Text>
                   </InlineStack>
-                  <div style={{ height: 300 }}>
+                  <div style={{ height: 350 }}>
                     <LineChart
-                      data={[
-                        {
-                          name: 'Ventas',
-                          data: ventasPorDia,
-                        },
-                      ]}
+                      data={[{ name: 'Ventas', data: ventasPorDia }]}
                       theme="Light"
                       xAxisOptions={{
                         labelFormatter: (value) => {
@@ -246,149 +252,174 @@ export function AnalyticsView() {
               </Card>
             </Layout.Section>
 
-            {/* Ventas por Método de Pago */}
-            <Layout.Section>
-              <Card>
+            {/* Desglose */}
+            <Layout.Section variant="oneThird">
+              <Card background="bg-surface">
                 <BlockStack gap="400">
-                  <Text as="h3" variant="headingMd">Ventas por Método de Pago</Text>
-                  <div style={{ height: 300 }}>
-                    <LineChart
-                      data={ventasPorMetodo.map(({ metodo, total }) => ({
-                        name: metodo,
-                        data: [{ key: metodo, value: total }],
-                      }))}
-                      theme="Light"
-                      yAxisOptions={{
-                        labelFormatter: (value) => formatCurrency(Number(value ?? 0)),
-                      }}
-                    />
+                  <Text as="h3" variant="headingMd">Desglose de ventas totales</Text>
+                  <BlockStack gap="300">
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodyMd">Ventas brutas</Text>
+                      <InlineStack gap="100">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(totalVentas)}</Text>
+                        <Text as="span" tone="subdued">—</Text>
+                      </InlineStack>
+                    </InlineStack>
+
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodyMd">Descuentos</Text>
+                      <InlineStack gap="100">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(0)}</Text>
+                        <Text as="span" tone="subdued">—</Text>
+                      </InlineStack>
+                    </InlineStack>
+
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodyMd">Devoluciones</Text>
+                      <InlineStack gap="100">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(0)}</Text>
+                        <Text as="span" tone="subdued">—</Text>
+                      </InlineStack>
+                    </InlineStack>
+
+                    <Box background="bg-surface-secondary" padding="200" borderRadius="100">
+                      <InlineStack align="space-between">
+                        <Text as="span" variant="bodyMd">Ventas netas</Text>
+                        <InlineStack gap="100">
+                          <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(totalVentas)}</Text>
+                          <Text as="span" tone="subdued">—</Text>
+                        </InlineStack>
+                      </InlineStack>
+                    </Box>
+
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodyMd">Cargos de envío</Text>
+                      <InlineStack gap="100">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(0)}</Text>
+                        <Text as="span" tone="subdued">—</Text>
+                      </InlineStack>
+                    </InlineStack>
+
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodyMd">Cargos por devolución</Text>
+                      <InlineStack gap="100">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(0)}</Text>
+                        <Text as="span" tone="subdued">—</Text>
+                      </InlineStack>
+                    </InlineStack>
+
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodyMd">Impuestos</Text>
+                      <InlineStack gap="100">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(0)}</Text>
+                        <Text as="span" tone="subdued">—</Text>
+                      </InlineStack>
+                    </InlineStack>
+
+                    <Divider />
+
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodyMd">Ventas totales</Text>
+                      <InlineStack gap="100">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(totalVentas)}</Text>
+                        <Text as="span" tone="subdued">—</Text>
+                      </InlineStack>
+                    </InlineStack>
+                  </BlockStack>
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          </Layout>
+
+          {/* ROW 3: 3 Columns */}
+          <Layout>
+            {/* Method */}
+            <Layout.Section variant="oneThird">
+              <Card background="bg-surface">
+                <BlockStack gap="400">
+                  <Text as="h3" variant="headingMd">Ventas totales por canal de ventas</Text>
+                  <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {ventasPorMetodo.length === 0 ? (
+                      <Text as="p" tone="subdued">No hay datos para este rango de fechas</Text>
+                    ) : (
+                      <DonutChart
+                        data={[{
+                          name: 'Ventas por Canal',
+                          data: ventasPorMetodo.map(({ metodo, total }) => ({
+                            key: metodo,
+                            value: total,
+                          })),
+                        }]}
+                        theme="Light"
+                        legendPosition="bottom"
+                      />
+                    )}
                   </div>
                 </BlockStack>
               </Card>
             </Layout.Section>
 
-            {/* Top 10 Productos */}
-            <Layout.Section variant="oneHalf">
-              <Card>
+            {/* Average Order Value (just placeholder line chart for now, or use our ticket promedio over time if we have it? No just use sales data) */}
+            <Layout.Section variant="oneThird">
+              <Card background="bg-surface">
                 <BlockStack gap="400">
-                  <Text as="h3" variant="headingMd">Top 10 Productos Más Vendidos</Text>
-                  <BlockStack gap="300">
-                    {topProductos.map((producto, index) => (
-                      <div key={producto.id}>
-                        <InlineStack align="space-between" blockAlign="center">
-                          <InlineStack gap="200" blockAlign="center">
-                            <Badge tone={index < 3 ? 'success' : 'info'}>{`#${index + 1}`}</Badge>
-                            <BlockStack gap="100">
-                              <Text as="span" variant="bodyMd" fontWeight="semibold">
-                                {producto.name}
-                              </Text>
-                              <Text as="span" variant="bodySm" tone="subdued">
-                                {producto.quantity} unidades
-                              </Text>
-                            </BlockStack>
-                          </InlineStack>
-                          <Text as="span" variant="bodyMd" fontWeight="semibold">
-                            {formatCurrency(producto.total)}
-                          </Text>
-                        </InlineStack>
-                        {index < topProductos.length - 1 && <Divider />}
-                      </div>
-                    ))}
-                  </BlockStack>
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-
-            {/* Productos con Stock Bajo */}
-            <Layout.Section>
-              <Card>
-                <BlockStack gap="400">
-                  <InlineStack align="space-between">
-                    <Text as="h3" variant="headingMd">Productos con Stock Bajo</Text>
-                    <Badge tone="critical">{String(productosStockBajo.length)}</Badge>
+                  <Text as="h3" variant="headingMd">Valor medio del pedido a lo largo del tiempo</Text>
+                  <InlineStack align="start" blockAlign="baseline" gap="200">
+                    <Text as="h2" variant="headingXl">{formatCurrency(ticketPromedio)}</Text>
+                    <Text as="span" variant="bodySm" tone="subdued">—</Text>
                   </InlineStack>
-                  <BlockStack gap="300">
-                    {productosStockBajo.length === 0 ? (
-                      <Text as="p" variant="bodyMd" tone="subdued">
-                        No hay productos con stock bajo
-                      </Text>
+                  <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {ventasPorDia.length === 0 ? (
+                      <Text as="p" tone="subdued">No hay datos para este rango de fechas</Text>
                     ) : (
-                      productosStockBajo.map((producto) => {
-                        const porcentaje = (producto.currentStock / producto.minStock) * 100;
-                        return (
-                          <BlockStack key={producto.id} gap="200">
-                            <InlineStack align="space-between">
-                              <Text as="span" variant="bodyMd" fontWeight="semibold">
-                                {producto.name}
-                              </Text>
-                              <Text as="span" variant="bodyMd">
-                                {producto.currentStock} / {producto.minStock}
-                              </Text>
+                      <LineChart
+                        data={[{ name: 'Promedio', data: ventasPorDia.map(d => ({ key: d.key, value: ticketPromedio })) }]}
+                        theme="Light"
+                        xAxisOptions={{ labelFormatter: () => '' }}
+                        yAxisOptions={{ labelFormatter: () => '' }}
+                      />
+                    )}
+                  </div>
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+
+            {/* Top Products */}
+            <Layout.Section variant="oneThird">
+              <Card background="bg-surface">
+                <BlockStack gap="400">
+                  <Text as="h3" variant="headingMd">Ventas totales por producto</Text>
+                  <div style={{ height: 250, overflowY: 'auto' }}>
+                    {topProductos.length === 0 ? (
+                      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text as="p" tone="subdued">No hay datos para este rango de fechas</Text>
+                      </div>
+                    ) : (
+                      <BlockStack gap="300">
+                        {topProductos.slice(0, 5).map((producto, index) => (
+                          <div key={producto.id}>
+                            <InlineStack align="space-between" blockAlign="center">
+                              <BlockStack gap="0">
+                                <Text as="span" variant="bodyMd">{producto.name}</Text>
+                              </BlockStack>
+                              <InlineStack gap="100">
+                                <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(producto.total)}</Text>
+                                <Text as="span" tone="subdued">—</Text>
+                              </InlineStack>
                             </InlineStack>
-                            <ProgressBar
-                              progress={porcentaje}
-                              size="small"
-                              tone={porcentaje <= 25 ? 'critical' : 'highlight'}
-                            />
-                          </BlockStack>
-                        );
-                      })
+                            {index < Math.min(topProductos.length, 5) - 1 && <div style={{ paddingTop: '8px' }}><Divider /></div>}
+                          </div>
+                        ))}
+                      </BlockStack>
                     )}
-                  </BlockStack>
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-
-            {/* Resumen de Mermas */}
-            <Layout.Section variant="oneThird">
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="p" variant="bodySm" tone="subdued">Mermas Totales</Text>
-                  <Text as="h2" variant="headingLg" tone="critical">
-                    {formatCurrency(totalMermas)}
-                  </Text>
-                  <Text as="p" variant="bodySm">{mermaRecords.length} registros</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    {totalVentas > 0 ? `${((totalMermas / totalVentas) * 100).toFixed(2)}% de ventas` : '0%'}
-                  </Text>
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-
-            {/* Inventario Total */}
-            <Layout.Section variant="oneThird">
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="p" variant="bodySm" tone="subdued">Valor de Inventario</Text>
-                  <Text as="h2" variant="headingLg">
-                    {formatCurrency(
-                      products.reduce((sum, p) => sum + (p.currentStock * parseFloat(p.unitPrice.toString())), 0)
-                    )}
-                  </Text>
-                  <Text as="p" variant="bodySm">{products.length} productos</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    {products.reduce((sum, p) => sum + p.currentStock, 0)} unidades totales
-                  </Text>
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-
-            {/* Productos Registrados */}
-            <Layout.Section variant="oneThird">
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="p" variant="bodySm" tone="subdued">Catálogo</Text>
-                  <Text as="h2" variant="headingLg">
-                    {products.length}
-                  </Text>
-                  <Text as="p" variant="bodySm">productos registrados</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    {kpiData?.lowStockProducts || 0} con stock bajo
-                  </Text>
+                  </div>
                 </BlockStack>
               </Card>
             </Layout.Section>
           </Layout>
-        </Page>
-        );
+
+        </BlockStack>
+      </Page>
+    </div>
+  );
 }

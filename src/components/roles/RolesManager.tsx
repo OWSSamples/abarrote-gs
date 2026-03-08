@@ -50,8 +50,12 @@ export function RolesManager() {
     fetchRoles,
     assignRole,
     updateRole,
+    updateUserPin,
     removeRole,
     ensureOwnerRole,
+    generateGlobalId,
+    deactivateUser,
+    reactivateUser,
   } = useDashboardStore();
   const { showSuccess, showError } = useToast();
 
@@ -76,7 +80,9 @@ export function RolesManager() {
   const [formDisplayName, setFormDisplayName] = useState('');
   const [formFirebaseUid, setFormFirebaseUid] = useState('');
   const [formRoleId, setFormRoleId] = useState('');
+  const [formPinCode, setFormPinCode] = useState('');
   const [editRoleId, setEditRoleId] = useState('');
+  const [editPinCode, setEditPinCode] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Permissions detail modal
@@ -212,6 +218,7 @@ export function RolesManager() {
     setFormEmail('');
     setFormDisplayName('');
     setFormFirebaseUid('');
+    setFormPinCode('');
     const defaultRole = roleDefinitions.find((d) => d.name === 'Cajero') ?? roleDefinitions[0];
     if (defaultRole) setFormRoleId(defaultRole.id);
   };
@@ -224,15 +231,19 @@ export function RolesManager() {
     if (!user || !formRoleId) return;
     setSaving(true);
     try {
+      const pendingUid = formFirebaseUid || `pending-${Date.now()}`;
       await assignRole(
         {
-          firebaseUid: formFirebaseUid || `pending-${Date.now()}`,
+          firebaseUid: pendingUid,
           email: formEmail.trim(),
           displayName: formDisplayName.trim(),
           roleId: formRoleId,
         },
         user.uid
       );
+      if (formPinCode.trim()) {
+        await updateUserPin(pendingUid, formPinCode.trim());
+      }
       const roleName = roleMap.get(formRoleId)?.name ?? '';
       showSuccess(`Rol ${roleName} asignado a ${formEmail}`);
       resetUserForm();
@@ -242,15 +253,18 @@ export function RolesManager() {
     } finally {
       setSaving(false);
     }
-  }, [formEmail, formDisplayName, formFirebaseUid, formRoleId, user, assignRole, roleMap, showSuccess, showError]);
+  }, [formEmail, formDisplayName, formFirebaseUid, formRoleId, formPinCode, user, assignRole, updateUserPin, roleMap, showSuccess, showError]);
 
   const handleEditUser = useCallback(async () => {
     if (!selectedUser || !user) return;
     setSaving(true);
     try {
       await updateRole(selectedUser.firebaseUid, editRoleId, user.uid);
+      if (editPinCode.trim()) {
+        await updateUserPin(selectedUser.firebaseUid, editPinCode.trim());
+      }
       const roleName = roleMap.get(editRoleId)?.name ?? '';
-      showSuccess(`Rol actualizado a ${roleName}`);
+      showSuccess(`Rol y accesos actualizados a ${roleName}`);
       setEditOpen(false);
       setSelectedUser(null);
     } catch {
@@ -258,7 +272,7 @@ export function RolesManager() {
     } finally {
       setSaving(false);
     }
-  }, [selectedUser, editRoleId, user, updateRole, roleMap, showSuccess, showError]);
+  }, [selectedUser, editRoleId, editPinCode, user, updateRole, updateUserPin, roleMap, showSuccess, showError]);
 
   const handleDeleteUser = useCallback(async () => {
     if (!selectedUser) return;
@@ -278,6 +292,7 @@ export function RolesManager() {
   const openEditUser = (record: UserRoleRecord) => {
     setSelectedUser(record);
     setEditRoleId(record.roleId);
+    setEditPinCode(record.pinCode || '');
     setEditOpen(true);
   };
 
@@ -374,22 +389,37 @@ export function RolesManager() {
     );
   });
 
-  // ---- User Roles Table Rows ----
   const userRows = userRoles.map((record, index) => {
     const roleDef = roleMap.get(record.roleId);
     const roleIndex = roleDefinitions.findIndex((d) => d.id === record.roleId);
     const isOwnerUser = roleDef?.name === 'Propietario';
     const isSelf = record.firebaseUid === user?.uid;
+    const isBaja = record.status === 'baja';
 
     return (
-      <IndexTable.Row id={record.id} key={record.id} position={index}>
+      <IndexTable.Row id={record.id} key={record.id} position={index} tone={isBaja ? 'subdued' : undefined}>
         <IndexTable.Cell>
-          <Text variant="bodyMd" fontWeight="bold" as="span">
-            {record.displayName || '(sin nombre)'}
-          </Text>
+          <InlineStack gap="200" blockAlign="center">
+            <Text variant="bodyMd" fontWeight="bold" as="span" tone={isBaja ? 'subdued' : undefined}>
+              {record.displayName || '(sin nombre)'}
+            </Text>
+            {isBaja && <Badge tone="critical">Baja</Badge>}
+          </InlineStack>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <Text variant="bodyMd" as="span">{record.email}</Text>
+          <Text variant="bodyMd" as="span" tone={isBaja ? 'subdued' : undefined}>{record.email}</Text>
+          {record.pinCode && (
+            <div style={{ marginTop: '2px' }}>
+              <Badge tone="info" size="small">PIN Asignado</Badge>
+            </div>
+          )}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {record.globalId ? (
+            <Badge tone="success">{record.globalId}</Badge>
+          ) : (
+            <Text variant="bodySm" as="span" tone="subdued">Sin Global ID</Text>
+          )}
         </IndexTable.Cell>
         <IndexTable.Cell>
           <Badge tone={roleIndex >= 0 ? getBadgeTone(roleIndex) : 'new'}>
@@ -401,14 +431,69 @@ export function RolesManager() {
         </IndexTable.Cell>
         <IndexTable.Cell>
           <InlineStack gap="200">
-            {!isOwnerUser && !isSelf && (
+            {!isOwnerUser && !isSelf && !isBaja && (
               <>
+                {!record.globalId && (
+                  <Button
+                    size="micro"
+                    variant="primary"
+                    onClick={async () => {
+                      try {
+                        const gid = await generateGlobalId(record.firebaseUid);
+                        showSuccess(`Global ID generado: ${gid}`);
+                      } catch (e: unknown) {
+                        showError(e instanceof Error ? e.message : 'Error al generar Global ID');
+                      }
+                    }}
+                  >
+                    Generar ID
+                  </Button>
+                )}
                 <Button size="micro" icon={EditIcon} onClick={() => openEditUser(record)}>Editar</Button>
-                <Button size="micro" icon={DeleteIcon} tone="critical" onClick={() => openDeleteUser(record)}>Eliminar</Button>
+                <Button
+                  size="micro"
+                  tone="critical"
+                  onClick={() => openDeleteUser(record)}
+                >
+                  Dar de baja
+                </Button>
               </>
             )}
+            {!isOwnerUser && !isSelf && isBaja && (
+              <Button
+                size="micro"
+                onClick={async () => {
+                  try {
+                    await reactivateUser(record.firebaseUid);
+                    showSuccess(`${record.displayName || record.email} ha sido reactivado`);
+                  } catch (e: unknown) {
+                    showError(e instanceof Error ? e.message : 'Error al reactivar');
+                  }
+                }}
+              >
+                Reactivar
+              </Button>
+            )}
             {isOwnerUser && (
-              <Text variant="bodySm" as="span" tone="subdued">Protegido</Text>
+              <>
+                {!record.globalId && (
+                  <Button
+                    size="micro"
+                    variant="primary"
+                    onClick={async () => {
+                      try {
+                        const gid = await generateGlobalId(record.firebaseUid);
+                        showSuccess(`Global ID generado: ${gid}`);
+                      } catch (e: unknown) {
+                        showError(e instanceof Error ? e.message : 'Error al generar Global ID');
+                      }
+                    }}
+                  >
+                    Generar ID
+                  </Button>
+                )}
+                <Text variant="bodySm" as="span" tone="subdued">Protegido</Text>
+              </>
             )}
             {isSelf && !isOwnerUser && (
               <Text variant="bodySm" as="span" tone="subdued">Tu cuenta</Text>
@@ -482,6 +567,7 @@ export function RolesManager() {
               headings={[
                 { title: 'Nombre' },
                 { title: 'Correo' },
+                { title: 'Global ID' },
                 { title: 'Rol' },
                 { title: 'Desde' },
                 { title: 'Acciones' },
@@ -640,6 +726,16 @@ export function RolesManager() {
               value={formRoleId}
               onChange={setFormRoleId}
             />
+            <TextField
+              label="PIN de Aprobación (Opcional)"
+              type="password"
+              value={formPinCode}
+              onChange={setFormPinCode}
+              autoComplete="off"
+              maxLength={6}
+              placeholder="Ej: 1234"
+              helpText="PIN de 4 a 6 dígitos numéricos para autorizar anulaciones y mermas en mostrador."
+            />
             {formRoleId && roleMap.get(formRoleId) && (
               <Banner tone="info">
                 <p><strong>{roleMap.get(formRoleId)!.name}:</strong> {roleMap.get(formRoleId)!.description}</p>
@@ -675,6 +771,16 @@ export function RolesManager() {
               value={editRoleId}
               onChange={setEditRoleId}
             />
+            <TextField
+              label="Cambiar o Establecer PIN de Aprobación"
+              type="password"
+              value={editPinCode}
+              onChange={setEditPinCode}
+              autoComplete="off"
+              maxLength={6}
+              placeholder="Ej: 1234"
+              helpText="Este usuario usará este PIN numérico para autorizar bloqueos, mermas o cortes."
+            />
             {editRoleId && roleMap.get(editRoleId) && (
               <Banner tone="info">
                 <p><strong>{roleMap.get(editRoleId)!.name}:</strong> {roleMap.get(editRoleId)!.description}</p>
@@ -688,22 +794,45 @@ export function RolesManager() {
       <Modal
         open={deleteOpen}
         onClose={() => { setDeleteOpen(false); setSelectedUser(null); }}
-        title="Eliminar usuario del sistema"
+        title="Dar de baja al usuario"
         primaryAction={{
-          content: 'Eliminar',
+          content: 'Dar de baja',
           destructive: true,
-          onAction: handleDeleteUser,
+          onAction: async () => {
+            if (!selectedUser) return;
+            setSaving(true);
+            try {
+              await deactivateUser(selectedUser.firebaseUid);
+              showSuccess(`${selectedUser.displayName || selectedUser.email} ha sido dado de baja. Su Global ID queda reservado permanentemente.`);
+              setDeleteOpen(false);
+              setSelectedUser(null);
+            } catch (e: unknown) {
+              showError(e instanceof Error ? e.message : 'Error al dar de baja');
+            } finally {
+              setSaving(false);
+            }
+          },
           loading: saving,
         }}
         secondaryActions={[{ content: 'Cancelar', onAction: () => { setDeleteOpen(false); setSelectedUser(null); } }]}
       >
         <Modal.Section>
-          <BlockStack gap="200">
-            <Text as="p">
-              Se eliminara el acceso de <strong>{selectedUser?.displayName || selectedUser?.email}</strong> al sistema.
-            </Text>
+          <BlockStack gap="300">
+            <Banner tone="warning">
+              <p>
+                Al dar de baja a <strong>{selectedUser?.displayName || selectedUser?.email}</strong>, su acceso al sistema será revocado inmediatamente.
+              </p>
+            </Banner>
+            {selectedUser?.globalId && (
+              <Banner tone="info">
+                <p>
+                  El Global ID <strong>{selectedUser.globalId}</strong> quedará reservado permanentemente y no podrá ser reutilizado por nadie más.
+                </p>
+              </Banner>
+            )}
             <Text as="p" tone="subdued">
-              El usuario podra seguir iniciando sesion pero no tendra rol asignado.
+              El usuario no será eliminado del sistema. Su registro permanecerá para auditoría y su Global ID nunca podrá ser reasignado.
+              Si necesitas reincorporarlo, podrás usar la opción "Reactivar".
             </Text>
           </BlockStack>
         </Modal.Section>

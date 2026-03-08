@@ -2,14 +2,15 @@
 
 import { Navigation } from '@shopify/polaris';
 import {
-  HomeFilledIcon,
+  HomeIcon,
   OrderIcon,
   ProductIcon,
   PersonIcon,
   FinanceIcon,
-  ChartVerticalFilledIcon,
+  ChartVerticalIcon,
   SettingsIcon,
-  PersonLockFilledIcon,
+  PersonLockIcon,
+  NotificationIcon,
 } from '@shopify/polaris-icons';
 import type { PermissionKey } from '@/types';
 
@@ -18,20 +19,21 @@ interface SidebarNavProps {
   onSelect: (section: string) => void;
   badges?: {
     lowStock?: number;
+    notifications?: number;
   };
   /** Current user's permissions — used to show/hide nav items */
   permissions?: PermissionKey[];
 }
 
 const SALES_SECTIONS = ['sales', 'sales-history', 'sales-corte'];
-const PRODUCT_SECTIONS = ['inventory', 'catalog', 'inventory-audit'];
+const PRODUCT_SECTIONS = ['inventory', 'catalog', 'inventory-audit', 'inventory-priority', 'pedidos'];
 const CUSTOMER_SECTIONS = ['customers', 'fiado'];
 const FINANCE_SECTIONS = ['expenses', 'suppliers', 'pedidos'];
 const ANALYTICS_SECTIONS = ['analytics', 'reports'];
 
 /** Returns true if the user has ANY of the given permissions */
 function can(permissions: PermissionKey[] | undefined, ...keys: PermissionKey[]): boolean {
-  if (!permissions || permissions.length === 0) return true; // no restrictions loaded yet → show all (graceful)
+  if (!permissions || permissions.length === 0) return true; // no restrictions loaded yet or admin without role -> show all
   return keys.some((k) => permissions.includes(k));
 }
 
@@ -42,7 +44,7 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
   if (can(permissions, 'dashboard.view')) {
     mainItems.push({
       label: 'Inicio',
-      icon: HomeFilledIcon,
+      icon: HomeIcon,
       selected: selected === 'overview',
       onClick: () => onSelect('overview'),
     });
@@ -54,7 +56,7 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNav.push({
         url: '#',
         label: 'Historial',
-        matches: selected === 'sales-history',
+        selected: selected === 'sales-history',
         onClick: () => onSelect('sales-history'),
       });
     }
@@ -62,12 +64,12 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNav.push({
         url: '#',
         label: 'Corte de Caja',
-        matches: selected === 'sales-corte',
+        selected: selected === 'sales-corte',
         onClick: () => onSelect('sales-corte'),
       });
     }
     mainItems.push({
-      label: 'Ventas',
+      label: 'Pedidos',
       icon: OrderIcon,
       selected: SALES_SECTIONS.includes(selected),
       onClick: () => onSelect('sales'),
@@ -85,15 +87,21 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNavigationItems: [
         {
           url: '#',
-          label: 'Catalogo',
-          matches: selected === 'catalog',
+          label: 'Colecciones',
+          selected: selected === 'catalog',
           onClick: () => onSelect('catalog'),
         },
         {
           url: '#',
-          label: 'Auditoría',
-          matches: selected === 'inventory-audit',
-          onClick: () => onSelect('inventory-audit'),
+          label: 'Inventario',
+          selected: selected === 'inventory',
+          onClick: () => onSelect('inventory'),
+        },
+        {
+          url: '#',
+          label: 'Órdenes de compra',
+          selected: selected === 'pedidos',
+          onClick: () => onSelect('pedidos'),
         },
       ],
     });
@@ -104,7 +112,7 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
     if (can(permissions, 'fiado.view', 'fiado.create')) {
       subNav.push({
         url: '#',
-        label: 'Fiado / Credito',
+        label: 'Fiado / Crédito',
         matches: selected === 'fiado',
         onClick: () => onSelect('fiado'),
       });
@@ -127,7 +135,7 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNav.push({
         url: '#',
         label: 'Proveedores',
-        matches: selected === 'suppliers',
+        selected: selected === 'suppliers',
         onClick: () => onSelect('suppliers'),
       });
     }
@@ -135,7 +143,7 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNav.push({
         url: '#',
         label: 'Pedidos',
-        matches: selected === 'pedidos',
+        selected: selected === 'pedidos',
         onClick: () => onSelect('pedidos'),
       });
     }
@@ -159,8 +167,8 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       });
     }
     adminItems.push({
-      label: 'Analisis',
-      icon: ChartVerticalFilledIcon,
+      label: 'Análisis Integral',
+      icon: ChartVerticalIcon,
       selected: ANALYTICS_SECTIONS.includes(selected),
       onClick: () => onSelect('analytics'),
       ...(subNav.length > 0 ? { subNavigationItems: subNav } : {}),
@@ -172,8 +180,8 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
 
   if (can(permissions, 'roles.manage')) {
     systemItems.push({
-      label: 'Usuarios y Roles',
-      icon: PersonLockFilledIcon,
+      label: 'Usuarios y Accesos',
+      icon: PersonLockIcon,
       selected: selected === 'roles',
       onClick: () => onSelect('roles'),
     });
@@ -181,7 +189,7 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
 
   if (can(permissions, 'settings.view')) {
     systemItems.push({
-      label: 'Configuracion',
+      label: 'Configuración Avanzada',
       icon: SettingsIcon,
       selected: selected === 'settings',
       onClick: () => onSelect('settings'),
@@ -194,10 +202,10 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
         <Navigation.Section items={mainItems} fill />
       )}
       {adminItems.length > 0 && (
-        <Navigation.Section title="Administracion" separator items={adminItems} />
+        <Navigation.Section title="Administración Financiera" separator items={adminItems} />
       )}
       {systemItems.length > 0 && (
-        <Navigation.Section separator items={systemItems} />
+        <Navigation.Section title="Sistema" separator items={systemItems} />
       )}
     </Navigation>
   );

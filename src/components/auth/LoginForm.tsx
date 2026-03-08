@@ -91,7 +91,7 @@ export function LoginForm() {
                   type="password"
                   autoComplete="current-password"
                   disabled={isLoading}
-                  placeholder="••••••••"
+                  placeholder=""
                 />
                 <InlineStack align="end">
                   <Link

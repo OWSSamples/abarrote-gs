@@ -27,6 +27,16 @@ export interface StoreConfig {
   enableNotifications: boolean;
   telegramToken?: string;
   telegramChatId?: string;
+  // Hardware
+  printerIp?: string;
+  cashDrawerPort?: string;
+  scalePort?: string;
+  // Loyalty
+  loyaltyEnabled: boolean;
+  pointsPerPeso: number;
+  pointsValue: number;
+  // Branding
+  logoUrl?: string;
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -52,6 +62,9 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   storeNumber: '001',
   ticketBarcodeFormat: 'CODE128',
   enableNotifications: false,
+  loyaltyEnabled: false,
+  pointsPerPeso: 100, // $100 spent = 1 point
+  pointsValue: 1, // 1 point = $1 discount
 };
 
 export interface Product {
@@ -287,7 +300,12 @@ export type PermissionKey =
   | 'servicios.create'
   | 'servicios.edit'
   | 'inventory.audit'
-  | 'notifications.edit';
+  | 'notifications.edit'
+  | 'pos.settings'
+  | 'sales.discount'
+  | 'sales.delete_item'
+  | 'sales.change_price'
+  | 'corte.blind_view';
 
 export interface RoleDefinition {
   id: string;
@@ -307,6 +325,10 @@ export interface UserRoleRecord {
   displayName: string;
   avatarUrl: string;
   employeeNumber: string;
+  globalId?: string;         // Permanent unique ID, generated once, never reused
+  status: 'activo' | 'baja'; // Active or deactivated
+  deactivatedAt?: string;    // ISO date when deactivated
+  pinCode?: string;
   roleId: string;
   assignedBy: string;
   createdAt: string;
@@ -347,28 +369,34 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   'servicios.edit': 'Editar servicios',
   'inventory.audit': 'Realizar auditorías de inventario',
   'notifications.edit': 'Configurar notificaciones',
+  'pos.settings': 'Configuración avanzada de hardware/POS',
+  'sales.discount': 'Autorizar Descuentos en Ventas',
+  'sales.delete_item': 'Eliminar articulos del ticket',
+  'sales.change_price': 'Modificar precio de articulos manual mente',
+  'corte.blind_view': 'Ver totales en corte (Evita el Arqueo Ciego)',
 };
 
 export const PERMISSION_GROUPS: { title: string; permissions: PermissionKey[] }[] = [
   { title: 'Dashboard', permissions: ['dashboard.view'] },
-  { title: 'Ventas', permissions: ['sales.create', 'sales.view', 'sales.cancel', 'corte.create', 'corte.view'] },
-  { title: 'Inventario', permissions: ['inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete'] },
+  { title: 'Ventas', permissions: ['sales.create', 'sales.view', 'sales.cancel', 'sales.discount', 'sales.delete_item', 'sales.change_price', 'corte.create', 'corte.view', 'corte.blind_view'] },
+  { title: 'Inventario', permissions: ['inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete', 'inventory.audit'] },
   { title: 'Clientes', permissions: ['customers.view', 'customers.edit', 'fiado.create', 'fiado.view'] },
   { title: 'Gastos', permissions: ['expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete'] },
   { title: 'Proveedores y Pedidos', permissions: ['suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create'] },
   { title: 'Reportes', permissions: ['analytics.view', 'reports.view', 'reports.export'] },
-  { title: 'Sistema', permissions: ['settings.view', 'settings.edit', 'roles.manage'] },
+  { title: 'Sistema y Avanzados', permissions: ['settings.view', 'settings.edit', 'roles.manage', 'pos.settings', 'notifications.edit', 'servicios.view', 'servicios.create', 'servicios.edit'] },
 ];
 
 export const ALL_PERMISSIONS: PermissionKey[] = [
-  'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel',
-  'inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete',
+  'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel', 'sales.discount', 'sales.delete_item', 'sales.change_price',
+  'inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete', 'inventory.audit',
   'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
   'expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete',
   'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
   'analytics.view', 'reports.view', 'reports.export',
-  'corte.create', 'corte.view',
-  'settings.view', 'settings.edit', 'roles.manage',
+  'corte.create', 'corte.view', 'corte.blind_view',
+  'settings.view', 'settings.edit', 'roles.manage', 'pos.settings', 'notifications.edit',
+  'servicios.view', 'servicios.create', 'servicios.edit',
 ];
 
 /** Default system roles seeded on first use */
@@ -383,7 +411,7 @@ export const DEFAULT_SYSTEM_ROLES: Omit<RoleDefinition, 'id' | 'createdAt' | 'up
   {
     name: 'Administrador',
     description: 'Acceso completo excepto cambiar al propietario.',
-    permissions: ALL_PERMISSIONS.filter(p => p !== 'roles.manage'),
+    permissions: [...ALL_PERMISSIONS],
     isSystem: true,
     createdBy: 'system',
   },

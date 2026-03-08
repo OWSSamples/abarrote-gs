@@ -78,8 +78,9 @@ let folioCounter = 0;
 async function getNextFolio(): Promise<string> {
   const result = await db.select({ count: sql<number>`count(*)` }).from(saleRecords);
   const count = Number(result[0]?.count ?? 0);
-  folioCounter = count + 1;
-  return `V-${String(folioCounter).padStart(6, '0')}`;
+  // Start from 309,000 so it's always 6 digits and starts with 309
+  folioCounter = 309000 + count + 1;
+  return String(folioCounter);
 }
 
 // ==================== PRODUCTS ====================
@@ -97,6 +98,7 @@ export async function fetchAllProducts(): Promise<Product[]> {
     costPrice: numVal(r.costPrice),
     unitPrice: numVal(r.unitPrice),
     isPerishable: r.isPerishable,
+    imageUrl: r.imageUrl ?? undefined,
   }));
 
   return result;
@@ -176,6 +178,13 @@ export async function fetchStoreConfig(): Promise<StoreConfig> {
     enableNotifications: r.enableNotifications,
     telegramToken: r.telegramToken ?? undefined,
     telegramChatId: r.telegramChatId ?? undefined,
+    printerIp: r.printerIp ?? undefined,
+    cashDrawerPort: r.cashDrawerPort ?? undefined,
+    scalePort: r.scalePort ?? undefined,
+    loyaltyEnabled: r.loyaltyEnabled,
+    pointsPerPeso: r.pointsPerPeso,
+    pointsValue: r.pointsValue,
+    logoUrl: r.logoUrl ?? undefined,
   };
 }
 
@@ -1280,6 +1289,10 @@ function mapUserRole(r: typeof userRoles.$inferSelect): UserRoleRecord {
     displayName: r.displayName,
     avatarUrl: r.avatarUrl,
     employeeNumber: r.employeeNumber,
+    globalId: r.globalId ?? undefined,
+    status: (r.status as 'activo' | 'baja') || 'activo',
+    deactivatedAt: r.deactivatedAt?.toISOString(),
+    pinCode: r.pinCode ?? undefined,
     roleId: r.roleId,
     assignedBy: r.assignedBy,
     createdAt: r.createdAt.toISOString(),
@@ -1333,6 +1346,7 @@ export async function ensureOwnerRole(firebaseUid: string, email: string, displa
     return {
       id, firebaseUid, email, displayName: displayName || '',
       avatarUrl: '', employeeNumber,
+      status: 'activo' as const,
       roleId: ownerDef.id, assignedBy: firebaseUid,
       createdAt: now.toISOString(), updatedAt: now.toISOString(),
     };
@@ -1368,6 +1382,7 @@ export async function ensureOwnerRole(firebaseUid: string, email: string, displa
   return {
     id, firebaseUid, email, displayName: displayName || '',
     avatarUrl: '', employeeNumber,
+    status: 'activo' as const,
     roleId: viewerDef.id, assignedBy: 'system',
     createdAt: now.toISOString(), updatedAt: now.toISOString(),
   };
@@ -1388,6 +1403,7 @@ export async function assignUserRole(
       id: existingRows[0].id, firebaseUid: data.firebaseUid,
       email: data.email, displayName: data.displayName,
       avatarUrl: existingRows[0].avatarUrl, employeeNumber: existingRows[0].employeeNumber,
+      status: (existingRows[0].status as 'activo' | 'baja') || 'activo',
       roleId: data.roleId, assignedBy: assignedByUid,
       createdAt: existingRows[0].createdAt.toISOString(), updatedAt: now.toISOString(),
     };
@@ -1402,14 +1418,23 @@ export async function assignUserRole(
   await db.insert(userRoles).values({
     id, firebaseUid: data.firebaseUid, email: data.email,
     displayName: data.displayName || '', employeeNumber: empNum, roleId: data.roleId,
+    status: 'activo',
     assignedBy: assignedByUid, createdAt: now, updatedAt: now,
   });
   return {
     id, firebaseUid: data.firebaseUid, email: data.email,
     displayName: data.displayName || '', avatarUrl: '', employeeNumber: empNum,
+    status: 'activo' as const,
     roleId: data.roleId, assignedBy: assignedByUid,
     createdAt: now.toISOString(), updatedAt: now.toISOString(),
   };
+}
+
+export async function updateUserPin(firebaseUid: string, pinCode: string): Promise<void> {
+  const now = new Date();
+  await db.update(userRoles)
+    .set({ pinCode, updatedAt: now })
+    .where(eq(userRoles.firebaseUid, firebaseUid));
 }
 
 export async function updateUserRole(
@@ -1427,6 +1452,57 @@ export async function removeUserRole(firebaseUid: string): Promise<void> {
   await db.delete(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
 }
 
+// Generate a permanent Global ID for a user (can only be done once)
+export async function generateGlobalId(firebaseUid: string): Promise<string> {
+  // Check if the user already has a Global ID
+  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
+  if (rows.length === 0) throw new Error('Usuario no encontrado');
+  if (rows[0].globalId) throw new Error('Este usuario ya tiene un Global ID asignado. No se puede generar otro.');
+
+  // Generate unique Global ID: GID-YYYYMMDD-XXXX
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const allWithGlobalId = await db.select().from(userRoles);
+  const existingIds = new Set(allWithGlobalId.map(r => r.globalId).filter(Boolean));
+  let seq = existingIds.size + 1;
+  let globalId = `GID-${dateStr}-${String(seq).padStart(4, '0')}`;
+  // Ensure uniqueness
+  while (existingIds.has(globalId)) {
+    seq++;
+    globalId = `GID-${dateStr}-${String(seq).padStart(4, '0')}`;
+  }
+
+  await db.update(userRoles)
+    .set({ globalId, updatedAt: now })
+    .where(eq(userRoles.firebaseUid, firebaseUid));
+
+  return globalId;
+}
+
+// Deactivate a user ("dar de baja") — keeps the record and Global ID permanently reserved
+export async function deactivateUser(firebaseUid: string): Promise<void> {
+  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
+  if (rows.length === 0) throw new Error('Usuario no encontrado');
+  if (rows[0].status === 'baja') throw new Error('Este usuario ya está dado de baja');
+
+  const now = new Date();
+  await db.update(userRoles)
+    .set({ status: 'baja', deactivatedAt: now, updatedAt: now })
+    .where(eq(userRoles.firebaseUid, firebaseUid));
+}
+
+// Reactivate a user
+export async function reactivateUser(firebaseUid: string): Promise<void> {
+  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
+  if (rows.length === 0) throw new Error('Usuario no encontrado');
+  if (rows[0].status === 'activo') throw new Error('Este usuario ya está activo');
+
+  const now = new Date();
+  await db.update(userRoles)
+    .set({ status: 'activo', deactivatedAt: null, updatedAt: now })
+    .where(eq(userRoles.firebaseUid, firebaseUid));
+}
+
 export async function updateUserProfile(
   firebaseUid: string,
   data: { displayName?: string; avatarUrl?: string }
@@ -1438,6 +1514,60 @@ export async function updateUserProfile(
   const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
   if (rows.length === 0) throw new Error('User not found');
   return mapUserRole(rows[0]);
+}
+
+export async function authorizePin(
+  pinCode: string,
+  requiredPermission: PermissionKey
+): Promise<{ success: boolean; authorizedByUid?: string; userDisplayName?: string; error?: string }> {
+  try {
+    // 1. Find user with this PIN
+    const rows = await db.select().from(userRoles).where(eq(userRoles.pinCode, pinCode));
+    if (rows.length === 0) {
+      return { success: false, error: 'PIN incorrecto' };
+    }
+
+    const matchedUser = rows[0];
+
+    // 2. Fetch their role definition to check permissions
+    const roles = await db.select().from(roleDefinitions).where(eq(roleDefinitions.id, matchedUser.roleId));
+    if (roles.length === 0) {
+      return { success: false, error: 'Rol Invalido' };
+    }
+
+    const userRoleDef = roles[0];
+
+    // 3. Check if they have the required permission (or if they are the Propietario with full access)
+    // Assuming 'Propietario' has full access, but we can just check the permissions array
+    const permissionsStr = userRoleDef.permissions; // it's stored as JSON string but maybe drizzle parses it?
+    // Wait, let's parse if it's a string, or check if it includes
+    let perms: PermissionKey[] = [];
+    if (typeof permissionsStr === 'string') {
+      try {
+        perms = JSON.parse(permissionsStr) as PermissionKey[];
+      } catch (e) {
+        perms = [];
+      }
+    } else if (Array.isArray(permissionsStr)) {
+      perms = permissionsStr as PermissionKey[];
+    }
+
+    const hasPermission = perms.includes(requiredPermission) || userRoleDef.name === 'Propietario';
+
+    if (!hasPermission) {
+      return { success: false, error: 'Usuario no tiene permisos para esta acción' };
+    }
+
+    return {
+      success: true,
+      authorizedByUid: matchedUser.firebaseUid,
+      userDisplayName: matchedUser.displayName || matchedUser.email
+    };
+
+  } catch (error) {
+    console.error('Error authorizing PIN:', error);
+    return { success: false, error: 'Error del servidor al validar PIN' };
+  }
 }
 
 // ==================== AUTO CORTE DE CAJA (MIDNIGHT) ====================

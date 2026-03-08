@@ -33,7 +33,17 @@ export function UserMenu() {
   const handleToggleTheme = useCallback(() => {
     const newMode = themeMode === 'light' ? 'dark' : 'light';
     setThemeMode(newMode);
+
+    // Shopify Polaris Theme Variable (CSS vars approach)
+    document.documentElement.setAttribute('data-color-scheme', newMode);
     document.documentElement.setAttribute('data-theme', newMode);
+
+    // Tailwind / Shadcn UI Dark Mode
+    if (newMode === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [themeMode]);
 
   if (!user) return null;
@@ -42,7 +52,7 @@ export function UserMenu() {
   const initials = displayName
     .split(' ')
     .filter(Boolean)
-    .map((n) => n[0])
+    .map((n: string) => n[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
@@ -77,24 +87,25 @@ export function UserMenu() {
       }}
       aria-label="Abrir menú de usuario"
     >
-      <InlineStack gap="300" align="center" blockAlign="center">
-        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-          <Text as="span" variant="bodyMd" fontWeight="semibold" tone="text-inverse">
-            {displayName}
-          </Text>
-          <Text as="span" variant="bodyXs" tone="text-inverse" fontWeight="medium">
-            {roleLabel}
-          </Text>
+      <InlineStack gap="200" align="center" blockAlign="center">
+        <div style={{
+          backgroundColor: '#008080',
+          borderRadius: '4px',
+          padding: '2px 8px',
+          color: 'white',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '24px',
+          minWidth: '32px'
+        }}>
+          {initials}
         </div>
-
-        <Box background="bg-surface-secondary" borderRadius="full">
-          <Avatar
-            initials={initials}
-            size="md"
-            name={displayName}
-            source={user.photoURL || undefined}
-          />
-        </Box>
+        <Text as="span" variant="bodyMd" fontWeight="semibold" tone="text-inverse">
+          {displayName.toUpperCase()}
+        </Text>
       </InlineStack>
     </button>
   );

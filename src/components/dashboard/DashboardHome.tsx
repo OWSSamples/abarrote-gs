@@ -13,13 +13,14 @@ import {
   BlockStack,
   InlineStack,
   Button,
-  TopBar,
   Text,
   Modal,
   FormLayout,
   TextField,
   IndexTable,
   Badge,
+  EmptyState,
+  Loading,
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
 import {
@@ -29,7 +30,6 @@ import {
   CartIcon,
   ExportIcon,
   RefreshIcon,
-  ProductIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { KPICard } from '@/components/kpi/KPICard';
@@ -52,13 +52,35 @@ import { ProveedoresManager } from '@/components/suppliers/ProveedoresManager';
 import { PedidosManager } from '@/components/pedidos/PedidosManager';
 import { ReportesView } from '@/components/reports/ReportesView';
 import { ConfiguracionPage } from '@/components/settings/ConfiguracionPage';
+import { RolesManager } from '@/components/roles/RolesManager';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
-import { Product } from '@/types';
+import { Product, PermissionKey } from '@/types';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { CustomTopBar } from '@/components/navigation/CustomTopBar';
 import { AnalyticsView } from '@/components/analytics/AnalyticsView';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { deleteProduct, updateProduct } from '@/app/actions/db-actions';
+
+const SECTION_PERMISSIONS: Record<string, PermissionKey[]> = {
+  overview: ['dashboard.view'],
+  sales: ['sales.create', 'sales.view'],
+  'sales-history': ['sales.view'],
+  'sales-corte': ['corte.create', 'corte.view'],
+  inventory: ['inventory.view'],
+  'inventory-audit': ['inventory.view'],
+  catalog: ['inventory.view'],
+  customers: ['customers.view'],
+  fiado: ['fiado.view', 'fiado.create'],
+  expenses: ['expenses.view'],
+  suppliers: ['suppliers.view'],
+  pedidos: ['pedidos.view'],
+  analytics: ['analytics.view'],
+  reports: ['reports.view'],
+  settings: ['settings.view'],
+  roles: ['roles.manage'],
+  notifications: ['dashboard.view'],
+  'inventory-priority': ['inventory.view'],
+};
 
 const SECTION_TITLES: Record<string, string> = {
   overview: 'Inicio',
@@ -76,24 +98,9 @@ const SECTION_TITLES: Record<string, string> = {
   analytics: 'Análisis',
   reports: 'Reportes',
   settings: 'Configuración',
-};
-
-const SECTION_SUBTITLES: Record<string, string> = {
-  overview: 'Resumen de tu negocio',
-  sales: 'Punto de venta y registro',
-  'sales-history': 'Registro de todas las ventas',
-  'sales-corte': 'Cierre y conteo de caja',
-  inventory: 'Control de existencias',
-  'inventory-audit': 'Revisión y conteo ciego de stock',
-  catalog: 'Todos los productos registrados',
-  customers: 'Directorio de clientes',
-  fiado: 'Gestión de crédito a clientes',
-  expenses: 'Control de gastos del negocio',
-  suppliers: 'Directorio de proveedores',
-  pedidos: 'Gestión de pedidos y recepción de mercancía',
-  analytics: 'Gráficas y tendencias',
-  reports: 'Resúmenes y métricas',
-  settings: 'Configuración del sistema',
+  roles: 'Usuarios y Roles',
+  notifications: 'Notificaciones',
+  'inventory-priority': 'Inventario Prioritario',
 };
 
 export function DashboardHome() {
@@ -107,7 +114,13 @@ export function DashboardHome() {
     fetchDashboardData,
     adjustStock,
     createPedido,
+    currentUserRole,
+    roleDefinitions,
   } = useDashboardStore();
+
+  const userPermissions = currentUserRole
+    ? roleDefinitions.find((r) => r.id === currentUserRole.roleId)?.permissions || []
+    : [];
 
   const toast = useToast();
 
@@ -157,7 +170,6 @@ export function DashboardHome() {
     setProductModalOpen(true);
   }, []);
 
-  // Filtrar alertas basado en los filtros
   const filteredAlerts = inventoryAlerts.filter((alert) => {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
@@ -171,27 +183,8 @@ export function DashboardHome() {
       return false;
     }
     if (filters.categories.length > 0) {
-      const categoryMap: Record<string, string> = {
-        'Lácteos': 'lacteos',
-        'Panadería': 'panaderia',
-        'Carnes y Embutidos': 'carnes',
-        'Frutas y Verduras': 'frutas',
-        'Abarrotes Secos': 'abarrotes',
-        'Bebidas': 'bebidas',
-        'Limpieza': 'limpieza',
-        'Higiene Personal': 'higiene',
-        'Huevos': 'huevos',
-        'Tortillería': 'tortilleria',
-      };
-      const productCategoryKey = categoryMap[alert.product.category] || alert.product.category.toLowerCase();
+      const productCategoryKey = alert.product.category.toLowerCase();
       if (!filters.categories.includes(productCategoryKey)) return false;
-    }
-    if (filters.stockStatus.length > 0) {
-      const pct = alert.product.minStock > 0
-        ? (alert.product.currentStock / alert.product.minStock) * 100
-        : 100;
-      const status = pct <= 25 ? 'critical' : pct <= 50 ? 'warning' : 'normal';
-      if (!filters.stockStatus.includes(status)) return false;
     }
     return true;
   });
@@ -260,7 +253,6 @@ export function DashboardHome() {
 
   const handlePedidoSubmit = useCallback(async () => {
     if (!pedidoProveedor) return;
-
     await createPedido({
       proveedor: pedidoProveedor,
       productos: lowStockProducts.map((p) => ({
@@ -270,8 +262,7 @@ export function DashboardHome() {
       })),
       notas: pedidoNotas,
     });
-
-    toast.showSuccess(`Pedido creado para ${pedidoProveedor} con ${lowStockProducts.length} productos`);
+    toast.showSuccess(`Pedido creado para ${pedidoProveedor}`);
     setPedidoModalOpen(false);
     setPedidoProveedor('');
     setPedidoNotas('');
@@ -280,8 +271,6 @@ export function DashboardHome() {
   const proveedorOptions = [
     { label: 'Seleccionar proveedor...', value: '' },
     { label: 'Distribuidora García', value: 'Distribuidora García' },
-    { label: 'Abarrotes Mayoreo MX', value: 'Abarrotes Mayoreo MX' },
-    { label: 'Lácteos del Norte', value: 'Lácteos del Norte' },
     { label: 'Proveedor General', value: 'Proveedor General' },
   ];
 
@@ -308,11 +297,27 @@ export function DashboardHome() {
       onSelect={handleSectionSelect}
       badges={{
         lowStock: kpiData?.lowStockProducts,
+        notifications: criticalAlerts.length,
       }}
+      permissions={userPermissions}
     />
   );
 
   const renderSectionContent = () => {
+    const requiredPerms = SECTION_PERMISSIONS[selectedSection];
+    if (requiredPerms && currentUserRole) {
+      const hasPerm = requiredPerms.some((p) => userPermissions.includes(p));
+      if (!hasPerm) {
+        return (
+          <Page title="Acceso Denegado">
+            <Banner tone="critical" title="No tienes permiso">
+              <p>Contacta a un administrador.</p>
+            </Banner>
+          </Page>
+        );
+      }
+    }
+
     switch (selectedSection) {
       case 'overview':
         return (
@@ -328,10 +333,7 @@ export function DashboardHome() {
             </Layout>
             <Layout>
               <Layout.Section variant="oneHalf">
-                <InventoryTable
-                  alerts={filteredAlerts}
-                  onProductClick={handleProductClick}
-                />
+                <InventoryTable alerts={filteredAlerts} onProductClick={handleProductClick} />
               </Layout.Section>
               <Layout.Section variant="oneHalf">
                 <TopProducts />
@@ -339,7 +341,6 @@ export function DashboardHome() {
             </Layout>
           </BlockStack>
         );
-
       case 'sales':
         return (
           <BlockStack gap="400">
@@ -347,403 +348,115 @@ export function DashboardHome() {
             <SalesHistory />
           </BlockStack>
         );
-
-      case 'sales-history':
-        return <SalesHistory />;
-
+      case 'sales-history': return <SalesHistory />;
       case 'sales-corte':
         return (
           <BlockStack gap="400">
-            <InlineStack align="end">
-              <Button variant="primary" onClick={() => setCorteModalOpen(true)}>
-                Nuevo Corte de Caja
-              </Button>
-            </InlineStack>
+            <InlineStack align="end"><Button variant="primary" onClick={() => setCorteModalOpen(true)}>Nuevo Corte de Caja</Button></InlineStack>
             <CortesHistory />
           </BlockStack>
         );
-
       case 'inventory':
         return (
           <BlockStack gap="400">
             <AdvancedFilters onFiltersChange={handleFiltersChange} />
-            <InventoryTable
-              alerts={filteredAlerts}
-              onProductClick={handleProductClick}
-            />
-            <AllProductsTable
-              products={products}
-              onProductClick={handleProductClick}
-              onRegisterProduct={() => setRegisterProductOpen(true)}
-              onExport={handleTableExport}
-              onCreatePedido={handleTableCreatePedido}
-              onDeleteProduct={handleDeleteProduct}
-              onUpdateProduct={handleOpenUpdateProduct}
-            />
+            <InventoryTable alerts={filteredAlerts} onProductClick={handleProductClick} />
+            <AllProductsTable products={products} onProductClick={handleProductClick} onRegisterProduct={() => setRegisterProductOpen(true)} onExport={handleTableExport} onCreatePedido={handleTableCreatePedido} onDeleteProduct={handleDeleteProduct} onUpdateProduct={handleOpenUpdateProduct} />
           </BlockStack>
         );
-
-      case 'inventory-audit':
-        return <InventoryAuditView />;
-
+      case 'inventory-audit': return <InventoryAuditView />;
       case 'catalog':
+        return <AllProductsTable products={products} onProductClick={handleProductClick} onRegisterProduct={() => setRegisterProductOpen(true)} onExport={handleTableExport} onCreatePedido={handleTableCreatePedido} onDeleteProduct={handleDeleteProduct} onUpdateProduct={handleOpenUpdateProduct} />;
+      case 'inventory-priority':
         return (
           <BlockStack gap="400">
-            <AllProductsTable
-              products={products}
-              onProductClick={handleProductClick}
-              onRegisterProduct={() => setRegisterProductOpen(true)}
-              onExport={handleTableExport}
-              onCreatePedido={handleTableCreatePedido}
-              onDeleteProduct={handleDeleteProduct}
-              onUpdateProduct={handleOpenUpdateProduct}
-            />
+            <InventoryTable alerts={inventoryAlerts} onProductClick={handleProductClick} />
           </BlockStack>
         );
-
       case 'customers':
-        return <FiadoManager />;
-
       case 'fiado':
         return <FiadoManager />;
-
-      case 'expenses':
-        return <GastosManager />;
-
-      case 'suppliers':
-        return <ProveedoresManager />;
-
-      case 'pedidos':
-        return <PedidosManager />;
-
-      case 'analytics':
-        return <AnalyticsView />;
-
-      case 'reports':
-        return <ReportesView />;
-
-      case 'settings':
-        return <ConfiguracionPage />;
-
-      default:
-        return null;
+      case 'expenses': return <GastosManager />;
+      case 'suppliers': return <ProveedoresManager />;
+      case 'pedidos': return <PedidosManager />;
+      case 'analytics': return <AnalyticsView />;
+      case 'reports': return <ReportesView />;
+      case 'settings': return <ConfiguracionPage />;
+      case 'roles': return <RolesManager />;
+      case 'notifications':
+        return (
+          <BlockStack gap="400">
+            {criticalAlerts.length > 0 ? (
+              <InventoryTable alerts={criticalAlerts} onProductClick={handleProductClick} />
+            ) : (
+              <Card><EmptyState heading="Sin notificaciones" image=""><p>Todo está en orden.</p></EmptyState></Card>
+            )}
+          </BlockStack>
+        );
+      default: return null;
     }
+  };
+
+  const wrapWithPage = (content: React.ReactNode) => {
+    return (
+      <Page
+        fullWidth
+        title={SECTION_TITLES[selectedSection] || 'Dashboard'}
+        secondaryActions={[
+          { content: 'Actualizar', icon: RefreshIcon, onAction: fetchDashboardData },
+          { content: 'Exportar', icon: ExportIcon, onAction: () => setExportModalOpen(true) },
+        ]}
+      >
+        <Layout>
+          {selectedSection === 'overview' && (
+            <Layout.Section>
+              <InlineStack gap="400" wrap={true}>
+                <div style={{ flex: '1 1 240px' }}><KPICard title="Ventas Hoy" value={kpiData?.dailySales || 0} type="currency" icon={<MoneyIcon />} /></div>
+                <div style={{ flex: '1 1 240px' }}><KPICard title="Stock Bajo" value={kpiData?.lowStockProducts || 0} type="number" icon={<InventoryIcon />} /></div>
+                <div style={{ flex: '1 1 240px' }}><KPICard title="Por Vencer" value={kpiData?.expiringProducts || 0} type="number" icon={<CalendarIcon />} /></div>
+                <div style={{ flex: '1 1 240px' }}><KPICard title="Tasa Merma" value={kpiData?.mermaRate || 0} type="percentage" icon={<CartIcon />} /></div>
+              </InlineStack>
+            </Layout.Section>
+          )}
+          <Layout.Section>{content}</Layout.Section>
+        </Layout>
+      </Page>
+    );
+  };
+
+  const finalContent = () => {
+    const content = renderSectionContent();
+    const section = selectedSection;
+    // Sections that already return a <Page> - do NOT wrap
+    if (['customers', 'fiado', 'analytics', 'settings'].includes(section)) {
+      return content;
+    }
+    return wrapWithPage(content);
   };
 
   return (
     <>
       {topBarMarkup}
-      <Frame
-        navigation={navigationMarkup}
-        showMobileNavigation={mobileNavActive}
-        onNavigationDismiss={toggleMobileNav}
-      >
+      <Frame navigation={navigationMarkup} showMobileNavigation={mobileNavActive} onNavigationDismiss={toggleMobileNav}>
+        {isLoading && <Loading />}
         {error ? (
-          <Page title="Error">
-            <Banner tone="critical" title="Error al cargar el dashboard">
-              <p>{error}</p>
-              <Button onClick={() => window.location.reload()}>Reintentar</Button>
-            </Banner>
-          </Page>
+          <Page title="Error" fullWidth><Banner tone="critical" title="Error"><p>{error}</p><Button onClick={() => window.location.reload()}>Reintentar</Button></Banner></Page>
         ) : isLoading ? (
-          <SkeletonPage
-            title={SECTION_TITLES[selectedSection] || 'Dashboard'}
-            primaryAction
-          >
-            <Layout>
-              <Layout.Section>
-                <InlineStack gap="400" wrap={true}>
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} style={{ flex: '1 1 280px', minWidth: 280 }}>
-                      <Card>
-                        <BlockStack gap="200">
-                          <SkeletonDisplayText size="small" />
-                          <SkeletonDisplayText size="large" />
-                        </BlockStack>
-                      </Card>
-                    </div>
-                  ))}
-                </InlineStack>
-              </Layout.Section>
-
-              <Layout.Section>
-                <Card>
-                  <BlockStack gap="400">
-                    <SkeletonDisplayText size="small" />
-                    <SkeletonBodyText lines={4} />
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-
-              <Layout.Section variant="oneHalf">
-                <Card>
-                  <BlockStack gap="400">
-                    <SkeletonDisplayText size="small" />
-                    <SkeletonBodyText lines={10} />
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-
-              <Layout.Section variant="oneHalf">
-                <Card>
-                  <BlockStack gap="400">
-                    <SkeletonDisplayText size="small" />
-                    <SkeletonBodyText lines={10} />
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-            </Layout>
-          </SkeletonPage>
+          <SkeletonPage title={SECTION_TITLES[selectedSection] || 'Dashboard'} fullWidth><Layout><Layout.Section><SkeletonBodyText lines={10} /></Layout.Section></Layout></SkeletonPage>
         ) : (
-          <Page
-            title={SECTION_TITLES[selectedSection] || 'Dashboard'}
-            subtitle={SECTION_SUBTITLES[selectedSection] || 'Gestión de abarrotes'}
-            primaryAction={{
-              content: 'Actualizar',
-              icon: RefreshIcon,
-              onAction: fetchDashboardData,
-            }}
-            secondaryActions={[
-              {
-                content: 'Exportar',
-                icon: ExportIcon,
-                onAction: () => setExportModalOpen(true),
-              },
-            ]}
-          >
-            <Layout>
-              {criticalAlerts.length > 0 && (
-                <Layout.Section>
-                  <Banner
-                    tone="critical"
-                    title={`${criticalAlerts.length} productos requieren atención inmediata`}
-                  >
-                    <p>
-                      Tienes productos críticos por vencimiento o stock muy bajo.
-                      Revisa la sección de Inventario.
-                    </p>
-                  </Banner>
-                </Layout.Section>
-              )}
-
-              {selectedSection === 'overview' && (
-                <Layout.Section>
-                  <InlineStack gap="400" wrap={true}>
-                    <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                      <KPICard
-                        title="Ventas del Día"
-                        value={kpiData?.dailySales || 0}
-                        type="currency"
-                        change={kpiData?.dailySalesChange}
-                        changeLabel="vs ayer"
-                        icon={<MoneyIcon />}
-                      />
-                    </div>
-                    <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                      <KPICard
-                        title="Productos Stock Bajo"
-                        value={kpiData?.lowStockProducts || 0}
-                        type="number"
-                        icon={<InventoryIcon />}
-                      />
-                    </div>
-                    <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                      <KPICard
-                        title="Productos por Vencer"
-                        value={kpiData?.expiringProducts || 0}
-                        type="number"
-                        icon={<CalendarIcon />}
-                      />
-                    </div>
-                    <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                      <KPICard
-                        title="Tasa de Merma"
-                        value={kpiData?.mermaRate || 0}
-                        type="percentage"
-                        change={kpiData?.mermaRateChange}
-                        changeLabel="vs mes anterior"
-                        icon={<CartIcon />}
-                      />
-                    </div>
-                  </InlineStack>
-                </Layout.Section>
-              )}
-
-              <Layout.Section>
-                {renderSectionContent()}
-              </Layout.Section>
-            </Layout>
-          </Page>
+          finalContent()
         )}
-
-        <ExportModal
-          open={exportModalOpen}
-          onClose={() => setExportModalOpen(false)}
-          onExport={handleExport}
-        />
-        <CorteCajaModal
-          open={corteModalOpen}
-          onClose={() => setCorteModalOpen(false)}
-        />
-        <ProductDetailModal
-          product={selectedProduct}
-          open={productModalOpen}
-          onClose={() => {
-            setProductModalOpen(false);
-            setSelectedProduct(null);
-          }}
-          onSave={handleProductSave}
-        />
-        <RegisterProductModal
-          open={registerProductOpen}
-          onClose={() => setRegisterProductOpen(false)}
-        />
-
-        {/* Modal para Actualizar Producto */}
-        <Modal
-          open={updateProductOpen}
-          onClose={() => {
-            setUpdateProductOpen(false);
-            setProductToUpdate(null);
-          }}
-          title={productToUpdate ? `Actualizar ${productToUpdate.name}` : 'Actualizar Producto'}
-          primaryAction={{
-            content: 'Guardar Cambios',
-            onAction: handleUpdateProductSubmit,
-          }}
-          secondaryActions={[
-            {
-              content: 'Cancelar',
-              onAction: () => {
-                setUpdateProductOpen(false);
-                setProductToUpdate(null);
-              },
-            },
-          ]}
-        >
-          <Modal.Section>
-            <FormLayout>
-              <TextField
-                label="Stock Actual"
-                type="number"
-                value={updateStock}
-                onChange={setUpdateStock}
-                autoComplete="off"
-                helpText="Cantidad actual en inventario"
-              />
-              <TextField
-                label="Precio de Venta"
-                type="number"
-                value={updatePrice}
-                onChange={setUpdatePrice}
-                autoComplete="off"
-                prefix="$"
-                helpText="Precio al público"
-              />
-              <TextField
-                label="Precio de Costo"
-                type="number"
-                value={updateCostPrice}
-                onChange={setUpdateCostPrice}
-                autoComplete="off"
-                prefix="$"
-                helpText="Precio de compra al proveedor"
-              />
-            </FormLayout>
-          </Modal.Section>
+        <ExportModal open={exportModalOpen} onClose={() => setExportModalOpen(false)} onExport={handleExport} />
+        <CorteCajaModal open={corteModalOpen} onClose={() => setCorteModalOpen(false)} />
+        <ProductDetailModal product={selectedProduct} open={productModalOpen} onClose={() => { setProductModalOpen(false); setSelectedProduct(null); }} onSave={handleProductSave} />
+        <RegisterProductModal open={registerProductOpen} onClose={() => setRegisterProductOpen(false)} />
+        <Modal open={updateProductOpen} onClose={() => { setUpdateProductOpen(false); setProductToUpdate(null); }} title={productToUpdate ? `Actualizar ${productToUpdate.name}` : 'Actualizar Producto'} primaryAction={{ content: 'Guardar Cambios', onAction: handleUpdateProductSubmit }} secondaryActions={[{ content: 'Cancelar', onAction: () => { setUpdateProductOpen(false); setProductToUpdate(null); } }]}>
+          <Modal.Section><FormLayout><TextField label="Stock Actual" type="number" value={updateStock} onChange={setUpdateStock} autoComplete="off" /><TextField label="Precio Venta" type="number" value={updatePrice} onChange={setUpdatePrice} autoComplete="off" prefix="$" /><TextField label="Precio Costo" type="number" value={updateCostPrice} onChange={setUpdateCostPrice} autoComplete="off" prefix="$" /></FormLayout></Modal.Section>
         </Modal>
-
-        {/* Modal para Crear Pedido a Proveedor */}
-        <Modal
-          open={pedidoModalOpen}
-          onClose={() => {
-            setPedidoModalOpen(false);
-            setPedidoProveedor('');
-            setPedidoNotas('');
-          }}
-          title="Crear Pedido a Proveedor"
-          primaryAction={{
-            content: 'Crear Pedido',
-            onAction: handlePedidoSubmit,
-            disabled: !pedidoProveedor || lowStockProducts.length === 0,
-          }}
-          secondaryActions={[
-            {
-              content: 'Cancelar',
-              onAction: () => {
-                setPedidoModalOpen(false);
-                setPedidoProveedor('');
-                setPedidoNotas('');
-              },
-            },
-          ]}
-          size="large"
-        >
-          <Modal.Section>
-            <BlockStack gap="400">
-              <FormLayout>
-                <FormSelect
-                  label="Proveedor"
-                  options={proveedorOptions}
-                  value={pedidoProveedor}
-                  onChange={setPedidoProveedor}
-                  helpText="Selecciona el proveedor al que se le hará el pedido"
-                />
-                <TextField
-                  label="Notas adicionales"
-                  value={pedidoNotas}
-                  onChange={setPedidoNotas}
-                  multiline={3}
-                  autoComplete="off"
-                  placeholder="Instrucciones especiales, urgencia, etc."
-                />
-              </FormLayout>
-
-              {lowStockProducts.length > 0 ? (
-                <BlockStack gap="200">
-                  <InlineStack align="space-between">
-                    <Text as="h3" variant="headingMd">
-                      Productos con stock bajo
-                    </Text>
-                    <Badge tone="warning">{`${lowStockProducts.length} productos`}</Badge>
-                  </InlineStack>
-                  <IndexTable
-                    itemCount={lowStockProducts.length}
-                    headings={[
-                      { title: 'Producto' },
-                      { title: 'Stock actual' },
-                      { title: 'Stock mínimo' },
-                      { title: 'Cantidad a pedir' },
-                    ]}
-                    selectable={false}
-                  >
-                    {lowStockProducts.map((p, i) => (
-                      <IndexTable.Row id={p.productId} key={p.productId} position={i}>
-                        <IndexTable.Cell>
-                          <Text as="p" variant="bodyMd" fontWeight="semibold">{p.productName}</Text>
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Text as="p" variant="bodyMd" tone="critical">{p.currentStock}</Text>
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Text as="p" variant="bodyMd">{p.minStock}</Text>
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Badge tone="info">{`${p.cantidad} unidades`}</Badge>
-                        </IndexTable.Cell>
-                      </IndexTable.Row>
-                    ))}
-                  </IndexTable>
-                </BlockStack>
-              ) : (
-                <Banner tone="success">
-                  <p>No hay productos con stock bajo en este momento.</p>
-                </Banner>
-              )}
-            </BlockStack>
-          </Modal.Section>
+        <Modal open={pedidoModalOpen} onClose={() => { setPedidoModalOpen(false); setPedidoProveedor(''); setPedidoNotas(''); }} title="Crear Pedido" primaryAction={{ content: 'Crear Pedido', onAction: handlePedidoSubmit, disabled: !pedidoProveedor || lowStockProducts.length === 0 }} secondaryActions={[{ content: 'Cancelar', onAction: () => { setPedidoModalOpen(false); setPedidoProveedor(''); setPedidoNotas(''); } }]} size="large">
+          <Modal.Section><BlockStack gap="400"><FormLayout><FormSelect label="Proveedor" options={proveedorOptions} value={pedidoProveedor} onChange={setPedidoProveedor} /><TextField label="Notas" value={pedidoNotas} onChange={setPedidoNotas} multiline={3} autoComplete="off" /></FormLayout></BlockStack></Modal.Section>
         </Modal>
-      </Frame>
+      </Frame >
     </>
   );
 }

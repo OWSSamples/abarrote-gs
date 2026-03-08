@@ -34,6 +34,13 @@ export const storeConfig = pgTable('store_config', {
   enableNotifications: boolean('enable_notifications').notNull().default(false),
   telegramToken: text('telegram_token'),
   telegramChatId: text('telegram_chat_id'),
+  printerIp: text('printer_ip'),
+  cashDrawerPort: text('cash_drawer_port'),
+  scalePort: text('scale_port'),
+  loyaltyEnabled: boolean('loyalty_enabled').notNull().default(false),
+  pointsPerPeso: integer('points_per_peso').notNull().default(100),
+  pointsValue: integer('points_value').notNull().default(1),
+  logoUrl: text('logo_url'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
@@ -233,6 +240,10 @@ export const userRoles = pgTable('user_roles', {
   displayName: text('display_name').notNull().default(''),
   avatarUrl: text('avatar_url').notNull().default(''),
   employeeNumber: text('employee_number').notNull().default(''),
+  globalId: text('global_id').unique(), // Permanent unique ID, generated once, never reusable
+  status: text('status').notNull().default('activo'), // 'activo' | 'baja'
+  deactivatedAt: timestamp('deactivated_at'), // When the user was deactivated
+  pinCode: text('pin_code'), // <-- Nuevo para PIN approvals
   roleId: text('role_id').notNull(), // references role_definitions.id
   assignedBy: text('assigned_by').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),

@@ -1,33 +1,47 @@
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from './firebase';
+/**
+ * Client-side storage utilities.
+ * Uploads and deletions are handled via the /api/upload server route,
+ * which securely communicates with AWS S3 (credentials never reach the browser).
+ */
 
 /**
- * Uploads a file to Firebase Storage and returns the download URL.
- * @param file The file to upload.
- * @param path The path in storage (e.g., 'products/product-1.jpg').
- * @returns Promise with the download URL.
+ * Uploads a file via the server API route and returns the public URL.
+ * @param file  The file to upload.
+ * @param path  The desired storage path (e.g., 'products/product-1.jpg').
+ * @returns     Promise with the public URL of the uploaded file.
  */
 export async function uploadFile(file: File, path: string): Promise<string> {
-    try {
-        const storageRef = ref(storage, path);
-        const snapshot = await uploadBytes(storageRef, file);
-        return getDownloadURL(snapshot.ref);
-    } catch (error) {
-        console.error('Error uploading file to Firebase Storage:', error);
-        throw new Error('No se pudo subir la imagen. Verifica tu conexión o configuración de Firebase.');
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', path);
+
+    const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(data.error || 'No se pudo subir la imagen.');
     }
+
+    const { url } = await res.json();
+    return url;
 }
 
 /**
- * Deletes a file from Firebase Storage.
+ * Deletes a file via the server API route.
  * @param fullUrl The full URL of the file to delete.
  */
 export async function deleteFileFromUrl(fullUrl: string): Promise<void> {
     try {
-        const storageRef = ref(storage, fullUrl);
-        await deleteObject(storageRef);
+        await fetch('/api/upload', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: fullUrl }),
+        });
     } catch (error) {
-        console.warn('Could not delete file from Firebase Storage:', error);
+        console.warn('Could not delete file:', error);
     }
 }
 

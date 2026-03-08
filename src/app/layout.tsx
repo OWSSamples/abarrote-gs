@@ -18,6 +18,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
+      <head>
+        <link rel="preconnect" href="https://cdn.shopify.com/" />
+        <link
+          rel="stylesheet"
+          href="https://cdn.shopify.com/static/fonts/inter/v4/styles.css"
+        />
+      </head>
       <body suppressHydrationWarning>
         <AuthProvider>
           <PolarisProvider>{children}</PolarisProvider>

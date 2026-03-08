@@ -35,7 +35,8 @@ import {
   getPaymentStatusLabel,
 } from '@/lib/mercadopago';
 import type { MercadoPagoConfig, PaymentIntent } from '@/lib/mercadopago';
-import type { SaleItem, SaleRecord } from '@/types';
+import type { SaleItem, SaleRecord, PermissionKey } from '@/types';
+import { PinPadModal } from './PinPadModal';
 
 interface SaleTicketModalProps {
   open: boolean;
@@ -63,6 +64,27 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const { showSuccess, showError } = useToast();
   const currentUserRole = useDashboardStore((s) => s.currentUserRole);
+  const roleDefinitions = useDashboardStore((s) => s.roleDefinitions);
+
+  const [pinPadOpen, setPinPadOpen] = useState(false);
+  const [pinPadAction, setPinPadAction] = useState<{ type: string; payload: string } | null>(null);
+
+  const roleMap = useMemo(() => {
+    const m = new Map();
+    roleDefinitions.forEach((d) => m.set(d.id, d));
+    return m;
+  }, [roleDefinitions]);
+
+  const currentRoleDef = useMemo(() => {
+    if (!currentUserRole) return null;
+    return roleMap.get(currentUserRole.roleId) ?? null;
+  }, [currentUserRole, roleMap]);
+
+  const hasPermission = useCallback((perm: PermissionKey) => {
+    if (!currentRoleDef) return false;
+    if (currentRoleDef.name === 'Propietario') return true;
+    return currentRoleDef.permissions.includes(perm);
+  }, [currentRoleDef]);
 
   // Merge alert products + store products (deduplicated)
   const allProducts = useMemo(() => {
@@ -266,9 +288,23 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setQuantity('1');
   }, [selectedProduct, quantity, allProducts, items, showError]);
 
-  const removeItem = useCallback((productId: string) => {
-    setItems((prev) => prev.filter((i) => i.productId !== productId));
-  }, []);
+  const handleRemoveClick = useCallback((productId: string) => {
+    if (hasPermission('sales.delete_item')) {
+      setItems((prev) => prev.filter((i) => i.productId !== productId));
+    } else {
+      setPinPadAction({ type: 'delete', payload: productId });
+      setPinPadOpen(true);
+    }
+  }, [hasPermission]);
+
+  const handlePinSuccess = useCallback((_uid: string, _name: string) => {
+    if (pinPadAction?.type === 'delete') {
+      setItems((prev) => prev.filter((i) => i.productId !== pinPadAction.payload));
+      showSuccess('Artículo anulado (Autorizado)');
+    }
+    setPinPadOpen(false);
+    setPinPadAction(null);
+  }, [pinPadAction, showSuccess]);
 
   const handleSale = useCallback(async () => {
     if (items.length === 0) {
@@ -317,7 +353,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         paymentMethod: paymentMethod === 'tarjeta_manual' ? 'tarjeta' : paymentMethod,
         amountPaid: paymentMethod === 'efectivo' ? parseFloat(amountPaid) || 0 : total,
         change: paymentMethod === 'efectivo' ? change : 0,
-        cajero: currentUserRole?.employeeNumber || '',
+        cajero: currentUserRole?.globalId || currentUserRole?.employeeNumber || '',
         pointsEarned,
         pointsUsed,
       } as any); // cast as any to include points in Omit type temporarily or update Omit
@@ -380,7 +416,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
               paymentMethod: 'tarjeta',
               amountPaid: total,
               change: 0,
-              cajero: currentUserRole?.employeeNumber || '',
+              cajero: currentUserRole?.globalId || currentUserRole?.employeeNumber || '',
               pointsEarned: 0,
               pointsUsed: 0,
             } as any);
@@ -769,333 +805,360 @@ ${centerLine(`TC: ${tcCode}`)}
 
   // Sale form
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      title="Registrar Venta"
-      primaryAction={{
-        content: `Cobrar ${formatCurrency(total)}`,
-        onAction: handleSale,
-        disabled: items.length === 0,
-      }}
-      secondaryActions={[
-        { content: 'Cancelar', onAction: handleClose },
-      ]}
-      size="large"
-    >
-      <Modal.Section>
-        <BlockStack gap="400">
-          {/* Barcode scanner */}
-          <Card>
-            <BlockStack gap="300">
-              <InlineStack gap="200" blockAlign="center">
-                <Icon source={BarcodeIcon} />
-                <Text as="h3" variant="headingSm">Escanear código de barras</Text>
-              </InlineStack>
+    <>
+      <Modal
+        open={open}
+        onClose={handleClose}
+        title="Registrar Venta"
+        primaryAction={{
+          content: `Cobrar ${formatCurrency(total)}`,
+          onAction: handleSale,
+          disabled: items.length === 0,
+        }}
+        secondaryActions={[
+          { content: 'Cancelar', onAction: handleClose },
+        ]}
+        size="large"
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            {/* Barcode scanner */}
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack gap="200" blockAlign="center">
+                  <Icon source={BarcodeIcon} />
+                  <Text as="h3" variant="headingSm">Escanear código de barras</Text>
+                </InlineStack>
 
-              <CameraScanner
-                onScan={handleBarcodeScan}
-                continuous
-                buttonLabel="Escanear productos con camara"
-              />
+                <CameraScanner
+                  onScan={handleBarcodeScan}
+                  continuous
+                  buttonLabel="Escanear productos con camara"
+                />
 
-              <InlineStack gap="200" align="end" blockAlign="end">
-                <Box minWidth="350px">
-                  <div onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      if (e.repeat || !barcodeInput.trim()) return;
-                      const code = barcodeInput;
-                      setBarcodeInput('');
-                      handleBarcodeScan(code);
-                    }
-                  }}>
-                    <TextField
-                      label="Código de barras"
-                      value={barcodeInput}
-                      onChange={(val) => {
-                        setBarcodeInput(val);
-                        setBarcodeError('');
-                      }}
-                      autoComplete="off"
-                      placeholder="Escanea o escribe el código de barras..."
-                      helpText="El escáner escribe el código y presiona Enter automáticamente"
-                      connectedRight={
-                        <Button variant="primary" onClick={() => handleBarcodeScan(barcodeInput)} disabled={!barcodeInput.trim()}>
-                          Buscar
-                        </Button>
+                <InlineStack gap="200" align="end" blockAlign="end">
+                  <Box minWidth="350px">
+                    <div onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (e.repeat || !barcodeInput.trim()) return;
+                        const code = barcodeInput;
+                        setBarcodeInput('');
+                        handleBarcodeScan(code);
                       }
-                      error={barcodeError || undefined}
+                    }}>
+                      <TextField
+                        label="Código de barras"
+                        value={barcodeInput}
+                        onChange={(val) => {
+                          setBarcodeInput(val);
+                          setBarcodeError('');
+                        }}
+                        autoComplete="off"
+                        placeholder="Escanea o escribe el código de barras..."
+                        helpText="El escáner escribe el código y presiona Enter automáticamente"
+                        connectedRight={
+                          <Button variant="primary" onClick={() => handleBarcodeScan(barcodeInput)} disabled={!barcodeInput.trim()}>
+                            Buscar
+                          </Button>
+                        }
+                        error={barcodeError || undefined}
+                      />
+                    </div>
+                  </Box>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+
+            {/* Add product to sale (manual) */}
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h3" variant="headingSm">Agregar producto</Text>
+                <InlineStack gap="200" align="end" blockAlign="end">
+                  <Box minWidth="300px">
+                    <SearchableSelect
+                      label="Producto"
+                      options={allProducts.map(p => ({
+                        label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
+                        value: p.id
+                      }))}
+                      selected={selectedProduct}
+                      onChange={setSelectedProduct}
                     />
-                  </div>
-                </Box>
-              </InlineStack>
-            </BlockStack>
-          </Card>
-
-          {/* Add product to sale (manual) */}
-          <Card>
-            <BlockStack gap="300">
-              <Text as="h3" variant="headingSm">Agregar producto</Text>
-              <InlineStack gap="200" align="end" blockAlign="end">
-                <Box minWidth="300px">
-                  <SearchableSelect
-                    label="Producto"
-                    options={allProducts.map(p => ({
-                      label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
-                      value: p.id
-                    }))}
-                    selected={selectedProduct}
-                    onChange={setSelectedProduct}
-                  />
-                </Box>
-                <Box minWidth="80px">
-                  <TextField
-                    label="Cantidad"
-                    type="number"
-                    value={quantity}
-                    onChange={setQuantity}
-                    autoComplete="off"
-                    min={1}
-                  />
-                </Box>
-                <Button variant="primary" onClick={addItem} disabled={!selectedProduct}>
-                  Agregar
-                </Button>
-              </InlineStack>
-            </BlockStack>
-          </Card>
-
-          {/* Items list */}
-          {items.length > 0 && (
-            <Card>
-              <BlockStack gap="200">
-                <Text as="h3" variant="headingSm">Productos en venta ({items.length})</Text>
-                <IndexTable
-                  resourceName={{ singular: 'producto', plural: 'productos' }}
-                  itemCount={items.length}
-                  headings={[
-                    { title: 'Producto' },
-                    { title: 'SKU' },
-                    { title: 'Cant.' },
-                    { title: 'P. Unit.' },
-                    { title: 'Subtotal' },
-                    { title: '' },
-                  ]}
-                  selectable={false}
-                >
-                  {items.map((item, idx) => (
-                    <IndexTable.Row id={item.productId} key={item.productId} position={idx}>
-                      <IndexTable.Cell>
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">{item.productName}</Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Text as="span" variant="bodySm" tone="subdued">{item.sku}</Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>{item.quantity}</IndexTable.Cell>
-                      <IndexTable.Cell>{formatCurrency(item.unitPrice)}</IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Text as="span" fontWeight="semibold">{formatCurrency(item.subtotal)}</Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Button
-                          variant="plain"
-                          icon={DeleteIcon}
-                          tone="critical"
-                          onClick={() => removeItem(item.productId)}
-                          accessibilityLabel="Eliminar"
-                        />
-                      </IndexTable.Cell>
-                    </IndexTable.Row>
-                  ))}
-                </IndexTable>
-              </BlockStack>
-            </Card>
-          )}
-
-          {/* Totals */}
-          {items.length > 0 && (
-            <Card>
-              <BlockStack gap="200">
-                <InlineStack align="space-between">
-                  <Text as="span">Subtotal:</Text>
-                  <Text as="span">{formatCurrency(subtotal)}</Text>
-                </InlineStack>
-                <InlineStack align="space-between">
-                  <Text as="span">IVA (16%):</Text>
-                  <Text as="span">{formatCurrency(iva)}</Text>
-                </InlineStack>
-                {cardSurcharge > 0 && (
-                  <InlineStack align="space-between">
-                    <Text as="span" tone="caution">Comisión tarjeta (2.5% + IVA):</Text>
-                    <Text as="span" tone="caution">{formatCurrency(cardSurcharge)}</Text>
-                  </InlineStack>
-                )}
-                <Divider />
-                <InlineStack align="space-between">
-                  <Text as="span" variant="headingMd" fontWeight="bold">TOTAL:</Text>
-                  <Text as="span" variant="headingMd" fontWeight="bold">{formatCurrency(total)}</Text>
+                  </Box>
+                  <Box minWidth="80px">
+                    <TextField
+                      label="Cantidad"
+                      type="number"
+                      value={quantity}
+                      onChange={setQuantity}
+                      autoComplete="off"
+                      min={1}
+                    />
+                  </Box>
+                  <Button variant="primary" onClick={addItem} disabled={!selectedProduct}>
+                    Agregar
+                  </Button>
                 </InlineStack>
               </BlockStack>
             </Card>
-          )}
 
-          {/* Payment details */}
-          <FormLayout>
-            <TextField
-              label="Cajero"
-              value={currentUserRole?.employeeNumber?.replace(/^EMP-/, '') || ''}
-              readOnly
-              autoComplete="off"
-              placeholder="No. empleado"
-              helpText="Se asigna automáticamente tu número de empleado"
-            />
-            <FormSelect
-              label="Método de pago"
-              options={paymentMethodOptions}
-              value={paymentMethod}
-              onChange={(v) => {
-                setPaymentMethod(v as any);
-                if (v !== 'efectivo') setAmountPaid('');
-              }}
-            />
-            {/* Loyalty/Client Selection for all methods */}
-            <BlockStack gap="200">
-              <Text as="h3" variant="headingSm">Cliente (para lealtad o fiado)</Text>
-              <SearchableSelect
-                label="Seleccionar Cliente"
-                labelHidden
-                options={clientes.map((c) => ({
-                  label: `${c.name} — Puntos: ${Math.floor(parseFloat(String(c.points)))} — Deuda: ${formatCurrency(c.balance)}`,
-                  value: c.id,
-                }))}
-                selected={clienteId}
-                onChange={setClienteId}
-              />
-              {clienteId && (() => {
-                const c = clientes.find((cl) => cl.id === clienteId);
-                if (!c) return null;
-                return (
-                  <Banner tone="info">
-                    <InlineStack align="space-between">
-                      <Text as="p">Puntos disponibles:</Text>
-                      <Badge tone="success">{`${Math.floor(parseFloat(String(c.points)))} pts`}</Badge>
-                    </InlineStack>
-                  </Banner>
-                );
-              })()}
-            </BlockStack>
-
-            {paymentMethod === 'fiado' && (
-              <BlockStack gap="200">
-                <Banner tone="warning">
-                  <p>Esta venta se registrará como <strong>fiado</strong>. El monto se sumará a la deuda del cliente.</p>
-                </Banner>
-                {clienteId && (() => {
-                  const c = clientes.find((cl) => cl.id === clienteId);
-                  if (!c) return null;
-                  const disponible = Math.max(0, c.creditLimit - c.balance);
-                  const excedeCredito = total > 0 && (c.balance + total) > c.creditLimit;
-                  return (
-                    <Banner tone={excedeCredito ? 'critical' : 'info'}>
-                      <BlockStack gap="100">
-                        <Text as="p" variant="bodySm">
-                          Deuda actual: <strong>{formatCurrency(c.balance)}</strong> / Límite: <strong>{formatCurrency(c.creditLimit)}</strong>
-                        </Text>
-                        <Text as="p" variant="bodySm">
-                          Crédito disponible: <strong>{formatCurrency(disponible)}</strong>
-                        </Text>
-                        {excedeCredito && (
-                          <Text as="p" variant="bodySm" tone="critical">
-                            Esta venta de {formatCurrency(total)} excede el credito disponible.
-                          </Text>
-                        )}
-                      </BlockStack>
-                    </Banner>
-                  );
-                })()}
-                {clientes.length === 0 && (
-                  <Banner tone="info">
-                    <p>No hay clientes registrados. Agrega clientes desde la sección de <strong>Fiado / Crédito</strong>.</p>
-                  </Banner>
-                )}
-              </BlockStack>
-            )}
-
-            {paymentMethod === 'puntos' && (
-              <BlockStack gap="200">
-                <Banner tone="success">
-                  <p>Usando puntos de lealtad como método de pago.</p>
-                </Banner>
-                {total > 0 && pointsAvailable < (subtotal + iva + cardSurcharge) && (
-                  <Banner tone="warning">
-                    <p>Los puntos no cubren el total. El resto ({formatCurrency(total)}) debe cobrarse por fuera o el cliente debe tener más puntos.</p>
-                  </Banner>
-                )}
-              </BlockStack>
-            )}
-            {paymentMethod === 'tarjeta' && !mpConfig.enabled && (
-              <Banner tone="warning">
-                <p>
-                  Terminal Mercado Pago no configurada. Ve a <strong>Configuración &gt; Mercado Pago</strong> para
-                  ingresar tu Access Token y Device ID. O usa &quot;Tarjeta (manual sin terminal)&quot;.
-                </p>
-              </Banner>
-            )}
-            {paymentMethod === 'tarjeta' && mpConfig.enabled && !mpProcessing && (
-              <Banner tone="info">
-                <p>
-                  Al cobrar, se enviará el monto de <strong>{formatCurrency(total)}</strong> a tu terminal
-                  Mercado Pago. El cliente pasará su tarjeta en el dispositivo.
-                </p>
-              </Banner>
-            )}
-            {mpProcessing && (
+            {/* Items list */}
+            {items.length > 0 && (
               <Card>
-                <BlockStack gap="300">
-                  <InlineStack gap="200" blockAlign="center">
-                    <Spinner size="small" />
-                    <Text as="p" variant="bodyMd" fontWeight="semibold">{mpStatus}</Text>
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingSm">Productos en venta ({items.length})</Text>
+                  <IndexTable
+                    resourceName={{ singular: 'producto', plural: 'productos' }}
+                    itemCount={items.length}
+                    headings={[
+                      { title: 'Foto' },
+                      { title: 'Producto' },
+                      { title: 'SKU' },
+                      { title: 'Cant.' },
+                      { title: 'P. Unit.' },
+                      { title: 'Subtotal' },
+                      { title: 'Acción' },
+                    ]}
+                    selectable={false}
+                  >
+                    {items.map((item, idx) => {
+                      const productInfo = allProducts.find(p => p.id === item.productId);
+                      return (
+                        <IndexTable.Row id={item.productId} key={item.productId} position={idx}>
+                          <IndexTable.Cell>
+                            {productInfo?.imageUrl ? (
+                              <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', border: '1px solid #e1e3e5' }}>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={productInfo.imageUrl} alt={item.productName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              </div>
+                            ) : (
+                              <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: '#f4f6f8', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e1e3e5' }}>
+                                <Icon source={BarcodeIcon} tone="subdued" />
+                              </div>
+                            )}
+                          </IndexTable.Cell>
+                          <IndexTable.Cell>
+                            <Text as="span" variant="bodyMd" fontWeight="semibold">{item.productName}</Text>
+                          </IndexTable.Cell>
+                          <IndexTable.Cell>
+                            <Text as="span" variant="bodySm" tone="subdued">{item.sku}</Text>
+                          </IndexTable.Cell>
+                          <IndexTable.Cell>{item.quantity}</IndexTable.Cell>
+                          <IndexTable.Cell>{formatCurrency(item.unitPrice)}</IndexTable.Cell>
+                          <IndexTable.Cell>
+                            <Text as="span" fontWeight="semibold">{formatCurrency(item.subtotal)}</Text>
+                          </IndexTable.Cell>
+                          <IndexTable.Cell>
+                            <Button
+                              variant="plain"
+                              icon={DeleteIcon}
+                              tone="critical"
+                              onClick={() => handleRemoveClick(item.productId)}
+                              accessibilityLabel="Eliminar"
+                            />
+                          </IndexTable.Cell>
+                        </IndexTable.Row>
+                      )
+                    })}
+                  </IndexTable>
+                </BlockStack>
+              </Card>
+            )}
+
+            {/* Totals */}
+            {items.length > 0 && (
+              <Card>
+                <BlockStack gap="200">
+                  <InlineStack align="space-between">
+                    <Text as="span">Subtotal:</Text>
+                    <Text as="span">{formatCurrency(subtotal)}</Text>
                   </InlineStack>
-                  <ProgressBar progress={mpStatus.includes('Esperando') ? 50 : 25} tone="highlight" size="small" />
-                  {mpError && (
-                    <Banner tone="critical">
-                      <p>{mpError}</p>
-                    </Banner>
+                  <InlineStack align="space-between">
+                    <Text as="span">IVA (16%):</Text>
+                    <Text as="span">{formatCurrency(iva)}</Text>
+                  </InlineStack>
+                  {cardSurcharge > 0 && (
+                    <InlineStack align="space-between">
+                      <Text as="span" tone="caution">Comisión tarjeta (2.5% + IVA):</Text>
+                      <Text as="span" tone="caution">{formatCurrency(cardSurcharge)}</Text>
+                    </InlineStack>
                   )}
-                  <InlineStack align="end">
-                    <Button tone="critical" onClick={handleCancelMPPayment}>
-                      Cancelar cobro
-                    </Button>
+                  <Divider />
+                  <InlineStack align="space-between">
+                    <Text as="span" variant="headingMd" fontWeight="bold">TOTAL:</Text>
+                    <Text as="span" variant="headingMd" fontWeight="bold">{formatCurrency(total)}</Text>
                   </InlineStack>
                 </BlockStack>
               </Card>
             )}
-            {paymentMethod === 'efectivo' && (
+
+            {/* Payment details */}
+            <FormLayout>
+              <TextField
+                label="Cajero / ID Global"
+                value={currentUserRole ? (currentUserRole.globalId || currentUserRole.employeeNumber || '') : ''}
+                readOnly
+                autoComplete="off"
+                placeholder="Cargando cajero..."
+                helpText="Venta vinculada automáticamente a tu ID Global de empleado"
+              />
+              <FormSelect
+                label="Método de pago"
+                options={paymentMethodOptions}
+                value={paymentMethod}
+                onChange={(v) => {
+                  setPaymentMethod(v as any);
+                  if (v !== 'efectivo') setAmountPaid('');
+                }}
+              />
+              {/* Loyalty/Client Selection for all methods */}
               <BlockStack gap="200">
-                <TextField
-                  label="Monto recibido"
-                  type="number"
-                  value={amountPaid}
-                  onChange={setAmountPaid}
-                  autoComplete="off"
-                  prefix="$"
-                  placeholder="0.00"
-                  helpText={total > 0 ? `Mínimo: ${formatCurrency(total)}` : undefined}
+                <Text as="h3" variant="headingSm">Cliente (para lealtad o fiado)</Text>
+                <SearchableSelect
+                  label="Seleccionar Cliente"
+                  labelHidden
+                  options={clientes.map((c) => ({
+                    label: `${c.name} — Puntos: ${Math.floor(parseFloat(String(c.points)))} — Deuda: ${formatCurrency(c.balance)}`,
+                    value: c.id,
+                  }))}
+                  selected={clienteId}
+                  onChange={setClienteId}
                 />
-                {parseFloat(amountPaid) >= total && total > 0 && (
-                  <Banner tone="success">
-                    <InlineStack align="space-between">
-                      <Text as="span" fontWeight="bold">Cambio:</Text>
-                      <Text as="span" variant="headingMd" fontWeight="bold">{formatCurrency(change)}</Text>
-                    </InlineStack>
-                  </Banner>
-                )}
+                {clienteId && (() => {
+                  const c = clientes.find((cl) => cl.id === clienteId);
+                  if (!c) return null;
+                  return (
+                    <Banner tone="info">
+                      <InlineStack align="space-between">
+                        <Text as="p">Puntos disponibles:</Text>
+                        <Badge tone="success">{`${Math.floor(parseFloat(String(c.points)))} pts`}</Badge>
+                      </InlineStack>
+                    </Banner>
+                  );
+                })()}
               </BlockStack>
-            )}
-          </FormLayout>
-        </BlockStack>
-      </Modal.Section>
-    </Modal>
+
+              {paymentMethod === 'fiado' && (
+                <BlockStack gap="200">
+                  <Banner tone="warning">
+                    <p>Esta venta se registrará como <strong>fiado</strong>. El monto se sumará a la deuda del cliente.</p>
+                  </Banner>
+                  {clienteId && (() => {
+                    const c = clientes.find((cl) => cl.id === clienteId);
+                    if (!c) return null;
+                    const disponible = Math.max(0, c.creditLimit - c.balance);
+                    const excedeCredito = total > 0 && (c.balance + total) > c.creditLimit;
+                    return (
+                      <Banner tone={excedeCredito ? 'critical' : 'info'}>
+                        <BlockStack gap="100">
+                          <Text as="p" variant="bodySm">
+                            Deuda actual: <strong>{formatCurrency(c.balance)}</strong> / Límite: <strong>{formatCurrency(c.creditLimit)}</strong>
+                          </Text>
+                          <Text as="p" variant="bodySm">
+                            Crédito disponible: <strong>{formatCurrency(disponible)}</strong>
+                          </Text>
+                          {excedeCredito && (
+                            <Text as="p" variant="bodySm" tone="critical">
+                              Esta venta de {formatCurrency(total)} excede el credito disponible.
+                            </Text>
+                          )}
+                        </BlockStack>
+                      </Banner>
+                    );
+                  })()}
+                  {clientes.length === 0 && (
+                    <Banner tone="info">
+                      <p>No hay clientes registrados. Agrega clientes desde la sección de <strong>Fiado / Crédito</strong>.</p>
+                    </Banner>
+                  )}
+                </BlockStack>
+              )}
+
+              {paymentMethod === 'puntos' && (
+                <BlockStack gap="200">
+                  <Banner tone="success">
+                    <p>Usando puntos de lealtad como método de pago.</p>
+                  </Banner>
+                  {total > 0 && pointsAvailable < (subtotal + iva + cardSurcharge) && (
+                    <Banner tone="warning">
+                      <p>Los puntos no cubren el total. El resto ({formatCurrency(total)}) debe cobrarse por fuera o el cliente debe tener más puntos.</p>
+                    </Banner>
+                  )}
+                </BlockStack>
+              )}
+              {paymentMethod === 'tarjeta' && !mpConfig.enabled && (
+                <Banner tone="warning">
+                  <p>
+                    Terminal Mercado Pago no configurada. Ve a <strong>Configuración &gt; Mercado Pago</strong> para
+                    ingresar tu Access Token y Device ID. O usa &quot;Tarjeta (manual sin terminal)&quot;.
+                  </p>
+                </Banner>
+              )}
+              {paymentMethod === 'tarjeta' && mpConfig.enabled && !mpProcessing && (
+                <Banner tone="info">
+                  <p>
+                    Al cobrar, se enviará el monto de <strong>{formatCurrency(total)}</strong> a tu terminal
+                    Mercado Pago. El cliente pasará su tarjeta en el dispositivo.
+                  </p>
+                </Banner>
+              )}
+              {mpProcessing && (
+                <Card>
+                  <BlockStack gap="300">
+                    <InlineStack gap="200" blockAlign="center">
+                      <Spinner size="small" />
+                      <Text as="p" variant="bodyMd" fontWeight="semibold">{mpStatus}</Text>
+                    </InlineStack>
+                    <ProgressBar progress={mpStatus.includes('Esperando') ? 50 : 25} tone="highlight" size="small" />
+                    {mpError && (
+                      <Banner tone="critical">
+                        <p>{mpError}</p>
+                      </Banner>
+                    )}
+                    <InlineStack align="end">
+                      <Button tone="critical" onClick={handleCancelMPPayment}>
+                        Cancelar cobro
+                      </Button>
+                    </InlineStack>
+                  </BlockStack>
+                </Card>
+              )}
+              {paymentMethod === 'efectivo' && (
+                <BlockStack gap="200">
+                  <TextField
+                    label="Monto recibido"
+                    type="number"
+                    value={amountPaid}
+                    onChange={setAmountPaid}
+                    autoComplete="off"
+                    prefix="$"
+                    placeholder="0.00"
+                    helpText={total > 0 ? `Mínimo: ${formatCurrency(total)}` : undefined}
+                  />
+                  {parseFloat(amountPaid) >= total && total > 0 && (
+                    <Banner tone="success">
+                      <InlineStack align="space-between">
+                        <Text as="span" fontWeight="bold">Cambio:</Text>
+                        <Text as="span" variant="headingMd" fontWeight="bold">{formatCurrency(change)}</Text>
+                      </InlineStack>
+                    </Banner>
+                  )}
+                </BlockStack>
+              )}
+            </FormLayout>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      {/* Pin Pad Modal for Authorizations */}
+      <PinPadModal
+        open={pinPadOpen}
+        onClose={() => { setPinPadOpen(false); setPinPadAction(null); }}
+        onSuccess={handlePinSuccess}
+        requiredPermission="sales.delete_item"
+        title="Autorizar Cancelación de Artículo"
+      />
+    </>
   );
 }

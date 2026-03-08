@@ -27,10 +27,12 @@ interface CorteCajaModalProps {
 }
 
 export function CorteCajaModal({ open, onClose }: CorteCajaModalProps) {
-  const { saleRecords, gastos, cortesHistory, createCorteCaja, storeConfig } = useDashboardStore();
+  const { saleRecords, gastos, cortesHistory, createCorteCaja, storeConfig, currentUserRole } = useDashboardStore();
   const { showSuccess, showError } = useToast();
 
-  const [cajero, setCajero] = useState('');
+  const defaultCajero = currentUserRole?.globalId || currentUserRole?.employeeNumber || '';
+
+  const [cajero, setCajero] = useState(defaultCajero);
   const [fondoInicial, setFondoInicial] = useState('500');
   const [efectivoContado, setEfectivoContado] = useState('');
   const [notas, setNotas] = useState('');
@@ -51,12 +53,12 @@ export function CorteCajaModal({ open, onClose }: CorteCajaModalProps) {
   const diferencia = (parseFloat(efectivoContado || '0')) - efectivoEsperado;
 
   const resetForm = useCallback(() => {
-    setCajero('');
+    setCajero(defaultCajero);
     setFondoInicial('500');
     setEfectivoContado('');
     setNotas('');
     setCompletedCorte(null);
-  }, []);
+  }, [defaultCajero]);
 
   const handleSubmit = useCallback(async () => {
     if (!cajero.trim()) {
@@ -156,11 +158,11 @@ body {
 <div class="sep-double"></div>
 <div class="total-line" style="color:${diffColor}"><span>DIFERENCIA</span><span>${diffSign}$${completedCorte.diferencia.toFixed(2)}</span></div>
 ${Math.abs(completedCorte.diferencia) <= 10
-  ? '<div class="center bold" style="font-size:10px;margin:2px 0">*** CAJA CUADRADA ***</div>'
-  : completedCorte.diferencia < 0
-    ? '<div class="center bold" style="font-size:10px;margin:2px 0">*** FALTANTE EN CAJA ***</div>'
-    : '<div class="center bold" style="font-size:10px;margin:2px 0">*** SOBRANTE EN CAJA ***</div>'
-}
+        ? '<div class="center bold" style="font-size:10px;margin:2px 0">*** CAJA CUADRADA ***</div>'
+        : completedCorte.diferencia < 0
+          ? '<div class="center bold" style="font-size:10px;margin:2px 0">*** FALTANTE EN CAJA ***</div>'
+          : '<div class="center bold" style="font-size:10px;margin:2px 0">*** SOBRANTE EN CAJA ***</div>'
+      }
 <div class="sep-double"></div>
 
 ${completedCorte.notas ? `<div class="data-row" style="font-size:10px"><span>NOTAS:</span></div><div style="font-size:9px;padding:2px 0">${completedCorte.notas}</div><div class="sep-dashed"></div>` : ''}

@@ -18,9 +18,29 @@ import {
   Divider,
   Banner,
   ProgressBar,
+  Page,
+  Icon,
+  Popover,
+  ActionList,
+  Tooltip,
 } from '@shopify/polaris';
-import { PlusIcon, CashDollarIcon } from '@shopify/polaris-icons';
+import {
+  PlusIcon,
+  CashDollarIcon,
+  SearchIcon,
+  ChevronDownIcon,
+  CheckIcon,
+  PersonIcon,
+  ExportIcon,
+  ImportIcon,
+  SortIcon,
+  DataTableIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
+  RefreshIcon,
+} from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
+import { CustomerProfile } from './CustomerProfile';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { formatCurrency } from '@/lib/utils';
 import { usePermissions } from '@/lib/usePermissions';
@@ -37,8 +57,14 @@ export function FiadoManager() {
   const [addClienteOpen, setAddClienteOpen] = useState(false);
   const [fiadoOpen, setFiadoOpen] = useState(false);
   const [abonoOpen, setAbonoOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
+  const [viewingProfile, setViewingProfile] = useState<Cliente | null>(null);
+
+  // Sort state
+  const [sortActive, setSortActive] = useState(false);
+  const [sortBy, setSortBy] = useState('updated');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSortActive = useCallback(() => setSortActive((active) => !active), []);
 
   // Edit / Delete client state
   const [editClienteOpen, setEditClienteOpen] = useState(false);
@@ -126,11 +152,6 @@ export function FiadoManager() {
     setAbonoOpen(false);
   }, [abonoClienteId, abonoAmount, abonoDescription, registerAbono, showSuccess, showError]);
 
-  const handleViewHistory = useCallback((cliente: Cliente) => {
-    setSelectedCliente(cliente);
-    setHistoryOpen(true);
-  }, []);
-
   const handleStartEditCliente = useCallback((cliente: Cliente) => {
     setEditCliente(cliente);
     setEditCName(cliente.name);
@@ -165,43 +186,77 @@ export function FiadoManager() {
     setDeleting(false);
   }, [clientes, deleteCliente, showSuccess, showError]);
 
-  const clienteTransactions = useMemo(() => {
-    if (!selectedCliente) return [];
-    return fiadoTransactions
-      .filter((t) => t.clienteId === selectedCliente.id)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [selectedCliente, fiadoTransactions]);
+  if (viewingProfile) {
+    return (
+      <CustomerProfile
+        cliente={viewingProfile}
+        transactions={fiadoTransactions.filter(t => t.clienteId === viewingProfile.id)}
+        onBack={() => setViewingProfile(null)}
+      />
+    );
+  }
 
   return (
-    <>
+    <Page
+      fullWidth
+      title="Clientes"
+      titleMetadata={<Icon source={PersonIcon} tone="subdued" />}
+      primaryAction={
+        canEditClients ? {
+          content: 'Agregar cliente',
+          onAction: () => setAddClienteOpen(true),
+        } : undefined
+      }
+      secondaryActions={[
+        {
+          content: 'Actualizar',
+          icon: RefreshIcon,
+          onAction: () => {
+            useDashboardStore.getState().fetchDashboardData();
+          },
+        },
+        { content: 'Exportar', icon: ExportIcon },
+        { content: 'Importar', icon: ImportIcon },
+      ]}
+    >
       <BlockStack gap="400">
-        {/* Summary */}
-        <Card>
-          <BlockStack gap="300">
-            <InlineStack align="space-between" blockAlign="center">
-              <Text as="h2" variant="headingMd">Fiado / Crédito a Clientes</Text>
-              <Badge tone={totalDebt > 0 ? 'attention' : 'success'}>{`Deuda total: ${formatCurrency(totalDebt)}`}</Badge>
+        {/* Summary Card */}
+        <Box
+          padding="300"
+          background="bg-surface-secondary"
+          borderRadius="200"
+          borderWidth="025"
+          borderColor="border"
+        >
+          <InlineStack align="space-between" blockAlign="center">
+            <InlineStack gap="100">
+              <Text as="span" variant="bodyMd" fontWeight="semibold">
+                {clientes.length} {clientes.length === 1 ? 'cliente' : 'clientes'}
+              </Text>
+              <Box borderInlineStartWidth="025" borderColor="border" paddingInlineStart="200">
+                <Text as="span" tone="subdued">0 % de tu clientela</Text>
+              </Box>
             </InlineStack>
+            <Icon source={ChevronDownIcon} tone="subdued" />
+          </InlineStack>
+        </Box>
 
-            <InlineStack gap="200">
-              {canEditClients && (
-                <Button icon={PlusIcon} onClick={() => setAddClienteOpen(true)}>
-                  Nuevo Cliente
-                </Button>
-              )}
-              {canCreateFiado && (
-                <Button variant="primary" tone="critical" onClick={() => setFiadoOpen(true)} disabled={clientes.length === 0}>
-                  Registrar Fiado
-                </Button>
-              )}
-              {canCreateFiado && (
-                <Button variant="primary" onClick={() => setAbonoOpen(true)} disabled={clientesWithDebt.length === 0}>
-                  Registrar Abono
-                </Button>
-              )}
-            </InlineStack>
-          </BlockStack>
-        </Card>
+        {/* Action Buttons for Store logic */}
+        <InlineStack gap="200">
+          {canCreateFiado && (
+            <Button variant="primary" tone="critical" onClick={() => setFiadoOpen(true)} disabled={clientes.length === 0}>
+              Registrar Fiado
+            </Button>
+          )}
+          {canCreateFiado && (
+            <Button variant="primary" onClick={() => setAbonoOpen(true)} disabled={clientesWithDebt.length === 0}>
+              Registrar Abono
+            </Button>
+          )}
+          <Badge tone={totalDebt > 0 ? 'attention' : 'success'}>
+            {`Deuda total en tienda: ${formatCurrency(totalDebt)}`}
+          </Badge>
+        </InlineStack>
 
         {/* Clients list */}
         {clientes.length === 0 ? (
@@ -211,61 +266,135 @@ export function FiadoManager() {
             </EmptyState>
           </Card>
         ) : (
-          <Card>
+          <Card padding="0">
+            {/* Table Filter/Search header style Shopify */}
+            <Box padding="200" borderBlockEndWidth="025" borderStyle="solid" borderColor="border">
+              <InlineStack align="space-between" blockAlign="center">
+                <Box width="320px">
+                  <TextField
+                    label="Buscar clientes"
+                    labelHidden
+                    autoComplete="off"
+                    placeholder="Buscar clientes"
+                    prefix={<Icon source={SearchIcon} tone="subdued" />}
+                  />
+                </Box>
+                <InlineStack gap="200">
+                  <Button variant="tertiary" icon={DataTableIcon} />
+                  <Popover
+                    active={sortActive}
+                    activator={
+                      <Tooltip content="Ordenar" dismissOnMouseOut>
+                        <Button variant="tertiary" icon={SortIcon} onClick={toggleSortActive} />
+                      </Tooltip>
+                    }
+                    onClose={toggleSortActive}
+                  >
+                    <Box padding="200" minWidth="280px">
+                      <BlockStack gap="100">
+                        <Box paddingInlineStart="300" paddingBlock="200">
+                          <Text as="p" variant="bodyMd" tone="subdued">Ordenar por</Text>
+                        </Box>
+
+                        <div className="custom-sort-list">
+                          {[
+                            { id: 'updated', label: 'Última actualización' },
+                            { id: 'spent', label: 'Importe gastado' },
+                            { id: 'orders', label: 'Pedidos totales' },
+                            { id: 'lastOrder', label: 'Fecha del último pedido' },
+                            { id: 'firstOrder', label: 'Fecha del primer pedido' },
+                            { id: 'created', label: 'Fecha en que se agregó como cliente' },
+                            { id: 'abandoned', label: 'Fecha del último pedido abandonado' },
+                          ].map((option) => (
+                            <button
+                              key={option.id}
+                              onClick={() => setSortBy(option.id)}
+                              className={`sort-option-btn ${sortBy === option.id ? 'active' : ''}`}
+                            >
+                              <div className="radio-circle">
+                                {sortBy === option.id && <div className="radio-inner" />}
+                              </div>
+                              <Text as="span" variant="bodyMd">
+                                {option.label}
+                              </Text>
+                            </button>
+                          ))}
+                        </div>
+
+                        <Divider />
+
+                        <Box padding="100">
+                          <BlockStack gap="100">
+                            <button
+                              onClick={() => setSortOrder('asc')}
+                              className={`direction-btn ${sortOrder === 'asc' ? 'active' : ''}`}
+                            >
+                              <Icon source={ArrowUpIcon} tone="base" />
+                              <Text as="span" variant="bodyMd" fontWeight={sortOrder === 'asc' ? 'semibold' : 'regular'}>
+                                Más antiguo a más reciente
+                              </Text>
+                            </button>
+                            <button
+                              onClick={() => setSortOrder('desc')}
+                              className={`direction-btn ${sortOrder === 'desc' ? 'active' : ''}`}
+                            >
+                              <Icon source={ArrowDownIcon} tone="base" />
+                              <Text as="span" variant="bodyMd" fontWeight={sortOrder === 'desc' ? 'semibold' : 'regular'}>
+                                Más reciente a más antiguo
+                              </Text>
+                            </button>
+                          </BlockStack>
+                        </Box>
+                      </BlockStack>
+                    </Box>
+                  </Popover>
+                </InlineStack>
+              </InlineStack>
+            </Box>
+
             <IndexTable
               resourceName={{ singular: 'cliente', plural: 'clientes' }}
               itemCount={clientes.length}
               headings={[
-                { title: 'Cliente' },
-                { title: 'Teléfono' },
-                { title: 'Saldo / Límite' },
-                { title: 'Uso crédito' },
-                { title: 'Última transacción' },
-                { title: '' },
+                { title: 'Nombre del cliente' },
+                { title: 'Suscripción por email' },
+                { title: 'Ubicación' },
+                { title: 'Pedidos' },
+                { title: 'Importe gastado' },
+                { title: 'Acciones' },
               ]}
               selectable={false}
             >
               {clientes.map((cliente, idx) => {
-                const usagePct = cliente.creditLimit > 0 ? Math.min(100, (cliente.balance / cliente.creditLimit) * 100) : 0;
+                const clientTransactions = fiadoTransactions.filter(t => t.clienteId === cliente.id);
+                const orderCount = new Set(clientTransactions.map(t => t.saleFolio).filter(Boolean)).size;
+                const totalSpent = clientTransactions
+                  .filter(t => t.type === 'fiado' && t.saleFolio)
+                  .reduce((sum, t) => sum + t.amount, 0);
+
                 return (
                   <IndexTable.Row id={cliente.id} key={cliente.id} position={idx}>
                     <IndexTable.Cell>
-                      <BlockStack gap="050">
-                        <Text as="span" fontWeight="bold">{cliente.name}</Text>
-                        {cliente.address && <Text as="span" variant="bodySm" tone="subdued">{cliente.address}</Text>}
-                      </BlockStack>
+                      <Button variant="plain" onClick={() => setViewingProfile(cliente)}>
+                        {cliente.name.toUpperCase()}
+                      </Button>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" variant="bodySm">{cliente.phone || '—'}</Text>
+                      <Badge tone="success">Suscrito</Badge>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <BlockStack gap="050">
-                        <Text as="span" fontWeight="semibold" tone={cliente.balance > 0 ? 'critical' : 'success'}>
-                          {formatCurrency(cliente.balance)}
-                        </Text>
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          Límite: {formatCurrency(cliente.creditLimit)}
-                        </Text>
-                      </BlockStack>
+                      <Text as="span" tone="subdued">México</Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Box minWidth="100px">
-                        <ProgressBar
-                          progress={usagePct}
-                          tone={usagePct > 80 ? 'critical' : usagePct > 50 ? 'highlight' : 'success'}
-                          size="small"
-                        />
-                        <Text as="span" variant="bodySm" tone="subdued">{usagePct.toFixed(0)}%</Text>
-                      </Box>
+                      <Text as="span">{orderCount} pedidos</Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        {cliente.lastTransaction ? new Date(cliente.lastTransaction).toLocaleDateString('es-MX') : 'Sin movimientos'}
+                      <Text as="span" fontWeight="semibold">
+                        {formatCurrency(totalSpent)}
                       </Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
                       <InlineStack gap="100">
-                        <Button variant="plain" onClick={() => handleViewHistory(cliente)}>Historial</Button>
                         {canEditClients && (
                           <Button variant="plain" onClick={() => handleStartEditCliente(cliente)}>Editar</Button>
                         )}
@@ -359,78 +488,6 @@ export function FiadoManager() {
         </Modal.Section>
       </Modal>
 
-      {/* Modal: Historial de cliente */}
-      {selectedCliente && (
-        <Modal
-          open={historyOpen}
-          onClose={() => { setHistoryOpen(false); setSelectedCliente(null); }}
-          title={`Historial — ${selectedCliente.name}`}
-          secondaryActions={[{ content: 'Cerrar', onAction: () => { setHistoryOpen(false); setSelectedCliente(null); } }]}
-        >
-          <Modal.Section>
-            <BlockStack gap="300">
-              <InlineStack align="space-between">
-                <Text as="span">Deuda actual:</Text>
-                <Badge tone={selectedCliente.balance > 0 ? 'critical' : 'success'}>
-                  {formatCurrency(selectedCliente.balance)}
-                </Badge>
-              </InlineStack>
-              <Divider />
-              {clienteTransactions.length === 0 ? (
-                <Text as="p" tone="subdued">Sin movimientos registrados.</Text>
-              ) : (
-                clienteTransactions.map((t) => (
-                  <BlockStack key={t.id} gap="200">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <BlockStack gap="050">
-                        <InlineStack gap="100">
-                          <Badge tone={t.type === 'fiado' ? 'critical' : 'success'}>
-                            {t.type === 'fiado' ? 'Fiado' : 'Abono'}
-                          </Badge>
-                          <Text as="span" variant="bodySm">{t.description}</Text>
-                        </InlineStack>
-                        {t.saleFolio && (
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            Folio: {t.saleFolio}
-                          </Text>
-                        )}
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          {new Date(t.date).toLocaleString('es-MX')}
-                        </Text>
-                      </BlockStack>
-                      <Text as="span" fontWeight="bold" tone={t.type === 'fiado' ? 'critical' : 'success'}>
-                        {t.type === 'fiado' ? '+' : '-'}{formatCurrency(t.amount)}
-                      </Text>
-                    </InlineStack>
-                    {/* Show itemized products for fiado transactions */}
-                    {t.type === 'fiado' && t.items && t.items.length > 0 && (
-                      <Box paddingInlineStart="400">
-                        <Card>
-                          <BlockStack gap="100">
-                            <Text as="p" variant="bodySm" fontWeight="semibold">Productos fiados:</Text>
-                            {t.items.map((item, idx) => (
-                              <InlineStack key={idx} align="space-between">
-                                <Text as="span" variant="bodySm">
-                                  {item.productName} x{item.quantity}
-                                </Text>
-                                <Text as="span" variant="bodySm" tone="subdued">
-                                  {formatCurrency(item.subtotal)}
-                                </Text>
-                              </InlineStack>
-                            ))}
-                          </BlockStack>
-                        </Card>
-                      </Box>
-                    )}
-                    <Divider />
-                  </BlockStack>
-                ))
-              )}
-            </BlockStack>
-          </Modal.Section>
-        </Modal>
-      )}
-
       {/* Modal: Editar Cliente */}
       <Modal
         open={editClienteOpen}
@@ -448,6 +505,6 @@ export function FiadoManager() {
           </FormLayout>
         </Modal.Section>
       </Modal>
-    </>
+    </Page>
   );
 }

@@ -88,7 +88,7 @@ export function CameraScanner({
             qrbox: { width: 280, height: 120 },
             aspectRatio: 1.5,
           },
-          (decodedText) => {
+          (decodedText: string) => {
             setLastScanned((prev) => {
               if (prev === decodedText) return prev;
               onScanRef.current(decodedText);

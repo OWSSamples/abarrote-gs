@@ -48,6 +48,7 @@ export function RolesManager() {
     updateRoleDefinition,
     deleteRoleDefinition,
     fetchRoles,
+    createUserWithRole,
     assignRole,
     updateRole,
     updateUserPin,
@@ -78,7 +79,7 @@ export function RolesManager() {
 
   const [formEmail, setFormEmail] = useState('');
   const [formDisplayName, setFormDisplayName] = useState('');
-  const [formFirebaseUid, setFormFirebaseUid] = useState('');
+  const [formPassword, setFormPassword] = useState('');
   const [formRoleId, setFormRoleId] = useState('');
   const [formPinCode, setFormPinCode] = useState('');
   const [editRoleId, setEditRoleId] = useState('');
@@ -217,43 +218,50 @@ export function RolesManager() {
   const resetUserForm = () => {
     setFormEmail('');
     setFormDisplayName('');
-    setFormFirebaseUid('');
+    setFormPassword('');
     setFormPinCode('');
     const defaultRole = roleDefinitions.find((d) => d.name === 'Cajero') ?? roleDefinitions[0];
     if (defaultRole) setFormRoleId(defaultRole.id);
   };
 
   const handleAddUser = useCallback(async () => {
-    if (!formEmail.trim()) {
-      showError('El correo es obligatorio');
+    if (!formEmail.trim() || !formPassword.trim()) {
+      showError('El correo y la contraseña son obligatorios');
+      return;
+    }
+    if (formPassword.trim().length < 6) {
+      showError('La contraseña debe tener al menos 6 caracteres');
       return;
     }
     if (!user || !formRoleId) return;
     setSaving(true);
     try {
-      const pendingUid = formFirebaseUid || `pending-${Date.now()}`;
-      await assignRole(
+      await createUserWithRole(
         {
-          firebaseUid: pendingUid,
           email: formEmail.trim(),
+          password: formPassword.trim(),
           displayName: formDisplayName.trim(),
           roleId: formRoleId,
+          pinCode: formPinCode.trim() || undefined,
         },
         user.uid
       );
-      if (formPinCode.trim()) {
-        await updateUserPin(pendingUid, formPinCode.trim());
-      }
+
       const roleName = roleMap.get(formRoleId)?.name ?? '';
-      showSuccess(`Rol ${roleName} asignado a ${formEmail}`);
+      showSuccess(`Usuario creado y Rol ${roleName} asignado a ${formEmail}`);
       resetUserForm();
       setAddOpen(false);
-    } catch {
-      showError('Error al asignar rol');
+    } catch (error: any) {
+      console.error(error);
+      if (error?.message?.includes('FirebaseAuthError') || error?.errorInfo?.code === 'auth/email-already-exists') {
+        showError('Error: El correo electrónico ya está registrado en la base de datos.');
+      } else {
+        showError('Error al crear el usuario y asignar el rol');
+      }
     } finally {
       setSaving(false);
     }
-  }, [formEmail, formDisplayName, formFirebaseUid, formRoleId, formPinCode, user, assignRole, updateUserPin, roleMap, showSuccess, showError]);
+  }, [formEmail, formDisplayName, formPassword, formRoleId, formPinCode, user, createUserWithRole, roleMap, showSuccess, showError]);
 
   const handleEditUser = useCallback(async () => {
     if (!selectedUser || !user) return;
@@ -713,12 +721,13 @@ export function RolesManager() {
               placeholder="Juan Perez"
             />
             <TextField
-              label="Firebase UID (opcional)"
-              value={formFirebaseUid}
-              onChange={setFormFirebaseUid}
-              autoComplete="off"
-              placeholder="Se asigna automaticamente al iniciar sesion"
-              helpText="Si no lo sabes, dejalo vacio. Se vinculara cuando el usuario inicie sesion."
+              label="Contraseña"
+              type="password"
+              value={formPassword}
+              onChange={setFormPassword}
+              autoComplete="new-password"
+              placeholder="Min. 6 caracteres"
+              helpText="La contraseña inicial para que el usuario inicie sesión."
             />
             <Select
               label="Rol"

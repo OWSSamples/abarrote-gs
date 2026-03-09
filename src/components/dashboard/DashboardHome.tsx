@@ -288,7 +288,15 @@ export function DashboardHome() {
   );
 
   const topBarMarkup = (
-    <CustomTopBar userMenu={<UserMenu />} onNavigationToggle={toggleMobileNav} />
+    <CustomTopBar
+      userMenu={<UserMenu />}
+      onNavigationToggle={toggleMobileNav}
+      onSectionSelect={handleSectionSelect}
+      onProductClick={(product) => {
+        setSelectedProduct(product);
+        setProductModalOpen(true);
+      }}
+    />
   );
 
   const navigationMarkup = (

@@ -56,7 +56,6 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNav.push({
         url: '#',
         label: 'Historial',
-        selected: selected === 'sales-history',
         onClick: () => onSelect('sales-history'),
       });
     }
@@ -64,7 +63,6 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNav.push({
         url: '#',
         label: 'Corte de Caja',
-        selected: selected === 'sales-corte',
         onClick: () => onSelect('sales-corte'),
       });
     }
@@ -88,19 +86,16 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
         {
           url: '#',
           label: 'Colecciones',
-          selected: selected === 'catalog',
           onClick: () => onSelect('catalog'),
         },
         {
           url: '#',
           label: 'Inventario',
-          selected: selected === 'inventory',
           onClick: () => onSelect('inventory'),
         },
         {
           url: '#',
           label: 'Órdenes de compra',
-          selected: selected === 'pedidos',
           onClick: () => onSelect('pedidos'),
         },
       ],
@@ -135,7 +130,6 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNav.push({
         url: '#',
         label: 'Proveedores',
-        selected: selected === 'suppliers',
         onClick: () => onSelect('suppliers'),
       });
     }
@@ -143,7 +137,6 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
       subNav.push({
         url: '#',
         label: 'Pedidos',
-        selected: selected === 'pedidos',
         onClick: () => onSelect('pedidos'),
       });
     }

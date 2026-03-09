@@ -50,6 +50,7 @@ import {
   generateGlobalId as dbGenerateGlobalId,
   deactivateUser as dbDeactivateUser,
   reactivateUser as dbReactivateUser,
+  createFirebaseUserWithRole as dbCreateFirebaseUserWithRole,
 } from '@/app/actions/db-actions';
 
 interface DashboardStore extends DashboardState {
@@ -107,6 +108,7 @@ interface DashboardStore extends DashboardState {
   fetchRoles: () => Promise<void>;
   ensureOwnerRole: (firebaseUid: string, email: string, displayName: string) => Promise<UserRoleRecord>;
   assignRole: (data: { firebaseUid: string; email: string; displayName: string; roleId: string }, assignedByUid: string) => Promise<void>;
+  createUserWithRole: (data: { email: string; password?: string; displayName: string; roleId: string; pinCode?: string }, assignedByUid: string) => Promise<void>;
   updateRole: (firebaseUid: string, newRoleId: string, assignedByUid: string) => Promise<void>;
   updateUserPin: (firebaseUid: string, pinCode: string) => Promise<void>;
   removeRole: (firebaseUid: string) => Promise<void>;
@@ -583,6 +585,17 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       }
     } catch (error) {
       console.error('Error assigning role:', error);
+      throw error;
+    }
+  },
+
+  createUserWithRole: async (data, assignedByUid) => {
+    try {
+      const newRole = await dbCreateFirebaseUserWithRole(data, assignedByUid);
+      const state = get();
+      set({ userRoles: [...state.userRoles, newRole] });
+    } catch (error) {
+      console.error('Error creating user with role:', error);
       throw error;
     }
   },

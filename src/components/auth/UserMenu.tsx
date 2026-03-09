@@ -11,11 +11,15 @@ import {
   Divider,
   Badge,
   Box,
+  Icon,
 } from '@shopify/polaris';
 import {
+  ProfileIcon,
   SettingsIcon,
   ExitIcon,
-  LightbulbIcon,
+  SunIcon,
+  MoonIcon,
+  ChevronDownIcon,
 } from '@shopify/polaris-icons';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -33,12 +37,8 @@ export function UserMenu() {
   const handleToggleTheme = useCallback(() => {
     const newMode = themeMode === 'light' ? 'dark' : 'light';
     setThemeMode(newMode);
-
-    // Shopify Polaris Theme Variable (CSS vars approach)
     document.documentElement.setAttribute('data-color-scheme', newMode);
     document.documentElement.setAttribute('data-theme', newMode);
-
-    // Tailwind / Shadcn UI Dark Mode
     if (newMode === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -48,7 +48,7 @@ export function UserMenu() {
 
   if (!user) return null;
 
-  const displayName = user.displayName || user.email?.split('@')[0] || 'Usuario';
+  const displayName = currentUserRole?.displayName || user.displayName || user.email?.split('@')[0] || 'Usuario';
   const initials = displayName
     .split(' ')
     .filter(Boolean)
@@ -57,56 +57,61 @@ export function UserMenu() {
     .toUpperCase()
     .slice(0, 2);
 
-  const getRoleBadgeTone = () => {
+  const avatarSource = currentUserRole?.avatarUrl || user.photoURL || undefined;
+
+  const getRoleBadgeTone = (): 'success' | 'info' | 'attention' => {
     if (currentUserRole?.roleId === 'owner') return 'success';
     if (currentUserRole?.roleId === 'cashier') return 'info';
-    return 'new'; // 'new' is usually purple in Polaris, looks professional
+    return 'attention';
   };
 
-  const roleLabel = currentUserRole?.roleId === 'owner' ? 'Administrador' :
+  const roleLabel = currentUserRole?.roleId === 'owner' ? 'Admin' :
     currentUserRole?.roleId === 'cashier' ? 'Cajero' : 'Usuario';
 
   const activator = (
     <button
       onClick={toggleActive}
+      aria-label="Abrir menú de usuario"
       style={{
-        background: 'none',
-        border: 'none',
+        background: active ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+        border: '1px solid transparent',
         cursor: 'pointer',
-        padding: '6px 12px',
-        borderRadius: '24px',
-        transition: 'all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)',
+        padding: '4px 8px 4px 4px',
+        borderRadius: '8px',
+        transition: 'all 0.15s ease',
         display: 'flex',
         alignItems: 'center',
+        gap: '8px',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'none';
+        e.currentTarget.style.background = active ? 'rgba(255, 255, 255, 0.1)' : 'transparent';
+        e.currentTarget.style.borderColor = 'transparent';
       }}
-      aria-label="Abrir menú de usuario"
     >
-      <InlineStack gap="200" align="center" blockAlign="center">
-        <div style={{
-          backgroundColor: '#008080',
-          borderRadius: '4px',
-          padding: '2px 8px',
-          color: 'white',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '24px',
-          minWidth: '32px'
+      <Avatar
+        initials={initials}
+        size="sm"
+        name={displayName}
+        source={avatarSource}
+      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <span style={{
+          color: '#e3e5e7',
+          fontSize: '13px',
+          fontWeight: 500,
+          maxWidth: '120px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
         }}>
-          {initials}
-        </div>
-        <Text as="span" variant="bodyMd" fontWeight="semibold" tone="text-inverse">
-          {displayName.toUpperCase()}
-        </Text>
-      </InlineStack>
+          {displayName}
+        </span>
+        <Icon source={ChevronDownIcon} tone="inherit" />
+      </div>
     </button>
   );
 
@@ -118,90 +123,93 @@ export function UserMenu() {
         autofocusTarget="first-node"
         onClose={toggleActive}
         preferredAlignment="right"
-        zIndexOverride={100}
+        zIndexOverride={200}
       >
-        <div style={{ width: '320px' }}>
-          {/* Header Card Aspect */}
-          <Box padding="400" background="bg-surface-secondary">
-            <BlockStack gap="400">
-              <InlineStack gap="300" align="start" blockAlign="center">
-                <Avatar
-                  initials={initials}
-                  size="lg"
-                  name={displayName}
-                  source={user.photoURL || undefined}
-                />
-                <BlockStack gap="100">
-                  <Text as="h2" variant="headingMd">
-                    {displayName}
-                  </Text>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    {user.email}
-                  </Text>
-                  <Box paddingBlockStart="100">
-                    <InlineStack gap="200">
-                      <Badge tone={getRoleBadgeTone()}>{roleLabel}</Badge>
-                      {currentUserRole?.employeeNumber && (
-                        <Badge tone="info">{`#${currentUserRole.employeeNumber}`}</Badge>
-                      )}
-                    </InlineStack>
-                  </Box>
-                </BlockStack>
-              </InlineStack>
-            </BlockStack>
+        <div style={{ width: '280px' }}>
+          {/* ── User Info Header ── */}
+          <Box padding="400">
+            <InlineStack gap="300" blockAlign="center">
+              <Avatar
+                initials={initials}
+                size="lg"
+                name={displayName}
+                source={avatarSource}
+              />
+              <BlockStack gap="050">
+                <Text as="h2" variant="headingSm" fontWeight="semibold">
+                  {displayName}
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  {user.email}
+                </Text>
+                <Box paddingBlockStart="100">
+                  <InlineStack gap="100">
+                    <Badge tone={getRoleBadgeTone()} size="small">{roleLabel}</Badge>
+                    {currentUserRole?.employeeNumber && (
+                      <Badge tone="info" size="small">{`#${currentUserRole.employeeNumber}`}</Badge>
+                    )}
+                  </InlineStack>
+                </Box>
+              </BlockStack>
+            </InlineStack>
           </Box>
 
           <Divider />
 
-          {/* Quick Actions / Navigation */}
-          <Box padding="200">
-            <ActionList
-              actionRole="menuitem"
-              sections={[
-                {
-                  items: [
-                    {
-                      content: 'Configuración de perfil',
-                      icon: SettingsIcon,
-                      onAction: () => {
-                        toggleActive();
-                        setProfileModalOpen(true);
-                      },
+          {/* ── Menu Actions ── */}
+          <ActionList
+            actionRole="menuitem"
+            sections={[
+              {
+                title: 'Cuenta',
+                items: [
+                  {
+                    content: 'Mi perfil',
+                    icon: ProfileIcon,
+                    onAction: () => {
+                      toggleActive();
+                      setProfileModalOpen(true);
                     },
-                    {
-                      content: `Tema ${themeMode === 'light' ? 'oscuro' : 'claro'}`,
-                      icon: LightbulbIcon,
-                      onAction: handleToggleTheme,
-                      helpText: 'Cambia el aspecto visual al instante',
+                  },
+                  {
+                    content: 'Configuración',
+                    icon: SettingsIcon,
+                    onAction: () => {
+                      toggleActive();
                     },
-                  ],
-                },
-              ]}
-            />
-          </Box>
+                  },
+                ],
+              },
+              {
+                title: 'Preferencias',
+                items: [
+                  {
+                    content: themeMode === 'light' ? 'Tema oscuro' : 'Tema claro',
+                    icon: themeMode === 'light' ? MoonIcon : SunIcon,
+                    onAction: handleToggleTheme,
+                  },
+                ],
+              },
+            ]}
+          />
 
           <Divider />
 
-          <Box padding="200">
-            <ActionList
-              actionRole="menuitem"
-              sections={[
-                {
-                  items: [
-                    {
-                      content: 'Cerrar sesión',
-                      icon: ExitIcon,
-                      destructive: true,
-                      onAction: () => {
-                        toggleActive();
-                        signOut();
-                      },
-                    },
-                  ],
+          {/* ── Logout ── */}
+          <ActionList
+            actionRole="menuitem"
+            items={[
+              {
+                content: 'Cerrar sesión',
+                icon: ExitIcon,
+                destructive: true,
+                onAction: () => {
+                  toggleActive();
+                  signOut();
                 },
-              ]}
-            />
-          </Box>
+              },
+            ]}
+          />
         </div>
       </Popover>
 

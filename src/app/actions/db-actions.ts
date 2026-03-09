@@ -1,6 +1,8 @@
 'use server';
 
 import { cache } from '@/lib/cache';
+import { requireAuth, requirePermission, requireOwner, sanitize, validateNumber, validateId, AuthError } from '@/lib/auth/guard';
+import { adminAuth } from '@/lib/firebase-admin';
 import { db } from '@/db';
 import {
   storeConfig,
@@ -105,6 +107,7 @@ export async function fetchAllProducts(): Promise<Product[]> {
 }
 
 export async function createProduct(data: Omit<Product, 'id'>): Promise<Product> {
+  await requirePermission('inventory.edit');
   const id = `p${Date.now()}`;
 
   // Invalidar caché de productos
@@ -112,15 +115,15 @@ export async function createProduct(data: Omit<Product, 'id'>): Promise<Product>
 
   await db.insert(products).values({
     id,
-    name: data.name,
-    sku: data.sku,
-    barcode: data.barcode,
-    currentStock: data.currentStock,
-    minStock: data.minStock,
+    name: sanitize(data.name),
+    sku: sanitize(data.sku),
+    barcode: sanitize(data.barcode),
+    currentStock: validateNumber(data.currentStock, { label: 'Stock' }),
+    minStock: validateNumber(data.minStock, { label: 'Stock mínimo' }),
     expirationDate: data.expirationDate,
-    category: data.category,
-    costPrice: String(data.costPrice),
-    unitPrice: String(data.unitPrice),
+    category: sanitize(data.category),
+    costPrice: String(validateNumber(data.costPrice, { label: 'Precio de costo' })),
+    unitPrice: String(validateNumber(data.unitPrice, { label: 'Precio de venta' })),
     isPerishable: data.isPerishable,
     imageUrl: data.imageUrl,
   });
@@ -128,10 +131,15 @@ export async function createProduct(data: Omit<Product, 'id'>): Promise<Product>
 }
 
 export async function updateProductStock(productId: string, newStock: number): Promise<void> {
+  await requirePermission('inventory.edit');
+  validateId(productId, 'Product ID');
+  validateNumber(newStock, { label: 'Nuevo stock' });
   await db.update(products).set({ currentStock: newStock, updatedAt: new Date() }).where(eq(products.id, productId));
 }
 
 export async function deleteProduct(productId: string): Promise<void> {
+  await requirePermission('inventory.delete');
+  validateId(productId, 'Product ID');
   cache.invalidatePattern('products:');
 
   // Eliminar registros relacionados primero
@@ -189,6 +197,7 @@ export async function fetchStoreConfig(): Promise<StoreConfig> {
 }
 
 export async function saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig> {
+  await requireOwner();
   const { id, ...rest } = data;
   // Upsert: try update, if 0 rows affected then insert
   const result = await db.update(storeConfig).set({ ...rest, updatedAt: new Date() }).where(eq(storeConfig.id, 'main'));
@@ -405,6 +414,7 @@ export async function fetchSaleRecords(): Promise<SaleRecord[]> {
 export async function createSale(
   saleData: Omit<SaleRecord, 'id' | 'folio' | 'date'>
 ): Promise<SaleRecord> {
+  await requirePermission('sales.create');
   const id = `sale-${Date.now()}`;
   const folio = await getNextFolio();
   const now = new Date();
@@ -749,6 +759,7 @@ export async function fetchGastos(): Promise<Gasto[]> {
 }
 
 export async function createGasto(data: Omit<Gasto, 'id'>): Promise<Gasto> {
+  await requirePermission('expenses.create');
   const id = `gasto-${Date.now()}`;
 
   await db.insert(gastos).values({
@@ -1070,6 +1081,8 @@ export async function updateGasto(id: string, data: Partial<Gasto>): Promise<voi
 }
 
 export async function deleteGasto(id: string): Promise<void> {
+  await requirePermission('expenses.delete');
+  validateId(id, 'Gasto ID');
   await db.delete(gastos).where(eq(gastos.id, id));
 }
 
@@ -1086,6 +1099,8 @@ export async function updateCliente(id: string, data: Partial<Cliente>): Promise
 }
 
 export async function deleteCliente(id: string): Promise<void> {
+  await requirePermission('customers.edit');
+  validateId(id, 'Cliente ID');
   // Delete related fiado transactions first
   await db.delete(fiadoTransactions).where(eq(fiadoTransactions.clienteId, id));
   await db.delete(clientes).where(eq(clientes.id, id));
@@ -1115,6 +1130,8 @@ export async function receivePedido(pedidoId: string): Promise<void> {
 
 // ==================== CANCELAR VENTA / DEVOLUCIÓN ====================
 export async function cancelSale(saleId: string): Promise<void> {
+  await requirePermission('sales.cancel');
+  validateId(saleId, 'Sale ID');
   // Get sale items to reverse stock
   const items = await db.select().from(saleItems).where(eq(saleItems.saleId, saleId));
   for (const item of items) {
@@ -1133,6 +1150,8 @@ export async function cancelSale(saleId: string): Promise<void> {
 
 // ==================== ELIMINAR PROVEEDOR ====================
 export async function deleteProveedor(id: string): Promise<void> {
+  await requirePermission('suppliers.edit');
+  validateId(id, 'Proveedor ID');
   await db.delete(proveedores).where(eq(proveedores.id, id));
 }
 
@@ -1271,6 +1290,8 @@ export async function updateRoleDefinition(
 }
 
 export async function deleteRoleDefinition(id: string): Promise<void> {
+  await requireOwner();
+  validateId(id, 'Role ID');
   // Only allow deleting non-system roles
   const rows = await db.select().from(roleDefinitions).where(eq(roleDefinitions.id, id));
   if (rows.length > 0 && rows[0].isSystem) {
@@ -1430,6 +1451,39 @@ export async function assignUserRole(
   };
 }
 
+export async function createFirebaseUserWithRole(
+  data: { email: string; password?: string; displayName: string; roleId: string; pinCode?: string },
+  assignedByUid: string
+): Promise<UserRoleRecord> {
+  await requirePermission('roles.manage');
+
+  // 1. Create the user in Firebase Auth using the Admin SDK
+  const userRecord = await adminAuth.createUser({
+    email: data.email,
+    password: data.password || 'Temp1234!', // Default password if empty
+    displayName: data.displayName,
+  });
+
+  // 2. Assign the role in the database using the newly created Firebase UID
+  const newRole = await assignUserRole(
+    {
+      firebaseUid: userRecord.uid,
+      email: data.email,
+      displayName: data.displayName,
+      roleId: data.roleId,
+    },
+    assignedByUid
+  );
+
+  // 3. Set PIN code if provided
+  if (data.pinCode) {
+    await updateUserPin(userRecord.uid, data.pinCode);
+    newRole.pinCode = data.pinCode;
+  }
+
+  return newRole;
+}
+
 export async function updateUserPin(firebaseUid: string, pinCode: string): Promise<void> {
   const now = new Date();
   await db.update(userRoles)
@@ -1449,6 +1503,7 @@ export async function updateUserRole(
 }
 
 export async function removeUserRole(firebaseUid: string): Promise<void> {
+  await requireOwner();
   await db.delete(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
 }
 
@@ -1481,6 +1536,7 @@ export async function generateGlobalId(firebaseUid: string): Promise<string> {
 
 // Deactivate a user ("dar de baja") — keeps the record and Global ID permanently reserved
 export async function deactivateUser(firebaseUid: string): Promise<void> {
+  await requireOwner();
   const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
   if (rows.length === 0) throw new Error('Usuario no encontrado');
   if (rows[0].status === 'baja') throw new Error('Este usuario ya está dado de baja');
@@ -1493,6 +1549,7 @@ export async function deactivateUser(firebaseUid: string): Promise<void> {
 
 // Reactivate a user
 export async function reactivateUser(firebaseUid: string): Promise<void> {
+  await requireOwner();
   const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
   if (rows.length === 0) throw new Error('Usuario no encontrado');
   if (rows[0].status === 'activo') throw new Error('Este usuario ya está activo');

@@ -20,8 +20,16 @@ import {
   Grid,
   Box,
   Divider,
+  DropZone,
+  Thumbnail,
+  Avatar,
+  MediaCard,
 } from '@shopify/polaris';
+import { updateProfile } from 'firebase/auth';
 import { FormSelect } from '@/components/ui/FormSelect';
+import { uploadFile, getStoreLogoPath, getUserAvatarPath } from '@/lib/storage';
+import { useAuth } from '@/lib/auth/AuthContext';
+import { usePermissions } from '@/lib/usePermissions';
 import {
   getMPConfig,
   saveMPConfig,
@@ -29,6 +37,7 @@ import {
 } from '@/lib/mercadopago';
 import type { MercadoPagoConfig } from '@/lib/mercadopago';
 import { useDashboardStore } from '@/store/dashboardStore';
+import { useToast } from '@/components/notifications/ToastProvider';
 import type { StoreConfig } from '@/types';
 import {
   StoreIcon,
@@ -40,32 +49,51 @@ import {
   MoneyIcon,
   PrintIcon,
   StarFilledIcon,
-  SettingsFilledIcon
+  SettingsFilledIcon,
+  PersonFilledIcon,
+  ImageIcon,
 } from '@shopify/polaris-icons';
 
 const SETTINGS_CATEGORIES = [
-  { id: 'general', title: 'Detalles de la tienda', description: 'Gestiona la identidad de tu negocio, dirección y preferencias básicas.', icon: StoreIcon },
-  { id: 'fiscal', title: 'Fiscales e Impuestos', description: 'Configura tu RFC, régimen fiscal, moneda y tasas de IVA.', icon: NoteIcon },
-  { id: 'pos', title: 'Punto de Venta y Recibos', description: 'Personaliza los tickets impresos y la estructura de códigos de barras.', icon: ReceiptIcon },
-  { id: 'hardware', title: 'Hardware y Periféricos', description: 'Configura IPs de impresoras, cajones de dinero y básculas seriales.', icon: PrintIcon },
-  { id: 'loyalty', title: 'Loyalty y Puntos', description: 'Configura las conversiones y recompensas para la fidelización de clientes.', icon: StarFilledIcon },
-  { id: 'inventory', title: 'Inventario de productos', description: 'Establece reglas y umbrales para alertas de stock y caducidad.', icon: InventoryIcon },
-  { id: 'notifications', title: 'Notificaciones', description: 'Conecta notificaciones push a tu celular mediante Telegram.', icon: ChatIcon },
-  { id: 'payments', title: 'Pagos Integrados', description: 'Vincula tu terminal Point de Mercado Pago para cobros físicos.', icon: CreditCardIcon },
+  { id: 'user', title: 'Mi Perfil Personal', description: 'Administra tu nombre, avatar y seguridad de tu cuenta de acceso.', icon: PersonFilledIcon },
+  { id: 'general', title: 'Información del Negocio', description: 'Gestiona la razón social, dirección física y teléfonos de la tienda.', icon: StoreIcon },
+  { id: 'branding', title: 'Imagen y Presencia', description: 'Sube tu logotipo, configura tu slogan y enlaza tus redes sociales.', icon: ImageIcon },
+  { id: 'fiscal', title: 'Datos Fiscales', description: 'RFC, régimen fiscal, moneda y configuración de impuestos (IVA).', icon: NoteIcon },
+  { id: 'pos', title: 'Punto de Venta / Tickets', description: 'Personaliza los recibos térmicos y el comportamiento del checkout.', icon: ReceiptIcon },
+  { id: 'hardware', title: 'Hardware POS', description: 'Impresoras IP, cajones de dinero y básculas electrónicas.', icon: PrintIcon },
+  { id: 'loyalty', title: 'Fidelización (Puntos)', description: 'Configura recompensas y monedero electrónico para clientes.', icon: StarFilledIcon },
+  { id: 'inventory', title: 'Políticas de Inventario', description: 'Alertas de stock bajo, mermas y avisos de caducidad temprana.', icon: InventoryIcon },
+  { id: 'notifications', title: 'Centro de Alertas', description: 'Recibe cierres de caja y alertas críticas en tu Telegram.', icon: ChatIcon },
+  { id: 'payments', title: 'Pagos Mercado Pago', description: 'Integra tu terminal Point Smart para cobrar con tarjeta.', icon: CreditCardIcon },
 ];
 
 export function ConfiguracionPage() {
-  const { storeConfig, saveStoreConfig } = useDashboardStore();
+  const { storeConfig, saveStoreConfig, updateUserProfile, currentUserRole } = useDashboardStore();
+  const { user } = useAuth();
+  const { roleName, hasPermission } = usePermissions();
+  const canEdit = hasPermission('settings.edit');
+  const toast = useToast();
   const [config, setConfig] = useState<StoreConfig>(storeConfig);
-  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+
+  // User profile state (edit copy)
+  const [userDisplayName, setUserDisplayName] = useState(currentUserRole?.displayName || user?.displayName || '');
+  const [userAvatarUrl, setUserAvatarUrl] = useState(currentUserRole?.avatarUrl || user?.photoURL || '');
+  const [userFile, setUserFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    setUserDisplayName(currentUserRole?.displayName || user?.displayName || '');
+    setUserAvatarUrl(currentUserRole?.avatarUrl || user?.photoURL || '');
+  }, [currentUserRole?.displayName, currentUserRole?.avatarUrl, user?.displayName, user?.photoURL]);
 
   useEffect(() => {
     setConfig(storeConfig);
   }, [storeConfig]);
 
-  const isDirty = JSON.stringify(config) !== JSON.stringify(storeConfig);
+  const isDirty = JSON.stringify(config) !== JSON.stringify(storeConfig) || logoFile !== null;
+  const isUserDirty = userDisplayName !== (currentUserRole?.displayName || user?.displayName || '') || userFile !== null;
 
   // Mercado Pago config
   const [mpConfig, setMpConfig] = useState<MercadoPagoConfig>({ accessToken: '', publicKey: '', deviceId: '', enabled: false });
@@ -84,20 +112,53 @@ export function ConfiguracionPage() {
 
   const updateField = useCallback(<K extends keyof StoreConfig>(field: K, value: StoreConfig[K]) => {
     setConfig(prev => ({ ...prev, [field]: value }));
-    setSaved(false);
   }, []);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      await saveStoreConfig(config);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      let finalConfig = { ...config };
+      if (logoFile) {
+        const path = getStoreLogoPath(logoFile.name);
+        const url = await uploadFile(logoFile, path);
+        finalConfig.logoUrl = url;
+        setConfig(finalConfig);
+      }
+      await saveStoreConfig(finalConfig);
+      setLogoFile(null);
+      toast.showSuccess("Configuración de la tienda guardada correctamente.");
     } catch (err) {
       console.error('Error saving config:', err);
+      toast.showError("Hubo un error al guardar la configuración.");
     }
     setSaving(false);
-  }, [config, saveStoreConfig]);
+  }, [config, saveStoreConfig, logoFile, toast]);
+
+  const handleUserSave = useCallback(async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      let finalAvatarUrl = userAvatarUrl;
+      if (userFile) {
+        const path = getUserAvatarPath(user.uid, userFile.name);
+        finalAvatarUrl = await uploadFile(userFile, path);
+      }
+      await updateUserProfile(user.uid, {
+        displayName: userDisplayName,
+        avatarUrl: finalAvatarUrl,
+      });
+      await updateProfile(user, {
+        displayName: userDisplayName,
+        photoURL: finalAvatarUrl || user.photoURL,
+      });
+      setUserFile(null);
+      toast.showSuccess("Perfil actualizado correctamente.");
+    } catch (err) {
+      console.error('Error saving user profile:', err);
+      toast.showError("Hubo un error al actualizar tu perfil.");
+    }
+    setSaving(false);
+  }, [user, userDisplayName, userAvatarUrl, userFile, updateUserProfile, toast]);
 
   const handleMPSave = useCallback(() => {
     saveMPConfig(mpConfig);
@@ -225,51 +286,191 @@ ${dashes}
 ${center(`Vigencia ${config.ticketVigencia || 'N/A'}`)}
 `;
 
-
   // ================= VIEW RENDERERS ================= //
-
-  const renderGeneralConfig = () => (
+  const renderUserProfileConfig = () => (
     <BlockStack gap="500">
       <Layout.AnnotatedSection
-        title="Perfil de la tienda"
-        description="Información básica pública que representa a tu negocio."
+        title="Tu Cuenta Personal"
+        description="Información de acceso y cómo te ven los demás en el sistema."
       >
         <Card>
-          <FormLayout>
-            <TextField label="Nombre comercial del sistema" value={config.storeName} onChange={(v) => updateField('storeName', v)} autoComplete="off" helpText="Nombre que verán tus empleados en el Dashboard." />
-            <TextField label="Razón social (nombre legal)" value={config.legalName} onChange={(v) => updateField('legalName', v)} autoComplete="off" helpText="Nombre de tu negocio o persona física para los recibos." />
-            <TextField label="URL del Logotipo (Ticket y Pantalla)" value={config.logoUrl || ''} onChange={(v) => updateField('logoUrl', v)} autoComplete="off" helpText="Pega el enlace web de la imagen de tu logo para que aparezca impreso (Ideal en blanco y negro)." />
-          </FormLayout>
+          <BlockStack gap="400">
+            <InlineStack gap="400" blockAlign="center">
+              <Avatar
+                size="xl"
+                name={userDisplayName}
+                source={userFile ? window.URL.createObjectURL(userFile) : userAvatarUrl}
+              />
+              <div style={{ flex: 1 }}>
+                <DropZone onDrop={(_, accepted) => setUserFile(accepted[0])} label="Cambiar foto de perfil">
+                  <DropZone.FileUpload actionTitle="Subir imagen" />
+                </DropZone>
+              </div>
+            </InlineStack>
+            <FormLayout>
+              <FormLayout.Group>
+                <TextField label="Nombre en pantalla" value={userDisplayName} onChange={setUserDisplayName} autoComplete="name" />
+                <TextField label="Correo electrónico" value={user?.email || ''} disabled autoComplete="email" helpText="El correo no puede ser modificado por seguridad." />
+              </FormLayout.Group>
+            </FormLayout>
+            <InlineStack align="end">
+              <Button variant="primary" onClick={handleUserSave} loading={saving}>Guardar Perfil</Button>
+            </InlineStack>
+          </BlockStack>
         </Card>
       </Layout.AnnotatedSection>
 
       <Layout.AnnotatedSection
-        title="Ubicación y Contacto"
-        description="La dirección física donde operas y tus datos de atención al público."
+        title="Seguridad y Acceso"
+        description="Nivel de privilegios y método de entrada."
       >
         <Card>
           <FormLayout>
-            <TextField label="Dirección física" value={config.address} onChange={(v) => updateField('address', v)} autoComplete="off" multiline={2} />
+            <FormLayout.Group>
+              <TextField label="Rol asignado" value={roleName} disabled autoComplete="off" />
+              <TextField label="Número de empleado" value={currentUserRole?.employeeNumber || 'N/A'} disabled autoComplete="off" />
+            </FormLayout.Group>
+          </FormLayout>
+          <Box paddingBlockStart="400">
+            <Banner tone="info">
+              <p>Para cambiar tu contraseña, utiliza el enlace de "Olvidé mi contraseña" en la pantalla de inicio de sesión.</p>
+            </Banner>
+          </Box>
+        </Card>
+      </Layout.AnnotatedSection>
+    </BlockStack>
+  );
+
+  const renderGeneralConfig = () => (
+    <BlockStack gap="500">
+      <Layout.AnnotatedSection
+        title="Identidad Corporativa"
+        description="El nombre legal y comercial que aparecerá en tus facturas y tickets."
+      >
+        <Card>
+          <FormLayout>
+            <TextField label="Nombre comercial" value={config.storeName} onChange={(v) => updateField('storeName', v)} autoComplete="off" helpText="Ej: Abarrotes 'La Esperanza'" />
+            <TextField label="Razón Social (Nombre Legal)" value={config.legalName} onChange={(v) => updateField('legalName', v)} autoComplete="off" />
+          </FormLayout>
+        </Card>
+      </Layout.AnnotatedSection>
+
+      <Layout.Section>
+        <MediaCard
+          title={config.storeName}
+          description={`${config.slogan || 'Slogan no configurado'} | ${config.legalName}`}
+          portrait
+          primaryAction={{
+            content: 'Ver Ubicación en Mapa',
+            onAction: () => {},
+            disabled: true,
+          }}
+        >
+          <div style={{ padding: '24px', textAlign: 'center' }}>
+            <img
+              alt="Store logo"
+              width="100%"
+              height="100%"
+              style={{ objectFit: 'contain', maxHeight: '160px' }}
+              src={config.logoUrl || '/logo_for_kiosko_login.svg'}
+            />
+          </div>
+        </MediaCard>
+      </Layout.Section>
+
+      <Layout.AnnotatedSection
+        title="Ubicación de la Sucursal"
+        description="Dirección física donde opera este punto de venta."
+      >
+        <Card>
+          <FormLayout>
+            <TextField label="Dirección completa" value={config.address} onChange={(v) => updateField('address', v)} autoComplete="off" multiline={2} />
             <FormLayout.Group>
               <TextField label="Ciudad" value={config.city} onChange={(v) => updateField('city', v)} autoComplete="off" />
               <TextField label="Código Postal" value={config.postalCode} onChange={(v) => updateField('postalCode', v)} autoComplete="off" />
             </FormLayout.Group>
             <FormLayout.Group>
-              <TextField label="Teléfono principal" value={config.phone} onChange={(v) => updateField('phone', v)} autoComplete="tel" />
-              <TextField label="Número identificador de sucursal" value={config.storeNumber} onChange={(v) => updateField('storeNumber', v)} autoComplete="off" helpText="Ej: 001, usado para multitiendas." />
+              <TextField label="Teléfono de atención" value={config.phone} onChange={(v) => updateField('phone', v)} autoComplete="tel" />
+              <TextField label="Número de sucursal" value={config.storeNumber} onChange={(v) => updateField('storeNumber', v)} autoComplete="off" />
             </FormLayout.Group>
+          </FormLayout>
+        </Card>
+      </Layout.AnnotatedSection>
+    </BlockStack>
+  );
+
+  const renderBrandingConfig = () => (
+    <BlockStack gap="500">
+      <Layout.AnnotatedSection
+        title="Logotipo del Negocio"
+        description="Esta imagen aparecerá en todos tus reportes PDF y tickets impresos."
+      >
+        <MediaCard
+          title="Logotipo oficial"
+          primaryAction={{
+            content: logoFile ? 'Quitar selección' : 'Cambiar logo',
+            onAction: () => setLogoFile(null),
+          }}
+          description="Sube una imagen preferentemente de 512x512px. Recomendamos fondo transparente o blanco para una mejor impresión térmica."
+        >
+          <div style={{ padding: '20px', display: 'flex', justifyContent: 'center', background: '#f4f6f8' }}>
+            {logoFile || config.logoUrl ? (
+              <img
+                src={logoFile ? window.URL.createObjectURL(logoFile) : config.logoUrl}
+                alt="Logo preview"
+                style={{ maxHeight: '120px', objectFit: 'contain' }}
+              />
+            ) : (
+              <div style={{ color: '#8c9196', textAlign: 'center' }}>Sin logotipo configurado</div>
+            )}
+          </div>
+          <Box padding="400">
+            <DropZone onDrop={(_, accepted) => setLogoFile(accepted[0])} label="Arrastra tu logo aquí">
+              <DropZone.FileUpload actionTitle="Elegir archivo" />
+            </DropZone>
+          </Box>
+        </MediaCard>
+      </Layout.AnnotatedSection>
+
+      <Layout.AnnotatedSection
+        title="Identidad y Eslogan"
+        description="Pequeños detalles que dan personalidad a tu marca."
+      >
+        <Card>
+          <FormLayout>
+            <TextField
+              label="Eslogan o frase corta"
+              value={config.slogan || ''}
+              onChange={(v) => updateField('slogan', v)}
+              autoComplete="off"
+              placeholder="Ej: Calidad y frescura siempre"
+              helpText="Aparece debajo del logo en reportes."
+            />
+            <TextField
+              label="Sitio Web"
+              value={config.website || ''}
+              onChange={(v) => updateField('website', v)}
+              autoComplete="off"
+              placeholder="https://www.tu-tienda.com"
+            />
           </FormLayout>
         </Card>
       </Layout.AnnotatedSection>
 
       <Layout.AnnotatedSection
-        title="Preferencias del sistema"
-        description="Ajustes de comportamiento general en segundo plano."
+        title="Redes Sociales"
+        description="Conecta con tus clientes en plataformas externas."
       >
         <Card>
-          <BlockStack gap="400">
-            <Checkbox label="Respaldos automatizados" helpText="Crea instantáneas de tu base de datos y ventas diariamente para tu tranquilidad." checked={config.autoBackup} onChange={(v) => updateField('autoBackup', v)} />
-          </BlockStack>
+          <FormLayout>
+            <FormLayout.Group>
+              <TextField label="WhatsApp (Número)" value={config.whatsapp || ''} onChange={(v) => updateField('whatsapp', v)} autoComplete="off" placeholder="52..." />
+              <TextField label="Instagram (Usuario)" value={config.instagram || ''} onChange={(v) => updateField('instagram', v)} autoComplete="off" placeholder="@usuario" />
+            </FormLayout.Group>
+            <FormLayout.Group>
+              <TextField label="Facebook (Página)" value={config.facebook || ''} onChange={(v) => updateField('facebook', v)} autoComplete="off" placeholder="facebook.com/tienda" />
+            </FormLayout.Group>
+          </FormLayout>
         </Card>
       </Layout.AnnotatedSection>
     </BlockStack>
@@ -337,6 +538,35 @@ ${center(`Vigencia ${config.ticketVigencia || 'N/A'}`)}
               />
             </Box>
           </FormLayout>
+        </Card>
+      </Layout.AnnotatedSection>
+
+      <Layout.AnnotatedSection
+        title="Corte de Caja Automático"
+        description="Automatiza el cierre de tu jornada laboral a una hora específica. El sistema generará el reporte y lo guardará en el historial sin intervención manual."
+      >
+        <Card>
+          <BlockStack gap="400">
+            <Checkbox
+              label="Habilitar corte de caja automático diario"
+              helpText="Si se activa, el sistema realizará el arqueo al concluir el horario establecido."
+              checked={config.autoCorteEnabled}
+              onChange={(v) => updateField('autoCorteEnabled', v)}
+            />
+            {config.autoCorteEnabled && (
+              <TextField
+                label="Hora del corte (Formato 24h)"
+                type="time"
+                value={config.autoCorteTime}
+                onChange={(v) => updateField('autoCorteTime', v)}
+                autoComplete="off"
+                helpText="Ejemplo: 23:59 para fin de día. El sistema usará el fondo inicial configurado."
+              />
+            )}
+            <Banner tone="info">
+              <p>Nota: El corte automático registrará el efectivo contado como 'exacto' (sin diferencias) basándose en las ventas registradas.</p>
+            </Banner>
+          </BlockStack>
         </Card>
       </Layout.AnnotatedSection>
 
@@ -529,6 +759,8 @@ ${center(`Vigencia ${config.ticketVigencia || 'N/A'}`)}
 
   const getActiveView = () => {
     switch (selectedCategory) {
+      case 'user': return renderUserProfileConfig();
+      case 'branding': return renderBrandingConfig();
       case 'general': return renderGeneralConfig();
       case 'fiscal': return renderFiscalConfig();
       case 'pos': return renderPosConfig();
@@ -542,27 +774,33 @@ ${center(`Vigencia ${config.ticketVigencia || 'N/A'}`)}
   };
 
   const activeCategory = SETTINGS_CATEGORIES.find(c => c.id === selectedCategory);
+  const showPrimaryAction = selectedCategory === 'user' ? isUserDirty : isDirty;
+  const currentAction = selectedCategory === 'user' ? handleUserSave : handleSave;
 
   if (selectedCategory !== null) {
     return (
       <BlockStack gap="400">
-        {saved && (
-          <Banner tone="success" title="Cambios guardados" onDismiss={() => setSaved(false)}>
-            <p>Tu configuración se ha actualizado correctamente en todos los módulos del sistema.</p>
-          </Banner>
-        )}
         <Page
           backAction={{ content: 'Configuración', onAction: () => setSelectedCategory(null) }}
           title={activeCategory?.title || 'Configuración'}
           subtitle={activeCategory?.description}
-          primaryAction={isDirty ? {
+          primaryAction={{
             content: 'Guardar cambios',
-            onAction: handleSave,
+            onAction: currentAction,
             loading: saving,
-          } : undefined}
-          secondaryActions={isDirty ? [{
+            disabled: !showPrimaryAction || (selectedCategory !== 'user' && !canEdit),
+          }}
+          secondaryActions={showPrimaryAction ? [{
             content: 'Descartar',
-            onAction: () => setConfig(storeConfig),
+            onAction: () => {
+              if (selectedCategory === 'user') {
+                setUserDisplayName(currentUserRole?.displayName || user?.displayName || '');
+                setUserFile(null);
+              } else {
+                setConfig(storeConfig);
+                setLogoFile(null);
+              }
+            },
             destructive: true,
           }] : []}
         >
@@ -576,21 +814,11 @@ ${center(`Vigencia ${config.ticketVigencia || 'N/A'}`)}
 
   return (
     <Page
-      title={(
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Icon source={SettingsFilledIcon} tone="base" />
-          <span>Configuración</span>
-        </div>
-      ) as any}
+      title="Configuración"
       subtitle="Administra las políticas operativas, la identidad fiscal y la infraestructura de tu negocio."
     >
-      {saved && (
-        <Box paddingBlockEnd="400">
-          <Banner tone="success" title="Cambios guardados" onDismiss={() => setSaved(false)}>
-            <p>Tu configuración se ha actualizado correctamente.</p>
-          </Banner>
-        </Box>
-      )}
+      {/* The 'saved' state and its corresponding Banner have been removed.
+          Toast notifications should now be triggered directly from the save handlers. */}
 
       <Layout>
         <Layout.Section>

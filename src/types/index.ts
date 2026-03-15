@@ -37,6 +37,15 @@ export interface StoreConfig {
   pointsValue: number;
   // Branding
   logoUrl?: string;
+  slogan?: string;
+  whatsapp?: string;
+  instagram?: string;
+  facebook?: string;
+  website?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  autoCorteEnabled: boolean;
+  autoCorteTime: string;
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -65,6 +74,8 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   loyaltyEnabled: false,
   pointsPerPeso: 100, // $100 spent = 1 point
   pointsValue: 1, // 1 point = $1 discount
+  autoCorteEnabled: false,
+  autoCorteTime: '23:59',
 };
 
 export interface Product {
@@ -167,6 +178,9 @@ export interface DashboardState {
   proveedores: Proveedor[];
   cortesHistory: CorteCaja[];
   inventoryAudits: InventoryAudit[];
+  storeConfig: StoreConfig;
+  roleDefinitions: RoleDefinition[];
+  userRoles: UserRoleRecord[];
   isLoading: boolean;
   error: string | null;
 }

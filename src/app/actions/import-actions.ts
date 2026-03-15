@@ -42,7 +42,7 @@ export async function importProductsFromCSV(formData: FormData, overwrite: boole
             columns: true,
             skip_empty_lines: true,
             trim: true,
-        });
+        }) as any[];
 
         if (records.length === 0) {
             throw new Error('El archivo CSV está vacío o no tiene el formato correcto');
@@ -67,9 +67,9 @@ export async function importProductsFromCSV(formData: FormData, overwrite: boole
                 const currentStock = parseInt(row['Stock_Actual'] || row['Inventory quantity'] || '0', 10);
                 const minStock = parseInt(row['Stock_Minimo'] || '5', 10);
                 const expDateRaw = row['Fecha_Caducidad_YYYY_MM_DD'];
-                let expirationDate = null;
+                let expirationDate: string | null = null;
                 if (expDateRaw && expDateRaw.length === 10) {
-                    expirationDate = new Date(`${expDateRaw}T12:00:00Z`);
+                    expirationDate = expDateRaw;
                 }
 
                 if (!name || !barcode) {

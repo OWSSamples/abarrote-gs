@@ -11,6 +11,7 @@ export interface AuthenticatedUser {
     uid: string;
     email: string;
     roleId: string;
+    roleName?: string;
     permissions: PermissionKey[];
     displayName?: string;
 }
@@ -87,6 +88,7 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
 
         // Get permissions from role definition
         let permissions: PermissionKey[] = [];
+        let roleName: string | undefined = undefined;
         const roleDefs = await db
             .select()
             .from(roleDefinitions)
@@ -94,6 +96,7 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
             .limit(1);
 
         if (roleDefs.length > 0) {
+            roleName = roleDefs[0].name;
             try {
                 permissions = JSON.parse(roleDefs[0].permissions) as PermissionKey[];
             } catch {
@@ -105,6 +108,7 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
             uid,
             email,
             roleId: userRole.roleId,
+            roleName,
             permissions,
             displayName: userRole.displayName || undefined,
         };
@@ -133,7 +137,7 @@ export async function requirePermission(...requiredPerms: PermissionKey[]): Prom
     const user = await requireAuth();
 
     // Owner bypasses all permission checks
-    if (user.roleId === 'owner') return user;
+    if (user.roleName === 'Propietario') return user;
 
     const hasPermission = requiredPerms.some((perm) =>
         user.permissions.includes(perm)
@@ -155,7 +159,7 @@ export async function requirePermission(...requiredPerms: PermissionKey[]): Prom
 export async function requireOwner(): Promise<AuthenticatedUser> {
     const user = await requireAuth();
 
-    if (user.roleId !== 'owner') {
+    if (user.roleName !== 'Propietario') {
         throw new AuthError('Esta acción requiere permisos de administrador', 403);
     }
 

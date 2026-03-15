@@ -54,13 +54,12 @@ import {
 } from '@/app/actions/db-actions';
 
 interface DashboardStore extends DashboardState {
-  storeConfig: StoreConfig;
   setKPIData: (data: KPIData) => void;
   setInventoryAlerts: (alerts: InventoryAlert[]) => void;
   setSalesData: (data: SalesData[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
-  fetchDashboardData: () => Promise<void>;
+  fetchDashboardData: (firebaseUid?: string) => Promise<void>;
   refreshAllData: () => Promise<void>;
   registerMerma: (merma: Omit<MermaRecord, 'id'>) => Promise<void>;
   adjustStock: (productId: string, newStock: number, reason: string) => Promise<void>;
@@ -97,13 +96,11 @@ interface DashboardStore extends DashboardState {
   // Cancel sale
   cancelSale: (id: string) => Promise<void>;
   // Role Definitions
-  roleDefinitions: RoleDefinition[];
   fetchRoleDefinitions: () => Promise<void>;
   createRoleDefinition: (data: { name: string; description: string; permissions: PermissionKey[] }, createdByUid: string) => Promise<RoleDefinition>;
   updateRoleDefinition: (id: string, data: { name?: string; description?: string; permissions?: PermissionKey[] }) => Promise<void>;
   deleteRoleDefinition: (id: string) => Promise<void>;
   // User Roles
-  userRoles: UserRoleRecord[];
   currentUserRole: UserRoleRecord | null;
   fetchRoles: () => Promise<void>;
   ensureOwnerRole: (firebaseUid: string, email: string, displayName: string) => Promise<UserRoleRecord>;
@@ -153,7 +150,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   setError: (error) => set({ error }),
 
   // ==================== FETCH FROM DATABASE ====================
-  fetchDashboardData: async () => {
+  fetchDashboardData: async (firebaseUid?: string) => {
     set({ isLoading: true, error: null });
     try {
       const data = await fetchDashboardFromDB();
@@ -172,6 +169,15 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         cortesHistory: data.cortesHistory,
         inventoryAudits: data.inventoryAudits,
         storeConfig: data.storeConfig,
+        roleDefinitions: data.roleDefinitions,
+        userRoles: data.userRoles,
+        ...(firebaseUid ? {
+          currentUserRole: data.userRoles
+            .slice()
+            .reverse() // Start from newest since they are ordered by createdAt asc initially
+            .find(r => r.firebaseUid === firebaseUid && r.status === 'activo') ||
+            data.userRoles.find(r => r.firebaseUid === firebaseUid) || null
+        } : {}),
         isLoading: false,
       });
     } catch (error) {

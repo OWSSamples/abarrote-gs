@@ -1,4 +1,5 @@
 'use server';
+import { unstable_noStore as noStore } from 'next/cache';
 
 import { cache } from '@/lib/cache';
 import { requireAuth, requirePermission, requireOwner, sanitize, validateNumber, validateId, AuthError } from '@/lib/auth/guard';
@@ -193,11 +194,20 @@ export async function fetchStoreConfig(): Promise<StoreConfig> {
     pointsPerPeso: r.pointsPerPeso,
     pointsValue: r.pointsValue,
     logoUrl: r.logoUrl ?? undefined,
+    slogan: r.slogan ?? undefined,
+    whatsapp: r.whatsapp ?? undefined,
+    instagram: r.instagram ?? undefined,
+    facebook: r.facebook ?? undefined,
+    website: r.website ?? undefined,
+    primaryColor: r.primaryColor ?? undefined,
+    secondaryColor: r.secondaryColor ?? undefined,
+    autoCorteEnabled: r.autoCorteEnabled,
+    autoCorteTime: r.autoCorteTime,
   };
 }
 
 export async function saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig> {
-  await requireOwner();
+  await requirePermission('settings.edit');
   const { id, ...rest } = data;
   // Upsert: try update, if 0 rows affected then insert
   const result = await db.update(storeConfig).set({ ...rest, updatedAt: new Date() }).where(eq(storeConfig.id, 'main'));
@@ -272,16 +282,16 @@ export async function fetchKPIData(): Promise<KPIData> {
 
   // Today's sales
   const todaySalesResult = await db
-    .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
+    .select({ total: sql<string>`coalesce(sum(${saleRecords.total}::numeric), 0)` })
     .from(saleRecords)
-    .where(sql`date::date = ${todayStr}`);
+    .where(sql`${saleRecords.date}::date = ${todayStr}`);
   const dailySales = numVal(todaySalesResult[0]?.total);
 
   // Yesterday's sales for comparison
   const yesterdaySalesResult = await db
-    .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
+    .select({ total: sql<string>`coalesce(sum(${saleRecords.total}::numeric), 0)` })
     .from(saleRecords)
-    .where(sql`date::date = ${yesterdayStr}`);
+    .where(sql`${saleRecords.date}::date = ${yesterdayStr}`);
   const yesterdaySales = numVal(yesterdaySalesResult[0]?.total);
   const dailySalesChange = yesterdaySales > 0
     ? Math.round(((dailySales - yesterdaySales) / yesterdaySales) * 100 * 10) / 10
@@ -291,7 +301,7 @@ export async function fetchKPIData(): Promise<KPIData> {
   const lowStockResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(products)
-    .where(sql`current_stock < min_stock`);
+    .where(sql`${products.currentStock} < ${products.minStock}`);
   const lowStockProducts = Number(lowStockResult[0]?.count ?? 0);
 
   // Expiring within 7 days
@@ -302,7 +312,7 @@ export async function fetchKPIData(): Promise<KPIData> {
     .from(products)
     .where(
       and(
-        sql`expiration_date is not null`,
+        sql`${products.expirationDate} is not null`,
         lte(products.expirationDate, sevenDaysLater.toISOString().split('T')[0]),
         gte(products.expirationDate, todayStr)
       )
@@ -357,14 +367,14 @@ export async function fetchSalesData(): Promise<SalesData[]> {
     const prevDateStr = prevDate.toISOString().split('T')[0];
 
     const currentResult = await db
-      .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
+      .select({ total: sql<string>`coalesce(sum(${saleRecords.total}::numeric), 0)` })
       .from(saleRecords)
-      .where(sql`date::date = ${currentDateStr}`);
+      .where(sql`${saleRecords.date}::date = ${currentDateStr}`);
 
     const prevResult = await db
-      .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
+      .select({ total: sql<string>`coalesce(sum(${saleRecords.total}::numeric), 0)` })
       .from(saleRecords)
-      .where(sql`date::date = ${prevDateStr}`);
+      .where(sql`${saleRecords.date}::date = ${prevDateStr}`);
 
     result.push({
       date: days[i],
@@ -440,7 +450,7 @@ export async function createSale(
   if (clienteId) {
     await db.update(clientes)
       .set({
-        points: sql`points::numeric + ${saleData.pointsEarned} - ${saleData.pointsUsed}`,
+        points: sql`${clientes.points}::numeric + ${saleData.pointsEarned} - ${saleData.pointsUsed}`,
         lastTransaction: now,
       })
       .where(eq(clientes.id, clienteId));
@@ -465,7 +475,7 @@ export async function createSale(
     await db
       .update(products)
       .set({
-        currentStock: sql`greatest(0, current_stock - ${item.quantity})`,
+        currentStock: sql`greatest(0, ${products.currentStock} - ${item.quantity})`,
         updatedAt: now,
       })
       .where(eq(products.id, item.productId));
@@ -520,7 +530,7 @@ export async function createMerma(data: Omit<MermaRecord, 'id'>): Promise<MermaR
   await db
     .update(products)
     .set({
-      currentStock: sql`greatest(0, current_stock - ${data.quantity})`,
+      currentStock: sql`greatest(0, ${products.currentStock} - ${data.quantity})`,
       updatedAt: new Date(),
     })
     .where(eq(products.id, data.productId));
@@ -708,7 +718,7 @@ export async function createFiado(
   await db
     .update(clientes)
     .set({
-      balance: sql`balance::numeric + ${amount}`,
+      balance: sql`${clientes.balance}::numeric + ${amount}`,
       lastTransaction: now,
     })
     .where(eq(clientes.id, clienteId));
@@ -738,7 +748,7 @@ export async function createAbono(
   await db
     .update(clientes)
     .set({
-      balance: sql`greatest(0, balance::numeric - ${amount})`,
+      balance: sql`greatest(0, ${clientes.balance}::numeric - ${amount})`,
       lastTransaction: now,
     })
     .where(eq(clientes.id, clienteId));
@@ -863,7 +873,7 @@ export async function createCorteCaja(data: {
   const salesRows = await db
     .select()
     .from(saleRecords)
-    .where(sql`date::date = ${todayStr}`);
+    .where(sql`${saleRecords.date}::date = ${todayStr}`);
 
   const ventasEfectivo = salesRows
     .filter((s) => s.paymentMethod === 'efectivo')
@@ -884,7 +894,7 @@ export async function createCorteCaja(data: {
   const gastosRows = await db
     .select()
     .from(gastos)
-    .where(sql`fecha::date = ${todayStr}`);
+    .where(sql`${gastos.fecha}::date = ${todayStr}`);
   const gastosDelDia = gastosRows.reduce((sum, g) => sum + numVal(g.monto), 0);
 
   const efectivoEsperado = data.fondoInicial + ventasEfectivo - gastosDelDia;
@@ -1121,7 +1131,7 @@ export async function receivePedido(pedidoId: string): Promise<void> {
     await db
       .update(products)
       .set({
-        currentStock: sql`current_stock + ${item.cantidad}`,
+        currentStock: sql`${products.currentStock} + ${item.cantidad}`,
         updatedAt: new Date(),
       })
       .where(eq(products.id, item.productId));
@@ -1138,7 +1148,7 @@ export async function cancelSale(saleId: string): Promise<void> {
     await db
       .update(products)
       .set({
-        currentStock: sql`current_stock + ${item.quantity}`,
+        currentStock: sql`${products.currentStock} + ${item.quantity}`,
         updatedAt: new Date(),
       })
       .where(eq(products.id, item.productId));
@@ -1157,6 +1167,7 @@ export async function deleteProveedor(id: string): Promise<void> {
 
 // ==================== FULL DASHBOARD FETCH ====================
 export async function fetchDashboardFromDB() {
+  noStore();
   const [
     kpiData,
     allProducts,
@@ -1172,6 +1183,8 @@ export async function fetchDashboardFromDB() {
     cortesHistoryList,
     inventoryAuditsList,
     storeConfigData,
+    roleDefsList,
+    userRolesList,
   ] = await Promise.all([
     fetchKPIData(),
     fetchAllProducts(),
@@ -1187,6 +1200,8 @@ export async function fetchDashboardFromDB() {
     fetchCortesHistory(),
     fetchInventoryAudits(),
     fetchStoreConfig(),
+    fetchRoleDefinitions(),
+    fetchUserRoles(),
   ]);
 
   return {
@@ -1204,6 +1219,8 @@ export async function fetchDashboardFromDB() {
     cortesHistory: cortesHistoryList,
     inventoryAudits: inventoryAuditsList,
     storeConfig: storeConfigData,
+    roleDefinitions: roleDefsList,
+    userRoles: userRolesList,
   };
 }
 
@@ -1322,14 +1339,18 @@ function mapUserRole(r: typeof userRoles.$inferSelect): UserRoleRecord {
 }
 
 export async function fetchUserRoles(): Promise<UserRoleRecord[]> {
+  noStore();
   const rows = await db.select().from(userRoles).orderBy(userRoles.createdAt);
   return rows.map(mapUserRole);
 }
 
 export async function getUserRoleByUid(firebaseUid: string): Promise<UserRoleRecord | null> {
-  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
+  noStore();
+  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid)).orderBy(desc(userRoles.createdAt));
   if (rows.length === 0) return null;
-  return mapUserRole(rows[0]);
+  // Preferir el rol activo si existe, si no, retornar el más reciente
+  const activeRow = rows.find(r => r.status === 'activo');
+  return mapUserRole(activeRow || rows[0]);
 }
 
 export async function ensureOwnerRole(firebaseUid: string, email: string, displayName: string): Promise<UserRoleRecord> {
@@ -1374,7 +1395,10 @@ export async function ensureOwnerRole(firebaseUid: string, email: string, displa
   }
 
   // Check if this user already has a role
-  const userRow = existing.find((r) => r.firebaseUid === firebaseUid);
+  const userRows = existing.filter((r) => r.firebaseUid === firebaseUid).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const activeUserRow = userRows.find(r => r.status === 'activo');
+  const userRow = activeUserRow || userRows[0];
+  
   if (userRow) {
     // Backfill employeeNumber if missing
     if (!userRow.employeeNumber) {
@@ -1568,9 +1592,10 @@ export async function updateUserProfile(
   await db.update(userRoles)
     .set({ ...data, updatedAt: now })
     .where(eq(userRoles.firebaseUid, firebaseUid));
-  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid));
+  const rows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, firebaseUid)).orderBy(desc(userRoles.createdAt));
   if (rows.length === 0) throw new Error('User not found');
-  return mapUserRole(rows[0]);
+  const activeRow = rows.find(r => r.status === 'activo');
+  return mapUserRole(activeRow || rows[0]);
 }
 
 export async function authorizePin(

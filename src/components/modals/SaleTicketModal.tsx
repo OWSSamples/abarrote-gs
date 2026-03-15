@@ -5,6 +5,7 @@ import {
   Modal,
   FormLayout,
   TextField,
+  Select,
   Banner,
   BlockStack,
   InlineStack,
@@ -19,8 +20,6 @@ import {
   Spinner,
   ProgressBar,
 } from '@shopify/polaris';
-import { FormSelect } from '@/components/ui/FormSelect';
-import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { DeleteIcon, PrintIcon, BarcodeIcon } from '@shopify/polaris-icons';
 import JsBarcode from 'jsbarcode';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -35,9 +34,7 @@ import {
   getPaymentStatusLabel,
 } from '@/lib/mercadopago';
 import type { MercadoPagoConfig, PaymentIntent } from '@/lib/mercadopago';
-import type { SaleItem, SaleRecord, PermissionKey } from '@/types';
-import { PinPadModal } from './PinPadModal';
-import { MercadoPagoPaymentBrick } from '@/components/mercadopago/MercadoPagoPaymentBrick';
+import type { SaleItem, SaleRecord } from '@/types';
 
 interface SaleTicketModalProps {
   open: boolean;
@@ -47,11 +44,9 @@ interface SaleTicketModalProps {
 const paymentMethodOptions = [
   { label: 'Efectivo', value: 'efectivo' },
   { label: 'Tarjeta (Terminal Mercado Pago)', value: 'tarjeta' },
-  { label: 'Mercado Pago Web (Lector Blando / QR)', value: 'tarjeta_web' },
   { label: 'Tarjeta (manual sin terminal)', value: 'tarjeta_manual' },
   { label: 'Transferencia', value: 'transferencia' },
   { label: 'Fiado (crédito a cliente)', value: 'fiado' },
-  { label: 'Puntos de Lealtad (Monedero)', value: 'puntos' },
 ];
 
 const IVA_RATE = 0.16;
@@ -66,27 +61,6 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const { showSuccess, showError } = useToast();
   const currentUserRole = useDashboardStore((s) => s.currentUserRole);
-  const roleDefinitions = useDashboardStore((s) => s.roleDefinitions);
-
-  const [pinPadOpen, setPinPadOpen] = useState(false);
-  const [pinPadAction, setPinPadAction] = useState<{ type: string; payload: string } | null>(null);
-
-  const roleMap = useMemo(() => {
-    const m = new Map();
-    roleDefinitions.forEach((d) => m.set(d.id, d));
-    return m;
-  }, [roleDefinitions]);
-
-  const currentRoleDef = useMemo(() => {
-    if (!currentUserRole) return null;
-    return roleMap.get(currentUserRole.roleId) ?? null;
-  }, [currentUserRole, roleMap]);
-
-  const hasPermission = useCallback((perm: PermissionKey) => {
-    if (!currentRoleDef) return false;
-    if (currentRoleDef.name === 'Propietario') return true;
-    return currentRoleDef.permissions.includes(perm);
-  }, [currentRoleDef]);
 
   // Merge alert products + store products (deduplicated)
   const allProducts = useMemo(() => {
@@ -103,9 +77,9 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const [items, setItems] = useState<SaleItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState('');
   const [quantity, setQuantity] = useState('1');
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'tarjeta_web' | 'transferencia' | 'fiado' | 'puntos'>('efectivo');
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'transferencia' | 'fiado'>('efectivo');
   const [amountPaid, setAmountPaid] = useState('');
-  const [clienteId, setClienteId] = useState(''); // Shared for loyalty/fiado
+  const [fiadoClienteId, setFiadoClienteId] = useState('');
   const [completedSale, setCompletedSale] = useState<SaleRecord | null>(null);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [barcodeError, setBarcodeError] = useState('');
@@ -119,13 +93,10 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const [mpPaymentIntent, setMpPaymentIntent] = useState<PaymentIntent | null>(null);
   const [mpError, setMpError] = useState('');
   const mpPollingRef = useRef<NodeJS.Timeout | null>(null);
-  const handleMPTerminalPaymentRef = useRef<(() => Promise<void>) | null>(null);
-  const [mpWebSuccess, setMpWebSuccess] = useState(false);
 
   // Load MP config from localStorage
   useEffect(() => {
-    const config = getMPConfig();
-    setMpConfig(config);
+    setMpConfig(getMPConfig());
   }, [open]);
 
   const productOptions = useMemo(() => {
@@ -142,33 +113,12 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const iva = useMemo(() => subtotal * IVA_RATE, [subtotal]);
   // No card surcharge for fiado
   const cardSurcharge = useMemo(() => {
-    if (paymentMethod !== 'tarjeta' && paymentMethod !== 'tarjeta_manual' && paymentMethod !== 'tarjeta_web') return 0;
+    if (paymentMethod !== 'tarjeta' && paymentMethod !== 'tarjeta_manual') return 0;
     const surcharge = subtotal * CARD_SURCHARGE_RATE;
     const surchargeIva = surcharge * IVA_RATE;
     return surcharge + surchargeIva;
   }, [subtotal, paymentMethod]);
-
-  const pointsEarned = useMemo(() => Math.floor(subtotal / 20), [subtotal]);
-  const pointsAvailable = useMemo(() => {
-    if (!clienteId) return 0;
-    const c = clientes.find(cl => cl.id === clienteId);
-    return c ? parseFloat(String(c.points)) : 0;
-  }, [clienteId, clientes]);
-
-  const total = useMemo(() => {
-    let base = subtotal + iva + cardSurcharge;
-    if (paymentMethod === 'puntos') {
-      return Math.max(0, base - pointsAvailable);
-    }
-    return base;
-  }, [subtotal, iva, cardSurcharge, paymentMethod, pointsAvailable]);
-
-  const pointsUsed = useMemo(() => {
-    if (paymentMethod !== 'puntos' || !clienteId) return 0;
-    const base = subtotal + iva + cardSurcharge;
-    return Math.min(pointsAvailable, base);
-  }, [paymentMethod, clienteId, pointsAvailable, subtotal, iva, cardSurcharge]);
-
+  const total = useMemo(() => subtotal + iva + cardSurcharge, [subtotal, iva, cardSurcharge]);
   const change = useMemo(() => {
     const paid = parseFloat(amountPaid) || 0;
     return Math.max(0, paid - total);
@@ -180,7 +130,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setQuantity('1');
     setPaymentMethod('efectivo');
     setAmountPaid('');
-    setClienteId('');
+    setFiadoClienteId('');
     setCompletedSale(null);
     setBarcodeInput('');
     setBarcodeError('');
@@ -188,7 +138,6 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setMpStatus('');
     setMpPaymentIntent(null);
     setMpError('');
-    setMpWebSuccess(false);
     if (mpPollingRef.current) {
       clearInterval(mpPollingRef.current);
       mpPollingRef.current = null;
@@ -292,98 +241,67 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setQuantity('1');
   }, [selectedProduct, quantity, allProducts, items, showError]);
 
-  const handleRemoveClick = useCallback((productId: string) => {
-    if (hasPermission('sales.delete_item')) {
-      setItems((prev) => prev.filter((i) => i.productId !== productId));
-    } else {
-      setPinPadAction({ type: 'delete', payload: productId });
-      setPinPadOpen(true);
-    }
-  }, [hasPermission]);
-
-  const handlePinSuccess = useCallback((_uid: string, _name: string) => {
-    if (pinPadAction?.type === 'delete') {
-      setItems((prev) => prev.filter((i) => i.productId !== pinPadAction.payload));
-      showSuccess('Artículo anulado (Autorizado)');
-    }
-    setPinPadOpen(false);
-    setPinPadAction(null);
-  }, [pinPadAction, showSuccess]);
-
-  const finishSale = useCallback(async (pmOverride?: string) => {
-    try {
-      const pMethod = pmOverride || (paymentMethod === 'tarjeta_manual' ? 'tarjeta' : paymentMethod);
-      const sale = await registerSale({
-        items,
-        subtotal,
-        iva,
-        cardSurcharge,
-        total,
-        paymentMethod: pMethod,
-        amountPaid: paymentMethod === 'efectivo' ? parseFloat(amountPaid) || 0 : total,
-        change: paymentMethod === 'efectivo' ? change : 0,
-        cajero: currentUserRole?.globalId || currentUserRole?.employeeNumber || '',
-        pointsEarned,
-        pointsUsed,
-      } as any);
-
-      if (paymentMethod === 'fiado') {
-        const itemDescriptions = items.map((i) => `${i.productName} x${i.quantity}`).join(', ');
-        await registerFiado(clienteId, total, itemDescriptions, sale.folio, items);
-        const cliente = clientes.find((c) => c.id === clienteId);
-        showSuccess(`Venta ${sale.folio} registrada como fiado para ${cliente?.name || 'cliente'}. Total: ${formatCurrency(sale.total)}`);
-      } else {
-        showSuccess(`Venta ${sale.folio} registrada. Total: ${formatCurrency(sale.total)}`);
-      }
-      setCompletedSale(sale);
-    } catch (error) {
-      showError('Error al registrar la venta');
-    }
-  }, [items, paymentMethod, amountPaid, total, subtotal, iva, cardSurcharge, change, registerSale, currentUserRole, pointsEarned, pointsUsed, registerFiado, clienteId, clientes, showSuccess, showError]);
+  const removeItem = useCallback((productId: string) => {
+    setItems((prev) => prev.filter((i) => i.productId !== productId));
+  }, []);
 
   const handleSale = useCallback(async () => {
     if (items.length === 0) {
       showError('Agrega al menos un producto a la venta');
       return;
     }
-    if (paymentMethod === 'efectivo' && parseFloat(amountPaid) < total) {
-      showError('El monto pagado es insuficiente');
+    // Cajero is always auto-filled, skip required check
+    if (paymentMethod === 'efectivo' && (parseFloat(amountPaid) || 0) < total) {
+      showError('El monto pagado debe ser mayor o igual al total');
       return;
     }
+    // Fiado validation
     if (paymentMethod === 'fiado') {
-      if (!clienteId) {
+      if (!fiadoClienteId) {
         showError('Selecciona un cliente para el fiado');
         return;
       }
-      const cliente = clientes.find((c) => c.id === clienteId);
+      const cliente = clientes.find((c) => c.id === fiadoClienteId);
       if (cliente && cliente.balance + total > cliente.creditLimit) {
         showError(`El cliente excede su límite de crédito de ${formatCurrency(cliente.creditLimit)}. Disponible: ${formatCurrency(Math.max(0, cliente.creditLimit - cliente.balance))}`);
         return;
       }
     }
-    if (paymentMethod === 'puntos') {
-      if (!clienteId) {
-        showError('Debes seleccionar un cliente para usar sus puntos');
-        return;
-      }
-      if (pointsAvailable <= 0) {
-        showError('El cliente no tiene puntos disponibles');
-        return;
-      }
-    }
     // If paying with MP terminal, launch terminal flow
     if (paymentMethod === 'tarjeta' && mpConfig.enabled) {
-      handleMPTerminalPaymentRef.current?.();
-      return;
-    }
-    // If Web payment, the Brick handles it and onSuccess will call finishSale automatically
-    if (paymentMethod === 'tarjeta_web') {
-      showError('Por favor completa el pago interactivo en pantalla.');
+      handleMPTerminalPayment();
       return;
     }
 
-    await finishSale();
-  }, [items, paymentMethod, amountPaid, total, clienteId, clientes, pointsAvailable, mpConfig.enabled, showError, finishSale]);
+    try {
+      // Register the sale
+      const sale = await registerSale({
+        items,
+        subtotal,
+        iva,
+        cardSurcharge,
+        total,
+        paymentMethod: paymentMethod === 'tarjeta_manual' ? 'tarjeta' : paymentMethod,
+        amountPaid: paymentMethod === 'efectivo' ? parseFloat(amountPaid) || 0 : total,
+        change: paymentMethod === 'efectivo' ? change : 0,
+        cajero: currentUserRole?.employeeNumber || '',
+      });
+
+      // If fiado, also register the fiado transaction with itemized products
+      if (paymentMethod === 'fiado') {
+        const itemDescriptions = items.map((i) => `${i.productName} x${i.quantity}`).join(', ');
+        await registerFiado(fiadoClienteId, total, itemDescriptions, sale.folio, items);
+        const cliente = clientes.find((c) => c.id === fiadoClienteId);
+        showSuccess(`Venta ${sale.folio} registrada como fiado para ${cliente?.name || 'cliente'}. Total: ${formatCurrency(sale.total)}`);
+      } else {
+        showSuccess(`Venta ${sale.folio} registrada. Total: ${formatCurrency(sale.total)}`);
+      }
+
+      setCompletedSale(sale);
+    } catch {
+      showError('Error al registrar la venta');
+    }
+  }, [items, paymentMethod, amountPaid, total, subtotal, iva, cardSurcharge, change, registerSale, registerFiado, fiadoClienteId, clientes, showSuccess, showError, mpConfig]);
 
   // ===== Mercado Pago Terminal Flow =====
   const handleMPTerminalPayment = useCallback(async () => {
@@ -427,10 +345,8 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
               paymentMethod: 'tarjeta',
               amountPaid: total,
               change: 0,
-              cajero: currentUserRole?.globalId || currentUserRole?.employeeNumber || '',
-              pointsEarned: 0,
-              pointsUsed: 0,
-            } as any);
+              cajero: currentUserRole?.employeeNumber || '',
+            });
             setCompletedSale(sale);
             showSuccess(`Pago con tarjeta procesado. Venta ${sale.folio}: ${formatCurrency(sale.total)}`);
           } else if (status.status === 'canceled' || status.status === 'error' || status.status === 'expired') {
@@ -463,11 +379,6 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setMpStatus('');
     setMpPaymentIntent(null);
   }, [mpConfig, showSuccess]);
-
-  // Assign ref
-  useEffect(() => {
-    handleMPTerminalPaymentRef.current = handleMPTerminalPayment;
-  }, [handleMPTerminalPayment]);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -533,24 +444,17 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       itemsHtml += `    ${item.quantity} pza x $${item.unitPrice.toFixed(2)}${fmtAmt(item.subtotal)}\n`;
     }
 
-    // Fiado/Lealtad section
+    // Fiado section
     let fiadoTxt = '';
-    if (clienteId) {
-      const c = clientes.find((cl) => cl.id === clienteId);
-      if (c && completedSale.paymentMethod === 'fiado') {
+    if (completedSale.paymentMethod === 'fiado' && fiadoClienteId) {
+      const c = clientes.find((cl) => cl.id === fiadoClienteId);
+      if (c) {
         fiadoTxt = `
 ${dashes}
        ** VENTA A CREDITO **
   CLIENTE:        ${c.name.toUpperCase()}
   SALDO ANTERIOR:${fmtAmt(c.balance - completedSale.total)}
   NUEVO SALDO:   ${fmtAmt(c.balance)}
-`;
-      } else if (c) {
-        fiadoTxt = `
-${dashes}
-       ** PROGRAMA LEALTAD **
-  PUNTOS GANADOS:      +${Math.floor(completedSale.total / 20)}
-  PUNTOS TOTALES:      ${Math.floor(parseFloat(String(c.points)))}
 `;
       }
     }
@@ -588,8 +492,7 @@ ${dashes}
        ARTICULOS VENDIDOS    ${totalArticles}
 `;
 
-    // Generate a consistent code for the barcode (Portfolio + last digits of date/now)
-    const tcCode = completedSale.folio;
+    const tcCode = `${completedSale.folio}${String(Date.now()).slice(-8)}`;
 
     // Generate barcode as data URL
     const barcodeCanvas = document.createElement('canvas');
@@ -658,7 +561,7 @@ pre {
 <script>window.onload=()=>{window.print();window.close();}<\/script>
 </body></html>`);
     printWindow.document.close();
-  }, [completedSale, clienteId, clientes]);
+  }, [completedSale, fiadoClienteId, clientes]);
 
   const handleClose = useCallback(() => {
     resetForm();
@@ -694,19 +597,15 @@ pre {
     }
 
     let fiadoTxt = '';
-    if (clienteId) {
-      const c = clientes.find((cl) => cl.id === clienteId);
-      if (c && completedSale.paymentMethod === 'fiado') {
+    if (completedSale.paymentMethod === 'fiado' && fiadoClienteId) {
+      const c = clientes.find((cl) => cl.id === fiadoClienteId);
+      if (c) {
         fiadoTxt = `\n${dashes}\n       ** VENTA A CREDITO **\n  CLIENTE:        ${c.name.toUpperCase()}\n  SALDO ANTERIOR:${fmtAmt(c.balance - completedSale.total)}\n  NUEVO SALDO:   ${fmtAmt(c.balance)}\n`;
-      } else if (c) {
-        fiadoTxt = `\n${dashes}\n       ** PROGRAMA LEALTAD **\n  PUNTOS GANADOS:      +${Math.floor(completedSale.total / 20)}\n  PUNTOS TOTALES:      ${Math.floor(parseFloat(String(c.points)))}\n`;
       }
     }
 
     const sc = storeConfig;
     const footerLines = sc.ticketFooter.split('\n').map((l: string) => centerLine(l)).join('\n');
-    // Use the same consistent code for preview
-    const tcCode = completedSale.folio;
 
     const previewText = `
 ${centerLine(sc.legalName)}
@@ -738,6 +637,8 @@ ${dashes}
        ARTICULOS VENDIDOS    ${totalArticles}
 `;
 
+    const previewTcCode = `${completedSale.folio}${String(Date.now()).slice(-8)}`;
+
     const previewTextAfter = `${dashes}
 
 ${footerLines}
@@ -746,7 +647,6 @@ ${centerLine(sc.ticketServicePhone)}
 ${dashes}
 ${centerLine(`Vigencia ${sc.ticketVigencia}`)}
 ${centerLine(`${dateStr}     ${timeStr}`)}
-${centerLine(`TC: ${tcCode}`)}
 `;
 
     return (
@@ -782,7 +682,7 @@ ${centerLine(`TC: ${tcCode}`)}
                 <svg style={{ display: 'block', margin: '0 auto', maxWidth: '260px' }} ref={(el) => {
                   if (el) {
                     try {
-                      JsBarcode(el, tcCode, {
+                      JsBarcode(el, previewTcCode, {
                         format: sc.ticketBarcodeFormat || 'CODE128',
                         width: 1.5,
                         height: 40,
@@ -816,392 +716,296 @@ ${centerLine(`TC: ${tcCode}`)}
 
   // Sale form
   return (
-    <>
-      <Modal
-        open={open}
-        onClose={handleClose}
-        title="Registrar Venta"
-        primaryAction={{
-          content: `Cobrar ${formatCurrency(total)}`,
-          onAction: handleSale,
-          disabled: items.length === 0,
-        }}
-        secondaryActions={[
-          { content: 'Cancelar', onAction: handleClose },
-        ]}
-        size="large"
-      >
-        <Modal.Section>
-          <BlockStack gap="400">
-            {/* Barcode scanner */}
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack gap="200" blockAlign="center">
-                  <Icon source={BarcodeIcon} />
-                  <Text as="h3" variant="headingSm">Escanear código de barras</Text>
-                </InlineStack>
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title="Registrar Venta"
+      primaryAction={{
+        content: `Cobrar ${formatCurrency(total)}`,
+        onAction: handleSale,
+        disabled: items.length === 0,
+      }}
+      secondaryActions={[
+        { content: 'Cancelar', onAction: handleClose },
+      ]}
+      size="large"
+    >
+      <Modal.Section>
+        <BlockStack gap="400">
+          {/* Barcode scanner */}
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack gap="200" blockAlign="center">
+                <Icon source={BarcodeIcon} />
+                <Text as="h3" variant="headingSm">Escanear código de barras</Text>
+              </InlineStack>
 
-                <CameraScanner
-                  onScan={handleBarcodeScan}
-                  continuous
-                  buttonLabel="Escanear productos con camara"
-                />
+              <CameraScanner
+                onScan={handleBarcodeScan}
+                continuous
+                buttonLabel="Escanear productos con camara"
+              />
 
-                <InlineStack gap="200" align="end" blockAlign="end">
-                  <Box minWidth="350px">
-                    <div onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (e.repeat || !barcodeInput.trim()) return;
-                        const code = barcodeInput;
-                        setBarcodeInput('');
-                        handleBarcodeScan(code);
-                      }
-                    }}>
-                      <TextField
-                        label="Código de barras"
-                        value={barcodeInput}
-                        onChange={(val) => {
-                          setBarcodeInput(val);
-                          setBarcodeError('');
-                        }}
-                        autoComplete="off"
-                        placeholder="Escanea o escribe el código de barras..."
-                        helpText="El escáner escribe el código y presiona Enter automáticamente"
-                        connectedRight={
-                          <Button variant="primary" onClick={() => handleBarcodeScan(barcodeInput)} disabled={!barcodeInput.trim()}>
-                            Buscar
-                          </Button>
-                        }
-                        error={barcodeError || undefined}
-                      />
-                    </div>
-                  </Box>
-                </InlineStack>
-              </BlockStack>
-            </Card>
-
-            {/* Add product to sale (manual) */}
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h3" variant="headingSm">Agregar producto</Text>
-                <InlineStack gap="200" align="end" blockAlign="end">
-                  <Box minWidth="300px">
-                    <SearchableSelect
-                      label="Producto"
-                      options={allProducts.map(p => ({
-                        label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
-                        value: p.id
-                      }))}
-                      selected={selectedProduct}
-                      onChange={setSelectedProduct}
-                    />
-                  </Box>
-                  <Box minWidth="80px">
+              <InlineStack gap="200" align="end" blockAlign="end">
+                <Box minWidth="350px">
+                  <div onKeyDown={(e) => {
+                    if (e.key === 'Enter' && barcodeInput.trim()) {
+                      e.preventDefault();
+                      handleBarcodeScan(barcodeInput);
+                    }
+                  }}>
                     <TextField
-                      label="Cantidad"
-                      type="number"
-                      value={quantity}
-                      onChange={setQuantity}
+                      label="Código de barras"
+                      value={barcodeInput}
+                      onChange={(val) => {
+                        setBarcodeInput(val);
+                        setBarcodeError('');
+                      }}
                       autoComplete="off"
-                      min={1}
+                      placeholder="Escanea o escribe el código de barras..."
+                      helpText="El escáner escribe el código y presiona Enter automáticamente"
+                      connectedRight={
+                        <Button variant="primary" onClick={() => handleBarcodeScan(barcodeInput)} disabled={!barcodeInput.trim()}>
+                          Buscar
+                        </Button>
+                      }
+                      error={barcodeError || undefined}
                     />
-                  </Box>
-                  <Button variant="primary" onClick={addItem} disabled={!selectedProduct}>
-                    Agregar
-                  </Button>
+                  </div>
+                </Box>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+
+          {/* Add product to sale (manual) */}
+          <Card>
+            <BlockStack gap="300">
+              <Text as="h3" variant="headingSm">Agregar producto</Text>
+              <InlineStack gap="200" align="end" blockAlign="end">
+                <Box minWidth="300px">
+                  <Select
+                    label="Producto"
+                    options={productOptions}
+                    value={selectedProduct}
+                    onChange={setSelectedProduct}
+                  />
+                </Box>
+                <Box minWidth="80px">
+                  <TextField
+                    label="Cantidad"
+                    type="number"
+                    value={quantity}
+                    onChange={setQuantity}
+                    autoComplete="off"
+                    min={1}
+                  />
+                </Box>
+                <Button variant="primary" onClick={addItem} disabled={!selectedProduct}>
+                  Agregar
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+
+          {/* Items list */}
+          {items.length > 0 && (
+            <Card>
+              <BlockStack gap="200">
+                <Text as="h3" variant="headingSm">Productos en venta ({items.length})</Text>
+                <IndexTable
+                  resourceName={{ singular: 'producto', plural: 'productos' }}
+                  itemCount={items.length}
+                  headings={[
+                    { title: 'Producto' },
+                    { title: 'SKU' },
+                    { title: 'Cant.' },
+                    { title: 'P. Unit.' },
+                    { title: 'Subtotal' },
+                    { title: '' },
+                  ]}
+                  selectable={false}
+                >
+                  {items.map((item, idx) => (
+                    <IndexTable.Row id={item.productId} key={item.productId} position={idx}>
+                      <IndexTable.Cell>
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{item.productName}</Text>
+                      </IndexTable.Cell>
+                      <IndexTable.Cell>
+                        <Text as="span" variant="bodySm" tone="subdued">{item.sku}</Text>
+                      </IndexTable.Cell>
+                      <IndexTable.Cell>{item.quantity}</IndexTable.Cell>
+                      <IndexTable.Cell>{formatCurrency(item.unitPrice)}</IndexTable.Cell>
+                      <IndexTable.Cell>
+                        <Text as="span" fontWeight="semibold">{formatCurrency(item.subtotal)}</Text>
+                      </IndexTable.Cell>
+                      <IndexTable.Cell>
+                        <Button
+                          variant="plain"
+                          icon={DeleteIcon}
+                          tone="critical"
+                          onClick={() => removeItem(item.productId)}
+                          accessibilityLabel="Eliminar"
+                        />
+                      </IndexTable.Cell>
+                    </IndexTable.Row>
+                  ))}
+                </IndexTable>
+              </BlockStack>
+            </Card>
+          )}
+
+          {/* Totals */}
+          {items.length > 0 && (
+            <Card>
+              <BlockStack gap="200">
+                <InlineStack align="space-between">
+                  <Text as="span">Subtotal:</Text>
+                  <Text as="span">{formatCurrency(subtotal)}</Text>
+                </InlineStack>
+                <InlineStack align="space-between">
+                  <Text as="span">IVA (16%):</Text>
+                  <Text as="span">{formatCurrency(iva)}</Text>
+                </InlineStack>
+                {cardSurcharge > 0 && (
+                  <InlineStack align="space-between">
+                    <Text as="span" tone="caution">Comisión tarjeta (2.5% + IVA):</Text>
+                    <Text as="span" tone="caution">{formatCurrency(cardSurcharge)}</Text>
+                  </InlineStack>
+                )}
+                <Divider />
+                <InlineStack align="space-between">
+                  <Text as="span" variant="headingMd" fontWeight="bold">TOTAL:</Text>
+                  <Text as="span" variant="headingMd" fontWeight="bold">{formatCurrency(total)}</Text>
                 </InlineStack>
               </BlockStack>
             </Card>
+          )}
 
-            {/* Items list */}
-            {items.length > 0 && (
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingSm">Productos en venta ({items.length})</Text>
-                  <IndexTable
-                    resourceName={{ singular: 'producto', plural: 'productos' }}
-                    itemCount={items.length}
-                    headings={[
-                      { title: 'Foto' },
-                      { title: 'Producto' },
-                      { title: 'SKU' },
-                      { title: 'Cant.' },
-                      { title: 'P. Unit.' },
-                      { title: 'Subtotal' },
-                      { title: 'Acción' },
-                    ]}
-                    selectable={false}
-                  >
-                    {items.map((item, idx) => {
-                      const productInfo = allProducts.find(p => p.id === item.productId);
-                      return (
-                        <IndexTable.Row id={item.productId} key={item.productId} position={idx}>
-                          <IndexTable.Cell>
-                            {productInfo?.imageUrl ? (
-                              <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', border: '1px solid #e1e3e5' }}>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={productInfo.imageUrl} alt={item.productName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              </div>
-                            ) : (
-                              <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: '#f4f6f8', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e1e3e5' }}>
-                                <Icon source={BarcodeIcon} tone="subdued" />
-                              </div>
-                            )}
-                          </IndexTable.Cell>
-                          <IndexTable.Cell>
-                            <Text as="span" variant="bodyMd" fontWeight="semibold">{item.productName}</Text>
-                          </IndexTable.Cell>
-                          <IndexTable.Cell>
-                            <Text as="span" variant="bodySm" tone="subdued">{item.sku}</Text>
-                          </IndexTable.Cell>
-                          <IndexTable.Cell>{item.quantity}</IndexTable.Cell>
-                          <IndexTable.Cell>{formatCurrency(item.unitPrice)}</IndexTable.Cell>
-                          <IndexTable.Cell>
-                            <Text as="span" fontWeight="semibold">{formatCurrency(item.subtotal)}</Text>
-                          </IndexTable.Cell>
-                          <IndexTable.Cell>
-                            <Button
-                              variant="plain"
-                              icon={DeleteIcon}
-                              tone="critical"
-                              onClick={() => handleRemoveClick(item.productId)}
-                              accessibilityLabel="Eliminar"
-                            />
-                          </IndexTable.Cell>
-                        </IndexTable.Row>
-                      )
-                    })}
-                  </IndexTable>
-                </BlockStack>
-              </Card>
-            )}
-
-            {/* Totals */}
-            {items.length > 0 && (
-              <Card>
-                <BlockStack gap="200">
-                  <InlineStack align="space-between">
-                    <Text as="span">Subtotal:</Text>
-                    <Text as="span">{formatCurrency(subtotal)}</Text>
-                  </InlineStack>
-                  <InlineStack align="space-between">
-                    <Text as="span">IVA (16%):</Text>
-                    <Text as="span">{formatCurrency(iva)}</Text>
-                  </InlineStack>
-                  {cardSurcharge > 0 && (
-                    <InlineStack align="space-between">
-                      <Text as="span" tone="caution">Comisión tarjeta (2.5% + IVA):</Text>
-                      <Text as="span" tone="caution">{formatCurrency(cardSurcharge)}</Text>
-                    </InlineStack>
-                  )}
-                  <Divider />
-                  <InlineStack align="space-between">
-                    <Text as="span" variant="headingMd" fontWeight="bold">TOTAL:</Text>
-                    <Text as="span" variant="headingMd" fontWeight="bold">{formatCurrency(total)}</Text>
-                  </InlineStack>
-                </BlockStack>
-              </Card>
-            )}
-
-            {/* Payment details */}
-            <FormLayout>
-              <TextField
-                label="Cajero / ID Global"
-                value={currentUserRole ? (currentUserRole.globalId || currentUserRole.employeeNumber || '') : ''}
-                readOnly
-                autoComplete="off"
-                placeholder="Cargando cajero..."
-                helpText="Venta vinculada automáticamente a tu ID Global de empleado"
-              />
-              <FormSelect
-                label="Método de pago"
-                options={paymentMethodOptions}
-                value={paymentMethod}
-                onChange={(v) => {
-                  setPaymentMethod(v as any);
-                  if (v !== 'efectivo') setAmountPaid('');
-                }}
-              />
-              {/* Loyalty/Client Selection for all methods */}
+          {/* Payment details */}
+          <FormLayout>
+            <TextField
+              label="Cajero"
+              value={currentUserRole?.employeeNumber?.replace(/^EMP-/, '') || ''}
+              readOnly
+              autoComplete="off"
+              placeholder="No. empleado"
+              helpText="Se asigna automáticamente tu número de empleado"
+            />
+            <Select
+              label="Método de pago"
+              options={paymentMethodOptions}
+              value={paymentMethod}
+              onChange={(v) => setPaymentMethod(v as 'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'transferencia' | 'fiado')}
+            />
+            {paymentMethod === 'fiado' && (
               <BlockStack gap="200">
-                <Text as="h3" variant="headingSm">Cliente (para lealtad o fiado)</Text>
-                <SearchableSelect
-                  label="Seleccionar Cliente"
-                  labelHidden
-                  options={clientes.map((c) => ({
-                    label: `${c.name} — Puntos: ${Math.floor(parseFloat(String(c.points)))} — Deuda: ${formatCurrency(c.balance)}`,
-                    value: c.id,
-                  }))}
-                  selected={clienteId}
-                  onChange={setClienteId}
+                <Banner tone="warning">
+                  <p>Esta venta se registrará como <strong>fiado</strong>. El monto se sumará a la deuda del cliente.</p>
+                </Banner>
+                <Select
+                  label="Cliente"
+                  options={[
+                    { label: 'Seleccionar cliente...', value: '' },
+                    ...clientes.map((c) => ({
+                      label: `${c.name}${c.balance > 0 ? ` — Debe: ${formatCurrency(c.balance)}` : ''} (Límite: ${formatCurrency(c.creditLimit)})`,
+                      value: c.id,
+                    })),
+                  ]}
+                  value={fiadoClienteId}
+                  onChange={setFiadoClienteId}
                 />
-                {clienteId && (() => {
-                  const c = clientes.find((cl) => cl.id === clienteId);
+                {fiadoClienteId && (() => {
+                  const c = clientes.find((cl) => cl.id === fiadoClienteId);
                   if (!c) return null;
+                  const disponible = Math.max(0, c.creditLimit - c.balance);
+                  const excedeCredito = total > 0 && (c.balance + total) > c.creditLimit;
                   return (
-                    <Banner tone="info">
-                      <InlineStack align="space-between">
-                        <Text as="p">Puntos disponibles:</Text>
-                        <Badge tone="success">{`${Math.floor(parseFloat(String(c.points)))} pts`}</Badge>
-                      </InlineStack>
+                    <Banner tone={excedeCredito ? 'critical' : 'info'}>
+                      <BlockStack gap="100">
+                        <Text as="p" variant="bodySm">
+                          Deuda actual: <strong>{formatCurrency(c.balance)}</strong> / Límite: <strong>{formatCurrency(c.creditLimit)}</strong>
+                        </Text>
+                        <Text as="p" variant="bodySm">
+                          Crédito disponible: <strong>{formatCurrency(disponible)}</strong>
+                        </Text>
+                        {excedeCredito && (
+                          <Text as="p" variant="bodySm" tone="critical">
+                            Esta venta de {formatCurrency(total)} excede el credito disponible.
+                          </Text>
+                        )}
+                      </BlockStack>
                     </Banner>
                   );
                 })()}
-              </BlockStack>
-
-              {paymentMethod === 'fiado' && (
-                <BlockStack gap="200">
-                  <Banner tone="warning">
-                    <p>Esta venta se registrará como <strong>fiado</strong>. El monto se sumará a la deuda del cliente.</p>
-                  </Banner>
-                  {clienteId && (() => {
-                    const c = clientes.find((cl) => cl.id === clienteId);
-                    if (!c) return null;
-                    const disponible = Math.max(0, c.creditLimit - c.balance);
-                    const excedeCredito = total > 0 && (c.balance + total) > c.creditLimit;
-                    return (
-                      <Banner tone={excedeCredito ? 'critical' : 'info'}>
-                        <BlockStack gap="100">
-                          <Text as="p" variant="bodySm">
-                            Deuda actual: <strong>{formatCurrency(c.balance)}</strong> / Límite: <strong>{formatCurrency(c.creditLimit)}</strong>
-                          </Text>
-                          <Text as="p" variant="bodySm">
-                            Crédito disponible: <strong>{formatCurrency(disponible)}</strong>
-                          </Text>
-                          {excedeCredito && (
-                            <Text as="p" variant="bodySm" tone="critical">
-                              Esta venta de {formatCurrency(total)} excede el credito disponible.
-                            </Text>
-                          )}
-                        </BlockStack>
-                      </Banner>
-                    );
-                  })()}
-                  {clientes.length === 0 && (
-                    <Banner tone="info">
-                      <p>No hay clientes registrados. Agrega clientes desde la sección de <strong>Fiado / Crédito</strong>.</p>
-                    </Banner>
-                  )}
-                </BlockStack>
-              )}
-
-              {paymentMethod === 'puntos' && (
-                <BlockStack gap="200">
-                  <Banner tone="success">
-                    <p>Usando puntos de lealtad como método de pago.</p>
-                  </Banner>
-                  {total > 0 && pointsAvailable < (subtotal + iva + cardSurcharge) && (
-                    <Banner tone="warning">
-                      <p>Los puntos no cubren el total. El resto ({formatCurrency(total)}) debe cobrarse por fuera o el cliente debe tener más puntos.</p>
-                    </Banner>
-                  )}
-                </BlockStack>
-              )}
-              {paymentMethod === 'tarjeta' && !mpConfig.enabled && (
-                <Banner tone="warning">
-                  <p>
-                    Terminal Mercado Pago no configurada. Ve a <strong>Configuración &gt; Mercado Pago</strong> para
-                    ingresar tu Access Token y Device ID. O usa &quot;Tarjeta (manual sin terminal)&quot;.
-                  </p>
-                </Banner>
-              )}
-              {paymentMethod === 'tarjeta' && mpConfig.enabled && !mpProcessing && (
-                <Banner tone="info">
-                  <p>
-                    Al cobrar, se enviará el monto de <strong>{formatCurrency(total)}</strong> a tu terminal
-                    Mercado Pago. El cliente pasará su tarjeta en el dispositivo.
-                  </p>
-                </Banner>
-              )}
-              {mpProcessing && (
-                <Card>
-                  <BlockStack gap="300">
-                    <InlineStack gap="200" blockAlign="center">
-                      <Spinner size="small" />
-                      <Text as="p" variant="bodyMd" fontWeight="semibold">{mpStatus}</Text>
-                    </InlineStack>
-                    <ProgressBar progress={mpStatus.includes('Esperando') ? 50 : 25} tone="highlight" size="small" />
-                    {mpError && (
-                      <Banner tone="critical">
-                        <p>{mpError}</p>
-                      </Banner>
-                    )}
-                    <InlineStack align="end">
-                      <Button tone="critical" onClick={handleCancelMPPayment}>
-                        Cancelar cobro
-                      </Button>
-                    </InlineStack>
-                  </BlockStack>
-                </Card>
-              )}
-              {paymentMethod === 'efectivo' && (
-                <BlockStack gap="200">
-                  <TextField
-                    label="Monto recibido"
-                    type="number"
-                    value={amountPaid}
-                    onChange={setAmountPaid}
-                    autoComplete="off"
-                    prefix="$"
-                    placeholder="0.00"
-                    helpText={total > 0 ? `Mínimo: ${formatCurrency(total)}` : undefined}
-                  />
-                  {parseFloat(amountPaid) >= total && total > 0 && (
-                    <Banner tone="success">
-                      <InlineStack align="space-between">
-                        <Text as="span" fontWeight="bold">Cambio:</Text>
-                        <Text as="span" variant="headingMd" fontWeight="bold">{formatCurrency(change)}</Text>
-                      </InlineStack>
-                    </Banner>
-                  )}
-                </BlockStack>
-              )}
-              {paymentMethod === 'tarjeta_web' && (
-                <BlockStack gap="400">
+                {clientes.length === 0 && (
                   <Banner tone="info">
-                    <p>
-                      El cliente puede pasar su tarjeta, pagar con saldo MercadoPago o usar código QR sin necesidad de terminal física.
-                    </p>
+                    <p>No hay clientes registrados. Agrega clientes desde la sección de <strong>Fiado / Crédito</strong>.</p>
                   </Banner>
-                  {!mpConfig.publicKey && (
+                )}
+              </BlockStack>
+            )}
+            {paymentMethod === 'tarjeta' && !mpConfig.enabled && (
+              <Banner tone="warning">
+                <p>
+                  Terminal Mercado Pago no configurada. Ve a <strong>Configuración &gt; Mercado Pago</strong> para
+                  ingresar tu Access Token y Device ID. O usa &quot;Tarjeta (manual sin terminal)&quot;.
+                </p>
+              </Banner>
+            )}
+            {paymentMethod === 'tarjeta' && mpConfig.enabled && !mpProcessing && (
+              <Banner tone="info">
+                <p>
+                  Al cobrar, se enviará el monto de <strong>{formatCurrency(total)}</strong> a tu terminal
+                  Mercado Pago. El cliente pasará su tarjeta en el dispositivo.
+                </p>
+              </Banner>
+            )}
+            {mpProcessing && (
+              <Card>
+                <BlockStack gap="300">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Spinner size="small" />
+                    <Text as="p" variant="bodyMd" fontWeight="semibold">{mpStatus}</Text>
+                  </InlineStack>
+                  <ProgressBar progress={mpStatus.includes('Esperando') ? 50 : 25} tone="highlight" size="small" />
+                  {mpError && (
                     <Banner tone="critical">
-                      <p>Para usar esta función, necesitas configurar tu 'Public Key' de Mercado Pago en Configuración.</p>
+                      <p>{mpError}</p>
                     </Banner>
                   )}
-                  {mpConfig.publicKey && mpConfig.accessToken && total > 0 && !mpWebSuccess && (
-                    <MercadoPagoPaymentBrick
-                      amount={total}
-                      externalReference={`venta-${Date.now()}`}
-                      publicKey={mpConfig.publicKey}
-                      accessToken={mpConfig.accessToken}
-                      onSuccess={() => {
-                        setMpWebSuccess(true);
-                        finishSale('tarjeta_web');
-                      }}
-                      onError={(e) => showError(e)}
-                    />
-                  )}
-                  {mpWebSuccess && (
-                    <Banner tone="success">
-                      <p>Pago procesado correctamente mediante Mercado Pago Web.</p>
-                    </Banner>
-                  )}
+                  <InlineStack align="end">
+                    <Button tone="critical" onClick={handleCancelMPPayment}>
+                      Cancelar cobro
+                    </Button>
+                  </InlineStack>
                 </BlockStack>
-              )}
-            </FormLayout>
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
-
-      {/* Pin Pad Modal for Authorizations */}
-      <PinPadModal
-        open={pinPadOpen}
-        onClose={() => { setPinPadOpen(false); setPinPadAction(null); }}
-        onSuccess={handlePinSuccess}
-        requiredPermission="sales.delete_item"
-        title="Autorizar Cancelación de Artículo"
-      />
-    </>
+              </Card>
+            )}
+            {paymentMethod === 'efectivo' && (
+              <BlockStack gap="200">
+                <TextField
+                  label="Monto recibido"
+                  type="number"
+                  value={amountPaid}
+                  onChange={setAmountPaid}
+                  autoComplete="off"
+                  prefix="$"
+                  placeholder="0.00"
+                  helpText={total > 0 ? `Mínimo: ${formatCurrency(total)}` : undefined}
+                />
+                {parseFloat(amountPaid) >= total && total > 0 && (
+                  <Banner tone="success">
+                    <InlineStack align="space-between">
+                      <Text as="span" fontWeight="bold">Cambio:</Text>
+                      <Text as="span" variant="headingMd" fontWeight="bold">{formatCurrency(change)}</Text>
+                    </InlineStack>
+                  </Banner>
+                )}
+              </BlockStack>
+            )}
+          </FormLayout>
+        </BlockStack>
+      </Modal.Section>
+    </Modal>
   );
 }

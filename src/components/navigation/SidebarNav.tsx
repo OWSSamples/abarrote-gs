@@ -125,10 +125,16 @@ export function SidebarNav({ selected, onSelect, badges, permissions }: SidebarN
 
   if (can(permissions, 'customers.view')) {
     const subNav = [];
+    subNav.push({
+      url: '#',
+      label: 'Todos los Clientes',
+      matches: selected === 'customers',
+      onClick: () => onSelect('customers'),
+    });
     if (can(permissions, 'fiado.view', 'fiado.create')) {
       subNav.push({
         url: '#',
-        label: 'Fiado / Crédito',
+        label: 'Deudores (Fiado / Crédito)',
         matches: selected === 'fiado',
         onClick: () => onSelect('fiado'),
       });

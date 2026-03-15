@@ -60,3 +60,10 @@ export function getUserAvatarPath(userId: string, originalName: string): string 
     const extension = originalName.split('.').pop();
     return `avatars/${userId}-${Date.now()}.${extension}`;
 }
+/**
+ * Generates a standard path for store logos.
+ */
+export function getStoreLogoPath(originalName: string): string {
+    const extension = originalName.split('.').pop();
+    return `branding/logo-${Date.now()}.${extension}`;
+}

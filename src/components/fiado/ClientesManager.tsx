@@ -49,7 +49,7 @@ import { GenericExportModal, ClientImportModal } from '@/components/inventory/Sh
 import { generateCSV, downloadFile, generatePDF } from '@/components/export/ExportModal';
 import type { Cliente, FiadoTransaction } from '@/types';
 
-export function FiadoManager() {
+export function ClientesManager() {
   const { storeConfig, clientes, fiadoTransactions, addCliente, registerFiado, registerAbono, updateCliente, deleteCliente } = useDashboardStore();
   const { showSuccess, showError } = useToast();
   const { hasPermission, isLoaded: permsLoaded } = usePermissions();
@@ -207,10 +207,15 @@ export function FiadoManager() {
       title={(
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Icon source={PersonFilledIcon} tone="base" />
-          <span>Gestión de Deudores (Fiado)</span>
+          <span>Directorio de Clientes</span>
         </div>
       ) as any}
-      primaryAction={undefined}
+      primaryAction={
+        canEditClients ? {
+          content: 'Agregar cliente',
+          onAction: () => setAddClienteOpen(true),
+        } : undefined
+      }
       secondaryActions={[
         {
           content: 'Actualizar',
@@ -247,16 +252,6 @@ export function FiadoManager() {
 
         {/* Action Buttons for Store logic */}
         <InlineStack gap="200">
-          {canCreateFiado && (
-            <Button variant="primary" tone="critical" onClick={() => setFiadoOpen(true)} disabled={clientes.length === 0}>
-              Registrar Fiado
-            </Button>
-          )}
-          {canCreateFiado && (
-            <Button variant="primary" onClick={() => setAbonoOpen(true)} disabled={clientesWithDebt.length === 0}>
-              Registrar Abono
-            </Button>
-          )}
           <Badge tone={totalDebt > 0 ? 'attention' : 'success'}>
             {`Deuda total en tienda: ${formatCurrency(totalDebt)}`}
           </Badge>
@@ -357,18 +352,19 @@ export function FiadoManager() {
             </Box>
 
             <IndexTable
-              resourceName={{ singular: 'deudor', plural: 'deudores' }}
-              itemCount={clientesWithDebt.length}
+              resourceName={{ singular: 'cliente', plural: 'clientes' }}
+              itemCount={clientes.length}
               headings={[
-                { title: 'Deudor' },
-                { title: 'Saldo Pendiente' },
-                { title: 'Límite autorizado' },
-                { title: 'Disponible' },
+                { title: 'Nombre del cliente' },
+                { title: 'Puntos Lealtad' },
+                { title: 'Teléfono' },
+                { title: 'Pedidos' },
+                { title: 'Importe gastado' },
                 { title: 'Acciones' },
               ]}
               selectable={false}
             >
-              {clientesWithDebt.map((cliente, idx) => {
+              {clientes.map((cliente, idx) => {
                 const clientTransactions = fiadoTransactions.filter(t => t.clienteId === cliente.id);
                 const orderCount = new Set(clientTransactions.map(t => t.saleFolio).filter(Boolean)).size;
                 const totalSpent = clientTransactions
@@ -383,16 +379,17 @@ export function FiadoManager() {
                       </Button>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" tone="critical" fontWeight="bold">
-                        {formatCurrency(cliente.balance)}
-                      </Text>
+                      <Badge tone="info">{cliente.points || 0} pts</Badge>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" tone="subdued">{formatCurrency(cliente.creditLimit)}</Text>
+                      <Text as="span" tone="subdued">{cliente.phone || 'S/N'}</Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" tone="success">
-                        {formatCurrency(Math.max(0, cliente.creditLimit - cliente.balance))}
+                      <Text as="span">{`${orderCount} pedidos`}</Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" fontWeight="semibold">
+                        {formatCurrency(totalSpent)}
                       </Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
@@ -438,57 +435,7 @@ export function FiadoManager() {
         </Modal.Section>
       </Modal>
 
-      {/* Modal: Registrar Fiado */}
-      <Modal
-        open={fiadoOpen}
-        onClose={() => setFiadoOpen(false)}
-        title="Registrar Fiado"
-        primaryAction={{ content: 'Registrar Fiado', onAction: handleFiado, disabled: !fiadoClienteId || !fiadoAmount }}
-        secondaryActions={[{ content: 'Cancelar', onAction: () => setFiadoOpen(false) }]}
-      >
-        <Modal.Section>
-          <FormLayout>
-            <Banner tone="warning"><p>El fiado se sumará a la deuda del cliente.</p></Banner>
-            <Select label="Cliente" options={clienteOptions} value={fiadoClienteId} onChange={setFiadoClienteId} />
-            {fiadoClienteId && (() => {
-              const c = clientes.find((cl) => cl.id === fiadoClienteId);
-              return c ? (
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Deuda actual: {formatCurrency(c.balance)} / Límite: {formatCurrency(c.creditLimit)} — Disponible: {formatCurrency(Math.max(0, c.creditLimit - c.balance))}
-                </Text>
-              ) : null;
-            })()}
-            <TextField label="Monto (MXN)" type="number" value={fiadoAmount} onChange={setFiadoAmount} autoComplete="off" prefix="$" placeholder="0.00" />
-            <TextField label="Descripción / Concepto" value={fiadoDescription} onChange={setFiadoDescription} autoComplete="off" placeholder="Ej: Leche, pan, huevo" />
-          </FormLayout>
-        </Modal.Section>
-      </Modal>
 
-      {/* Modal: Registrar Abono */}
-      <Modal
-        open={abonoOpen}
-        onClose={() => setAbonoOpen(false)}
-        title="Registrar Abono"
-        primaryAction={{ content: 'Registrar Abono', onAction: handleAbono, disabled: !abonoClienteId || !abonoAmount }}
-        secondaryActions={[{ content: 'Cancelar', onAction: () => setAbonoOpen(false) }]}
-      >
-        <Modal.Section>
-          <FormLayout>
-            <Banner tone="success"><p>El abono reducirá la deuda del cliente.</p></Banner>
-            <Select label="Cliente" options={clientesWithDebtOptions} value={abonoClienteId} onChange={setAbonoClienteId} />
-            {abonoClienteId && (() => {
-              const c = clientes.find((cl) => cl.id === abonoClienteId);
-              return c ? (
-                <Text as="p" variant="bodySm" tone="critical">
-                  Deuda actual: {formatCurrency(c.balance)}
-                </Text>
-              ) : null;
-            })()}
-            <TextField label="Monto del abono (MXN)" type="number" value={abonoAmount} onChange={setAbonoAmount} autoComplete="off" prefix="$" placeholder="0.00" />
-            <TextField label="Descripción (opcional)" value={abonoDescription} onChange={setAbonoDescription} autoComplete="off" placeholder="Ej: Abono semanal" />
-          </FormLayout>
-        </Modal.Section>
-      </Modal>
 
       {/* Modal: Editar Cliente */}
       <Modal
@@ -514,13 +461,13 @@ export function FiadoManager() {
         title="Exportar clientes"
         exportName="clientes"
         onExport={(format) => {
-          const exportData = filteredClientes.map(c => ({
+          const exportData = clientes.map((c: Cliente) => ({
             "Nombre Completo": c.name,
             "Teléfono": c.phone || 'N/A',
             "Dirección": c.address || 'N/A',
             "Límite de Crédito": c.creditLimit,
-            "Crédito Utilizado": c.currentBalance,
-            "Crédito Disponible": Math.max(0, c.creditLimit - c.currentBalance)
+            "Crédito Utilizado": c.balance,
+            "Crédito Disponible": Math.max(0, c.creditLimit - c.balance)
           }));
           const filename = `Clientes_Kiosco_${new Date().toISOString().split('T')[0]}`;
           if (format === 'pdf') {

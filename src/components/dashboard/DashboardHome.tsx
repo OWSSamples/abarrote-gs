@@ -5,7 +5,6 @@ import {
   Frame,
   Page,
   Layout,
-  Card,
   Banner,
   SkeletonPage,
   SkeletonDisplayText,
@@ -13,16 +12,16 @@ import {
   BlockStack,
   InlineStack,
   Button,
+  TopBar,
   Text,
   Modal,
   FormLayout,
   TextField,
+  Select,
   IndexTable,
   Badge,
-  EmptyState,
-  Loading,
+  ActionList,
 } from '@shopify/polaris';
-import { FormSelect } from '@/components/ui/FormSelect';
 import {
   MoneyIcon,
   InventoryIcon,
@@ -30,14 +29,18 @@ import {
   CartIcon,
   ExportIcon,
   RefreshIcon,
+  ProductIcon,
+  SettingsIcon,
+  ExitIcon,
+  CashDollarIcon,
+  PersonIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { KPICard } from '@/components/kpi/KPICard';
 import { SalesChart } from '@/components/charts/SalesChart';
 import { HourlySalesChart } from '@/components/charts/HourlySalesChart';
+import { MonthlyProfitChart } from '@/components/charts/MonthlyProfitChart';
 import { InventoryTable } from '@/components/inventory/InventoryTable';
-import { AllProductsTable } from '@/components/inventory/AllProductsTable';
-import { InventoryAuditView } from '@/components/inventory/InventoryAuditView';
 import { QuickActions } from '@/components/actions/QuickActions';
 import { AdvancedFilters, FilterState } from '@/components/filters/AdvancedFilters';
 import { TopProducts } from '@/components/metrics/TopProducts';
@@ -54,66 +57,11 @@ import { ReportesView } from '@/components/reports/ReportesView';
 import { ConfiguracionPage } from '@/components/settings/ConfiguracionPage';
 import { RolesManager } from '@/components/roles/RolesManager';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
-import { Product, PermissionKey } from '@/types';
+import { ProfileModal } from '@/components/modals/ProfileModal';
+import { Product } from '@/types';
 import { useToast } from '@/components/notifications/ToastProvider';
-import { CustomTopBar } from '@/components/navigation/CustomTopBar';
-import { AnalyticsView } from '@/components/analytics/AnalyticsView';
-import { UserMenu } from '@/components/auth/UserMenu';
-import { deleteProduct, updateProduct } from '@/app/actions/db-actions';
-import {
-  HomeFilledIcon,
-  OrderFilledIcon,
-  ProductFilledIcon,
-  PersonFilledIcon,
-  FinanceFilledIcon,
-  ChartVerticalFilledIcon,
-  SettingsFilledIcon,
-  PersonLockFilledIcon,
-  NotificationFilledIcon,
-} from '@shopify/polaris-icons';
-import { Icon } from '@shopify/polaris';
-
-const SECTION_ICONS: Record<string, React.FC<React.SVGProps<SVGSVGElement>>> = {
-  overview: HomeFilledIcon,
-  sales: OrderFilledIcon,
-  'sales-history': OrderFilledIcon,
-  'sales-corte': OrderFilledIcon,
-  inventory: ProductFilledIcon,
-  'inventory-audit': ProductFilledIcon,
-  catalog: ProductFilledIcon,
-  'inventory-priority': ProductFilledIcon,
-  customers: PersonFilledIcon,
-  fiado: PersonFilledIcon,
-  expenses: FinanceFilledIcon,
-  suppliers: FinanceFilledIcon,
-  pedidos: FinanceFilledIcon,
-  analytics: ChartVerticalFilledIcon,
-  reports: ChartVerticalFilledIcon,
-  settings: SettingsFilledIcon,
-  roles: PersonLockFilledIcon,
-  notifications: NotificationFilledIcon,
-};
-
-const SECTION_PERMISSIONS: Record<string, PermissionKey[]> = {
-  overview: ['dashboard.view'],
-  sales: ['sales.create', 'sales.view'],
-  'sales-history': ['sales.view'],
-  'sales-corte': ['corte.create', 'corte.view'],
-  inventory: ['inventory.view'],
-  'inventory-audit': ['inventory.view'],
-  catalog: ['inventory.view'],
-  customers: ['customers.view'],
-  fiado: ['fiado.view', 'fiado.create'],
-  expenses: ['expenses.view'],
-  suppliers: ['suppliers.view'],
-  pedidos: ['pedidos.view'],
-  analytics: ['analytics.view'],
-  reports: ['reports.view'],
-  settings: ['settings.view'],
-  roles: ['roles.manage'],
-  notifications: ['dashboard.view'],
-  'inventory-priority': ['inventory.view'],
-};
+import { useAuth } from '@/lib/auth/AuthContext';
+import { usePermissions, SECTION_PERMISSIONS } from '@/lib/usePermissions';
 
 const SECTION_TITLES: Record<string, string> = {
   overview: 'Inicio',
@@ -121,7 +69,6 @@ const SECTION_TITLES: Record<string, string> = {
   'sales-history': 'Historial de Ventas',
   'sales-corte': 'Corte de Caja',
   inventory: 'Inventario',
-  'inventory-audit': 'Auditoría de Inventario',
   catalog: 'Catálogo de Productos',
   customers: 'Clientes',
   fiado: 'Fiado / Crédito',
@@ -130,30 +77,42 @@ const SECTION_TITLES: Record<string, string> = {
   pedidos: 'Pedidos a Proveedores',
   analytics: 'Análisis',
   reports: 'Reportes',
-  settings: 'Configuración',
   roles: 'Usuarios y Roles',
-  notifications: 'Notificaciones',
-  'inventory-priority': 'Inventario Prioritario',
+  settings: 'Configuración',
+};
+
+const SECTION_SUBTITLES: Record<string, string> = {
+  overview: 'Resumen de tu negocio',
+  sales: 'Punto de venta y registro',
+  'sales-history': 'Registro de todas las ventas',
+  'sales-corte': 'Cierre y conteo de caja',
+  inventory: 'Control de existencias',
+  catalog: 'Todos los productos registrados',
+  customers: 'Directorio de clientes',
+  fiado: 'Gestión de crédito a clientes',
+  expenses: 'Control de gastos del negocio',
+  suppliers: 'Directorio de proveedores',
+  pedidos: 'Gestión de pedidos y recepción de mercancía',
+  analytics: 'Gráficas y tendencias',
+  reports: 'Resúmenes y métricas',
+  roles: 'Asigna roles y permisos a tu equipo',
+  settings: 'Configuración del sistema',
 };
 
 export function DashboardHome() {
   const {
     kpiData,
     inventoryAlerts,
-    products,
     salesData,
     isLoading,
     error,
     fetchDashboardData,
     adjustStock,
     createPedido,
-    currentUserRole,
-    roleDefinitions,
+    ensureOwnerRole,
+    fetchRoleDefinitions,
+    checkMidnightCorte,
   } = useDashboardStore();
-
-  const userPermissions = currentUserRole
-    ? roleDefinitions.find((r) => r.id === currentUserRole.roleId)?.permissions || []
-    : [];
 
   const toast = useToast();
 
@@ -167,11 +126,13 @@ export function DashboardHome() {
   const [pedidoModalOpen, setPedidoModalOpen] = useState(false);
   const [pedidoProveedor, setPedidoProveedor] = useState('');
   const [pedidoNotas, setPedidoNotas] = useState('');
-  const [updateProductOpen, setUpdateProductOpen] = useState(false);
-  const [productToUpdate, setProductToUpdate] = useState<Product | null>(null);
-  const [updateStock, setUpdateStock] = useState('');
-  const [updatePrice, setUpdatePrice] = useState('');
-  const [updateCostPrice, setUpdateCostPrice] = useState('');
+  const [searchValue, setSearchValue] = useState('');
+  const [searchActive, setSearchActive] = useState(false);
+  const [userMenuActive, setUserMenuActive] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const { permissions, isLoaded: permissionsLoaded } = usePermissions();
+
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     categories: [],
@@ -182,7 +143,29 @@ export function DashboardHome() {
 
   useEffect(() => {
     fetchDashboardData();
-  }, [fetchDashboardData]);
+    fetchRoleDefinitions();
+  }, [fetchDashboardData, fetchRoleDefinitions]);
+
+  // Auto-register role for current user (first user becomes owner)
+  useEffect(() => {
+    if (user) {
+      ensureOwnerRole(user.uid, user.email || '', user.displayName || '');
+    }
+  }, [user, ensureOwnerRole]);
+
+  // Check for auto midnight corte on load
+  useEffect(() => {
+    checkMidnightCorte();
+    // Also schedule check at midnight
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 5, 0); // 12:00:05 AM next day
+    const msUntilMidnight = midnight.getTime() - now.getTime();
+    const timer = setTimeout(() => {
+      checkMidnightCorte();
+    }, msUntilMidnight);
+    return () => clearTimeout(timer);
+  }, [checkMidnightCorte]);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
@@ -203,6 +186,7 @@ export function DashboardHome() {
     setProductModalOpen(true);
   }, []);
 
+  // Filtrar alertas basado en los filtros
   const filteredAlerts = inventoryAlerts.filter((alert) => {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
@@ -216,8 +200,27 @@ export function DashboardHome() {
       return false;
     }
     if (filters.categories.length > 0) {
-      const productCategoryKey = alert.product.category.toLowerCase();
+      const categoryMap: Record<string, string> = {
+        'Lácteos': 'lacteos',
+        'Panadería': 'panaderia',
+        'Carnes y Embutidos': 'carnes',
+        'Frutas y Verduras': 'frutas',
+        'Abarrotes Secos': 'abarrotes',
+        'Bebidas': 'bebidas',
+        'Limpieza': 'limpieza',
+        'Higiene Personal': 'higiene',
+        'Huevos': 'huevos',
+        'Tortillería': 'tortilleria',
+      };
+      const productCategoryKey = categoryMap[alert.product.category] || alert.product.category.toLowerCase();
       if (!filters.categories.includes(productCategoryKey)) return false;
+    }
+    if (filters.stockStatus.length > 0) {
+      const pct = alert.product.minStock > 0
+        ? (alert.product.currentStock / alert.product.minStock) * 100
+        : 100;
+      const status = pct <= 25 ? 'critical' : pct <= 50 ? 'warning' : 'normal';
+      if (!filters.stockStatus.includes(status)) return false;
     }
     return true;
   });
@@ -237,43 +240,6 @@ export function DashboardHome() {
     setPedidoModalOpen(true);
   }, []);
 
-  const handleDeleteProduct = useCallback(async (product: Product) => {
-    if (confirm(`¿Estás seguro de eliminar "${product.name}"?`)) {
-      try {
-        await deleteProduct(product.id);
-        toast.showSuccess(`Producto "${product.name}" eliminado`);
-        fetchDashboardData();
-      } catch (error) {
-        toast.showError('Error al eliminar el producto');
-      }
-    }
-  }, [toast, fetchDashboardData]);
-
-  const handleOpenUpdateProduct = useCallback((product: Product) => {
-    setProductToUpdate(product);
-    setUpdateStock(product.currentStock.toString());
-    setUpdatePrice(product.unitPrice.toString());
-    setUpdateCostPrice(product.costPrice.toString());
-    setUpdateProductOpen(true);
-  }, []);
-
-  const handleUpdateProductSubmit = useCallback(async () => {
-    if (!productToUpdate) return;
-    try {
-      await updateProduct(productToUpdate.id, {
-        currentStock: parseInt(updateStock, 10) || productToUpdate.currentStock,
-        unitPrice: parseFloat(updatePrice) || productToUpdate.unitPrice,
-        costPrice: parseFloat(updateCostPrice) || productToUpdate.costPrice,
-      });
-      toast.showSuccess(`Producto "${productToUpdate.name}" actualizado`);
-      setUpdateProductOpen(false);
-      setProductToUpdate(null);
-      fetchDashboardData();
-    } catch (error) {
-      toast.showError('Error al actualizar el producto');
-    }
-  }, [productToUpdate, updateStock, updatePrice, updateCostPrice, toast, fetchDashboardData]);
-
   const lowStockProducts = inventoryAlerts
     .filter((a) => a.alertType === 'low_stock' || a.product.currentStock < a.product.minStock)
     .map((a) => ({
@@ -286,6 +252,7 @@ export function DashboardHome() {
 
   const handlePedidoSubmit = useCallback(async () => {
     if (!pedidoProveedor) return;
+
     await createPedido({
       proveedor: pedidoProveedor,
       productos: lowStockProducts.map((p) => ({
@@ -295,7 +262,8 @@ export function DashboardHome() {
       })),
       notas: pedidoNotas,
     });
-    toast.showSuccess(`Pedido creado para ${pedidoProveedor}`);
+
+    toast.showSuccess(`Pedido creado para ${pedidoProveedor} con ${lowStockProducts.length} productos`);
     setPedidoModalOpen(false);
     setPedidoProveedor('');
     setPedidoNotas('');
@@ -304,6 +272,8 @@ export function DashboardHome() {
   const proveedorOptions = [
     { label: 'Seleccionar proveedor...', value: '' },
     { label: 'Distribuidora García', value: 'Distribuidora García' },
+    { label: 'Abarrotes Mayoreo MX', value: 'Abarrotes Mayoreo MX' },
+    { label: 'Lácteos del Norte', value: 'Lácteos del Norte' },
     { label: 'Proveedor General', value: 'Proveedor General' },
   ];
 
@@ -316,21 +286,155 @@ export function DashboardHome() {
     setMobileNavActive(false);
   }, []);
 
+  if (isLoading) {
+    return (
+      <SkeletonPage primaryAction title="Dashboard de Abarrotes">
+        <Layout>
+          <Layout.Section>
+            <BlockStack gap="400">
+              <SkeletonDisplayText size="large" />
+              <SkeletonBodyText lines={4} />
+            </BlockStack>
+          </Layout.Section>
+        </Layout>
+      </SkeletonPage>
+    );
+  }
+
+  if (error) {
+    return (
+      <Page title="Dashboard de Abarrotes">
+        <Banner tone="critical" title="Error al cargar el dashboard">
+          <p>{error}</p>
+        </Banner>
+      </Page>
+    );
+  }
+
   const criticalAlerts = inventoryAlerts.filter(
     (alert) => alert.severity === 'critical'
   );
 
-  const topBarMarkup = (
-    <CustomTopBar
-      userMenu={<UserMenu />}
-      onNavigationToggle={toggleMobileNav}
-      onSectionSelect={handleSectionSelect}
-      onProductClick={(product) => {
-        setSelectedProduct(product);
-        setProductModalOpen(true);
-      }}
-    />
-  );
+  const topBarMarkup = (() => {
+    const userMenuInitials = user?.displayName
+      ? user.displayName
+          .split(' ')
+          .map((n: string) => n[0])
+          .join('')
+          .toUpperCase()
+          .slice(0, 2)
+      : user?.email?.charAt(0).toUpperCase() || 'U';
+
+    const userMenuMarkup = (
+      <TopBar.UserMenu
+        actions={[
+          {
+            items: [
+              {
+                content: 'Mi Perfil',
+                icon: PersonIcon,
+                onAction: () => {
+                  setProfileModalOpen(true);
+                  setUserMenuActive(false);
+                },
+              },
+            ],
+          },
+          ...((!permissionsLoaded || permissions.length === 0 || permissions.includes('corte.create'))
+            ? [{
+                items: [
+                  {
+                    content: 'Corte de Caja',
+                    icon: CashDollarIcon,
+                    onAction: () => {
+                      setCorteModalOpen(true);
+                      setUserMenuActive(false);
+                    },
+                  },
+                ],
+              }]
+            : []),
+          ...((!permissionsLoaded || permissions.length === 0 || permissions.includes('settings.view'))
+            ? [{
+                items: [
+                  {
+                    content: 'Configuracion',
+                    icon: SettingsIcon,
+                    onAction: () => handleSectionSelect('settings'),
+                  },
+                ],
+              }]
+            : []),
+          {
+            items: [
+              {
+                content: 'Cerrar sesion',
+                icon: ExitIcon,
+                onAction: signOut,
+              },
+            ],
+          },
+        ]}
+        name={user?.displayName || user?.email?.split('@')[0] || 'Usuario'}
+        detail={user?.email || ''}
+        initials={userMenuInitials}
+        avatar={user?.photoURL || undefined}
+        open={userMenuActive}
+        onToggle={() => setUserMenuActive((prev) => !prev)}
+      />
+    );
+
+    const searchResultsMarkup = searchValue ? (
+      <ActionList
+        items={Object.entries(SECTION_TITLES)
+          .filter(([key, title]) => {
+            if (!title.toLowerCase().includes(searchValue.toLowerCase())) return false;
+            // Respect permissions in search
+            if (permissionsLoaded && permissions.length > 0) {
+              const required = SECTION_PERMISSIONS[key];
+              if (required && !required.some((k) => permissions.includes(k))) return false;
+            }
+            return true;
+          })
+          .map(([key, title]) => ({
+            content: title,
+            helpText: SECTION_SUBTITLES[key] || '',
+            onAction: () => {
+              handleSectionSelect(key);
+              setSearchValue('');
+              setSearchActive(false);
+            },
+          }))}
+      />
+    ) : null;
+
+    const searchFieldMarkup = (
+      <TopBar.SearchField
+        onChange={(value) => {
+          setSearchValue(value);
+          setSearchActive(value.length > 0);
+        }}
+        value={searchValue}
+        placeholder="Buscar secciones, productos..."
+        showFocusBorder
+      />
+    );
+
+    return (
+      <TopBar
+        showNavigationToggle
+        onNavigationToggle={toggleMobileNav}
+        userMenu={userMenuMarkup}
+        searchField={searchFieldMarkup}
+        searchResults={searchResultsMarkup}
+        searchResultsVisible={searchActive}
+        onSearchResultsDismiss={() => {
+          setSearchActive(false);
+          setSearchValue('');
+        }}
+      />
+    );
+  })();
 
   const navigationMarkup = (
     <SidebarNav
@@ -338,23 +442,20 @@ export function DashboardHome() {
       onSelect={handleSectionSelect}
       badges={{
         lowStock: kpiData?.lowStockProducts,
-        notifications: criticalAlerts.length,
       }}
-      permissions={userPermissions}
+      permissions={permissionsLoaded ? permissions : undefined}
     />
   );
 
   const renderSectionContent = () => {
-    const requiredPerms = SECTION_PERMISSIONS[selectedSection];
-    if (requiredPerms && currentUserRole) {
-      const hasPerm = requiredPerms.some((p) => userPermissions.includes(p));
-      if (!hasPerm) {
+    // Guard: if permissions are loaded, check if user can access this section
+    if (permissionsLoaded && permissions.length > 0) {
+      const required = SECTION_PERMISSIONS[selectedSection];
+      if (required && !required.some((k) => permissions.includes(k))) {
         return (
-          <Page title="Acceso Denegado">
-            <Banner tone="critical" title="No tienes permiso">
-              <p>Contacta a un administrador.</p>
-            </Banner>
-          </Page>
+          <Banner tone="warning" title="Acceso restringido">
+            <p>No tienes permisos para acceder a esta seccion. Contacta al propietario o administrador.</p>
+          </Banner>
         );
       }
     }
@@ -373,8 +474,18 @@ export function DashboardHome() {
               </Layout.Section>
             </Layout>
             <Layout>
+              <Layout.Section>
+                <MonthlyProfitChart />
+              </Layout.Section>
+            </Layout>
+            <Layout>
               <Layout.Section variant="oneHalf">
-                <InventoryTable alerts={filteredAlerts} onProductClick={handleProductClick} />
+                <InventoryTable
+                  alerts={filteredAlerts}
+                  onProductClick={handleProductClick}
+                  onExport={handleTableExport}
+                  onCreatePedido={handleTableCreatePedido}
+                />
               </Layout.Section>
               <Layout.Section variant="oneHalf">
                 <TopProducts />
@@ -382,131 +493,319 @@ export function DashboardHome() {
             </Layout>
           </BlockStack>
         );
+
       case 'sales':
         return (
           <BlockStack gap="400">
+            <QuickActions />
             <SalesHistory />
           </BlockStack>
         );
-      case 'sales-history': return <SalesHistory />;
+
+      case 'sales-history':
+        return <SalesHistory />;
+
       case 'sales-corte':
         return (
           <BlockStack gap="400">
-            <InlineStack align="end"><Button variant="primary" onClick={() => setCorteModalOpen(true)}>Nuevo Corte de Caja</Button></InlineStack>
+            <InlineStack align="end">
+              <Button variant="primary" onClick={() => setCorteModalOpen(true)}>
+                Nuevo Corte de Caja
+              </Button>
+            </InlineStack>
             <CortesHistory />
           </BlockStack>
         );
+
       case 'inventory':
         return (
           <BlockStack gap="400">
             <AdvancedFilters onFiltersChange={handleFiltersChange} />
-            <AllProductsTable products={products} onProductClick={handleProductClick} onRegisterProduct={() => setRegisterProductOpen(true)} onCreatePedido={handleTableCreatePedido} onDeleteProduct={handleDeleteProduct} onUpdateProduct={handleOpenUpdateProduct} onImportSuccess={fetchDashboardData} />
+            <InventoryTable
+              alerts={filteredAlerts}
+              onProductClick={handleProductClick}
+              onExport={handleTableExport}
+              onCreatePedido={handleTableCreatePedido}
+              onRegisterProduct={() => setRegisterProductOpen(true)}
+            />
           </BlockStack>
         );
-      case 'inventory-audit': return <InventoryAuditView />;
+
       case 'catalog':
-        return <AllProductsTable products={products} onProductClick={handleProductClick} onRegisterProduct={() => setRegisterProductOpen(true)} onExport={handleTableExport} onCreatePedido={handleTableCreatePedido} onDeleteProduct={handleDeleteProduct} onUpdateProduct={handleOpenUpdateProduct} />;
-      case 'inventory-priority':
         return (
           <BlockStack gap="400">
-            <InventoryTable alerts={inventoryAlerts} onProductClick={handleProductClick} />
+            <InventoryTable
+              alerts={inventoryAlerts}
+              onProductClick={handleProductClick}
+              onExport={handleTableExport}
+              onCreatePedido={handleTableCreatePedido}
+              onRegisterProduct={() => setRegisterProductOpen(true)}
+            />
+            <TopProducts />
           </BlockStack>
         );
+
       case 'customers':
+        return <FiadoManager />;
+
       case 'fiado':
         return <FiadoManager />;
-      case 'expenses': return <GastosManager />;
-      case 'suppliers': return <ProveedoresManager />;
-      case 'pedidos': return <PedidosManager />;
-      case 'analytics': return <AnalyticsView />;
-      case 'reports': return <ReportesView />;
-      case 'settings': return <ConfiguracionPage />;
-      case 'roles': return <RolesManager />;
-      case 'notifications':
+
+      case 'expenses':
+        return <GastosManager />;
+
+      case 'suppliers':
+        return <ProveedoresManager />;
+
+      case 'pedidos':
+        return <PedidosManager />;
+
+      case 'analytics':
         return (
           <BlockStack gap="400">
-            {criticalAlerts.length > 0 ? (
-              <InventoryTable alerts={criticalAlerts} onProductClick={handleProductClick} />
-            ) : (
-              <Card><EmptyState heading="Sin notificaciones" image=""><p>Todo está en orden.</p></EmptyState></Card>
-            )}
+            <Layout>
+              <Layout.Section variant="oneHalf">
+                <SalesChart data={salesData} />
+              </Layout.Section>
+              <Layout.Section variant="oneHalf">
+                <HourlySalesChart />
+              </Layout.Section>
+            </Layout>
+            <Layout>
+              <Layout.Section variant="oneHalf">
+                <TopProducts title="Productos Más Vendidos" />
+              </Layout.Section>
+              <Layout.Section variant="oneHalf">
+                <TopProducts title="Mayor Margen de Ganancia" />
+              </Layout.Section>
+            </Layout>
           </BlockStack>
         );
-      default: return null;
+
+      case 'reports':
+        return <ReportesView />;
+
+      case 'roles':
+        return <RolesManager />;
+
+      case 'settings':
+        return <ConfiguracionPage />;
+
+      default:
+        return null;
     }
-  };
-
-  const wrapWithPage = (content: React.ReactNode) => {
-    const rawTitle = SECTION_TITLES[selectedSection] || 'Dashboard';
-    const SectionIcon = SECTION_ICONS[selectedSection];
-
-    // Convertimos el string a un InlineStack the Polaris o simple div para inyectar el ícono a la izquierda 
-    const fancyTitle = SectionIcon ? (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Icon source={SectionIcon} tone="base" />
-        <span>{rawTitle}</span>
-      </div>
-    ) : rawTitle;
-
-    return (
-      <Page
-        fullWidth
-        title={fancyTitle as any}
-        secondaryActions={[
-          { content: 'Actualizar', icon: RefreshIcon, onAction: fetchDashboardData },
-          { content: 'Exportar', icon: ExportIcon, onAction: () => setExportModalOpen(true) },
-        ]}
-      >
-        <Layout>
-          {selectedSection === 'overview' && (
-            <Layout.Section>
-              <InlineStack gap="400" wrap={true}>
-                <div style={{ flex: '1 1 240px' }}><KPICard title="Ventas Hoy" value={kpiData?.dailySales || 0} type="currency" icon={<MoneyIcon />} /></div>
-                <div style={{ flex: '1 1 240px' }}><KPICard title="Stock Bajo" value={kpiData?.lowStockProducts || 0} type="number" icon={<InventoryIcon />} /></div>
-                <div style={{ flex: '1 1 240px' }}><KPICard title="Por Vencer" value={kpiData?.expiringProducts || 0} type="number" icon={<CalendarIcon />} /></div>
-                <div style={{ flex: '1 1 240px' }}><KPICard title="Tasa Merma" value={kpiData?.mermaRate || 0} type="percentage" icon={<CartIcon />} /></div>
-              </InlineStack>
-            </Layout.Section>
-          )}
-          <Layout.Section>{content}</Layout.Section>
-        </Layout>
-      </Page>
-    );
-  };
-
-  const finalContent = () => {
-    const content = renderSectionContent();
-    const section = selectedSection;
-    // Sections that already return a <Page> - do NOT wrap
-    if (['customers', 'fiado', 'analytics', 'settings'].includes(section)) {
-      return content;
-    }
-    return wrapWithPage(content);
   };
 
   return (
-    <>
-      {topBarMarkup}
-      <Frame navigation={navigationMarkup} showMobileNavigation={mobileNavActive} onNavigationDismiss={toggleMobileNav}>
-        {isLoading && <Loading />}
-        {error ? (
-          <Page title="Error" fullWidth><Banner tone="critical" title="Error"><p>{error}</p><Button onClick={() => window.location.reload()}>Reintentar</Button></Banner></Page>
-        ) : isLoading ? (
-          <SkeletonPage title={SECTION_TITLES[selectedSection] || 'Dashboard'} fullWidth><Layout><Layout.Section><SkeletonBodyText lines={10} /></Layout.Section></Layout></SkeletonPage>
-        ) : (
-          finalContent()
-        )}
-        <ExportModal open={exportModalOpen} onClose={() => setExportModalOpen(false)} onExport={handleExport} />
-        <CorteCajaModal open={corteModalOpen} onClose={() => setCorteModalOpen(false)} />
-        <ProductDetailModal product={selectedProduct} open={productModalOpen} onClose={() => { setProductModalOpen(false); setSelectedProduct(null); }} onSave={handleProductSave} />
-        <RegisterProductModal open={registerProductOpen} onClose={() => setRegisterProductOpen(false)} />
-        <Modal open={updateProductOpen} onClose={() => { setUpdateProductOpen(false); setProductToUpdate(null); }} title={productToUpdate ? `Actualizar ${productToUpdate.name}` : 'Actualizar Producto'} primaryAction={{ content: 'Guardar Cambios', onAction: handleUpdateProductSubmit }} secondaryActions={[{ content: 'Cancelar', onAction: () => { setUpdateProductOpen(false); setProductToUpdate(null); } }]}>
-          <Modal.Section><FormLayout><TextField label="Stock Actual" type="number" value={updateStock} onChange={setUpdateStock} autoComplete="off" /><TextField label="Precio Venta" type="number" value={updatePrice} onChange={setUpdatePrice} autoComplete="off" prefix="$" /><TextField label="Precio Costo" type="number" value={updateCostPrice} onChange={setUpdateCostPrice} autoComplete="off" prefix="$" /></FormLayout></Modal.Section>
-        </Modal>
-        <Modal open={pedidoModalOpen} onClose={() => { setPedidoModalOpen(false); setPedidoProveedor(''); setPedidoNotas(''); }} title="Crear Pedido" primaryAction={{ content: 'Crear Pedido', onAction: handlePedidoSubmit, disabled: !pedidoProveedor || lowStockProducts.length === 0 }} secondaryActions={[{ content: 'Cancelar', onAction: () => { setPedidoModalOpen(false); setPedidoProveedor(''); setPedidoNotas(''); } }]} size="large">
-          <Modal.Section><BlockStack gap="400"><FormLayout><FormSelect label="Proveedor" options={proveedorOptions} value={pedidoProveedor} onChange={setPedidoProveedor} /><TextField label="Notas" value={pedidoNotas} onChange={setPedidoNotas} multiline={3} autoComplete="off" /></FormLayout></BlockStack></Modal.Section>
-        </Modal>
-      </Frame >
-    </>
+    <Frame
+      logo={{
+        topBarSource: '/logo.svg',
+        contextualSaveBarSource: '/logo.svg',
+        accessibilityLabel: 'Abarrotes GS',
+        url: '#',
+        width: 124,
+      }}
+      topBar={topBarMarkup}
+      navigation={navigationMarkup}
+      showMobileNavigation={mobileNavActive}
+      onNavigationDismiss={toggleMobileNav}
+    >
+      <Page
+        title={SECTION_TITLES[selectedSection] || 'Dashboard'}
+        subtitle={SECTION_SUBTITLES[selectedSection] || 'Gestión de abarrotes'}
+        primaryAction={{
+          content: 'Actualizar',
+          icon: RefreshIcon,
+          onAction: fetchDashboardData,
+        }}
+        secondaryActions={[
+          {
+            content: 'Exportar',
+            icon: ExportIcon,
+            onAction: () => setExportModalOpen(true),
+          },
+        ]}
+      >
+        <Layout>
+          {criticalAlerts.length > 0 && (
+            <Layout.Section>
+              <Banner
+                tone="critical"
+                title={`${criticalAlerts.length} productos requieren atención inmediata`}
+              >
+                <p>
+                  Tienes productos críticos por vencimiento o stock muy bajo.
+                  Revisa la sección de Inventario.
+                </p>
+              </Banner>
+            </Layout.Section>
+          )}
+
+          <Layout.Section>
+            <InlineStack gap="400" wrap={true}>
+              <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                <KPICard
+                  title="Ventas del Día"
+                  value={kpiData?.dailySales || 0}
+                  type="currency"
+                  change={kpiData?.dailySalesChange}
+                  changeLabel="vs ayer"
+                  icon={<MoneyIcon />}
+                />
+              </div>
+              <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                <KPICard
+                  title="Productos Stock Bajo"
+                  value={kpiData?.lowStockProducts || 0}
+                  type="number"
+                  icon={<InventoryIcon />}
+                />
+              </div>
+              <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                <KPICard
+                  title="Productos por Vencer"
+                  value={kpiData?.expiringProducts || 0}
+                  type="number"
+                  icon={<CalendarIcon />}
+                />
+              </div>
+              <div style={{ flex: '1 1 220px', minWidth: 220 }}>
+                <KPICard
+                  title="Tasa de Merma"
+                  value={kpiData?.mermaRate || 0}
+                  type="percentage"
+                  change={kpiData?.mermaRateChange}
+                  changeLabel="vs mes anterior"
+                  icon={<CartIcon />}
+                />
+              </div>
+            </InlineStack>
+          </Layout.Section>
+
+          <Layout.Section>
+            {renderSectionContent()}
+          </Layout.Section>
+        </Layout>
+      </Page>
+
+      <ExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={handleExport}
+      />
+      <CorteCajaModal
+        open={corteModalOpen}
+        onClose={() => setCorteModalOpen(false)}
+      />
+      <ProductDetailModal
+        product={selectedProduct}
+        open={productModalOpen}
+        onClose={() => {
+          setProductModalOpen(false);
+          setSelectedProduct(null);
+        }}
+        onSave={handleProductSave}
+      />
+      <RegisterProductModal
+        open={registerProductOpen}
+        onClose={() => setRegisterProductOpen(false)}
+      />
+
+      {/* Modal para Crear Pedido a Proveedor */}
+      <Modal
+        open={pedidoModalOpen}
+        onClose={() => {
+          setPedidoModalOpen(false);
+          setPedidoProveedor('');
+          setPedidoNotas('');
+        }}
+        title="Crear Pedido a Proveedor"
+        primaryAction={{
+          content: 'Crear Pedido',
+          onAction: handlePedidoSubmit,
+          disabled: !pedidoProveedor || lowStockProducts.length === 0,
+        }}
+        secondaryActions={[
+          {
+            content: 'Cancelar',
+            onAction: () => {
+              setPedidoModalOpen(false);
+              setPedidoProveedor('');
+              setPedidoNotas('');
+            },
+          },
+        ]}
+        size="large"
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <FormLayout>
+              <Select
+                label="Proveedor"
+                options={proveedorOptions}
+                value={pedidoProveedor}
+                onChange={setPedidoProveedor}
+                helpText="Selecciona el proveedor al que se le hará el pedido"
+              />
+              <TextField
+                label="Notas adicionales"
+                value={pedidoNotas}
+                onChange={setPedidoNotas}
+                multiline={3}
+                autoComplete="off"
+                placeholder="Instrucciones especiales, urgencia, etc."
+              />
+            </FormLayout>
+
+            {lowStockProducts.length > 0 ? (
+              <BlockStack gap="200">
+                <InlineStack align="space-between">
+                  <Text as="h3" variant="headingMd">
+                    Productos con stock bajo
+                  </Text>
+                  <Badge tone="warning">{`${lowStockProducts.length} productos`}</Badge>
+                </InlineStack>
+                <IndexTable
+                  itemCount={lowStockProducts.length}
+                  headings={[
+                    { title: 'Producto' },
+                    { title: 'Stock actual' },
+                    { title: 'Stock mínimo' },
+                    { title: 'Cantidad a pedir' },
+                  ]}
+                  selectable={false}
+                >
+                  {lowStockProducts.map((p, i) => (
+                    <IndexTable.Row id={p.productId} key={p.productId} position={i}>
+                      <IndexTable.Cell>
+                        <Text as="p" variant="bodyMd" fontWeight="semibold">{p.productName}</Text>
+                      </IndexTable.Cell>
+                      <IndexTable.Cell>
+                        <Text as="p" variant="bodyMd" tone="critical">{p.currentStock}</Text>
+                      </IndexTable.Cell>
+                      <IndexTable.Cell>
+                        <Text as="p" variant="bodyMd">{p.minStock}</Text>
+                      </IndexTable.Cell>
+                      <IndexTable.Cell>
+                        <Badge tone="info">{`${p.cantidad} unidades`}</Badge>
+                      </IndexTable.Cell>
+                    </IndexTable.Row>
+                  ))}
+                </IndexTable>
+              </BlockStack>
+            ) : (
+              <Banner tone="success">
+                <p>No hay productos con stock bajo en este momento.</p>
+              </Banner>
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      <ProfileModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+      />
+    </Frame>
   );
 }

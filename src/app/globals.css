@@ -283,3 +283,28 @@
   width: 20px;
   height: 20px;
 }
+
+/* --- Premium Loading Bar Customization --- */
+.Polaris-Loading {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 3px !important;
+  z-index: 9999 !important;
+  background: linear-gradient(90deg, #0518d2, #4657ff, #0518d2) !important;
+  background-size: 200% 100% !important;
+  animation: loading-pulse 2s infinite linear !important;
+  box-shadow: 0 1px 10px rgba(5, 24, 210, 0.4) !important;
+}
+
+@keyframes loading-pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Force Polaris Loading to be visible as a thin line at the top */
+.Polaris-Loading__Level {
+  height: 100% !important;
+  background-color: transparent !important;
+}

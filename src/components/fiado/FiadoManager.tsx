@@ -50,7 +50,7 @@ import { generateCSV, downloadFile, generatePDF } from '@/components/export/Expo
 import type { Cliente, FiadoTransaction } from '@/types';
 
 export function FiadoManager() {
-  const { storeConfig, clientes, fiadoTransactions, addCliente, registerFiado, registerAbono, updateCliente, deleteCliente } = useDashboardStore();
+  const { clientes, fiadoTransactions, addCliente, registerFiado, registerAbono, updateCliente, deleteCliente } = useDashboardStore();
   const { showSuccess, showError } = useToast();
   const { hasPermission, isLoaded: permsLoaded } = usePermissions();
 
@@ -207,10 +207,15 @@ export function FiadoManager() {
       title={(
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Icon source={PersonFilledIcon} tone="base" />
-          <span>Gestión de Deudores (Fiado)</span>
+          <span>Clientes</span>
         </div>
       ) as any}
-      primaryAction={undefined}
+      primaryAction={
+        canEditClients ? {
+          content: 'Agregar cliente',
+          onAction: () => setAddClienteOpen(true),
+        } : undefined
+      }
       secondaryActions={[
         {
           content: 'Actualizar',
@@ -357,18 +362,19 @@ export function FiadoManager() {
             </Box>
 
             <IndexTable
-              resourceName={{ singular: 'deudor', plural: 'deudores' }}
-              itemCount={clientesWithDebt.length}
+              resourceName={{ singular: 'cliente', plural: 'clientes' }}
+              itemCount={clientes.length}
               headings={[
-                { title: 'Deudor' },
-                { title: 'Saldo Pendiente' },
-                { title: 'Límite autorizado' },
-                { title: 'Disponible' },
+                { title: 'Nombre del cliente' },
+                { title: 'Suscripción por email' },
+                { title: 'Ubicación' },
+                { title: 'Pedidos' },
+                { title: 'Importe gastado' },
                 { title: 'Acciones' },
               ]}
               selectable={false}
             >
-              {clientesWithDebt.map((cliente, idx) => {
+              {clientes.map((cliente, idx) => {
                 const clientTransactions = fiadoTransactions.filter(t => t.clienteId === cliente.id);
                 const orderCount = new Set(clientTransactions.map(t => t.saleFolio).filter(Boolean)).size;
                 const totalSpent = clientTransactions
@@ -383,16 +389,17 @@ export function FiadoManager() {
                       </Button>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" tone="critical" fontWeight="bold">
-                        {formatCurrency(cliente.balance)}
-                      </Text>
+                      <Badge tone="success">Suscrito</Badge>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" tone="subdued">{formatCurrency(cliente.creditLimit)}</Text>
+                      <Text as="span" tone="subdued">México</Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" tone="success">
-                        {formatCurrency(Math.max(0, cliente.creditLimit - cliente.balance))}
+                      <Text as="span">{orderCount} pedidos</Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" fontWeight="semibold">
+                        {formatCurrency(totalSpent)}
                       </Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
@@ -524,7 +531,7 @@ export function FiadoManager() {
           }));
           const filename = `Clientes_Kiosco_${new Date().toISOString().split('T')[0]}`;
           if (format === 'pdf') {
-            generatePDF('Reporte de Clientes y Créditos', exportData as Record<string, unknown>[], `${filename}.pdf`, storeConfig);
+            generatePDF('Reporte de Clientes y Créditos', exportData as Record<string, unknown>[], `${filename}.pdf`);
           } else {
             const csvContent = generateCSV(exportData as Record<string, unknown>[], true);
             const mime = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/vnd.ms-excel;charset=utf-8;';

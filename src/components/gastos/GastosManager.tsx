@@ -51,7 +51,7 @@ const categoriaBadge: Record<GastoCategoria, { tone: 'info' | 'success' | 'warni
 };
 
 export function GastosManager() {
-  const { storeConfig, gastos, registerGasto, updateGasto, deleteGasto, saleRecords } = useDashboardStore();
+  const { gastos, registerGasto, updateGasto, deleteGasto, saleRecords } = useDashboardStore();
   const { showSuccess, showError } = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -430,7 +430,7 @@ export function GastosManager() {
           }));
           const filename = `Gastos_Kiosco_${new Date().toISOString().split('T')[0]}`;
           if (format === 'pdf') {
-            generatePDF('Reporte de Gastos', exportData as Record<string, unknown>[], `${filename}.pdf`, storeConfig);
+            generatePDF('Reporte de Gastos', exportData as Record<string, unknown>[], `${filename}.pdf`);
           } else {
             const csvContent = generateCSV(exportData as Record<string, unknown>[], true);
             const mime = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/vnd.ms-excel;charset=utf-8;';

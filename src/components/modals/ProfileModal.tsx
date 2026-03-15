@@ -23,7 +23,7 @@ import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { usePermissions } from '@/lib/usePermissions';
-import { OAuthProvider, linkWithPopup, updateProfile } from 'firebase/auth';
+import { OAuthProvider, linkWithPopup } from 'firebase/auth';
 
 interface ProfileModalProps {
   open: boolean;
@@ -69,10 +69,6 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
       await updateUserProfile(user.uid, {
         displayName: displayName.trim(),
         avatarUrl: finalAvatarUrl.trim(),
-      });
-      await updateProfile(user, {
-        displayName: displayName.trim(),
-        photoURL: finalAvatarUrl.trim() || user.photoURL,
       });
       showSuccess('Perfil actualizado correctamente');
       setFile(null);
@@ -206,11 +202,11 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
 
               <FormLayout.Group>
                 <TextField
-                  label="ID Global en Sistema"
-                  value={currentUserRole?.globalId || currentUserRole?.employeeNumber || 'Sin asignar'}
+                  label="Número de empleado"
+                  value={currentUserRole?.employeeNumber || 'Sin asignar'}
                   disabled
                   autoComplete="off"
-                  helpText="Identificador único (GID)"
+                  helpText="Asignado por el administrador"
                 />
                 <TextField
                   label="Teléfono"
@@ -226,7 +222,39 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
             </FormLayout>
           </BlockStack>
 
+          <Divider />
 
+          {/* Foto de perfil */}
+          <BlockStack gap="400">
+            <Text as="h3" variant="headingMd">Foto de perfil</Text>
+            <TextField
+              label="URL de la imagen"
+              value={avatarUrl}
+              onChange={setAvatarUrl}
+              autoComplete="off"
+              placeholder="https://ejemplo.com/foto.jpg"
+              helpText="Puedes usar servicios como Gravatar, Imgur o subir tu imagen a cualquier hosting"
+            />
+            {avatarUrl && (
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <InlineStack gap="300" blockAlign="center">
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden' }}>
+                    <img
+                      src={avatarUrl}
+                      alt="Preview"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '';
+                      }}
+                    />
+                  </div>
+                  <Text as="p" variant="bodySm" tone="subdued">Vista previa de tu foto</Text>
+                </InlineStack>
+              </Box>
+            )}
+          </BlockStack>
+
+          <Divider />
 
           {/* Información de cuenta */}
           <BlockStack gap="400">

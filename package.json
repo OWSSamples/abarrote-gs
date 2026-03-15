@@ -1,6 +1,6 @@
 {
-  "name": "kiosko",
-  "version": "0.12.258.890",
+  "name": "my-app",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",

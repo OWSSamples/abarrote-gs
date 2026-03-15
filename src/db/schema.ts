@@ -41,15 +41,6 @@ export const storeConfig = pgTable('store_config', {
   pointsPerPeso: integer('points_per_peso').notNull().default(100),
   pointsValue: integer('points_value').notNull().default(1),
   logoUrl: text('logo_url'),
-  slogan: text('slogan'),
-  whatsapp: text('whatsapp'),
-  instagram: text('instagram'),
-  facebook: text('facebook'),
-  website: text('website'),
-  primaryColor: text('primary_color'),
-  secondaryColor: text('secondary_color'),
-  autoCorteEnabled: boolean('auto_corte_enabled').notNull().default(false),
-  autoCorteTime: text('auto_corte_time').notNull().default('23:59'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 

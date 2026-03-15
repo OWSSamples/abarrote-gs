@@ -14,7 +14,6 @@ import {
 import { ExportIcon } from '@shopify/polaris-icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { StoreConfig } from '@/types';
 
 interface ExportOptions {
   format: 'csv' | 'excel' | 'pdf';
@@ -151,16 +150,14 @@ export function downloadFile(content: string, filename: string, mimeType: string
 export async function generatePDF(
   title: string,
   data: Record<string, unknown>[],
-  filename: string,
-  config?: StoreConfig
+  filename: string
 ): Promise<void> {
   const doc = new jsPDF({ orientation: 'landscape' });
 
   // 1. Cargar el Logo desde la red y convertirlo a PNG mediante canvas
   try {
     const img = new Image();
-    img.src = config?.logoUrl || '/logo_for_kiosko_login.svg';
-    img.crossOrigin = 'Anonymous'; // Importante para evitar problemas de CORS si la imagen viene de S3
+    img.src = '/logo_for_kiosko_login.svg';
     await new Promise((resolve) => {
       img.onload = resolve;
       img.onerror = resolve; // Si falla, continuamos sin logo

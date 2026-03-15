@@ -12,7 +12,6 @@ export { KPICard } from './kpi/KPICard';
 // Charts
 export { SalesChart } from './charts/SalesChart';
 export { HourlySalesChart } from './charts/HourlySalesChart';
-export { MonthlyProfitChart } from './charts/MonthlyProfitChart';
 
 // Inventory
 export { InventoryTable } from './inventory/InventoryTable';
@@ -56,9 +55,6 @@ export { ReportesView } from './reports/ReportesView';
 // Configuración
 export { ConfiguracionPage } from './settings/ConfiguracionPage';
 
-// Roles
-export { RolesManager } from './roles/RolesManager';
-
 // Navigation
 export { SidebarNav } from './navigation/SidebarNav';
 
@@ -67,6 +63,3 @@ export { ExportModal, generateCSV, downloadFile, exportDashboardData } from './e
 
 // Notifications
 export { ToastProvider, useToast } from './notifications/ToastProvider';
-
-// Scanner
-export { CameraScanner } from './scanner/CameraScanner';

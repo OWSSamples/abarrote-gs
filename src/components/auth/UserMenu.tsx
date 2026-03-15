@@ -27,7 +27,7 @@ import { ProfileModal } from '@/components/modals/ProfileModal';
 
 export function UserMenu() {
   const { user, signOut } = useAuth();
-  const { currentUserRole, roleDefinitions } = useDashboardStore();
+  const { currentUserRole } = useDashboardStore();
   const [active, setActive] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
@@ -48,8 +48,6 @@ export function UserMenu() {
 
   if (!user) return null;
 
-  const currentRoleDef = roleDefinitions.find(r => r.id === (currentUserRole?.roleId || ''));
-
   const displayName = currentUserRole?.displayName || user.displayName || user.email?.split('@')[0] || 'Usuario';
   const initials = displayName
     .split(' ')
@@ -62,13 +60,13 @@ export function UserMenu() {
   const avatarSource = currentUserRole?.avatarUrl || user.photoURL || undefined;
 
   const getRoleBadgeTone = (): 'success' | 'info' | 'attention' => {
-    if (!currentRoleDef) return 'attention';
-    if (currentRoleDef.name === 'Propietario') return 'success';
-    if (currentRoleDef.name === 'Gerente') return 'info';
+    if (currentUserRole?.roleId === 'owner') return 'success';
+    if (currentUserRole?.roleId === 'cashier') return 'info';
     return 'attention';
   };
 
-  const roleLabel = currentRoleDef?.name || 'Usuario';
+  const roleLabel = currentUserRole?.roleId === 'owner' ? 'Admin' :
+    currentUserRole?.roleId === 'cashier' ? 'Cajero' : 'Usuario';
 
   const activator = (
     <button
@@ -147,8 +145,8 @@ export function UserMenu() {
                 <Box paddingBlockStart="100">
                   <InlineStack gap="100">
                     <Badge tone={getRoleBadgeTone()} size="small">{roleLabel}</Badge>
-                    {currentUserRole?.globalId && (
-                      <Badge tone="info" size="small">{currentUserRole.globalId}</Badge>
+                    {currentUserRole?.employeeNumber && (
+                      <Badge tone="info" size="small">{`#${currentUserRole.employeeNumber}`}</Badge>
                     )}
                   </InlineStack>
                 </Box>

@@ -23,7 +23,7 @@ import { GenericExportModal } from '@/components/inventory/ShopifyModals';
 import { generateCSV, downloadFile, generatePDF } from '@/components/export/ExportModal';
 
 export function ProveedoresManager() {
-  const { storeConfig, proveedores, addProveedor, deleteProveedor } = useDashboardStore();
+  const { proveedores, addProveedor, deleteProveedor } = useDashboardStore();
   const { showSuccess, showError } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -258,7 +258,7 @@ export function ProveedoresManager() {
           }));
           const filename = `Proveedores_Kiosco_${new Date().toISOString().split('T')[0]}`;
           if (format === 'pdf') {
-            generatePDF('Reporte de Proveedores', exportData as Record<string, unknown>[], `${filename}.pdf`, storeConfig);
+            generatePDF('Reporte de Proveedores', exportData as Record<string, unknown>[], `${filename}.pdf`);
           } else {
             const csvContent = generateCSV(exportData as Record<string, unknown>[], true);
             const mime = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/vnd.ms-excel;charset=utf-8;';

@@ -28,7 +28,7 @@ const estadoBadge: Record<PedidoRecord['estado'], { tone: 'attention' | 'info' |
 };
 
 export function PedidosManager() {
-  const { storeConfig, pedidos, updatePedidoStatus, receivePedido } = useDashboardStore();
+  const { pedidos, updatePedidoStatus, receivePedido } = useDashboardStore();
   const { showSuccess, showError } = useToast();
 
   const [detailOpen, setDetailOpen] = useState(false);
@@ -215,7 +215,7 @@ export function PedidosManager() {
           }));
           const filename = `Pedidos_Kiosco_${new Date().toISOString().split('T')[0]}`;
           if (format === 'pdf') {
-            generatePDF('Reporte de Pedidos', exportData as Record<string, unknown>[], `${filename}.pdf`, storeConfig);
+            generatePDF('Reporte de Pedidos', exportData as Record<string, unknown>[], `${filename}.pdf`);
           } else {
             const csvContent = generateCSV(exportData as Record<string, unknown>[], true);
             const mime = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/vnd.ms-excel;charset=utf-8;';

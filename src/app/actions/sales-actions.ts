@@ -29,35 +29,44 @@ export async function fetchSalesData(): Promise<SalesData[]> {
   const today = new Date();
   const dayOfWeek = today.getDay();
 
-  const result: SalesData[] = [];
+  // Inicio y fin de la semana actual (Dom–Sáb)
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - dayOfWeek);
+  weekStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
 
-  for (let i = 0; i < 7; i++) {
-    const currentDate = new Date(today);
-    currentDate.setDate(today.getDate() - dayOfWeek + i);
-    const currentDateStr = currentDate.toISOString().split('T')[0];
+  // Inicio y fin de la semana anterior
+  const prevWeekStart = new Date(weekStart);
+  prevWeekStart.setDate(weekStart.getDate() - 7);
+  const prevWeekEnd = new Date(weekStart);
 
-    const prevDate = new Date(currentDate);
-    prevDate.setDate(prevDate.getDate() - 7);
-    const prevDateStr = prevDate.toISOString().split('T')[0];
-
-    const currentResult = await db
-      .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
+  // 2 queries en paralelo en lugar de 14 en secuencia
+  const [currentRows, prevRows] = await Promise.all([
+    db.select({
+      day: sql<number>`extract(dow from date)::int`,
+      total: sql<string>`coalesce(sum(total::numeric), 0)`,
+    })
       .from(saleRecords)
-      .where(sql`date::date = ${currentDateStr}`);
-
-    const prevResult = await db
-      .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
+      .where(sql`date >= ${weekStart.toISOString()} and date < ${weekEnd.toISOString()}`)
+      .groupBy(sql`extract(dow from date)`),
+    db.select({
+      day: sql<number>`extract(dow from date)::int`,
+      total: sql<string>`coalesce(sum(total::numeric), 0)`,
+    })
       .from(saleRecords)
-      .where(sql`date::date = ${prevDateStr}`);
+      .where(sql`date >= ${prevWeekStart.toISOString()} and date < ${prevWeekEnd.toISOString()}`)
+      .groupBy(sql`extract(dow from date)`),
+  ]);
 
-    result.push({
-      date: days[i],
-      currentWeek: numVal(currentResult[0]?.total),
-      previousWeek: numVal(prevResult[0]?.total),
-    });
-  }
+  const currentByDay = new Map(currentRows.map(r => [r.day, numVal(r.total)]));
+  const prevByDay = new Map(prevRows.map(r => [r.day, numVal(r.total)]));
 
-  return result;
+  return Array.from({ length: 7 }, (_, i) => ({
+    date: days[i],
+    currentWeek: currentByDay.get(i) ?? 0,
+    previousWeek: prevByDay.get(i) ?? 0,
+  }));
 }
 
 // ==================== SALES ====================
@@ -135,14 +144,12 @@ export async function createSale(
       date: now,
     });
   } catch (err: any) {
-    logger.error('INSERT sale_records failed', {
-      action: 'createSale',
-      folio,
-      pgCode: err?.cause?.code ?? err?.code,
-      pgMessage: err?.cause?.message ?? err?.message,
-      detail: err?.cause?.detail ?? err?.detail,
-    });
-    throw err;
+    const pgCode    = err?.code ?? err?.cause?.code;
+    const pgMessage = err?.message ?? err?.cause?.message;
+    const detail    = err?.detail ?? err?.cause?.detail ?? err?.hint ?? err?.constraint;
+    console.error('\n🔴 ERROR VENTA\n', { pgCode, pgMessage, detail, full: JSON.stringify(err, Object.getOwnPropertyNames(err)) });
+    throw new Error(`VENTA ERROR [${pgCode ?? 'sin código'}] ${pgMessage ?? 'sin mensaje'} | ${detail ?? ''}`);
+
   }
 
   const clienteId = (saleData as any).clienteId;
@@ -238,6 +245,25 @@ export async function cancelSale(saleId: string): Promise<void> {
   }
   await db.delete(saleItems).where(eq(saleItems.saleId, saleId));
   await db.delete(saleRecords).where(eq(saleRecords.id, saleId));
+}
+
+export async function deleteSales(saleIds: string[]): Promise<void> {
+  await requirePermission('sales.cancel');
+  if (saleIds.length === 0) return;
+  saleIds.forEach(id => validateId(id, 'Sale ID'));
+
+  // Restaurar stock de todos los items involucrados
+  const allItems = await db.select().from(saleItems).where(inArray(saleItems.saleId, saleIds));
+  await Promise.all(
+    allItems.map(item =>
+      db.update(products)
+        .set({ currentStock: sql`current_stock + ${item.quantity}`, updatedAt: new Date() })
+        .where(eq(products.id, item.productId))
+    )
+  );
+
+  await db.delete(saleItems).where(inArray(saleItems.saleId, saleIds));
+  await db.delete(saleRecords).where(inArray(saleRecords.id, saleIds));
 }
 
 // ==================== CORTES DE CAJA ====================
@@ -384,4 +410,11 @@ export async function createAutoCorteCaja(): Promise<void> {
     notas: 'Corte automatico generado a medianoche',
     status: 'cerrado',
   });
+}
+
+export async function deleteCortes(corteIds: string[]): Promise<void> {
+  await requirePermission('corte.create');
+  if (corteIds.length === 0) return;
+  corteIds.forEach(id => validateId(id, 'Corte ID'));
+  await db.delete(cortesCaja).where(inArray(cortesCaja.id, corteIds));
 }

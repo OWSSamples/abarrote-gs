@@ -3,9 +3,6 @@
 // Auth Components
 export { LoginForm, RegisterForm, ForgotPasswordForm, ResetPasswordForm, AuthLayout } from './auth';
 
-// Dashboard
-export { DashboardHome } from './dashboard/DashboardHome';
-
 // KPI
 export { KPICard } from './kpi/KPICard';
 
@@ -60,7 +57,9 @@ export { ConfiguracionPage } from './settings/ConfiguracionPage';
 export { SidebarNav } from './navigation/SidebarNav';
 
 // Export
-export { ExportModal, generateCSV, downloadFile, exportDashboardData } from './export/ExportModal';
+export { ExportModal, generateCSV, downloadFile } from './export/ExportModal';
+export { exportDashboardData } from './export/exportUtils';
+export { generatePDF } from './export/generatePDF';
 
 // Notifications
 export { ToastProvider, useToast } from './notifications/ToastProvider';

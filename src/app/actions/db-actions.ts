@@ -42,9 +42,11 @@ export {
   fetchSaleRecords,
   createSale,
   cancelSale,
+  deleteSales,
   fetchCortesHistory,
   createCorteCaja,
   createAutoCorteCaja,
+  deleteCortes,
 } from './sales-actions';
 
 // Customers (clientes, fiado)

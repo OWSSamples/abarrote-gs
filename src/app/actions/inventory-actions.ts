@@ -76,57 +76,56 @@ export async function fetchKPIData(): Promise<KPIData> {
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const sevenDaysLater = new Date(today);
+  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const { saleRecords } = await import('@/db/schema');
 
-  const todaySalesResult = await db
-    .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
-    .from(saleRecords)
-    .where(sql`date::date = ${todayStr}`);
-  const dailySales = numVal(todaySalesResult[0]?.total);
+  // Todas las queries son independientes — se ejecutan en paralelo
+  const [
+    todaySalesResult,
+    yesterdaySalesResult,
+    lowStockResult,
+    expiringResult,
+    mermaResult,
+    inventoryResult,
+  ] = await Promise.all([
+    db.select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
+      .from(saleRecords)
+      .where(sql`date::date = ${todayStr}`),
+    db.select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
+      .from(saleRecords)
+      .where(sql`date::date = ${yesterdayStr}`),
+    db.select({ count: sql<number>`count(*)` })
+      .from(products)
+      .where(sql`current_stock < min_stock`),
+    db.select({ count: sql<number>`count(*)` })
+      .from(products)
+      .where(
+        and(
+          sql`expiration_date is not null`,
+          lte(products.expirationDate, sevenDaysLater.toISOString().split('T')[0]),
+          gte(products.expirationDate, todayStr)
+        )
+      ),
+    db.select({ total: sql<string>`coalesce(sum(value::numeric), 0)` })
+      .from(mermaRecords)
+      .where(gte(mermaRecords.date, thirtyDaysAgo)),
+    db.select({ total: sql<string>`coalesce(sum(unit_price::numeric * current_stock), 0)` })
+      .from(products),
+  ]);
 
-  const yesterdaySalesResult = await db
-    .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
-    .from(saleRecords)
-    .where(sql`date::date = ${yesterdayStr}`);
+  const dailySales = numVal(todaySalesResult[0]?.total);
   const yesterdaySales = numVal(yesterdaySalesResult[0]?.total);
   const dailySalesChange = yesterdaySales > 0
     ? Math.round(((dailySales - yesterdaySales) / yesterdaySales) * 100 * 10) / 10
     : 0;
-
-  const lowStockResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(products)
-    .where(sql`current_stock < min_stock`);
   const lowStockProducts = Number(lowStockResult[0]?.count ?? 0);
-
-  const sevenDaysLater = new Date(today);
-  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-  const expiringResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(products)
-    .where(
-      and(
-        sql`expiration_date is not null`,
-        lte(products.expirationDate, sevenDaysLater.toISOString().split('T')[0]),
-        gte(products.expirationDate, todayStr)
-      )
-    );
   const expiringProducts = Number(expiringResult[0]?.count ?? 0);
-
-  const thirtyDaysAgo = new Date(today);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const mermaResult = await db
-    .select({ total: sql<string>`coalesce(sum(value::numeric), 0)` })
-    .from(mermaRecords)
-    .where(gte(mermaRecords.date, thirtyDaysAgo));
   const totalMermaValue = numVal(mermaResult[0]?.total);
-
-  const inventoryResult = await db
-    .select({ total: sql<string>`coalesce(sum(unit_price::numeric * current_stock), 0)` })
-    .from(products);
   const totalInventoryValue = numVal(inventoryResult[0]?.total);
-
   const mermaRate = totalInventoryValue > 0
     ? Math.round((totalMermaValue / totalInventoryValue) * 100 * 10) / 10
     : 0;

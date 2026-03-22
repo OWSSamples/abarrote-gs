@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Page,
   Layout,
@@ -25,14 +25,73 @@ import { HourlySalesChart } from '@/components/charts/HourlySalesChart';
 import { InventoryTable } from '@/components/inventory/InventoryTable';
 import { QuickActions } from '@/components/actions/QuickActions';
 import { TopProducts } from '@/components/metrics/TopProducts';
-import { ExportModal, exportDashboardData } from '@/components/export/ExportModal';
+import { ExportModal } from '@/components/export/ExportModal';
+import { exportDashboardData } from '@/components/export/exportUtils';
 import { Product } from '@/types';
 
 export default function DashboardOverviewPage() {
   const kpiData = useDashboardStore((s) => s.kpiData);
   const inventoryAlerts = useDashboardStore((s) => s.inventoryAlerts);
   const salesData = useDashboardStore((s) => s.salesData);
+  const saleRecords = useDashboardStore((s) => s.saleRecords);
   const fetchDashboardData = useDashboardStore((s) => s.fetchDashboardData);
+
+  // Ventas de hoy
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todaySales = useMemo(
+    () => saleRecords.filter((r) => r.date.startsWith(todayStr)),
+    [saleRecords, todayStr]
+  );
+
+  // Datos para HourlySalesChart: ventas por hora de hoy
+  const hourlySalesData = useMemo(() => {
+    const byHour: Record<number, { sales: number; transactions: number }> = {};
+    for (const sale of todaySales) {
+      const hour = new Date(sale.date).getHours();
+      if (!byHour[hour]) byHour[hour] = { sales: 0, transactions: 0 };
+      byHour[hour].sales += sale.total;
+      byHour[hour].transactions += 1;
+    }
+    if (Object.keys(byHour).length === 0) return undefined;
+    // Determinar horas pico (top 25% de ventas)
+    const salesValues = Object.values(byHour).map((v) => v.sales);
+    const threshold = salesValues.sort((a, b) => b - a)[Math.floor(salesValues.length * 0.25)] ?? 0;
+    return Object.entries(byHour)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([hour, { sales, transactions }]) => ({
+        hour: `${hour}:00`,
+        sales,
+        transactions,
+        isPeak: sales >= threshold && threshold > 0,
+      }));
+  }, [todaySales]);
+
+  // Datos para TopProducts: top 5 productos de hoy
+  const topProductsData = useMemo(() => {
+    const byProduct: Record<string, { name: string; sku: string; unitsSold: number; revenue: number }> = {};
+    for (const sale of todaySales) {
+      for (const item of sale.items) {
+        if (!byProduct[item.productId]) {
+          byProduct[item.productId] = { name: item.productName, sku: item.sku, unitsSold: 0, revenue: 0 };
+        }
+        byProduct[item.productId].unitsSold += item.quantity;
+        byProduct[item.productId].revenue += item.subtotal;
+      }
+    }
+    if (Object.keys(byProduct).length === 0) return undefined;
+    return Object.entries(byProduct)
+      .sort(([, a], [, b]) => b.unitsSold - a.unitsSold)
+      .slice(0, 5)
+      .map(([id, { name, sku, unitsSold, revenue }]) => ({
+        id,
+        name,
+        sku,
+        unitsSold,
+        revenue,
+        margin: 0,
+        trend: 'stable' as const,
+      }));
+  }, [todaySales]);
 
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
@@ -92,7 +151,7 @@ export default function DashboardOverviewPage() {
                   <SalesChart data={salesData} />
                 </Layout.Section>
                 <Layout.Section variant="oneHalf">
-                  <HourlySalesChart />
+                   <HourlySalesChart data={hourlySalesData} />
                 </Layout.Section>
               </Layout>
               <Layout>
@@ -100,7 +159,7 @@ export default function DashboardOverviewPage() {
                   <InventoryTable alerts={inventoryAlerts} onProductClick={handleProductClick} />
                 </Layout.Section>
                 <Layout.Section variant="oneHalf">
-                  <TopProducts />
+                   <TopProducts products={topProductsData} />
                 </Layout.Section>
               </Layout>
             </BlockStack>

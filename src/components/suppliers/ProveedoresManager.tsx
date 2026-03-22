@@ -20,7 +20,8 @@ import { ExportIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { GenericExportModal } from '@/components/inventory/ShopifyModals';
-import { generateCSV, downloadFile, generatePDF } from '@/components/export/ExportModal';
+import { generateCSV, downloadFile } from '@/components/export/ExportModal';
+import { generatePDF } from '@/components/export/generatePDF';
 
 export function ProveedoresManager() {
   const proveedores = useDashboardStore((s) => s.proveedores);

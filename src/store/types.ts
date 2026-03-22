@@ -14,6 +14,8 @@ export type { StoreConfig };
 export interface SalesSlice {
   registerSale: (sale: Omit<SaleRecord, 'id' | 'folio' | 'date'>) => Promise<SaleRecord>;
   cancelSale: (id: string) => Promise<void>;
+  deleteSales: (ids: string[]) => Promise<void>;
+  deleteCortes: (ids: string[]) => Promise<void>;
   createCorteCaja: (data: { cajero: string; efectivoContado: number; fondoInicial: number; notas: string }) => Promise<CorteCaja>;
   checkMidnightCorte: () => Promise<void>;
   registerDevolucion: (data: {

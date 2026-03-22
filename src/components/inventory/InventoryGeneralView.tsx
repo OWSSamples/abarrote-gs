@@ -27,7 +27,8 @@ import { updateProduct } from '@/app/actions/db-actions';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { ProductExportModal, ProductImportModal } from './ShopifyModals';
-import { downloadFile, generateCSV, generatePDF } from '@/components/export/ExportModal';
+import { downloadFile, generateCSV } from '@/components/export/ExportModal';
+import { generatePDF } from '@/components/export/generatePDF';
 import { InventoryColumnsPopover } from './InventoryColumnsPopover';
 import {
   BulkColumnKey,

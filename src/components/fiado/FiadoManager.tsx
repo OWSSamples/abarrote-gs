@@ -42,7 +42,8 @@ import { useToast } from '@/components/notifications/ToastProvider';
 import { formatCurrency } from '@/lib/utils';
 import { usePermissions } from '@/hooks/usePermissions';
 import { CustomerExportModal, ClientImportModal } from '@/components/inventory/ShopifyModals';
-import { generateCSV, downloadFile, generatePDF } from '@/components/export/ExportModal';
+import { generateCSV, downloadFile } from '@/components/export/ExportModal';
+import { generatePDF } from '@/components/export/generatePDF';
 import type { Cliente } from '@/types';
 
 interface FiadoManagerProps {

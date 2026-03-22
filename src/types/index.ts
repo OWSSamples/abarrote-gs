@@ -70,6 +70,8 @@ export interface StoreConfig {
   // Branding
   logoUrl?: string;
   inventoryGeneralColumns: string;
+  // Margen de ganancia predeterminado (%)
+  defaultMargin: string;
   // Ticket templates (custom HTML uploaded by user)
   // If set, these override the default generated HTML for printing.
   // Supports template variables: {{storeName}}, {{folio}}, {{fecha}}, {{items}}, {{total}}, etc.
@@ -104,6 +106,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   pointsPerPeso: 100, // $100 spent = 1 point
   pointsValue: 1, // 1 point = $1 discount
   inventoryGeneralColumns: '["title","sku","available","onHand"]',
+  defaultMargin: '30',
 };
 
 export interface Product {

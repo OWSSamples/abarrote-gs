@@ -27,7 +27,8 @@ import { StatCard } from '@/components/ui/StatCard';
 import { EmptyStateCard } from '@/components/ui/EmptyStateCard';
 import { DeleteConfirmation } from '@/components/ui/DeleteConfirmation';
 import { GenericExportModal } from '@/components/inventory/ShopifyModals';
-import { generateCSV, downloadFile, generatePDF } from '@/components/export/ExportModal';
+import { generateCSV, downloadFile } from '@/components/export/ExportModal';
+import { generatePDF } from '@/components/export/generatePDF';
 import type { GastoCategoria } from '@/types';
 
 const categoriaOptions: { label: string; value: GastoCategoria | '' }[] = [

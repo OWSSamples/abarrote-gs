@@ -196,7 +196,7 @@ export function ProductDetailModal({
 
   const renderEditContent = () => (
     <div style={{ backgroundColor: '#f1f2f4', minHeight: '100%', padding: isInline ? '0' : '20px' }}>
-      <Box maxWidth="1200px" margin="auto">
+      <div style={{ maxWidth: '1200px', margin: 'auto' }}>
         <FormLayout>
           {isInline && (
             <Box paddingBlockEnd="400">
@@ -210,24 +210,24 @@ export function ProductDetailModal({
             </Box>
           )}
           <Grid>
-            <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 8, lg: 8 }}>
+            <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 4, lg: 4 }}>
               <BlockStack gap="400">
-                <Box background="bg-surface" padding="400" borderRadius="300" shadow="shadowMd">
+                <Box background="bg-surface" padding="400" borderRadius="300" shadow="300">
                   <BlockStack gap="400">
                     <TextField label="Título" value={editName} onChange={setEditName} onBlur={() => handleSaveProduct(false)} autoComplete="off" requiredIndicator />
                     <TextField label="Descripción" multiline={4} value="Descripción del producto..." onChange={() => {}} autoComplete="off" />
                   </BlockStack>
                 </Box>
-                <Box background="bg-surface" padding="400" borderRadius="300" shadow="shadowMd">
+                <Box background="bg-surface" padding="400" borderRadius="300" shadow="300">
                   <Text as="h3" variant="headingSm">Multimedia</Text>
-                  <Box borderStyle="solid" borderColor="border-subdued" borderWidth="025" borderRadius="200" background="bg-surface-secondary" style={{ width: '200px', height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ border: '1px solid var(--p-color-border-secondary)', borderRadius: '0.5rem', background: 'var(--p-color-bg-surface-secondary)', width: '200px', height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {product!.imageUrl ? <img src={product!.imageUrl} alt="Thumbnail" style={{ maxWidth: '100%', maxHeight: '100%' }} /> : <Icon source={ImageIcon} tone="subdued" />}
-                  </Box>
+                  </div>
                 </Box>
               </BlockStack>
             </Grid.Cell>
             <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 4, lg: 4 }}>
-              <Box background="bg-surface" padding="400" borderRadius="300" shadow="shadowMd">
+              <Box background="bg-surface" padding="400" borderRadius="300" shadow="300">
                 <BlockStack gap="400">
                   <Text as="h3" variant="headingSm">Estado</Text>
                   <Badge tone="success">Activo</Badge>
@@ -238,7 +238,7 @@ export function ProductDetailModal({
             </Grid.Cell>
           </Grid>
         </FormLayout>
-      </Box>
+      </div>
     </div>
   );
 
@@ -261,18 +261,18 @@ export function ProductDetailModal({
       </InlineStack>
       <Divider />
       <Grid>
-        <Grid.Cell columnSpan={{ xs: 12, md: 6 }}>
+        <Grid.Cell columnSpan={{ xs: 6, md: 6 }}>
           <BlockStack gap="200">
             <Text as="h3" variant="headingMd">Inventario</Text>
-            <Text variant="bodyLg">{product!.currentStock} unidades disponibles</Text>
+            <Text as="p" variant="bodyLg">{product!.currentStock} unidades disponibles</Text>
             <ProgressBar progress={stockStatus?.percentage || 0} tone={stockStatus?.status === 'critical' ? 'critical' : 'primary'} />
           </BlockStack>
         </Grid.Cell>
-        <Grid.Cell columnSpan={{ xs: 12, md: 6 }}>
+        <Grid.Cell columnSpan={{ xs: 6, md: 6 }}>
           <BlockStack gap="200">
             <Text as="h3" variant="headingMd">Precio</Text>
-            <Text variant="headingLg" fontWeight="bold">{formatCurrency(product!.unitPrice)}</Text>
-            <Text variant="bodySm" tone="subdued">Costo: {formatCurrency(product!.costPrice)}</Text>
+            <Text as="p" variant="headingLg" fontWeight="bold">{formatCurrency(product!.unitPrice)}</Text>
+            <Text as="p" variant="bodySm" tone="subdued">Costo: {formatCurrency(product!.costPrice)}</Text>
           </BlockStack>
         </Grid.Cell>
       </Grid>

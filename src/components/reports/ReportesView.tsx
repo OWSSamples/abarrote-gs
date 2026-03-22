@@ -16,7 +16,8 @@ import {
 import { ExportIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
-import { generatePDF, generateCSV, downloadFile } from '@/components/export/ExportModal';
+import { generateCSV, downloadFile } from '@/components/export/ExportModal';
+import { generatePDF } from '@/components/export/generatePDF';
 import { useFinancialReports } from '@/hooks/useFinancialReports';
 import type { ReportePeriodo } from '@/hooks/useFinancialReports';
 import { IncomeStatementCard } from './IncomeStatementCard';

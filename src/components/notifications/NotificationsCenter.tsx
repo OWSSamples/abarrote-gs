@@ -166,7 +166,7 @@ export function NotificationsCenter({
     const rowTone = alert.severity === 'critical'
       ? 'critical'
       : alert.severity === 'warning'
-      ? 'caution'
+      ? 'warning'
       : undefined;
 
     return (

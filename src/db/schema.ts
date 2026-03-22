@@ -46,6 +46,7 @@ export const storeConfig = pgTable('store_config', {
   ticketTemplateVenta: text('ticket_template_venta'),
   ticketTemplateProveedor: text('ticket_template_proveedor'),
   inventoryGeneralColumns: text('inventory_general_columns').notNull().default('["title","sku","available","onHand"]'),
+  defaultMargin: text('default_margin').notNull().default('30'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 

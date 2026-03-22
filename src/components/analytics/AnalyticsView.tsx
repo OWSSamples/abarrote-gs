@@ -40,42 +40,50 @@ export function AnalyticsView() {
   const products = useDashboardStore((s) => s.products);
   const gastos = useDashboardStore((s) => s.gastos);
   const mermaRecords = useDashboardStore((s) => s.mermaRecords);
-  const kpiData = useDashboardStore((s) => s.kpiData);
+  const fetchDashboardData = useDashboardStore((s) => s.fetchDashboardData);
   const [periodo, setPeriodo] = useState('30');
 
-  // Calcular ventas del mes actual
-  const ventasMesActual = useMemo(() => {
-    const now = new Date();
-    const mesActual = now.getMonth();
-    const añoActual = now.getFullYear();
+  // Fecha de inicio del período seleccionado (medianoche local)
+  const periodoStart = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - (parseInt(periodo) - 1));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [periodo]);
 
-    return saleRecords
-      .filter(sale => {
-        const fecha = new Date(sale.date);
-        return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
-      })
-      .reduce((sum, sale) => sum + parseFloat(sale.total.toString()), 0);
-  }, [saleRecords]);
+  // Registros filtrados por período
+  const salesEnPeriodo = useMemo(
+    () => saleRecords.filter(s => new Date(s.date) >= periodoStart),
+    [saleRecords, periodoStart]
+  );
+  const gastosEnPeriodo = useMemo(
+    () => gastos.filter(g => new Date(g.fecha) >= periodoStart),
+    [gastos, periodoStart]
+  );
+  const mermasEnPeriodo = useMemo(
+    () => mermaRecords.filter(m => new Date(m.date) >= periodoStart),
+    [mermaRecords, periodoStart]
+  );
 
-  // Calcular ventas del día
+  // Ventas del día
   const ventasHoy = useMemo(() => {
     const hoy = new Date().toISOString().split('T')[0];
     return saleRecords
-      .filter(sale => new Date(sale.date).toISOString().split('T')[0] === hoy)
-      .reduce((sum, sale) => sum + parseFloat(sale.total.toString()), 0);
+      .filter(s => new Date(s.date).toISOString().split('T')[0] === hoy)
+      .reduce((sum, s) => sum + parseFloat(s.total.toString()), 0);
   }, [saleRecords]);
 
-  // Calcular ventas de ayer
+  // Ventas de ayer
   const ventasAyer = useMemo(() => {
     const ayer = new Date();
     ayer.setDate(ayer.getDate() - 1);
     const ayerStr = ayer.toISOString().split('T')[0];
     return saleRecords
-      .filter(sale => new Date(sale.date).toISOString().split('T')[0] === ayerStr)
-      .reduce((sum, sale) => sum + parseFloat(sale.total.toString()), 0);
+      .filter(s => new Date(s.date).toISOString().split('T')[0] === ayerStr)
+      .reduce((sum, s) => sum + parseFloat(s.total.toString()), 0);
   }, [saleRecords]);
 
-  // Ventas por día según período seleccionado
+  // Ventas por día en el período (gráfica)
   const ventasPorDia = useMemo(() => {
     const dias = parseInt(periodo);
     const fechas = Array.from({ length: dias }, (_, i) => {
@@ -83,8 +91,7 @@ export function AnalyticsView() {
       date.setDate(date.getDate() - (dias - 1 - i));
       return date.toISOString().split('T')[0];
     });
-
-    const ventasPorFecha = saleRecords.reduce((acc, sale) => {
+    const ventasPorFecha = salesEnPeriodo.reduce((acc, sale) => {
       const fecha = new Date(sale.date).toISOString().split('T')[0];
       acc[fecha] = (acc[fecha] || 0) + parseFloat(sale.total.toString());
       return acc;
@@ -94,11 +101,11 @@ export function AnalyticsView() {
       key: fecha,
       value: ventasPorFecha[fecha] || 0,
     }));
-  }, [saleRecords, periodo]);
+  }, [salesEnPeriodo, periodo]);
 
-  // Ventas por método de pago
+  // Ventas por método de pago (en período)
   const ventasPorMetodo = useMemo(() => {
-    const metodos = saleRecords.reduce((acc, sale) => {
+    const metodos = salesEnPeriodo.reduce((acc, sale) => {
       const metodo = sale.paymentMethod;
       acc[metodo] = (acc[metodo] || 0) + parseFloat(sale.total.toString());
       return acc;
@@ -111,11 +118,11 @@ export function AnalyticsView() {
             metodo === 'fiado' ? 'Fiado' : metodo,
       total,
     }));
-  }, [saleRecords]);
+  }, [salesEnPeriodo]);
 
-  // Top 10 productos más vendidos
+  // Top 10 productos más vendidos (en período)
   const topProductos = useMemo(() => {
-    const productosVendidos = saleRecords.flatMap(sale =>
+    const productosVendidos = salesEnPeriodo.flatMap(sale =>
       sale.items?.map(item => ({
         id: item.productId,
         name: item.productName,
@@ -147,20 +154,22 @@ export function AnalyticsView() {
       .slice(0, 10);
   }, [products]);
 
-  // Métricas generales
-  const totalVentas = saleRecords.reduce((sum, sale) => sum + parseFloat(sale.total.toString()), 0);
-  const totalGastos = gastos.reduce((sum, gasto) => sum + parseFloat(gasto.monto.toString()), 0);
-  const totalMermas = mermaRecords.reduce((sum, merma) => sum + parseFloat(merma.value.toString()), 0);
+  // Métricas generales — todas filtradas por período
+  const totalVentas = salesEnPeriodo.reduce((sum, sale) => sum + parseFloat(sale.total.toString()), 0);
+  const totalGastos = gastosEnPeriodo.reduce((sum, gasto) => sum + parseFloat(gasto.monto.toString()), 0);
+  const totalMermas = mermasEnPeriodo.reduce((sum, merma) => sum + parseFloat(merma.value.toString()), 0);
   const utilidadBruta = totalVentas - totalGastos - totalMermas;
   const margenUtilidad = totalVentas > 0 ? (utilidadBruta / totalVentas) * 100 : 0;
 
-  // Ticket promedio
-  const ticketPromedio = saleRecords.length > 0 ? totalVentas / saleRecords.length : 0;
+  // Ticket promedio (período)
+  const ticketPromedio = salesEnPeriodo.length > 0 ? totalVentas / salesEnPeriodo.length : 0;
 
-  // Productos vendidos
-  const productosVendidos = saleRecords.reduce((sum, sale) =>
+  // Productos vendidos (período)
+  const productosVendidos = salesEnPeriodo.reduce((sum, sale) =>
     sum + (sale.items?.reduce((s, i) => s + i.quantity, 0) || 0), 0
   );
+
+  const periodoLabel = periodo === '7' ? 'últimos 7 días' : periodo === '30' ? 'últimos 30 días' : 'últimos 90 días';
 
   return (
     <div style={{ background: '#f4f6f8', minHeight: '100%', paddingBottom: '2rem' }}>
@@ -171,22 +180,21 @@ export function AnalyticsView() {
             <span>Informes y estadísticas</span>
           </div>
         ) as any}
-        subtitle={`Última actualización: ${new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}`}
+        subtitle={`Período: ${periodoLabel} · Última actualización: ${new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}`}
         fullWidth
-        primaryAction={{ content: 'Nueva exploración' }}
         secondaryActions={[
-          { id: 'analytics-refresh', content: 'Actualizar', icon: RefreshIcon, accessibilityLabel: 'Actualizar' },
-          { id: 'analytics-maximize', content: 'Maximizar', icon: MaximizeIcon, accessibilityLabel: 'Maximizar' },
-          { id: 'analytics-edit', content: 'Editar', icon: EditIcon, accessibilityLabel: 'Editar' },
+          { id: 'analytics-refresh', content: 'Actualizar', icon: RefreshIcon, accessibilityLabel: 'Actualizar', onAction: fetchDashboardData },
         ]}
       >
         <BlockStack gap="400">
 
-          {/* Filters Row */}
+          {/* Selector de período */}
           <InlineStack gap="200">
-            <Button icon={CalendarIcon}>Hoy</Button>
-            <Button icon={CalendarIcon}>{new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</Button>
-            <Button>$ MXN $</Button>
+            <ButtonGroup variant="segmented">
+              <Button pressed={periodo === '7'} onClick={() => setPeriodo('7')}>7 días</Button>
+              <Button pressed={periodo === '30'} onClick={() => setPeriodo('30')}>30 días</Button>
+              <Button pressed={periodo === '90'} onClick={() => setPeriodo('90')}>90 días</Button>
+            </ButtonGroup>
           </InlineStack>
 
           {/* ROW 1: KPIs Principales */}
@@ -213,20 +221,20 @@ export function AnalyticsView() {
 
             <Card background="bg-surface">
               <BlockStack gap="200">
-                <Text as="p" variant="bodySm" fontWeight="semibold">Pedidos preparados</Text>
+                <Text as="p" variant="bodySm" fontWeight="semibold">Ticket promedio</Text>
                 <InlineStack align="start" blockAlign="baseline" gap="200">
-                  <Text as="h3" variant="headingLg">0</Text>
-                  <Text as="span" variant="bodySm" tone="subdued">—</Text>
+                  <Text as="h3" variant="headingLg">{formatCurrency(ticketPromedio)}</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">{periodoLabel}</Text>
                 </InlineStack>
               </BlockStack>
             </Card>
 
             <Card background="bg-surface">
               <BlockStack gap="200">
-                <Text as="p" variant="bodySm" fontWeight="semibold">Pedidos</Text>
+                <Text as="p" variant="bodySm" fontWeight="semibold">Ventas (transacciones)</Text>
                 <InlineStack align="start" blockAlign="baseline" gap="200">
-                  <Text as="h3" variant="headingLg">{saleRecords.length}</Text>
-                  <Text as="span" variant="bodySm" tone="subdued">—</Text>
+                  <Text as="h3" variant="headingLg">{salesEnPeriodo.length}</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">{periodoLabel}</Text>
                 </InlineStack>
               </BlockStack>
             </Card>

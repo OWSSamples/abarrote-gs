@@ -20,7 +20,8 @@ import { ImageIcon } from '@shopify/polaris-icons';
 import { Product } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { ProductExportModal, ProductImportModal } from './ShopifyModals';
-import { generateCSV, downloadFile, generatePDF } from '@/components/export/ExportModal';
+import { generateCSV, downloadFile } from '@/components/export/ExportModal';
+import { generatePDF } from '@/components/export/generatePDF';
 
 interface AllProductsTableProps {
   products: Product[];

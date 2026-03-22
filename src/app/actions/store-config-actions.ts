@@ -16,12 +16,13 @@ function isMissingColumnError(error: unknown): boolean {
     msg.includes('column') ||
     msg.includes('does not exist') ||
     msg.includes('inventory_general_columns') ||
-    msg.includes('ticket_template')
+    msg.includes('ticket_template') ||
+    msg.includes('default_margin')
   );
 }
 
 function mapStoreConfigRow(
-  row: Omit<StoreConfig, 'telegramToken' | 'telegramChatId' | 'printerIp' | 'cashDrawerPort' | 'scalePort' | 'logoUrl' | 'inventoryGeneralColumns' | 'ticketTemplateVenta' | 'ticketTemplateProveedor'> & {
+  row: Omit<StoreConfig, 'telegramToken' | 'telegramChatId' | 'printerIp' | 'cashDrawerPort' | 'scalePort' | 'logoUrl' | 'inventoryGeneralColumns' | 'defaultMargin' | 'ticketTemplateVenta' | 'ticketTemplateProveedor'> & {
     telegramToken?: string | null;
     telegramChatId?: string | null;
     printerIp?: string | null;
@@ -29,6 +30,7 @@ function mapStoreConfigRow(
     scalePort?: string | null;
     logoUrl?: string | null;
     inventoryGeneralColumns?: string | null;
+    defaultMargin?: string | null;
     ticketTemplateVenta?: string | null;
     ticketTemplateProveedor?: string | null;
     updatedAt?: Date;
@@ -67,6 +69,7 @@ function mapStoreConfigRow(
     pointsValue: row.pointsValue,
     logoUrl: row.logoUrl ?? undefined,
     inventoryGeneralColumns: row.inventoryGeneralColumns ?? DEFAULT_STORE_CONFIG.inventoryGeneralColumns,
+    defaultMargin: row.defaultMargin ?? DEFAULT_STORE_CONFIG.defaultMargin,
     ticketTemplateVenta: row.ticketTemplateVenta ?? undefined,
     ticketTemplateProveedor: row.ticketTemplateProveedor ?? undefined,
   };
@@ -117,6 +120,7 @@ export async function fetchStoreConfig(): Promise<StoreConfig> {
       pointsPerPeso: storeConfig.pointsPerPeso,
       pointsValue: storeConfig.pointsValue,
       logoUrl: storeConfig.logoUrl,
+      defaultMargin: storeConfig.defaultMargin,
       ticketTemplateVenta: storeConfig.ticketTemplateVenta,
       ticketTemplateProveedor: storeConfig.ticketTemplateProveedor,
     }).from(storeConfig).limit(1);

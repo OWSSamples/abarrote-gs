@@ -2,6 +2,8 @@ import type { StoreSet, StoreGet, SalesSlice } from '../types';
 import {
   createSale as dbCreateSale,
   cancelSale as dbCancelSale,
+  deleteSales as dbDeleteSales,
+  deleteCortes as dbDeleteCortes,
   createCorteCaja as dbCreateCorteCaja,
   createAutoCorteCaja as dbCreateAutoCorteCaja,
   fetchInventoryAlerts,
@@ -49,6 +51,37 @@ export const createSalesSlice = (set: StoreSet, get: StoreGet): SalesSlice => ({
       set({ salesData, products, inventoryAlerts: alerts, kpiData: kpi });
     } catch (error) {
       console.error('Error canceling sale:', error);
+      throw error;
+    }
+  },
+
+  deleteSales: async (ids) => {
+    try {
+      await dbDeleteSales(ids);
+      const state = get();
+      const idSet = new Set(ids);
+      set({ saleRecords: state.saleRecords.filter(s => !idSet.has(s.id)) });
+      const [salesData, products, alerts, kpi] = await Promise.all([
+        fetchSalesData(),
+        fetchAllProducts(),
+        fetchInventoryAlerts(),
+        fetchKPIData(),
+      ]);
+      set({ salesData, products, inventoryAlerts: alerts, kpiData: kpi });
+    } catch (error) {
+      console.error('Error deleting sales:', error);
+      throw error;
+    }
+  },
+
+  deleteCortes: async (ids) => {
+    try {
+      await dbDeleteCortes(ids);
+      const state = get();
+      const idSet = new Set(ids);
+      set({ cortesHistory: state.cortesHistory.filter(c => !idSet.has(c.id)) });
+    } catch (error) {
+      console.error('Error deleting cortes:', error);
       throw error;
     }
   },

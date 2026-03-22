@@ -26,10 +26,11 @@ export function getFirebaseAdminApp() {
     }
 
     if (!clientEmail || !privateKey) {
-        throw new Error(
-            '🔥 FIREBASE ADMIN ERROR: Missing FIREBASE_CLIENT_EMAIL or FIREBASE_PRIVATE_KEY environment variables. ' +
-            'Cannot initialize secure backend auth. Please explicitly verify your .env.local file!'
+        console.warn(
+            '🔥 FIREBASE ADMIN WARN: Missing FIREBASE_CLIENT_EMAIL or FIREBASE_PRIVATE_KEY environment variables. ' +
+            'Cannot initialize secure backend auth. Validating users will fail at runtime.'
         );
+        return null;
     }
 
     console.log('[FIREBASE ADMIN] Initializing new app instance for', projectId);
@@ -44,4 +45,13 @@ export function getFirebaseAdminApp() {
 }
 
 const adminApp = getFirebaseAdminApp();
-export const adminAuth = getAuth(adminApp);
+
+export const adminAuth = adminApp 
+  ? getAuth(adminApp) 
+  : new Proxy({} as any, {
+      get: (_, prop) => {
+        return () => {
+           throw new Error(`🔥 FIREBASE ADMIN NO INICIALIZADO. Falló al ejecutar auth.${String(prop)}. Falta FIREBASE_PRIVATE_KEY o FIREBASE_CLIENT_EMAIL en Vercel.`);
+        };
+      }
+    });

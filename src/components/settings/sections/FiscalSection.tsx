@@ -7,6 +7,7 @@ import {
   FormLayout,
   BlockStack,
   Layout,
+  Checkbox,
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
 import type { SettingsSectionProps } from './types';
@@ -38,6 +39,12 @@ export function FiscalSection({ config, updateField }: SettingsSectionProps) {
                 onChange={(v) => updateField('currency', v)}
               />
             </FormLayout.Group>
+            <Checkbox
+              label="Los precios de los productos ya incluyen IVA"
+              checked={config.pricesIncludeIva}
+              onChange={(value) => updateField('pricesIncludeIva', value)}
+              helpText="Si está marcado, el IVA se extraerá del total (Total / 1.16). Si no está marcado, se sumará al subtotal (Subtotal + 16%)."
+            />
           </FormLayout>
         </Card>
       </Layout.AnnotatedSection>

@@ -45,6 +45,7 @@ export interface StoreConfig {
   regimenFiscal: string;
   regimenDescription: string;
   ivaRate: string;
+  pricesIncludeIva: boolean;
   currency: string;
   lowStockThreshold: string;
   expirationWarningDays: string;
@@ -91,6 +92,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   regimenFiscal: '612',
   regimenDescription: 'REGIMEN SIMPLIFICADO DE CONFIANZA',
   ivaRate: '16',
+  pricesIncludeIva: true,
   currency: 'MXN',
   lowStockThreshold: '25',
   expirationWarningDays: '7',
@@ -120,6 +122,8 @@ export interface Product {
   category: string;
   costPrice: number;
   unitPrice: number;
+  unit?: string;
+  unitMultiple?: number;
   isPerishable: boolean;
   imageUrl?: string;
 }

@@ -145,3 +145,33 @@ export function downloadFile(content: string, filename: string, mimeType: string
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// Utilidad para generar PDF dinámicamente
+export async function generatePDF(title: string, data: Record<string, unknown>[], filename: string) {
+  try {
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+
+    const doc = new jsPDF();
+    doc.text(title, 14, 15);
+
+    if (data.length > 0) {
+      const head = [Object.keys(data[0])];
+      const body = data.map((item) =>
+        Object.keys(item).map((key) => String(item[key] ?? ''))
+      );
+
+      autoTable(doc, {
+        head,
+        body,
+        startY: 20,
+        styles: { fontSize: 8 },
+      });
+    }
+
+    doc.save(filename);
+  } catch (error) {
+    console.error('Error generando PDF:', error);
+    alert('No se pudo generar el PDF. Verifica la consola.');
+  }
+}

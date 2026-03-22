@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import {
-  Card,kjg
+  Card,
   IndexTable,
   Text,
   Badge,

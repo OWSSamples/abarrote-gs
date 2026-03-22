@@ -13,6 +13,7 @@ export interface SaleCalculationsParams {
   clienteId: string;
   clientes: Cliente[];
   amountPaid: string;
+  storeConfig: import('@/types').StoreConfig;
 }
 
 export interface SaleCalculationsResult {
@@ -37,6 +38,7 @@ export function useSaleCalculations({
   clienteId,
   clientes,
   amountPaid,
+  storeConfig,
 }: SaleCalculationsParams): SaleCalculationsResult {
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + item.subtotal, 0), [items]);
 
@@ -52,7 +54,18 @@ export function useSaleCalculations({
     [subtotal, discountAmount],
   );
 
-  const iva = useMemo(() => subtotalAfterDiscount * IVA_RATE, [subtotalAfterDiscount]);
+  const ivaRateFloat = useMemo(() => parseFloat(storeConfig.ivaRate) / 100 || 0, [storeConfig.ivaRate]);
+  const pricesIncludeIva = storeConfig.pricesIncludeIva ?? true;
+
+  const iva = useMemo(() => {
+    if (pricesIncludeIva) {
+      // El total (antes de comisiones) ya incluye el IVA, por lo que desglosamos el IVA del total.
+      return subtotalAfterDiscount - (subtotalAfterDiscount / (1 + ivaRateFloat));
+    } else {
+      // El subtotal NO incluye IVA, hay que sumarlo o cobrarlo extra
+      return subtotalAfterDiscount * ivaRateFloat;
+    }
+  }, [subtotalAfterDiscount, ivaRateFloat, pricesIncludeIva]);
 
   const cardSurcharge = useMemo(() => {
     if (
@@ -62,9 +75,9 @@ export function useSaleCalculations({
     )
       return 0;
     const surcharge = subtotalAfterDiscount * CARD_SURCHARGE_RATE;
-    const surchargeIva = surcharge * IVA_RATE;
+    const surchargeIva = surcharge * ivaRateFloat;
     return surcharge + surchargeIva;
-  }, [subtotalAfterDiscount, paymentMethod]);
+  }, [subtotalAfterDiscount, paymentMethod, ivaRateFloat]);
 
   const pointsEarned = useMemo(
     () => Math.floor(subtotalAfterDiscount / 20),
@@ -78,18 +91,23 @@ export function useSaleCalculations({
   }, [clienteId, clientes]);
 
   const total = useMemo(() => {
-    const base = subtotalAfterDiscount + iva + cardSurcharge;
+    const base = pricesIncludeIva 
+      ? subtotalAfterDiscount + cardSurcharge 
+      : subtotalAfterDiscount + iva + cardSurcharge;
+      
     if (paymentMethod === 'puntos') {
       return Math.max(0, base - pointsAvailable);
     }
     return base;
-  }, [subtotalAfterDiscount, iva, cardSurcharge, paymentMethod, pointsAvailable]);
+  }, [subtotalAfterDiscount, iva, cardSurcharge, paymentMethod, pointsAvailable, pricesIncludeIva]);
 
   const pointsUsed = useMemo(() => {
     if (paymentMethod !== 'puntos' || !clienteId) return 0;
-    const base = subtotalAfterDiscount + iva + cardSurcharge;
+    const base = pricesIncludeIva 
+      ? subtotalAfterDiscount + cardSurcharge 
+      : subtotalAfterDiscount + iva + cardSurcharge;
     return Math.min(pointsAvailable, base);
-  }, [paymentMethod, clienteId, pointsAvailable, subtotalAfterDiscount, iva, cardSurcharge]);
+  }, [paymentMethod, clienteId, pointsAvailable, subtotalAfterDiscount, iva, cardSurcharge, pricesIncludeIva]);
 
   const change = useMemo(() => {
     const paid = parseFloat(amountPaid) || 0;

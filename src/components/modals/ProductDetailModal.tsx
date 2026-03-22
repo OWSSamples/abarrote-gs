@@ -58,6 +58,7 @@ export function ProductDetailModal({
   const [saving, setSaving] = useState(false);
   const deleteProduct = useDashboardStore((s) => s.deleteProduct);
   const updateProduct = useDashboardStore((s) => s.updateProduct);
+  const storeConfig = useDashboardStore((s) => s.storeConfig);
   const { showSuccess, showError } = useToast();
 
   // Edit product form state
@@ -144,6 +145,18 @@ export function ProductDetailModal({
       setSaving(false);
     }
   }, [product, editName, editSku, editBarcode, editCategory, editCostPrice, editUnitPrice, editMinStock, editIsPerishable, editExpirationDate, editFile, editImageUrl, updateProduct, showSuccess, showError, onClose]);
+
+  const handleEditCostPriceChange = useCallback((value: string) => {
+    setEditCostPrice(value);
+    const cost = parseFloat(value);
+    if (!isNaN(cost) && cost > 0) {
+      const defaultMargin = parseFloat(storeConfig.defaultMargin || '30');
+      const calculatedPrice = cost + (cost * (defaultMargin / 100));
+      setEditUnitPrice(calculatedPrice.toFixed(2));
+    } else if (value === '') {
+      setEditUnitPrice('');
+    }
+  }, [storeConfig.defaultMargin]);
 
   const handleDelete = async () => {
     if (!product) return;
@@ -232,7 +245,10 @@ export function ProductDetailModal({
                   <Text as="h3" variant="headingSm">Estado</Text>
                   <Badge tone="success">Activo</Badge>
                   <FormSelect options={categoryOptions} value={editCategory} onChange={setEditCategory} label="Categoría" />
-                  <TextField label="Precio" type="number" value={editUnitPrice} onChange={setEditUnitPrice} prefix="$" autoComplete="off" />
+                  <FormLayout.Group>
+                    <TextField label="Precio de costo" type="number" value={editCostPrice} onChange={handleEditCostPriceChange} prefix="$" autoComplete="off" />
+                    <TextField label="Precio de venta" type="number" value={editUnitPrice} onChange={setEditUnitPrice} prefix="$" autoComplete="off" />
+                  </FormLayout.Group>
                 </BlockStack>
               </Box>
             </Grid.Cell>

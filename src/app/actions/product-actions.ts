@@ -24,6 +24,8 @@ export async function fetchAllProducts(): Promise<Product[]> {
     category: r.category,
     costPrice: numVal(r.costPrice),
     unitPrice: numVal(r.unitPrice),
+    unit: r.unit,
+    unitMultiple: r.unitMultiple,
     isPerishable: r.isPerishable,
     imageUrl: r.imageUrl ?? undefined,
   }));
@@ -46,6 +48,8 @@ export async function createProduct(data: Omit<Product, 'id'>): Promise<Product>
     category: sanitize(data.category),
     costPrice: String(validateNumber(data.costPrice, { label: 'Precio de costo' })),
     unitPrice: String(validateNumber(data.unitPrice, { label: 'Precio de venta' })),
+    unit: data.unit ? sanitize(data.unit) : 'pieza',
+    unitMultiple: data.unitMultiple ? validateNumber(data.unitMultiple, { label: 'Piezas por unidad' }) : 1,
     isPerishable: data.isPerishable,
     imageUrl: data.imageUrl,
   });
@@ -81,6 +85,8 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
   if (data.category !== undefined) updateData.category = data.category;
   if (data.costPrice !== undefined) updateData.costPrice = String(data.costPrice);
   if (data.unitPrice !== undefined) updateData.unitPrice = String(data.unitPrice);
+  if (data.unit !== undefined) updateData.unit = data.unit;
+  if (data.unitMultiple !== undefined) updateData.unitMultiple = data.unitMultiple;
   if (data.minStock !== undefined) updateData.minStock = data.minStock;
   if (data.currentStock !== undefined) updateData.currentStock = data.currentStock;
   if (data.isPerishable !== undefined) updateData.isPerishable = data.isPerishable;

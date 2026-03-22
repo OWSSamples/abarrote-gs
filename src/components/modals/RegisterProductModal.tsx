@@ -41,8 +41,19 @@ const categoryOptions = [
   { label: 'Otros', value: 'otros' },
 ];
 
+const unitOptions = [
+  { label: 'Pieza', value: 'pieza' },
+  { label: 'Kilo (kg)', value: 'kilo' },
+  { label: 'Gramo (g)', value: 'gramo' },
+  { label: 'Litro (L)', value: 'litro' },
+  { label: 'Paquete', value: 'paquete' },
+  { label: 'Caja', value: 'caja' },
+  { label: 'Bulto', value: 'bulto' },
+];
+
 export function RegisterProductModal({ open, onClose }: RegisterProductModalProps) {
   const registerProduct = useDashboardStore((s) => s.registerProduct);
+  const storeConfig = useDashboardStore((s) => s.storeConfig);
   const { showSuccess, showError } = useToast();
 
   const [name, setName] = useState('');
@@ -51,6 +62,8 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
   const [category, setCategory] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [costPrice, setCostPrice] = useState('');
+  const [unit, setUnit] = useState('pieza');
+  const [unitMultiple, setUnitMultiple] = useState('1');
   const [currentStock, setCurrentStock] = useState('');
   const [minStock, setMinStock] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
@@ -66,6 +79,8 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
     setCategory('');
     setUnitPrice('');
     setCostPrice('');
+    setUnit('pieza');
+    setUnitMultiple('1');
     setCurrentStock('');
     setMinStock('');
     setExpirationDate('');
@@ -116,6 +131,18 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
     return Object.keys(newErrors).length === 0;
   }, [name, sku, barcode, category, costPrice, unitPrice, currentStock, minStock, isPerishable, expirationDate]);
 
+  const handleCostPriceChange = useCallback((value: string) => {
+    setCostPrice(value);
+    const cost = parseFloat(value);
+    if (!isNaN(cost) && cost > 0) {
+      const defaultMargin = parseFloat(storeConfig.defaultMargin || '30');
+      const calculatedPrice = cost + (cost * (defaultMargin / 100));
+      setUnitPrice(calculatedPrice.toFixed(2));
+    } else if (value === '') {
+      setUnitPrice('');
+    }
+  }, [storeConfig.defaultMargin]);
+
   const margin = parseFloat(unitPrice) > 0 && parseFloat(costPrice) > 0
     ? (((parseFloat(unitPrice) - parseFloat(costPrice)) / parseFloat(costPrice)) * 100).toFixed(1)
     : null;
@@ -138,6 +165,8 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
         category,
         costPrice: parseFloat(costPrice),
         unitPrice: parseFloat(unitPrice),
+        unit,
+        unitMultiple: parseInt(unitMultiple, 10) || 1,
         currentStock: parseInt(currentStock),
         minStock: parseInt(minStock),
         expirationDate: isPerishable ? expirationDate : null,
@@ -255,15 +284,15 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
                 label="Precio de costo (MXN)"
                 type="number"
                 value={costPrice}
-                onChange={setCostPrice}
+                onChange={handleCostPriceChange}
                 autoComplete="off"
                 prefix="$"
                 placeholder="0.00"
                 error={errors.costPrice}
-                helpText="Cuánto te cuesta comprar este producto"
+                helpText="Cuánto te cuesta"
               />
               <TextField
-                label="Precio de venta (MXN)"
+                label="Precio al público (MXN)"
                 type="number"
                 value={unitPrice}
                 onChange={setUnitPrice}
@@ -271,7 +300,22 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
                 prefix="$"
                 placeholder="0.00"
                 error={errors.unitPrice}
-                helpText={margin ? `Margen: ${margin}%` : 'Precio al público'}
+                helpText={margin ? `Margen: ${margin}%` : 'Para venta'}
+              />
+              <FormSelect
+                label="Se vende por"
+                options={unitOptions}
+                value={unit}
+                onChange={setUnit}
+              />
+              <TextField
+                label="Cantidad por venta"
+                type="number"
+                value={unitMultiple}
+                onChange={setUnitMultiple}
+                autoComplete="off"
+                min={1}
+                helpText={`Ej: Se venden ${unitMultiple || 1} pz por $${unitPrice || '0.00'}`}
               />
             </FormLayout.Group>
 

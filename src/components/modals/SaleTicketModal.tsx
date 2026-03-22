@@ -90,7 +90,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     subtotal, discountAmount, subtotalAfterDiscount, iva, cardSurcharge,
     pointsEarned, pointsAvailable, total, pointsUsed, change,
   } = useSaleCalculations({
-    items, discount, discountType, discountPending, paymentMethod, clienteId, clientes, amountPaid,
+    items, discount, discountType, discountPending, paymentMethod, clienteId, clientes, amountPaid, storeConfig,
   });
 
   // Mercado Pago terminal

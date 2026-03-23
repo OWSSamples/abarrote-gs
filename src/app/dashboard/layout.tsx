@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Frame, Loading, Page, Banner, Button, SkeletonPage, Layout, SkeletonBodyText } from '@shopify/polaris';
+import { Frame, Loading, Page, Banner, Button, SkeletonPage, Layout, SkeletonBodyText, Box, BlockStack, Text } from '@shopify/polaris';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
 import { CustomTopBar } from '@/components/navigation/CustomTopBar';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { useRequireAuth } from '@/lib/auth/useRequireAuth';
+import { useAuth } from '@/lib/auth/AuthContext';
 import { useRouter } from 'next/navigation';
 import { Product } from '@/types';
 import { ProductDetailModal } from '@/components/modals/ProductDetailModal';
@@ -25,12 +26,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mobileNavActive, setMobileNavActive] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isProductDetailActive, setIsProductDetailActive] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false); // New lock state
+
+  const { signOut } = useAuth(); // Access signOut from AuthContext
 
   useEffect(() => {
     if (user) {
       fetchDashboardData();
     }
   }, [user, fetchDashboardData]);
+
+  // Handle Auth Expiration: FORCE REDIRECT - NO VISUALIZATION ALLOWED
+  useEffect(() => {
+    if (error && (error.includes('sesión ha expirado') || error.includes('autenticación'))) {
+      console.error('CRITICAL: AUTH EXPIRED. KICKING OUT USER.');
+      signOut().then(() => {
+        // Full page reload redirect to ensure absolutely NO dashboard state remains
+        window.location.href = '/auth/login';
+      });
+    }
+  }, [error, signOut]);
+
+  // Prevent ANY visualization if loading or no user
+  if (authLoading || !user) {
+    return (
+      <div style={{ 
+        position: 'fixed', 
+        top: 0, 
+        left: 0, 
+        width: '100vw', 
+        height: '100vh', 
+        backgroundColor: '#f6f6f7', // Shopify Neutral BG
+        zIndex: 10000 
+      }} />
+    );
+  }
 
   const toggleMobileNav = useCallback(() => {
     setMobileNavActive((prev) => !prev);
@@ -49,14 +79,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const criticalAlerts = inventoryAlerts.filter(
     (alert) => alert.severity === 'critical'
   );
-
-  if (authLoading || !user) {
-    return (
-      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-        <p>Cargando...</p>
-      </div>
-    );
-  }
 
   const topBarMarkup = (
     <CustomTopBar
@@ -105,7 +127,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Layout>
           </SkeletonPage>
         ) : (
-          children
+          <Box padding="600" minHeight="calc(100vh - 56px)">
+            {children}
+          </Box>
         )}
 
         {isProductDetailActive && selectedProduct && (

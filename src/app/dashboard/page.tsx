@@ -119,11 +119,11 @@ export default function DashboardOverviewPage() {
       <Card padding="600">
         <InlineStack align="space-between" blockAlign="center" gap="400">
           <InlineStack gap="500" blockAlign="center">
-            <div style={{ backgroundColor: 'var(--p-color-bg-fill-brand-subdued)', borderRadius: 'var(--p-border-radius-400)', border: '1px solid var(--p-color-border-brand)' }}>
+            <div style={{ backgroundColor: 'var(--blue-zodiac-50)', borderRadius: 'var(--p-border-radius-400)', border: '1px solid var(--blue-zodiac-200)' }}>
               <Box
                 padding="400"
               >
-                <div style={{ color: 'var(--p-color-text-brand)', display: 'flex' }}>
+                <div style={{ color: 'var(--blue-zodiac-600)', display: 'flex' }}>
                   <Icon source={HomeFilledIcon} />
                 </div>
               </Box>
@@ -205,7 +205,7 @@ export default function DashboardOverviewPage() {
                         <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--p-color-border-subdued)' }}>
                           <th style={{ padding: '12px 16px' }}>Folio</th>
                           <th style={{ padding: '12px 16px' }}>Hora</th>
-                          <th style={{ padding: '12px 16px' }}>Cliente</th>
+                          <th style={{ padding: '12px 16px' }}>Cajero</th>
                           <th style={{ padding: '12px 16px' }}>Total</th>
                           <th style={{ padding: '12px 16px', textAlign: 'right' }}>Estado</th>
                         </tr>
@@ -215,20 +215,13 @@ export default function DashboardOverviewPage() {
                           <tr key={sale.id} style={{ borderBottom: '1px solid var(--p-color-border-subdued)' }}>
                             <td style={{ padding: '12px 16px' }}>{sale.folio}</td>
                             <td style={{ padding: '12px 16px' }}>{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                            <td style={{ padding: '12px 16px' }}>{sale.cajero || 'Cajero'}</td>
+                            <td style={{ padding: '12px 16px' }}>{sale.cajero || 'Central'}</td>
                             <td style={{ padding: '12px 16px', fontWeight: 'bold' }}>{formatCurrency(sale.total)}</td>
                             <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                               <Badge tone="success">Completado</Badge>
                             </td>
                           </tr>
                         ))}
-                        {todaySales.length === 0 && (
-                          <tr>
-                            <td colSpan={5} style={{ padding: '40px', textAlign: 'center' }}>
-                              <Text as="p" tone="subdued">No hay ventas registradas hoy.</Text>
-                            </td>
-                          </tr>
-                        )}
                       </tbody>
                     </table>
                   </div>

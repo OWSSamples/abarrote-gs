@@ -96,12 +96,6 @@ export function SidebarNav({ onSelect, badges }: SidebarNavProps) {
       subNavigationItems: [
         {
           url: '#',
-          label: 'Productos',
-          matches: isPath('/dashboard/products'),
-          onClick: () => onSelect('catalog'),
-        },
-        {
-          url: '#',
           label: 'Inventario General',
           matches: isPath('/dashboard/products/inventory'),
           onClick: () => onSelect('inventory'),

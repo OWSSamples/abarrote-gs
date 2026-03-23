@@ -13,475 +13,108 @@
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #0518d2;
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: #0518d2;
-  --chart-1: #0518d2;
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #0518d2;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: #0518d2;
-}
+  /* --- Brand Color Palettes --- */
+  --blue-zodiac-50: #ECF9FF;
+  --blue-zodiac-500: #12A3FF;
+  --blue-zodiac-800: #0055CF;
+  
+  --atoll-500: #00DADA;
+  --feijoa-500: #46BB27;
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: #4657ff;
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: #4657ff;
-  --chart-1: #4657ff;
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: #4657ff;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: #4657ff;
+  /* Shopify Polaris - Map new colors to primary actions only */
+  --primary: var(--blue-zodiac-500);
+  --primary-hover: var(--blue-zodiac-800);
+  
+  --radius: 0.5rem;
+  --background: #f6f6f7;
+  --foreground: #202223;
+  --border: #e1e3e5;
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--background);
+    color: var(--foreground);
     font-family: var(--font-sans);
   }
 }
 
-/* Shopify-style TopBar */
-.Polaris-TopBar {
-  background-color: #1a1a1a !important;
-  border-bottom: 1px solid #333 !important;
-}
+/* --- Polaris Custom Overrides (Minimal & Clean) --- */
 
-.Polaris-TopBar__NavigationIcon svg,
-.Polaris-TopBar__SearchField svg {
-  fill: #b5b5b5 !important;
-}
-
-.Polaris-TopBar__Contents {
-  background-color: transparent !important;
-}
-
-/* Polaris Button Color Overrides */
+/* Primary Button using Blue Zodiac */
 .Polaris-Button--variantPrimary {
-  background-color: #0518d2 !important;
-  border-color: #0518d2 !important;
+  background-color: var(--primary) !important;
+  border-color: var(--primary) !important;
   color: white !important;
-  box-shadow: 0 2px 4px rgba(5, 24, 210, 0.2) !important;
 }
 
 .Polaris-Button--variantPrimary:hover {
-  background-color: #0414b0 !important;
-  border-color: #0414b0 !important;
+  background-color: var(--primary-hover) !important;
 }
 
-.Polaris-Button--variantPrimary:active {
-  background-color: #030f8c !important;
-  border-color: #030f8c !important;
-  transform: translateY(1px);
+/* Badges using new palettes */
+.Polaris-Badge--toneSuccess {
+  background-color: #e3f1df !important;
+  color: #1a4a15 !important;
 }
 
-.Polaris-Button--variantPrimary.Polaris-Button--disabled {
-  background-color: #e1e3e5 !important;
-  border-color: #e1e3e5 !important;
-  color: #8c9196 !important;
-  box-shadow: none !important;
+.Polaris-Badge--toneInfo {
+  background-color: #e0f2f1 !important;
+  color: #004d40 !important;
 }
 
-/* Target primary actions in menus and modals */
-.Polaris-ActionList__Item--active,
-.Polaris-ActionList__Item--selected {
-  color: #0518d2 !important;
-  background-color: rgba(5, 24, 210, 0.05) !important;
-}
-
-.Polaris-ActionList__Item--active .Polaris-ActionList__Icon,
-.Polaris-ActionList__Item--selected .Polaris-ActionList__Icon {
-  fill: #0518d2 !important;
-}
-
-/* --- Layout Stability (Shopify Style) --- */
+/* Ensuring Polaris Container Backgrounds are Standard */
 .Polaris-Frame {
-  padding-top: 0 !important;
-  background-color: #1a1a1a !important;
+  background-color: #f1f2f4 !important;
 }
 
-.Polaris-Frame__Navigation {
-  top: 56px !important;
-  height: calc(100vh - 56px) !important;
-  padding: 8px 8px 8px 8px !important;
-  background: transparent !important;
-  border-right: none !important;
-  box-shadow: none !important;
-}
-
-.Polaris-Frame__Navigation::after,
-.Polaris-Frame__Navigation::before {
-  display: none !important;
-  content: none !important;
-}
-
-.Polaris-Navigation__LogoContainer,
-.Polaris-Navigation__Logo {
-  display: none !important;
-}
-
-/* Sidebar con esquinas redondeadas estilo Shopify Admin */
-.Polaris-Navigation {
-  border-radius: 12px !important;
-  height: 100% !important;
-  overflow: hidden !important;
-  background: #ffffff !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-.Polaris-Navigation__UserSection,
-.Polaris-Navigation__PrimaryNavigation {
-  border-right: none !important;
-}
-
-/* Elimina la línea negra/gris divisora que Polaris pone a la derecha del nav */
-[class*="Polaris-Frame__NavigationDismiss"],
-[class*="Polaris-Frame__Navigation"] > *:last-child {
-  border-right: none !important;
-  box-shadow: none !important;
-}
-
-/* Área de contenido principal también redondeada arriba-izquierda */
 .Polaris-Frame__Main {
-  padding-top: 0 !important;
   background-color: #f6f6f7 !important;
-  border-top-left-radius: 12px !important;
-  overflow-y: auto !important;
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
 }
 
-.Polaris-Frame__Main::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
+.Polaris-TopBar {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e1e3e5 !important;
 }
 
-.Polaris-Frame__Content {
-  overflow-y: auto !important;
-  scrollbar-width: none !important;
+.Polaris-Navigation {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e1e3e5 !important;
 }
 
-.Polaris-Frame__Content::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-}
-
-html,
-body {
-  overflow-y: auto !important;
-  scrollbar-width: none !important;
-}
-
-html::-webkit-scrollbar,
-body::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-}
-
-.Polaris-Frame__Main {
-  padding-top: 0 !important;
-}
-
-/* Professional Page Spacing - Expansive & Premium */
-.Polaris-Page {
-  padding-top: 24px !important;
-  padding-bottom: 40px !important;
-  margin: 0 auto !important;
-}
-
-/* Full-width pages should be truly edge-to-edge if needed */
-.Polaris-Page--fullWidth {
-  max-width: 100% !important;
-  width: 100% !important;
-}
-
-.Polaris-Layout {
-  max-width: none !important;
-}
-
-.Polaris-Page-Header {
-  margin-bottom: 24px !important;
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 50 !important;
-  background: var(--p-color-bg-surface-secondary, #f1f2f4) !important;
-  padding-top: 20px !important;
-  padding-bottom: 16px !important;
-  margin-top: -20px !important; /* Offset visual to keep spacing */
-}
-
-/* Fix the GREY AREA / bottom scrollbar line in Polaris IndexTable */
+/* IndexTable Fixes for light mode */
 .Polaris-IndexTable-ScrollContainer {
   background-color: white !important;
 }
 
-.Polaris-IndexTable-ScrollContainer::-webkit-scrollbar {
-  height: 0px !important;
-  display: none !important;
+.Polaris-IndexTable__StickyTableHeader {
+  background-color: #f4f6f8 !important;
 }
 
-.Polaris-IndexTable-ScrollContainer {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-  overflow-x: hidden !important;
+/* Global Navigation TopBar Search */
+.Polaris-TopBar__SearchField {
+  background-color: #f1f2f4 !important;
 }
 
-.Polaris-IndexTable__StickyTable,
-.Polaris-IndexTable__StickyTableHeader,
-.Polaris-IndexTable {
-  background-color: white !important;
-}
+/* Custom Accents */
+.accent-blue { color: var(--blue-zodiac-500); }
+.accent-teal { color: var(--atoll-500); }
+.accent-green { color: var(--feijoa-500); }
 
-/* Remove grey border/shadow at bottom of IndexTable */
-.Polaris-IndexTable__Table {
-  border-bottom: none !important;
-}
-
-.Polaris-IndexTable__TableRow:last-child .Polaris-IndexTable__TableCell {
-  border-bottom: none !important;
-}
-
-.Polaris-IndexTable__ScrollBarContainer {
-  display: none !important;
-}
-
-/* Hide ALL scrollbars globally */
+/* Scrollbar Hiding (Keeping the native feel) */
 * {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.1) transparent;
 }
 
-*::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
+/* KPI Classes */
+.kpi-value {
+  font-weight: 700;
+  font-size: 2rem;
+  color: #202223;
 }
 
-/* Premium Card Design */
-.Polaris-Card {
-  border-radius: 12px !important;
-  overflow: hidden !important;
-  box-shadow: var(--p-shadow-sm) !important;
-}
-
-@media (min-width: 768px) {
-  .mobile-nav-toggle {
-    display: none !important;
-  }
-}
-
-/* Custom Sort Menu */
-.custom-sort-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.sort-option-btn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 8px 12px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  border-radius: 8px;
-  transition: background 0.2s ease;
-  color: #303030;
-}
-
-.sort-option-btn:hover {
-  background-color: #f1f1f1;
-}
-
-.radio-circle {
-  width: 18px;
-  height: 18px;
-  border: 2px solid #8a8a8a;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.sort-option-btn.active .radio-circle {
-  border-color: #303030;
-  border-width: 5px;
-}
-
-.radio-inner {
-  width: 6px;
-  height: 6px;
-  background-color: white;
-  border-radius: 50%;
-}
-
-/* ── Notifications Center ── */
-@keyframes notif-pulse-critical {
-  0% {
-    box-shadow: 0 0 0 0 rgba(227, 18, 18, 0.55);
-  }
-  70% {
-    box-shadow: 0 0 0 6px rgba(227, 18, 18, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(227, 18, 18, 0);
-  }
-}
-
-@keyframes notif-pulse-warning {
-  0% {
-    box-shadow: 0 0 0 0 rgba(185, 137, 0, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 5px rgba(185, 137, 0, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(185, 137, 0, 0);
-  }
-}
-
-/* Shopify Premium Overrides */
-.Polaris-Popover__Content {
-  border-radius: 16px !important;
-  overflow: hidden !important;
-  box-shadow: var(--p-shadow-lg) !important;
-}
-
-.Polaris-TextField__Input {
-  border-radius: 28px !important;
-}
-
-/* Auth Pages Background */
-.auth-background {
-  background-image: radial-gradient(circle at 10% 20%, #f9fafe 0%, #e6efff 100%);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-  background-color: #f1f2f4;
-}
-/* Glassmorphism card inside auth pages */
-.auth-background .Polaris-Card {
-  background: rgba(255, 255, 255, 0.82) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.65) !important;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18) !important;
-}
-
-/* Global Scrollbar Hiding — Modern Native App Feel */
-* {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-*::-webkit-scrollbar {
-  display: none;
-}
-
-/* Keep Polaris default scroll behavior, but keep scrollbars hidden visually */
-
-/* Fix tables headers scrolling across all IndexTables */
-.Polaris-IndexTable thead th,
-.Polaris-IndexTable__TableHeading {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 40 !important;
-  background-color: var(--p-color-bg-surface-secondary, #f4f6f8) !important;
-  box-shadow: 0 1px 0 0 var(--p-color-border-subdued, #e1e3e5) !important;
-}
 

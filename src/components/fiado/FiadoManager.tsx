@@ -21,6 +21,7 @@ import {
   Icon,
   Popover,
   Tooltip,
+  useIndexResourceState,
 } from '@shopify/polaris';
 import {
   PlusIcon,
@@ -89,6 +90,9 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [filterActive, setFilterActive] = useState(false);
+  const [modeFilter, setModeFilter] = useState<'all' | 'debt' | 'no_debt'>('all');
 
   // Fiado form
   const [fiadoClienteId, setFiadoClienteId] = useState('');
@@ -105,12 +109,19 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
   const filteredClientes = useMemo(() => {
     let list = [...clientes];
 
+    // Filter by UI mode filter
+    if (modeFilter === 'debt') {
+      list = list.filter(c => c.balance > 0);
+    } else if (modeFilter === 'no_debt') {
+      list = list.filter(c => c.balance === 0);
+    }
+
     // Filter by mode (passed from Dashboard)
     if (mode === 'fiado') {
       list = list.filter(c => c.balance > 0);
     }
 
-    // Filter by Search
+    // Filter by Search and Sort
     return list.filter(c => 
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
       (c.phone && c.phone.includes(searchQuery))
@@ -121,9 +132,20 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
         const spentB = fiadoTransactions.filter(t => t.clienteId === b.id && t.type === 'fiado').reduce((s, t) => s + t.amount, 0);
         return (spentA - spentB) * order;
       }
+      if (sortBy === 'balance') {
+        return (a.balance - b.balance) * order;
+      }
       return a.name.localeCompare(b.name) * order;
     });
-  }, [clientes, searchQuery, sortBy, sortOrder, fiadoTransactions, mode]);
+  }, [clientes, searchQuery, sortBy, sortOrder, fiadoTransactions, mode, modeFilter]);
+
+  // Selection state for IndexTable - MUST BE AFTER filteredClientes initialization
+  const {
+    selectedResources,
+    allResourcesSelected,
+    handleSelectionChange,
+    clearSelection,
+  } = useIndexResourceState(filteredClientes);
 
   const clientesWithDebt = useMemo(() => clientes.filter((c) => c.balance > 0), [clientes]);
 
@@ -266,41 +288,175 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
           </InlineStack>
         </Box>
 
-        {/* Clients list */}
+        {/* Banner with total debt info (Shopify Style) */}
+        {totalDebt > 0 && (
+          <Banner tone="info">
+            <Text as="p">
+              Tienes un adeudo total de <span style={{ fontWeight: 'bold' }}>{formatCurrency(totalDebt)}</span> pendiente de cobro entre todos tus clientes.
+            </Text>
+          </Banner>
+        )}
+
         {clientes.length === 0 ? (
           <Card>
-            <EmptyState heading="Sin clientes registrados" image="">
-              <p>Agrega un cliente para empezar a manejar fiados y créditos.</p>
+            <EmptyState
+              heading="Aún no tienes clientes registrados"
+              action={{
+                content: 'Registrar primer cliente',
+                onAction: () => setEditClienteOpen(true),
+              }}
+              image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+            >
+              <p>Comienza agregando clientes para gestionar sus compras a crédito y abonos.</p>
             </EmptyState>
           </Card>
         ) : (
           <Card padding="0">
-            {/* Table Filter/Search header style Shopify */}
+            {/* Table Filter/Search header style Shopify - FIXED ROW NO WRAP */}
             <Box padding="200" borderBlockEndWidth="025" borderStyle="solid" borderColor="border">
-              <InlineStack align="space-between" blockAlign="center">
-                <Box width="320px">
-                  <TextField
-                    label="Buscar clientes"
-                    labelHidden
-                    value={searchQuery}
-                    onChange={setSearchQuery}
-                    autoComplete="off"
-                    placeholder="Buscar clientes"
-                    prefix={<Icon source={SearchIcon} tone="subdued" />}
-                    clearButton
-                    onClearButtonClick={() => setSearchQuery('')}
-                  />
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                width: '100%',
+                flexWrap: 'nowrap'
+              }}>
+                <Box paddingInlineStart="200">
+                  <Text as="span" variant="bodyMd" tone="subdued">
+                    {filteredClientes.length} {filteredClientes.length === 1 ? 'cliente' : 'clientes'}
+                  </Text>
                 </Box>
-                <InlineStack gap="200">
-                  <Button variant="tertiary" icon={DataTableIcon} />
-                  <Button variant="tertiary" icon={SortIcon} onClick={toggleSortActive} />
-                </InlineStack>
-              </InlineStack>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: isSearchActive ? 1 : 'unset' }}>
+                  {!isSearchActive ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {/* Combined Button Cluster: Filter + Search */}
+                      <div style={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        borderRadius: '8px',
+                        backgroundColor: 'var(--p-color-bg-surface-secondary)',
+                        border: '1px solid var(--p-color-border-subdued)',
+                        overflow: 'hidden'
+                      }}>
+                        {/* Search Activator */}
+                        <div 
+                          onClick={() => setIsSearchActive(true)}
+                          style={{ 
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            borderRight: '1px solid var(--p-color-border-subdued)',
+                            transition: 'background 0.2s',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--p-color-bg-surface-secondary-hover)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                           <Icon source={SearchIcon} tone="subdued" />
+                        </div>
+                        
+                        {/* Status Filter Activator */}
+                        <Popover
+                          active={filterActive}
+                          activator={
+                            <div 
+                              onClick={() => setFilterActive(true)}
+                              style={{ 
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '8px 12px',
+                                transition: 'background 0.2s',
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--p-color-bg-surface-secondary-hover)'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            >
+                               <Icon source={DataTableIcon} tone="subdued" />
+                            </div>
+                          }
+                          onClose={() => setFilterActive(false)}
+                        >
+                          <Popover.Pane>
+                            <div style={{ padding: '8px', minWidth: '160px' }}>
+                              <BlockStack gap="200">
+                                <Box paddingInlineStart="200"><Text as="p" variant="bodySm" fontWeight="bold" tone="subdued">FILTRAR POR</Text></Box>
+                                <Button variant={modeFilter === 'all' ? 'secondary' : 'plain'} textAlign="left" onClick={() => { setModeFilter('all'); setFilterActive(false); }}>Todos los clientes</Button>
+                                <Button variant={modeFilter === 'debt' ? 'secondary' : 'plain'} textAlign="left" onClick={() => { setModeFilter('debt'); setFilterActive(false); }}>Con deuda activa</Button>
+                                <Button variant={modeFilter === 'no_debt' ? 'secondary' : 'plain'} textAlign="left" onClick={() => { setModeFilter('no_debt'); setFilterActive(false); }}>Sin adeudos</Button>
+                              </BlockStack>
+                            </div>
+                          </Popover.Pane>
+                        </Popover>
+                      </div>
+                      
+                      {/* Separate Sort Button with Popover Menu */}
+                      <Popover
+                        active={sortActive}
+                        activator={
+                          <Button 
+                            variant="tertiary" 
+                            icon={SortIcon} 
+                            onClick={toggleSortActive}
+                            accessibilityLabel="Opciones de ordenación"
+                          />
+                        }
+                        onClose={toggleSortActive}
+                      >
+                        <Popover.Pane>
+                          <div style={{ padding: '8px', minWidth: '180px' }}>
+                            <BlockStack gap="200">
+                              <Box paddingInlineStart="200"><Text as="p" variant="bodySm" fontWeight="bold" tone="subdued">ORDENAR POR</Text></Box>
+                              <Button variant={sortBy === 'name' && sortOrder === 'asc' ? 'secondary' : 'plain'} textAlign="left" onClick={() => { setSortBy('name'); setSortOrder('asc'); setSortActive(false); }}>Nombre (A-Z)</Button>
+                              <Button variant={sortBy === 'name' && sortOrder === 'desc' ? 'secondary' : 'plain'} textAlign="left" onClick={() => { setSortBy('name'); setSortOrder('desc'); setSortActive(false); }}>Nombre (Z-A)</Button>
+                              <Button variant={sortBy === 'spent' ? 'secondary' : 'plain'} textAlign="left" onClick={() => { setSortBy('spent'); setSortOrder('desc'); setSortActive(false); }}>Mayor inversión</Button>
+                              <Button variant={sortBy === 'balance' ? 'secondary' : 'plain'} textAlign="left" onClick={() => { setSortBy('balance'); setSortOrder('desc'); setSortActive(false); }}>Saldo deudor</Button>
+                            </BlockStack>
+                          </div>
+                        </Popover.Pane>
+                      </Popover>
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '12px', 
+                      width: '100%', 
+                      transition: 'all 0.3s ease-in-out',
+                      maxWidth: '1200px'
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <TextField
+                          label="Buscar clientes"
+                          labelHidden
+                          value={searchQuery}
+                          onChange={setSearchQuery}
+                          autoComplete="off"
+                          placeholder="Buscar por nombre o teléfono..."
+                          prefix={<Icon source={SearchIcon} tone="subdued" />}
+                          autoFocus
+                          clearButton
+                          onClearButtonClick={() => setSearchQuery('')}
+                        />
+                      </div>
+                      <Button variant="plain" onClick={() => {
+                        setIsSearchActive(false);
+                        setSearchQuery('');
+                      }}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </Box>
 
             <IndexTable
               resourceName={{ singular: 'cliente', plural: 'clientes' }}
               itemCount={filteredClientes.length}
+              selectedResources={selectedResources}
+              onSelectionChange={handleSelectionChange}
+              selectable
               headings={[
                 { title: 'Nombre del cliente' },
                 { title: 'Suscripción por email' },
@@ -308,7 +464,19 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
                 { title: 'Pedidos' },
                 { title: 'Importe gastado' },
               ]}
-              selectable={false}
+              promotedBulkActions={[
+                {
+                  content: 'Eliminar seleccionados',
+                  onAction: () => {
+                    const confirmMsg = `¿Estás seguro de que deseas eliminar ${selectedResources.length} clientes?`;
+                    if (window.confirm(confirmMsg)) {
+                      selectedResources.forEach(id => deleteCliente(id));
+                      clearSelection();
+                    }
+                  },
+                  destructive: true,
+                },
+              ]}
             >
               {filteredClientes.map((cliente, idx) => {
                 const clientTransactions = fiadoTransactions.filter(t => t.clienteId === cliente.id);
@@ -318,7 +486,12 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
                   .reduce((sum, t) => sum + t.amount, 0);
 
                 return (
-                  <IndexTable.Row id={cliente.id} key={cliente.id} position={idx}>
+                  <IndexTable.Row 
+                    id={cliente.id} 
+                    key={cliente.id} 
+                    position={idx}
+                    selected={selectedResources.includes(cliente.id)}
+                  >
                     <IndexTable.Cell>
                       <Button variant="plain" onClick={() => setViewingProfile(cliente)}>
                         {cliente.name}

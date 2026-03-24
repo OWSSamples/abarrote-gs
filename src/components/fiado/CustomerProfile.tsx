@@ -49,9 +49,12 @@ interface CustomerProfileProps {
     transactions: FiadoTransaction[];
     loyaltyTransactions?: LoyaltyTransaction[];
     onBack: () => void;
+    onDelete?: () => void;
 }
 
-export function CustomerProfile({ cliente, transactions, loyaltyTransactions = [], onBack }: CustomerProfileProps) {
+export function CustomerProfile({ cliente, transactions, loyaltyTransactions = [], onBack, onDelete }: CustomerProfileProps) {
+    const deleteCliente = useDashboardStore((s) => s.deleteCliente);
+    const registerAbono = useDashboardStore((s) => s.registerAbono);
     const [comment, setComment] = useState('');
 
     const stats = useMemo(() => {
@@ -100,33 +103,29 @@ export function CustomerProfile({ cliente, transactions, loyaltyTransactions = [
             ) as any}
             actionGroups={[
                 {
-                    title: 'Más acciones',
+                    title: 'Acciones de cuenta',
                     actions: [
                         {
-                            content: 'Emitir crédito en tienda',
+                            content: 'Eliminar deuda (Saldar cuenta)',
                             icon: CashDollarIcon,
-                            onAction: () => console.log('Emitir crédito'),
-                        },
-                        {
-                            content: 'Fusionar cliente',
-                            icon: PersonIcon,
-                            onAction: () => console.log('Fusionar'),
-                        },
-                        {
-                            content: 'Solicitar datos del cliente',
-                            icon: ImportIcon,
-                            onAction: () => console.log('Solicitar datos'),
-                        },
-                        {
-                            content: 'Suprimir datos personales',
-                            icon: ArchiveIcon,
-                            onAction: () => console.log('Suprimir datos'),
+                            disabled: cliente.balance <= 0,
+                            onAction: async () => {
+                                if (window.confirm(`¿Estás seguro de saldar la deuda de ${formatCurrency(cliente.balance)} para ${cliente.name}? Esto pondrá su saldo en $0.00.`)) {
+                                    await registerAbono(cliente.id, cliente.balance, 'Ajuste administrativo: Deuda saldada');
+                                }
+                            },
                         },
                         {
                             content: 'Eliminar cliente',
                             icon: DeleteIcon,
                             destructive: true,
-                            onAction: () => console.log('Eliminar cliente'),
+                            onAction: async () => {
+                                if (window.confirm(`¿Estás seguro de eliminar permanentemente a ${cliente.name}? Esta acción no se puede deshacer.`)) {
+                                    await deleteCliente(cliente.id);
+                                    if (onDelete) onDelete();
+                                    onBack();
+                                }
+                            },
                         },
                     ],
                 },

@@ -9,14 +9,16 @@ import {
   InlineStack,
   Text,
   Badge,
-  ProgressBar,
   Divider,
   Select,
+  TextField,
   Box,
   Icon,
   InlineGrid,
   Button,
   ButtonGroup,
+  Popover,
+  DatePicker,
 } from '@shopify/polaris';
 import {
   PlusIcon,
@@ -31,17 +33,36 @@ import {
   EditIcon,
   ChartVerticalFilledIcon
 } from '@shopify/polaris-icons';
-import { LineChart, DonutChart } from '@shopify/polaris-viz';
+import { LineChart, BarChart } from '@shopify/polaris-viz';
+import { useI18n } from '@shopify/react-i18n';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
+import { useEffect } from 'react';
 
 export function AnalyticsView() {
+  const [i18n] = useI18n();
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const saleRecords = useDashboardStore((s) => s.saleRecords);
   const products = useDashboardStore((s) => s.products);
   const gastos = useDashboardStore((s) => s.gastos);
   const mermaRecords = useDashboardStore((s) => s.mermaRecords);
   const fetchDashboardData = useDashboardStore((s) => s.fetchDashboardData);
   const [periodo, setPeriodo] = useState('30');
+  const [selectedDayLine, setSelectedDayLine] = useState(new Intl.DateTimeFormat('en-CA').format(new Date()));
+  const [popoverActive, setPopoverActive] = useState(false);
+  const [{ month, year }, setDateNav] = useState({
+    month: new Date().getMonth(),
+    year: new Date().getFullYear(),
+  });
+
+  const getLocalDateStr = (d: Date | string) => {
+    return new Intl.DateTimeFormat('en-CA').format(new Date(d));
+  };
 
   // Fecha de inicio del período seleccionado (medianoche local)
   const periodoStart = useMemo(() => {
@@ -67,21 +88,53 @@ export function AnalyticsView() {
 
   // Ventas del día
   const ventasHoy = useMemo(() => {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = getLocalDateStr(new Date());
     return saleRecords
-      .filter(s => new Date(s.date).toISOString().split('T')[0] === hoy)
+      .filter(s => getLocalDateStr(s.date) === hoy)
       .reduce((sum, s) => sum + parseFloat(s.total.toString()), 0);
   }, [saleRecords]);
 
   // Ventas de ayer
   const ventasAyer = useMemo(() => {
-    const ayer = new Date();
-    ayer.setDate(ayer.getDate() - 1);
-    const ayerStr = ayer.toISOString().split('T')[0];
+    const ayerDate = new Date();
+    ayerDate.setDate(ayerDate.getDate() - 1);
+    const ayerStr = getLocalDateStr(ayerDate);
     return saleRecords
-      .filter(s => new Date(s.date).toISOString().split('T')[0] === ayerStr)
+      .filter(s => getLocalDateStr(s.date) === ayerStr)
       .reduce((sum, s) => sum + parseFloat(s.total.toString()), 0);
   }, [saleRecords]);
+
+  // Análisis de un día específico (Explorador)
+  const statsDiaSeleccionado = useMemo(() => {
+    const dailySales = saleRecords.filter(s => getLocalDateStr(s.date) === selectedDayLine);
+    
+    let ingresos = 0;
+    let costoTotal = 0;
+    const productosMap: Record<string, { name: string, qty: number, profit: number }> = {};
+
+    dailySales.forEach(sale => {
+      ingresos += parseFloat(sale.total.toString());
+      sale.items?.forEach(item => {
+        const prod = products.find(p => p.id === item.productId);
+        const cost = prod ? prod.costPrice : 0;
+        costoTotal += (cost * item.quantity);
+        
+        if (!productosMap[item.productId]) {
+          productosMap[item.productId] = { name: item.productName, qty: 0, profit: 0 };
+        }
+        productosMap[item.productId].qty += item.quantity;
+        productosMap[item.productId].profit += (item.unitPrice - cost) * item.quantity;
+      });
+    });
+
+    const gananciaNeta = ingresos - costoTotal;
+    const topGanancia = Object.entries(productosMap)
+      .map(([id, data]) => ({ id, ...data }))
+      .sort((a, b) => b.profit - a.profit)
+      .slice(0, 5);
+
+    return { ingresos, gananciaNeta, count: dailySales.length, topGanancia };
+  }, [saleRecords, products, selectedDayLine]);
 
   // Ventas y conteo por día en el período (gráfica)
   const datosPorDia = useMemo(() => {
@@ -89,11 +142,11 @@ export function AnalyticsView() {
     const fechas = Array.from({ length: dias }, (_, i) => {
       const date = new Date();
       date.setDate(date.getDate() - (dias - 1 - i));
-      return date.toISOString().split('T')[0];
+      return getLocalDateStr(date);
     });
 
     const agrupado = salesEnPeriodo.reduce((acc, sale) => {
-      const fecha = new Date(sale.date).toISOString().split('T')[0];
+      const fecha = getLocalDateStr(sale.date);
       if (!acc[fecha]) acc[fecha] = { total: 0, count: 0 };
       acc[fecha].total += parseFloat(String(sale.total || 0));
       acc[fecha].count += 1;
@@ -188,6 +241,14 @@ export function AnalyticsView() {
 
   const periodoLabel = periodo === '7' ? 'últimos 7 días' : periodo === '30' ? 'últimos 30 días' : 'últimos 90 días';
 
+  if (!mounted) {
+    return (
+      <div style={{ background: '#f4f6f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Text as="p" tone="subdued">Cargando analíticas...</Text>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: '#f4f6f8', minHeight: '100%', paddingBottom: '2rem' }}>
       <Page
@@ -197,7 +258,7 @@ export function AnalyticsView() {
             <span>Informes y estadísticas</span>
           </div>
         ) as any}
-        subtitle={`Período: ${periodoLabel} · Última actualización: ${new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' })}`}
+        subtitle={`Período: ${periodoLabel} · Última actualización: ${i18n.formatDate(new Date(), { hour: 'numeric', minute: '2-digit' })}`}
         fullWidth
         secondaryActions={[
           { id: 'analytics-refresh', content: 'Actualizar', icon: RefreshIcon, accessibilityLabel: 'Actualizar', onAction: fetchDashboardData },
@@ -205,14 +266,91 @@ export function AnalyticsView() {
       >
         <BlockStack gap="400">
 
-          {/* Selector de período */}
-          <InlineStack gap="200">
+          {/* Selector de periodo y Explorador Diario */}
+          <InlineStack align="space-between">
             <ButtonGroup variant="segmented">
               <Button pressed={periodo === '7'} onClick={() => setPeriodo('7')}>7 días</Button>
               <Button pressed={periodo === '30'} onClick={() => setPeriodo('30')}>30 días</Button>
               <Button pressed={periodo === '90'} onClick={() => setPeriodo('90')}>90 días</Button>
             </ButtonGroup>
+
+            <Popover
+              active={popoverActive}
+              activator={
+                <div style={{ width: '220px' }}>
+                  <TextField
+                    label="Fecha de análisis"
+                    labelHidden
+                    value={i18n.formatDate(new Date(selectedDayLine + 'T12:00:00'), { day: '2-digit', month: 'long', year: 'numeric' })}
+                    onFocus={() => setPopoverActive(true)}
+                    autoComplete="off"
+                    prefix={<Icon source={CalendarIcon} />}
+                  />
+                </div>
+              }
+              onClose={() => setPopoverActive(false)}
+            >
+              <Box padding="400">
+                <DatePicker
+                  month={month}
+                  year={year}
+                  selected={new Date(selectedDayLine + 'T12:00:00')}
+                  onMonthChange={(m, y) => setDateNav({ month: m, year: y })}
+                  onChange={(range) => {
+                    const d = range.start;
+                    const dateStr = new Intl.DateTimeFormat('en-CA').format(d);
+                    setSelectedDayLine(dateStr);
+                    setPopoverActive(false);
+                  }}
+                />
+              </Box>
+            </Popover>
           </InlineStack>
+
+          {/* NUEVO: Panel de Ganancia Diaria */}
+          <Card background="bg-surface-secondary">
+            <BlockStack gap="400">
+              <InlineStack align="space-between">
+                <BlockStack gap="100">
+                  <Text as="h3" variant="headingMd">Resultados del día: {i18n.formatDate(new Date(selectedDayLine + 'T12:00:00'), { day: '2-digit', month: 'long', year: 'numeric' })}</Text>
+                  <Text as="p" tone="subdued">Análisis detallado de rentabilidad y flujo de caja.</Text>
+                </BlockStack>
+                <Badge tone={statsDiaSeleccionado.gananciaNeta > 0 ? 'success' : 'attention'}>
+                  {statsDiaSeleccionado.gananciaNeta > 0 ? 'Día Rentable' : 'Revisar Márgenes'}
+                </Badge>
+              </InlineStack>
+
+              <InlineGrid columns={{ xs: 1, md: 3 }} gap="400">
+                <Box padding="300" background="bg-surface" borderRadius="200" shadow="100">
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodySm" tone="subdued">Ingreso Total (Bruto)</Text>
+                    <Text as="h2" variant="headingLg">{i18n.formatCurrency(statsDiaSeleccionado.ingresos, { currency: 'MXN' })}</Text>
+                    <Text as="p" variant="bodyXs" tone="subdued">{statsDiaSeleccionado.count} transacciones</Text>
+                  </BlockStack>
+                </Box>
+                <Box padding="300" background="bg-surface" borderRadius="200" shadow="100" borderInlineStartWidth="050" borderColor="border-success">
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodySm" tone="subdued">Ganancia Real (Utilidad)</Text>
+                    <Text as="h2" variant="headingLg" tone="success">{i18n.formatCurrency(statsDiaSeleccionado.gananciaNeta, { currency: 'MXN' })}</Text>
+                    <Text as="p" variant="bodyXs" tone="subdued">Venta minus Costo de adquisición</Text>
+                  </BlockStack>
+                </Box>
+                <Box padding="300" background="bg-surface" borderRadius="200" shadow="100">
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodySm" tone="subdued">Productos con mejor margen hoy</Text>
+                    <BlockStack gap="100">
+                      {statsDiaSeleccionado.topGanancia.length > 0 ? statsDiaSeleccionado.topGanancia.slice(0,2).map(p => (
+                        <InlineStack key={p.id} align="space-between">
+                          <Text as="span" variant="bodyXs" truncate>{p.name}</Text>
+                          <Text as="span" variant="bodyXs" fontWeight="bold">+{i18n.formatCurrency(p.profit, { currency: 'MXN' })}</Text>
+                        </InlineStack>
+                      )) : <Text as="p" variant="bodyXs" tone="subdued">Sin datos</Text>}
+                    </BlockStack>
+                  </BlockStack>
+                </Box>
+              </InlineGrid>
+            </BlockStack>
+          </Card>
 
           {/* ROW 1: KPIs Principales */}
           <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400">
@@ -220,7 +358,7 @@ export function AnalyticsView() {
               <BlockStack gap="200">
                 <Text as="p" variant="bodySm" fontWeight="semibold">Ventas brutas</Text>
                 <InlineStack align="start" blockAlign="baseline" gap="200">
-                  <Text as="h3" variant="headingLg">{formatCurrency(totalVentas)}</Text>
+                  <Text as="h3" variant="headingLg">{i18n.formatCurrency(totalVentas, { currency: 'MXN' })}</Text>
                   <Text as="span" variant="bodySm" tone="subdued">—</Text>
                 </InlineStack>
               </BlockStack>
@@ -240,7 +378,7 @@ export function AnalyticsView() {
               <BlockStack gap="200">
                 <Text as="p" variant="bodySm" fontWeight="semibold">Ticket promedio</Text>
                 <InlineStack align="start" blockAlign="baseline" gap="200">
-                  <Text as="h3" variant="headingLg">{formatCurrency(ticketPromedio)}</Text>
+                  <Text as="h3" variant="headingLg">{i18n.formatCurrency(ticketPromedio, { currency: 'MXN' })}</Text>
                   <Text as="span" variant="bodySm" tone="subdued">{periodoLabel}</Text>
                 </InlineStack>
               </BlockStack>
@@ -265,7 +403,7 @@ export function AnalyticsView() {
                 <BlockStack gap="400">
                   <Text as="h3" variant="headingMd">Ventas totales a lo largo del tiempo</Text>
                   <InlineStack align="start" blockAlign="baseline" gap="200">
-                    <Text as="h2" variant="headingXl">{formatCurrency(totalVentas)}</Text>
+                    <Text as="h2" variant="headingXl">{i18n.formatCurrency(totalVentas, { currency: 'MXN' })}</Text>
                     <Text as="span" variant="bodySm" tone="subdued">—</Text>
                   </InlineStack>
                   <div style={{ height: 350 }}>
@@ -279,7 +417,7 @@ export function AnalyticsView() {
                         },
                       }}
                       yAxisOptions={{
-                        labelFormatter: (value) => formatCurrency(Number(value ?? 0)),
+                        labelFormatter: (value) => i18n.formatCurrency(Number(value ?? 0), { currency: 'MXN', precision: 0 }),
                       }}
                     />
                   </div>
@@ -296,7 +434,7 @@ export function AnalyticsView() {
                     <InlineStack align="space-between">
                       <Text as="span" variant="bodyMd">Ventas brutas</Text>
                       <InlineStack gap="100">
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(totalVentas)}</Text>
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{i18n.formatCurrency(totalVentas, { currency: 'MXN' })}</Text>
                         <Text as="span" tone="subdued">—</Text>
                       </InlineStack>
                     </InlineStack>
@@ -321,7 +459,7 @@ export function AnalyticsView() {
                       <InlineStack align="space-between">
                         <Text as="span" variant="bodyMd">Ventas netas</Text>
                         <InlineStack gap="100">
-                          <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(totalVentas)}</Text>
+                          <Text as="span" variant="bodyMd" fontWeight="semibold">{i18n.formatCurrency(totalVentas, { currency: 'MXN' })}</Text>
                           <Text as="span" tone="subdued">—</Text>
                         </InlineStack>
                       </InlineStack>
@@ -356,7 +494,7 @@ export function AnalyticsView() {
                     <InlineStack align="space-between">
                       <Text as="span" variant="bodyMd">Ventas totales</Text>
                       <InlineStack gap="100">
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(totalVentas)}</Text>
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">{i18n.formatCurrency(totalVentas, { currency: 'MXN' })}</Text>
                         <Text as="span" tone="subdued">—</Text>
                       </InlineStack>
                     </InlineStack>
@@ -377,14 +515,18 @@ export function AnalyticsView() {
                     {ventasPorMetodo.length === 0 ? (
                       <Text as="p" tone="subdued">No hay datos para este rango de fechas</Text>
                     ) : (
-                      <DonutChart
+                      <BarChart
                         data={[{
+                          name: 'Ingresos por método',
                           data: ventasPorMetodo.map(({ metodo, total }) => ({
-                            key: metodo,
-                            value: total,
+                            key: metodo || 'Otro',
+                            value: Number(total || 0),
                           })),
                         }]}
-                        legendPosition="bottom"
+                        horizontal
+                        xAxisOptions={{ 
+                          labelFormatter: (value) => i18n.formatCurrency(Number(value || 0), { currency: 'MXN', precision: 0 })
+                        }}
                       />
                     )}
                   </div>
@@ -398,7 +540,7 @@ export function AnalyticsView() {
                 <BlockStack gap="400">
                   <Text as="h3" variant="headingMd">Valor medio del pedido a lo largo del tiempo</Text>
                   <InlineStack align="start" blockAlign="baseline" gap="200">
-                    <Text as="h2" variant="headingXl">{formatCurrency(ticketPromedio)}</Text>
+                    <Text as="h2" variant="headingXl">{i18n.formatCurrency(ticketPromedio, { currency: 'MXN' })}</Text>
                     <Text as="span" variant="bodySm" tone="subdued">—</Text>
                   </InlineStack>
                   <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -410,7 +552,7 @@ export function AnalyticsView() {
                         theme="Light"
                         xAxisOptions={{ labelFormatter: () => '' }}
                         yAxisOptions={{ 
-                          labelFormatter: (value) => formatCurrency(Number(value || 0))
+                          labelFormatter: (value) => i18n.formatCurrency(Number(value || 0), { currency: 'MXN', precision: 0 })
                         }}
                       />
                     )}
@@ -438,7 +580,7 @@ export function AnalyticsView() {
                                 <Text as="span" variant="bodyMd">{producto.name}</Text>
                               </BlockStack>
                               <InlineStack gap="100">
-                                <Text as="span" variant="bodyMd" fontWeight="semibold">{formatCurrency(producto.total)}</Text>
+                                <Text as="span" variant="bodyMd" fontWeight="semibold">{i18n.formatCurrency(producto.total, { currency: 'MXN' })}</Text>
                                 <Text as="span" tone="subdued">—</Text>
                               </InlineStack>
                             </InlineStack>

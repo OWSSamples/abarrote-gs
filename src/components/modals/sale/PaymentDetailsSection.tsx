@@ -30,15 +30,14 @@ const paymentMethodOptions = [
   { label: 'Puntos de Lealtad (Monedero)', value: 'puntos' },
 ];
 
+import type { Field } from '@shopify/react-form';
+
 export interface PaymentDetailsSectionProps {
   currentUserRole: UserRoleRecord | null;
-  paymentMethod: string;
-  onPaymentMethodChange: (value: string) => void;
-  clienteId: string;
-  onClienteIdChange: (value: string) => void;
+  paymentMethodField: Field<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'tarjeta_web' | 'transferencia' | 'fiado' | 'puntos'>;
+  clienteIdField: Field<string>;
+  amountPaidField: Field<string>;
   clientes: Cliente[];
-  amountPaid: string;
-  onAmountPaidChange: (value: string) => void;
   total: number;
   subtotal: number;
   iva: number;
@@ -58,13 +57,10 @@ export interface PaymentDetailsSectionProps {
 
 export function PaymentDetailsSection({
   currentUserRole,
-  paymentMethod,
-  onPaymentMethodChange,
-  clienteId,
-  onClienteIdChange,
+  paymentMethodField,
+  clienteIdField,
+  amountPaidField,
   clientes,
-  amountPaid,
-  onAmountPaidChange,
   total,
   subtotal,
   iva,
@@ -94,11 +90,12 @@ export function PaymentDetailsSection({
       <FormSelect
         label="Método de pago"
         options={paymentMethodOptions}
-        value={paymentMethod}
+        value={paymentMethodField.value}
         onChange={(v) => {
-          onPaymentMethodChange(v);
-          if (v !== 'efectivo') onAmountPaidChange('');
+          paymentMethodField.onChange(v as any);
+          if (v !== 'efectivo') amountPaidField.onChange('');
         }}
+        error={paymentMethodField.error}
       />
 
       {/* Loyalty/Client Selection for all methods */}
@@ -111,11 +108,12 @@ export function PaymentDetailsSection({
             label: `${c.name} — Puntos: ${Math.floor(parseFloat(String(c.points)))} — Deuda: ${formatCurrency(c.balance)}`,
             value: c.id,
           }))}
-          selected={clienteId}
-          onChange={onClienteIdChange}
+          selected={clienteIdField.value}
+          onChange={clienteIdField.onChange}
+          error={clienteIdField.error}
         />
-        {clienteId && (() => {
-          const c = clientes.find((cl) => cl.id === clienteId);
+        {clienteIdField.value && (() => {
+          const c = clientes.find((cl) => cl.id === clienteIdField.value);
           if (!c) return null;
           return (
             <Banner tone="info">
@@ -128,13 +126,13 @@ export function PaymentDetailsSection({
         })()}
       </BlockStack>
 
-      {paymentMethod === 'fiado' && (
+      {paymentMethodField.value === 'fiado' && (
         <BlockStack gap="200">
           <Banner tone="warning">
             <p>Esta venta se registrará como <strong>fiado</strong>. El monto se sumará a la deuda del cliente.</p>
           </Banner>
-          {clienteId && (() => {
-            const c = clientes.find((cl) => cl.id === clienteId);
+          {clienteIdField.value && (() => {
+            const c = clientes.find((cl) => cl.id === clienteIdField.value);
             if (!c) return null;
             const disponible = Math.max(0, c.creditLimit - c.balance);
             const excedeCredito = total > 0 && (c.balance + total) > c.creditLimit;
@@ -164,7 +162,7 @@ export function PaymentDetailsSection({
         </BlockStack>
       )}
 
-      {paymentMethod === 'puntos' && (
+      {paymentMethodField.value === 'puntos' && (
         <BlockStack gap="200">
           <Banner tone="success">
             <p>Usando puntos de lealtad como método de pago.</p>
@@ -177,7 +175,7 @@ export function PaymentDetailsSection({
         </BlockStack>
       )}
 
-      {paymentMethod === 'tarjeta' && !mpConfig.enabled && (
+      {paymentMethodField.value === 'tarjeta' && !mpConfig.enabled && (
         <Banner tone="warning">
           <p>
             Terminal Mercado Pago no configurada. Ve a <strong>Configuración &gt; Mercado Pago</strong> para
@@ -185,7 +183,7 @@ export function PaymentDetailsSection({
           </p>
         </Banner>
       )}
-      {paymentMethod === 'tarjeta' && mpConfig.enabled && !mpProcessing && (
+      {paymentMethodField.value === 'tarjeta' && mpConfig.enabled && !mpProcessing && (
         <Banner tone="info">
           <p>
             Al cobrar, se enviará el monto de <strong>{formatCurrency(total)}</strong> a tu terminal
@@ -215,19 +213,20 @@ export function PaymentDetailsSection({
         </Card>
       )}
 
-      {paymentMethod === 'efectivo' && (
+      {paymentMethodField.value === 'efectivo' && (
         <BlockStack gap="200">
           <TextField
             label="Monto recibido"
             type="number"
-            value={amountPaid}
-            onChange={onAmountPaidChange}
+            value={amountPaidField.value}
+            onChange={amountPaidField.onChange}
+            error={amountPaidField.error}
             autoComplete="off"
             prefix="$"
             placeholder="0.00"
             helpText={total > 0 ? `Mínimo: ${formatCurrency(total)}` : undefined}
           />
-          {parseFloat(amountPaid) >= total && total > 0 && (
+          {parseFloat(amountPaidField.value) >= total && total > 0 && (
             <Banner tone="success">
               <InlineStack align="space-between">
                 <Text as="span" fontWeight="bold">Cambio:</Text>
@@ -238,7 +237,7 @@ export function PaymentDetailsSection({
         </BlockStack>
       )}
 
-      {paymentMethod === 'tarjeta_web' && (
+      {paymentMethodField.value === 'tarjeta_web' && (
         <BlockStack gap="400">
           <Banner tone="info">
             <p>

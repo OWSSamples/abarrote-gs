@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useForm, useField, notEmpty } from '@shopify/react-form';
 import {
   Modal,
   FormLayout,
@@ -56,45 +57,141 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const { showSuccess, showError } = useToast();
 
-  const [name, setName] = useState('');
-  const [sku, setSku] = useState('');
-  const [barcode, setBarcode] = useState('');
-  const [category, setCategory] = useState('');
-  const [unitPrice, setUnitPrice] = useState('');
-  const [costPrice, setCostPrice] = useState('');
-  const [unit, setUnit] = useState('pieza');
-  const [unitMultiple, setUnitMultiple] = useState('1');
-  const [currentStock, setCurrentStock] = useState('');
-  const [minStock, setMinStock] = useState('');
-  const [expirationDate, setExpirationDate] = useState('');
-  const [isPerishable, setIsPerishable] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const {
+    fields,
+    submit,
+    submitting,
+    dirty,
+    reset,
+    makeClean,
+  } = useForm({
+    fields: {
+      name: useField({
+        value: '',
+        validates: [notEmpty('El nombre es obligatorio')],
+      }),
+      sku: useField({
+        value: '',
+        validates: [notEmpty('El SKU es obligatorio')],
+      }),
+      barcode: useField({
+        value: '',
+        validates: [notEmpty('El código de barras es obligatorio')],
+      }),
+      category: useField({
+        value: '',
+        validates: [notEmpty('Selecciona una categoría')],
+      }),
+      unitPrice: useField({
+        value: '',
+        validates: [
+          notEmpty('Ingresa un precio de venta'),
+          (val) => (parseFloat(val) <= 0 ? 'Debe ser mayor a 0' : undefined),
+        ],
+      }),
+      costPrice: useField({
+        value: '',
+        validates: [
+          notEmpty('Ingresa un precio de costo'),
+          (val) => (parseFloat(val) <= 0 ? 'Debe ser mayor a 0' : undefined),
+          (val, { unitPrice }) => {
+            const cost = parseFloat(val);
+            const price = parseFloat(unitPrice);
+            if (!isNaN(cost) && !isNaN(price) && cost >= price) {
+              return 'El costo debe ser menor al precio de venta';
+            }
+          },
+        ],
+      }),
+      unit: useField('pieza'),
+      unitMultiple: useField('1'),
+      currentStock: useField({
+        value: '',
+        validates: [
+          notEmpty('Ingresa el stock'),
+          (val) => (parseInt(val) < 0 ? 'No puede ser negativo' : undefined),
+        ],
+      }),
+      minStock: useField({
+        value: '',
+        validates: [
+          notEmpty('Ingresa el stock mínimo'),
+          (val) => (parseInt(val) < 0 ? 'No puede ser negativo' : undefined),
+        ],
+      }),
+      isPerishable: useField(false),
+      expirationDate: useField({
+        value: '',
+        validates: [
+          (val, { isPerishable }) => {
+            if (isPerishable && !val) return 'Fecha obligatoria para perecederos';
+          },
+        ],
+      }),
+    },
+    onSubmit: async (form) => {
+      try {
+        let imageUrl = undefined;
+        if (file) {
+          const path = getProductImagePath(form.sku || Date.now().toString(), file.name);
+          imageUrl = await uploadFile(file, path);
+        }
 
-  const resetForm = useCallback(() => {
-    setName('');
-    setSku('');
-    setBarcode('');
-    setCategory('');
-    setUnitPrice('');
-    setCostPrice('');
-    setUnit('pieza');
-    setUnitMultiple('1');
-    setCurrentStock('');
-    setMinStock('');
-    setExpirationDate('');
-    setIsPerishable(false);
-    setFile(null);
-    setUploading(false);
-    setErrors({});
-  }, []);
+        await registerProduct({
+          name: form.name.trim(),
+          sku: form.sku.trim(),
+          barcode: form.barcode.trim(),
+          category: form.category,
+          costPrice: parseFloat(form.costPrice),
+          unitPrice: parseFloat(form.unitPrice),
+          unit: form.unit,
+          unitMultiple: parseInt(form.unitMultiple, 10) || 1,
+          currentStock: parseInt(form.currentStock),
+          minStock: parseInt(form.minStock),
+          expirationDate: form.isPerishable ? form.expirationDate : null,
+          isPerishable: form.isPerishable,
+          imageUrl,
+        });
+
+        showSuccess('Producto registrado correctamente');
+        onClose();
+        reset();
+        setFile(null);
+      } catch (err: any) {
+        showError(err.message || 'Error al registrar el producto');
+        return { status: 'fail', errors: [{ message: err.message }] };
+      }
+      return { status: 'success' };
+    },
+  });
+
+  const [file, setFile] = useState<File | null>(null);
 
   const handleDropZoneDrop = useCallback(
     (_dropFiles: File[], acceptedFiles: File[], _rejectedFiles: File[]) =>
       setFile(acceptedFiles[0]),
     [],
   );
+
+  // Auto-calculate suggested price when cost changes
+  useEffect(() => {
+    const cost = parseFloat(fields.costPrice.value);
+    if (!isNaN(cost) && cost > 0 && !fields.unitPrice.dirty) {
+      const defaultMargin = parseFloat(storeConfig.defaultMargin || '30');
+      const calculatedPrice = cost + (cost * (defaultMargin / 100));
+      fields.unitPrice.onChange(calculatedPrice.toFixed(2));
+    }
+  }, [fields.costPrice.value, storeConfig.defaultMargin, fields.unitPrice]);
+
+  const margin = parseFloat(fields.unitPrice.value) > 0 && parseFloat(fields.costPrice.value) > 0
+    ? (((parseFloat(fields.unitPrice.value) - parseFloat(fields.costPrice.value)) / parseFloat(fields.costPrice.value)) * 100).toFixed(1)
+    : null;
+
+  const handleClose = useCallback(() => {
+    reset();
+    setFile(null);
+    onClose();
+  }, [reset, onClose]);
 
   const fileUploadMarkup = !file && <DropZone.FileUpload actionHint="Archivos permitidos: .jpg, .png, .gif" />;
   const uploadedFileMarkup = file && (
@@ -113,84 +210,6 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
     </InlineStack>
   );
 
-  const validate = useCallback(() => {
-    const newErrors: Record<string, string> = {};
-    if (!name.trim()) newErrors.name = 'El nombre es obligatorio';
-    if (!sku.trim()) newErrors.sku = 'El SKU es obligatorio';
-    if (!barcode.trim()) newErrors.barcode = 'El código de barras es obligatorio';
-    if (!category) newErrors.category = 'Selecciona una categoría';
-    if (!costPrice || parseFloat(costPrice) <= 0) newErrors.costPrice = 'Ingresa un precio de costo válido';
-    if (!unitPrice || parseFloat(unitPrice) <= 0) newErrors.unitPrice = 'Ingresa un precio de venta válido';
-    if (parseFloat(unitPrice) > 0 && parseFloat(costPrice) > 0 && parseFloat(costPrice) >= parseFloat(unitPrice)) {
-      newErrors.costPrice = 'El precio de costo debe ser menor al precio de venta';
-    }
-    if (!currentStock || parseInt(currentStock) < 0) newErrors.currentStock = 'Ingresa un stock válido';
-    if (!minStock || parseInt(minStock) < 0) newErrors.minStock = 'Ingresa un stock mínimo válido';
-    if (isPerishable && !expirationDate) newErrors.expirationDate = 'Productos perecederos requieren fecha de vencimiento';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [name, sku, barcode, category, costPrice, unitPrice, currentStock, minStock, isPerishable, expirationDate]);
-
-  const handleCostPriceChange = useCallback((value: string) => {
-    setCostPrice(value);
-    const cost = parseFloat(value);
-    if (!isNaN(cost) && cost > 0) {
-      const defaultMargin = parseFloat(storeConfig.defaultMargin || '30');
-      const calculatedPrice = cost + (cost * (defaultMargin / 100));
-      setUnitPrice(calculatedPrice.toFixed(2));
-    } else if (value === '') {
-      setUnitPrice('');
-    }
-  }, [storeConfig.defaultMargin]);
-
-  const margin = parseFloat(unitPrice) > 0 && parseFloat(costPrice) > 0
-    ? (((parseFloat(unitPrice) - parseFloat(costPrice)) / parseFloat(costPrice)) * 100).toFixed(1)
-    : null;
-
-  const handleSubmit = useCallback(async () => {
-    if (!validate()) return;
-    setUploading(true);
-
-    try {
-      let imageUrl = undefined;
-      if (file) {
-        const path = getProductImagePath(sku || Date.now().toString(), file.name);
-        imageUrl = await uploadFile(file, path);
-      }
-
-      await registerProduct({
-        name: name.trim(),
-        sku: sku.trim(),
-        barcode: barcode.trim(),
-        category,
-        costPrice: parseFloat(costPrice),
-        unitPrice: parseFloat(unitPrice),
-        unit,
-        unitMultiple: parseInt(unitMultiple, 10) || 1,
-        currentStock: parseInt(currentStock),
-        minStock: parseInt(minStock),
-        expirationDate: isPerishable ? expirationDate : null,
-        isPerishable,
-        imageUrl,
-      });
-
-      showSuccess('Producto registrado correctamente');
-      onClose();
-      resetForm();
-    } catch (err: any) {
-      showError(err.message || 'Error al registrar el producto');
-    } finally {
-      setUploading(false);
-    }
-  }, [validate, file, name, sku, barcode, category, costPrice, unitPrice, currentStock, minStock, isPerishable, expirationDate, registerProduct, showSuccess, showError, onClose, resetForm]);
-
-  const handleClose = useCallback(() => {
-    resetForm();
-    onClose();
-  }, [resetForm, onClose]);
-
-  const hasErrors = Object.keys(errors).length > 0;
-
   return (
     <Modal
       open={open}
@@ -198,19 +217,13 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
       title="Registrar Nuevo Producto"
       primaryAction={{
         content: 'Registrar producto',
-        onAction: handleSubmit,
-        loading: uploading,
+        onAction: submit,
+        loading: submitting,
       }}
-      secondaryActions={[{ content: 'Cancelar', onAction: onClose, disabled: uploading }]}
+      secondaryActions={[{ content: 'Cancelar', onAction: handleClose, disabled: submitting }]}
     >
       <Modal.Section>
         <BlockStack gap="400">
-          {hasErrors && (
-            <Banner tone="warning">
-              <p>Por favor corrige los errores antes de continuar.</p>
-            </Banner>
-          )}
-
           <Text as="h3" variant="headingMd">Imagen del producto</Text>
           <Box padding="200" borderStyle="dashed" borderWidth="025" borderColor="border" borderRadius="200">
             <DropZone
@@ -220,7 +233,7 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
               labelHidden
               accept="image/*"
               type="image"
-              disabled={uploading}
+              disabled={submitting}
             >
               {uploadedFileMarkup}
               {fileUploadMarkup}
@@ -235,37 +248,31 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
             <FormLayout.Group>
               <TextField
                 label="Nombre del producto"
-                value={name}
-                onChange={setName}
                 autoComplete="off"
                 placeholder="Ej: Leche Lala 1L"
-                error={errors.name}
+                {...fields.name}
               />
               <TextField
                 label="SKU"
-                value={sku}
-                onChange={setSku}
                 autoComplete="off"
                 placeholder="Ej: LAC-001"
-                error={errors.sku}
                 helpText="Código interno del producto"
+                {...fields.sku}
               />
             </FormLayout.Group>
 
             <TextField
               label="Código de barras"
-              value={barcode}
-              onChange={setBarcode}
               autoComplete="off"
               placeholder="Escanea o escribe el código de barras"
-              error={errors.barcode}
               helpText="Escanea con el lector o escribe el código manualmente"
+              {...fields.barcode}
             />
 
             <CameraScanner
               onScan={(code) => {
-                setBarcode(code);
-                setErrors((prev) => { const { barcode: _, ...rest } = prev; return rest; });
+                fields.barcode.onChange(code);
+                fields.barcode.setError(undefined);
               }}
               buttonLabel="Escanear codigo con camara"
               compact
@@ -274,48 +281,40 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
             <FormSelect
               label="Categoría"
               options={categoryOptions}
-              value={category}
-              onChange={setCategory}
-              error={errors.category}
+              {...fields.category}
             />
 
             <FormLayout.Group>
               <TextField
                 label="Precio de costo (MXN)"
                 type="number"
-                value={costPrice}
-                onChange={handleCostPriceChange}
                 autoComplete="off"
                 prefix="$"
                 placeholder="0.00"
-                error={errors.costPrice}
                 helpText="Cuánto te cuesta"
+                {...fields.costPrice}
               />
               <TextField
                 label="Precio al público (MXN)"
                 type="number"
-                value={unitPrice}
-                onChange={setUnitPrice}
                 autoComplete="off"
                 prefix="$"
                 placeholder="0.00"
-                error={errors.unitPrice}
                 helpText={margin ? `Margen: ${margin}%` : 'Para venta'}
+                {...fields.unitPrice}
               />
               <FormSelect
                 label="Se vende por"
                 options={unitOptions}
-                value={unit}
-                onChange={setUnit}
+                {...fields.unit}
               />
               <TextField
                 label="Cantidad por venta"
                 type="number"
-                value={unitMultiple}
-                onChange={setUnitMultiple}
                 autoComplete="off"
                 min={1}
-                helpText={`Ej: Se venden ${unitMultiple || 1} pz por $${unitPrice || '0.00'}`}
+                helpText={`Ej: Se venden ${fields.unitMultiple.value || 1} pz por $${fields.unitPrice.value || '0.00'}`}
+                {...fields.unitMultiple}
               />
             </FormLayout.Group>
 
@@ -323,40 +322,34 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
               <TextField
                 label="Stock actual"
                 type="number"
-                value={currentStock}
-                onChange={setCurrentStock}
                 autoComplete="off"
                 placeholder="0"
-                error={errors.currentStock}
                 helpText="Cantidad actual en inventario"
+                {...fields.currentStock}
               />
               <TextField
                 label="Stock mínimo"
                 type="number"
-                value={minStock}
-                onChange={setMinStock}
                 autoComplete="off"
                 placeholder="0"
-                error={errors.minStock}
                 helpText="Alerta cuando baje de este nivel"
+                {...fields.minStock}
               />
             </FormLayout.Group>
 
             <Checkbox
               label="¿Es producto perecedero?"
-              checked={isPerishable}
-              onChange={setIsPerishable}
+              checked={fields.isPerishable.value}
+              onChange={fields.isPerishable.onChange}
               helpText="Marca si el producto tiene fecha de vencimiento"
             />
 
-            {isPerishable && (
+            {fields.isPerishable.value && (
               <TextField
                 label="Fecha de vencimiento"
                 type="date"
-                value={expirationDate}
-                onChange={setExpirationDate}
                 autoComplete="off"
-                error={errors.expirationDate}
+                {...fields.expirationDate}
               />
             )}
           </FormLayout>

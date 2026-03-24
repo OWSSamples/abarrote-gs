@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useForm, useField } from '@shopify/react-form';
 import {
   Text,
   BlockStack,
@@ -57,16 +58,82 @@ const SETTINGS_CATEGORIES = [
 export function ConfiguracionPage() {
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const saveStoreConfig = useDashboardStore((s) => s.saveStoreConfig);
-  const [config, setConfig] = useState<StoreConfig>(storeConfig);
+
+  const {
+    fields,
+    dirty: isDirty,
+    reset: resetConfig,
+    submitting: saving,
+    submit: handleSave,
+  } = useForm({
+    fields: {
+      storeName: useField(storeConfig.storeName || ''),
+      legalName: useField(storeConfig.legalName || ''),
+      address: useField(storeConfig.address || ''),
+      city: useField(storeConfig.city || ''),
+      postalCode: useField(storeConfig.postalCode || ''),
+      phone: useField(storeConfig.phone || ''),
+      rfc: useField(storeConfig.rfc || ''),
+      regimenFiscal: useField(storeConfig.regimenFiscal || ''),
+      regimenDescription: useField(storeConfig.regimenDescription || ''),
+      ivaRate: useField(storeConfig.ivaRate || '16'),
+      pricesIncludeIva: useField(storeConfig.pricesIncludeIva ?? true),
+      currency: useField(storeConfig.currency || 'MXN'),
+      lowStockThreshold: useField(storeConfig.lowStockThreshold || '25'),
+      expirationWarningDays: useField(storeConfig.expirationWarningDays || '7'),
+      printReceipts: useField(storeConfig.printReceipts ?? true),
+      autoBackup: useField(storeConfig.autoBackup ?? false),
+      ticketFooter: useField(storeConfig.ticketFooter || ''),
+      ticketServicePhone: useField(storeConfig.ticketServicePhone || ''),
+      ticketVigencia: useField(storeConfig.ticketVigencia || ''),
+      storeNumber: useField(storeConfig.storeNumber || '001'),
+      ticketBarcodeFormat: useField(storeConfig.ticketBarcodeFormat || 'CODE128'),
+      enableNotifications: useField(storeConfig.enableNotifications ?? false),
+      telegramToken: useField(storeConfig.telegramToken || ''),
+      telegramChatId: useField(storeConfig.telegramChatId || ''),
+      printerIp: useField(storeConfig.printerIp || ''),
+      cashDrawerPort: useField(storeConfig.cashDrawerPort || ''),
+      scalePort: useField(storeConfig.scalePort || ''),
+      loyaltyEnabled: useField(storeConfig.loyaltyEnabled ?? false),
+      pointsPerPeso: useField(storeConfig.pointsPerPeso ?? 100),
+      pointsValue: useField(storeConfig.pointsValue ?? 1),
+      logoUrl: useField(storeConfig.logoUrl || ''),
+      inventoryGeneralColumns: useField(storeConfig.inventoryGeneralColumns || '["title","sku","available","onHand"]'),
+      defaultMargin: useField(storeConfig.defaultMargin || '30'),
+      ticketTemplateVenta: useField(storeConfig.ticketTemplateVenta || ''),
+      ticketTemplateProveedor: useField(storeConfig.ticketTemplateProveedor || ''),
+      closeSystemTime: useField(storeConfig.closeSystemTime || '23:00'),
+      autoCorteTime: useField(storeConfig.autoCorteTime || '00:00'),
+    },
+    onSubmit: async (f) => {
+      await saveStoreConfig(f as any);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      return { status: 'success' };
+    },
+  });
+
   const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
+  // Sync with store when it changes externally
   useEffect(() => {
-    setConfig(storeConfig);
-  }, [storeConfig]);
+    resetConfig();
+  }, [storeConfig, resetConfig]);
 
-  const isDirty = JSON.stringify(config) !== JSON.stringify(storeConfig);
+  // Derived config object for sub-components (read-only or for preview)
+  const config = useMemo(() => {
+    const obj: any = {};
+    Object.keys(fields).forEach(key => {
+      obj[key] = (fields as any)[key].value;
+    });
+    return obj as StoreConfig;
+  }, [fields]);
+
+  const updateField = useCallback(<K extends keyof StoreConfig>(field: K, value: StoreConfig[K]) => {
+    (fields as any)[field].onChange(value);
+  }, [fields]);
+
 
   // Mercado Pago config
   const [mpConfig, setMpConfig] = useState<MercadoPagoConfig>({ publicKey: '', deviceId: '', enabled: false });
@@ -85,11 +152,6 @@ export function ConfiguracionPage() {
 
   useEffect(() => {
     setMpConfig(getMPConfig());
-  }, []);
-
-  const updateField = useCallback(<K extends keyof StoreConfig>(field: K, value: StoreConfig[K]) => {
-    setConfig(prev => ({ ...prev, [field]: value }));
-    setSaved(false);
   }, []);
 
   const handleLogoDrop = useCallback((_accepted: File[], rejected: File[]) => {
@@ -113,18 +175,6 @@ export function ConfiguracionPage() {
       setLogoUploading(false);
     }
   }, [updateField]);
-
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    try {
-      await saveStoreConfig(config);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (err) {
-      console.error('Error saving config:', err);
-    }
-    setSaving(false);
-  }, [config, saveStoreConfig]);
 
   const handleMPSave = useCallback(() => {
     saveMPConfig(mpConfig);
@@ -153,19 +203,19 @@ export function ConfiguracionPage() {
   }, [mpConfig.deviceId]);
 
   const handleTGTest = useCallback(async () => {
-    if (!config.telegramToken || !config.telegramChatId) {
+    if (!fields.telegramToken.value || !fields.telegramChatId.value) {
       setTgTestResult({ success: false, message: 'Ingresa Token y Chat ID primero' });
       return;
     }
     setTgTesting(true);
     setTgTestResult(null);
     try {
-      const url = `https://api.telegram.org/bot${config.telegramToken}/sendMessage`;
+      const url = `https://api.telegram.org/bot${fields.telegramToken.value}/sendMessage`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chat_id: config.telegramChatId,
+          chat_id: fields.telegramChatId.value,
           text: '✅ <b>PRUEBA DE CONEXIÓN</b>\n\nTu consola de abarrotes está conectada correctamente a Telegram.',
           parse_mode: 'HTML',
         }),
@@ -180,7 +230,7 @@ export function ConfiguracionPage() {
       setTgTestResult({ success: false, message: 'Error al conectar con Telegram API' });
     }
     setTgTesting(false);
-  }, [config.telegramToken, config.telegramChatId]);
+  }, [fields.telegramToken.value, fields.telegramChatId.value]);
 
   // ================= MAIN RENDER ================= //
 
@@ -258,7 +308,7 @@ export function ConfiguracionPage() {
           } : undefined}
           secondaryActions={isDirty ? [{
             content: 'Descartar',
-            onAction: () => setConfig(storeConfig),
+            onAction: resetConfig,
             destructive: true,
           }] : []}
         >

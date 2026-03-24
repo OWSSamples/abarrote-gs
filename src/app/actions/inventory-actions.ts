@@ -71,14 +71,14 @@ export async function fetchInventoryAlerts(): Promise<InventoryAlert[]> {
 
 export async function fetchKPIData(): Promise<KPIData> {
   await requireAuth();
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  const yesterday = new Date(today);
+  const now = new Date();
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(now);
+  const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
-  const sevenDaysLater = new Date(today);
+  const yesterdayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(yesterday);
+  const sevenDaysLater = new Date(now);
   sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-  const thirtyDaysAgo = new Date(today);
+  const thirtyDaysAgo = new Date(now);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const { saleRecords } = await import('@/db/schema');

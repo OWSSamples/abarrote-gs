@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { useForm, useField } from '@shopify/react-form';
+import { useI18n } from '@shopify/react-i18n';
 import {
   Card,
   IndexTable,
@@ -61,29 +63,79 @@ export function GastosManager() {
   const deleteGasto = useDashboardStore((s) => s.deleteGasto);
   const saleRecords = useDashboardStore((s) => s.saleRecords);
   const { showSuccess, showError } = useToast();
+  const [i18n] = useI18n();
 
   const [addOpen, setAddOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [filterCategoria, setFilterCategoria] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
 
-  // Form state
-  const [concepto, setConcepto] = useState('');
-  const [categoria, setCategoria] = useState<GastoCategoria | ''>('');
-  const [monto, setMonto] = useState('');
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
-  const [notasGasto, setNotasGasto] = useState('');
-  const [comprobante, setComprobante] = useState(false);
+  // ── Form State (Add Gasto) ──
+  const {
+    fields: addFields,
+    reset: resetAddForm,
+    validate: validateAdd,
+    submitting: addSubmitting,
+    submit: submitAdd,
+  } = useForm({
+    fields: {
+      concepto: useField({ value: '', validates: [(v) => (v.trim() ? undefined : 'Ingresa el concepto')] }),
+      categoria: useField<GastoCategoria | ''>({ value: '', validates: [(v) => (v ? undefined : 'Selecciona una categoría')] }),
+      monto: useField({ value: '', validates: [(v) => (v && parseFloat(v) > 0 ? undefined : 'Ingresa un monto válido')] }),
+      fecha: useField(new Date().toISOString().split('T')[0]),
+      notas: useField(''),
+      comprobante: useField(false),
+    },
+    onSubmit: async (f) => {
+      await registerGasto({
+        concepto: f.concepto.trim(),
+        categoria: f.categoria as GastoCategoria,
+        monto: parseFloat(f.monto),
+        fecha: f.fecha,
+        notas: f.notas,
+        comprobante: f.comprobante,
+      });
+      showSuccess(`Gasto "${f.concepto}" registrado`);
+      setAddOpen(false);
+      resetAddForm();
+      return { status: 'success' };
+    },
+  });
 
-  // Edit gasto state
-  const [editOpen, setEditOpen] = useState(false);
+  // ── Form State (Edit Gasto) ──
   const [editId, setEditId] = useState('');
-  const [editConcepto, setEditConcepto] = useState('');
-  const [editCategoria, setEditCategoria] = useState<GastoCategoria | ''>('');
-  const [editMonto, setEditMonto] = useState('');
-  const [editFecha, setEditFecha] = useState('');
-  const [editNotas, setEditNotas] = useState('');
-  const [editComprobante, setEditComprobante] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const {
+    fields: editFields,
+    reset: resetEditForm,
+    validate: validateEdit,
+    submitting: editSubmitting,
+    makeClean: makeEditClean,
+    submit: submitEdit,
+  } = useForm({
+    fields: {
+      concepto: useField({ value: '', validates: [(v) => (v.trim() ? undefined : 'Ingresa el concepto')] }),
+      categoria: useField<GastoCategoria | ''>({ value: '', validates: [(v) => (v ? undefined : 'Selecciona una categoría')] }),
+      monto: useField({ value: '', validates: [(v) => (v && parseFloat(v) > 0 ? undefined : 'Ingresa un monto válido')] }),
+      fecha: useField(''),
+      notas: useField(''),
+      comprobante: useField(false),
+    },
+    onSubmit: async (f) => {
+      await updateGasto(editId, {
+        concepto: f.concepto.trim(),
+        categoria: f.categoria as GastoCategoria,
+        monto: parseFloat(f.monto),
+        fecha: f.fecha,
+        notas: f.notas,
+        comprobante: f.comprobante,
+      });
+      showSuccess('Gasto actualizado');
+      setEditOpen(false);
+      return { status: 'success' };
+    },
+  });
+
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -117,54 +169,19 @@ export function GastosManager() {
       .sort(([, a], [, b]) => (b as number) - (a as number)) as [GastoCategoria, number][];
   }, [filteredGastos]);
 
-  const handleSubmit = useCallback(async () => {
-    if (!concepto.trim()) { showError('Ingresa el concepto'); return; }
-    if (!categoria) { showError('Selecciona una categoría'); return; }
-    if (!monto || parseFloat(monto) <= 0) { showError('Ingresa un monto válido'); return; }
-
-    await registerGasto({
-      concepto: concepto.trim(),
-      categoria: categoria as GastoCategoria,
-      monto: parseFloat(monto),
-      fecha,
-      notas: notasGasto,
-      comprobante,
-    });
-
-    showSuccess(`Gasto "${concepto}" por ${formatCurrency(parseFloat(monto))} registrado`);
-    setConcepto(''); setCategoria(''); setMonto(''); setNotasGasto(''); setComprobante(false);
-    setFecha(new Date().toISOString().split('T')[0]);
-    setAddOpen(false);
-  }, [concepto, categoria, monto, fecha, notasGasto, comprobante, registerGasto, showSuccess, showError]);
-
-  const handleStartEdit = useCallback((gasto: typeof gastos[0]) => {
-    setEditId(gasto.id);
-    setEditConcepto(gasto.concepto);
-    setEditCategoria(gasto.categoria);
-    setEditMonto(String(gasto.monto));
-    setEditFecha(gasto.fecha);
-    setEditNotas(gasto.notas || '');
-    setEditComprobante(gasto.comprobante);
+  const handleStartEdit = useCallback((g: (typeof gastos)[0]) => {
+    setEditId(g.id);
+    editFields.concepto.onChange(g.concepto);
+    editFields.categoria.onChange(g.categoria);
+    editFields.monto.onChange(String(g.monto));
+    editFields.fecha.onChange(g.fecha);
+    editFields.notas.onChange(g.notas || '');
+    editFields.comprobante.onChange(g.comprobante);
+    makeEditClean();
     setEditOpen(true);
-  }, []);
+  }, [editFields, makeEditClean]);
 
-  const handleSaveEdit = useCallback(async () => {
-    if (!editConcepto.trim()) { showError('Ingresa el concepto'); return; }
-    if (!editCategoria) { showError('Selecciona una categoría'); return; }
-    if (!editMonto || parseFloat(editMonto) <= 0) { showError('Ingresa un monto válido'); return; }
-    try {
-      await updateGasto(editId, {
-        concepto: editConcepto.trim(),
-        categoria: editCategoria as GastoCategoria,
-        monto: parseFloat(editMonto),
-        fecha: editFecha,
-        notas: editNotas,
-        comprobante: editComprobante,
-      });
-      showSuccess('Gasto actualizado');
-      setEditOpen(false);
-    } catch { showError('Error al actualizar gasto'); }
-  }, [editId, editConcepto, editCategoria, editMonto, editFecha, editNotas, editComprobante, updateGasto, showSuccess, showError]);
+  // edit logic moved to useForm onSubmit
 
   const handleDeleteGasto = useCallback(async (id: string) => {
     setDeleting(true);
@@ -317,52 +334,54 @@ export function GastosManager() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         title="Registrar Gasto"
-        primaryAction={{ content: 'Guardar Gasto', onAction: handleSubmit, disabled: !concepto.trim() || !categoria || !monto }}
+        primaryAction={{ content: 'Guardar Gasto', onAction: () => {
+          if (validateAdd().length === 0) submitAdd();
+        }, loading: addSubmitting }}
         secondaryActions={[{ content: 'Cancelar', onAction: () => setAddOpen(false) }]}
       >
         <Modal.Section>
           <FormLayout>
             <TextField
               label="Concepto"
-              value={concepto}
-              onChange={setConcepto}
+              value={addFields.concepto.value}
+              onChange={addFields.concepto.onChange}
+              error={addFields.concepto.error}
               autoComplete="off"
-              placeholder="Ej: Pago de luz bimestral"
             />
             <Select
               label="Categoría"
               options={[{ label: 'Seleccionar...', value: '' }, ...categoriaFormOptions] as { label: string; value: string }[]}
-              value={categoria}
-              onChange={(v) => setCategoria(v as GastoCategoria)}
+              value={addFields.categoria.value}
+              onChange={(v) => addFields.categoria.onChange(v as GastoCategoria)}
+              error={addFields.categoria.error}
             />
             <TextField
               label="Monto (MXN)"
               type="number"
-              value={monto}
-              onChange={setMonto}
+              value={addFields.monto.value}
+              onChange={addFields.monto.onChange}
+              error={addFields.monto.error}
               autoComplete="off"
               prefix="$"
-              placeholder="0.00"
             />
             <TextField
               label="Fecha"
               type="date"
-              value={fecha}
-              onChange={setFecha}
+              value={addFields.fecha.value}
+              onChange={addFields.fecha.onChange}
               autoComplete="off"
             />
             <TextField
               label="Notas (opcional)"
-              value={notasGasto}
-              onChange={setNotasGasto}
+              value={addFields.notas.value}
+              onChange={addFields.notas.onChange}
               autoComplete="off"
               multiline={2}
-              placeholder="Detalles adicionales..."
             />
             <Checkbox
               label="¿Tiene comprobante/factura?"
-              checked={comprobante}
-              onChange={setComprobante}
+              checked={addFields.comprobante.value}
+              onChange={addFields.comprobante.onChange}
             />
           </FormLayout>
         </Modal.Section>
@@ -373,22 +392,25 @@ export function GastosManager() {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         title="Editar Gasto"
-        primaryAction={{ content: 'Guardar Cambios', onAction: handleSaveEdit, disabled: !editConcepto.trim() || !editCategoria || !editMonto }}
+        primaryAction={{ content: 'Guardar Cambios', onAction: () => {
+          if (validateEdit().length === 0) submitEdit();
+        }, loading: editSubmitting }}
         secondaryActions={[{ content: 'Cancelar', onAction: () => setEditOpen(false) }]}
       >
         <Modal.Section>
           <FormLayout>
-            <TextField label="Concepto" value={editConcepto} onChange={setEditConcepto} autoComplete="off" />
+            <TextField label="Concepto" value={editFields.concepto.value} onChange={editFields.concepto.onChange} error={editFields.concepto.error} autoComplete="off" />
             <Select
               label="Categoría"
               options={[{ label: 'Seleccionar...', value: '' }, ...categoriaFormOptions] as { label: string; value: string }[]}
-              value={editCategoria}
-              onChange={(v) => setEditCategoria(v as GastoCategoria)}
+              value={editFields.categoria.value}
+              onChange={(v) => editFields.categoria.onChange(v as GastoCategoria)}
+              error={editFields.categoria.error}
             />
-            <TextField label="Monto (MXN)" type="number" value={editMonto} onChange={setEditMonto} autoComplete="off" prefix="$" />
-            <TextField label="Fecha" type="date" value={editFecha} onChange={setEditFecha} autoComplete="off" />
-            <TextField label="Notas (opcional)" value={editNotas} onChange={setEditNotas} autoComplete="off" multiline={2} />
-            <Checkbox label="¿Tiene comprobante/factura?" checked={editComprobante} onChange={setEditComprobante} />
+            <TextField label="Monto (MXN)" type="number" value={editFields.monto.value} onChange={editFields.monto.onChange} error={editFields.monto.error} autoComplete="off" prefix="$" />
+            <TextField label="Fecha" type="date" value={editFields.fecha.value} onChange={editFields.fecha.onChange} autoComplete="off" />
+            <TextField label="Notas (opcional)" value={editFields.notas.value} onChange={editFields.notas.onChange} autoComplete="off" multiline={2} />
+            <Checkbox label="¿Tiene comprobante/factura?" checked={editFields.comprobante.value} onChange={editFields.comprobante.onChange} />
           </FormLayout>
         </Modal.Section>
       </Modal>
@@ -400,10 +422,10 @@ export function GastosManager() {
         exportName="gastos"
         onExport={(format) => {
           const exportData = filteredGastos.map(g => ({
-            "Fecha": new Date(g.fecha).toLocaleDateString('es-MX'),
+            "Fecha": i18n.formatDate(new Date(g.fecha)),
             "Concepto": g.concepto,
             "Categoría": categoriaBadge[g.categoria]?.label || g.categoria,
-            "Monto": g.monto,
+            "Monto": i18n.formatCurrency(g.monto, { currency: 'MXN' }),
             "Notas": g.notas || 'N/A',
             "Comprobante": g.comprobante ? 'Sí' : 'No'
           }));

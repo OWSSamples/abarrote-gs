@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useForm, useField } from '@shopify/react-form';
 import {
   Modal,
   BlockStack,
@@ -49,18 +50,48 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   // Permissions
   const { hasPermission } = usePermissions();
 
-  // State
+  // ── Form State (using @shopify/react-form) ──
+  const {
+    fields,
+    reset: resetCheckoutForm,
+    validate: validateCheckout,
+    submitting,
+  } = useForm({
+    fields: {
+      paymentMethod: useField<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'tarjeta_web' | 'transferencia' | 'fiado' | 'puntos'>('efectivo'),
+      amountPaid: useField({
+        value: '',
+        validates: [
+          (val, { paymentMethod, total }) => {
+            if (paymentMethod === 'efectivo') {
+              const paid = parseFloat(val);
+              if (isNaN(paid) || paid < total) return `Monto insuficiente. Total: ${formatCurrency(total)}`;
+            }
+          }
+        ]
+      }),
+      clienteId: useField({
+        value: '',
+        validates: [
+          (val, { paymentMethod }) => {
+            if ((paymentMethod === 'fiado' || paymentMethod === 'puntos') && !val) {
+              return 'Debes seleccionar un cliente';
+            }
+          }
+        ]
+      }),
+      discount: useField(''),
+      discountType: useField<'amount' | 'percent'>('amount'),
+      barcodeInput: useField(''),
+    },
+    onSubmit: async () => ({ status: 'success' }),
+  });
+
   const [items, setItems] = useState<SaleItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState('');
   const [quantity, setQuantity] = useState('1');
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'tarjeta_web' | 'transferencia' | 'fiado' | 'puntos'>('efectivo');
-  const [amountPaid, setAmountPaid] = useState('');
-  const [clienteId, setClienteId] = useState('');
   const [completedSale, setCompletedSale] = useState<SaleRecord | null>(null);
-  const [barcodeInput, setBarcodeInput] = useState('');
   const [barcodeError, setBarcodeError] = useState('');
-  const [discount, setDiscount] = useState('');
-  const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountPending, setDiscountPending] = useState(false);
   const [pinPadOpen, setPinPadOpen] = useState(false);
   const [pinPadAction, setPinPadAction] = useState<{ type: string; payload: string } | null>(null);
@@ -75,22 +106,20 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     return merged;
   }, [products, inventoryAlerts]);
 
-  const productOptions = useMemo(() => {
-    return [
-      { label: 'Seleccionar producto...', value: '' },
-      ...allProducts.map((p) => ({
-        label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
-        value: p.id,
-      })),
-    ];
-  }, [allProducts]);
-
   // Calculations
   const {
     subtotal, discountAmount, subtotalAfterDiscount, iva, cardSurcharge,
     pointsEarned, pointsAvailable, total, pointsUsed, change,
   } = useSaleCalculations({
-    items, discount, discountType, discountPending, paymentMethod, clienteId, clientes, amountPaid, storeConfig,
+    items, 
+    discount: fields.discount.value, 
+    discountType: fields.discountType.value, 
+    discountPending, 
+    paymentMethod: fields.paymentMethod.value, 
+    clienteId: fields.clienteId.value, 
+    clientes, 
+    amountPaid: fields.amountPaid.value, 
+    storeConfig,
   });
 
   // Mercado Pago terminal
@@ -103,7 +132,12 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   });
 
   // Ticket printer
-  const { handlePrint } = useTicketPrinter({ completedSale, storeConfig, clienteId, clientes });
+  const { handlePrint } = useTicketPrinter({ 
+    completedSale, 
+    storeConfig, 
+    clienteId: fields.clienteId.value, 
+    clientes 
+  });
 
   // ── Callbacks ──
 
@@ -111,17 +145,12 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setItems([]);
     setSelectedProduct('');
     setQuantity('1');
-    setPaymentMethod('efectivo');
-    setAmountPaid('');
-    setClienteId('');
+    resetCheckoutForm();
     setCompletedSale(null);
-    setBarcodeInput('');
     setBarcodeError('');
-    setDiscount('');
-    setDiscountType('amount');
     setDiscountPending(false);
     resetMpState();
-  }, [resetMpState]);
+  }, [resetCheckoutForm, resetMpState]);
 
   const handleBarcodeScan = useCallback((code: string) => {
     if (!code.trim()) return;
@@ -132,7 +161,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     );
     if (!product) {
       setBarcodeError(`Producto no encontrado: "${code}"`);
-      setBarcodeInput('');
+      fields.barcodeInput.onChange('');
       return;
     }
 
@@ -140,7 +169,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     const currentQty = existingItem ? existingItem.quantity : 0;
     if (currentQty + 1 > product.currentStock) {
       setBarcodeError(`Stock insuficiente de ${product.name}. Solo hay ${product.currentStock} unidades.`);
-      setBarcodeInput('');
+      fields.barcodeInput.onChange('');
       return;
     }
 
@@ -159,8 +188,8 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       ]);
     }
     showSuccess(`${product.name} agregado`);
-    setBarcodeInput('');
-  }, [allProducts, items, showSuccess]);
+    fields.barcodeInput.onChange('');
+  }, [allProducts, items, showSuccess, fields.barcodeInput]);
 
   const addItem = useCallback(() => {
     if (!selectedProduct) return;
@@ -205,7 +234,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   }, [hasPermission]);
 
   const handleApplyDiscount = useCallback(() => {
-    if (!discount || parseFloat(discount) <= 0) return;
+    if (!fields.discount.value || parseFloat(fields.discount.value) <= 0) return;
     if (hasPermission('sales.discount')) {
       setDiscountPending(false);
     } else {
@@ -213,7 +242,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       setPinPadAction({ type: 'discount', payload: '' });
       setPinPadOpen(true);
     }
-  }, [discount, hasPermission]);
+  }, [fields.discount.value, hasPermission]);
 
   const handlePinSuccess = useCallback((_uid: string, _name: string) => {
     if (pinPadAction?.type === 'delete') {
@@ -228,13 +257,10 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setPinPadAction(null);
   }, [pinPadAction, showSuccess]);
 
-  const [isSaving, setIsSaving] = useState(false);
-
   const finishSale = useCallback(async (pmOverride?: string) => {
     console.log('--- ENTRANDO A FINISHSALE ---');
-    setIsSaving(true);
     try {
-      const pMethod = pmOverride || (paymentMethod === 'tarjeta_manual' ? 'tarjeta' : paymentMethod);
+      const pMethod = pmOverride || (fields.paymentMethod.value === 'tarjeta_manual' ? 'tarjeta' : fields.paymentMethod.value);
       
       const payload = {
         items,
@@ -243,24 +269,24 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         cardSurcharge,
         total,
         paymentMethod: pMethod,
-        amountPaid: paymentMethod === 'efectivo' ? parseFloat(amountPaid) || 0 : total,
-        change: paymentMethod === 'efectivo' ? change : 0,
+        amountPaid: fields.paymentMethod.value === 'efectivo' ? parseFloat(fields.amountPaid.value) || 0 : total,
+        change: fields.paymentMethod.value === 'efectivo' ? change : 0,
         cajero: currentUserRole?.globalId || currentUserRole?.employeeNumber || currentUserRole?.displayName || 'Cajero',
         pointsEarned,
         pointsUsed,
         discount: discountAmount,
-        discountType,
-        clienteId: clienteId || undefined,
+        discountType: fields.discountType.value,
+        clienteId: fields.clienteId.value || undefined,
       } as any;
 
       console.log('Payload de venta:', payload);
       const sale = await registerSale(payload);
       console.log('Venta registrada con éxito:', sale);
 
-      if (paymentMethod === 'fiado') {
+      if (fields.paymentMethod.value === 'fiado') {
         const itemDescriptions = items.map((i) => `${i.productName} x${i.quantity}`).join(', ');
-        await registerFiado(clienteId, total, itemDescriptions, sale.folio, items);
-        const cliente = clientes.find((c) => c.id === clienteId);
+        await registerFiado(fields.clienteId.value, total, itemDescriptions, sale.folio, items);
+        const cliente = clientes.find((c) => c.id === fields.clienteId.value);
         showSuccess(`Venta ${sale.folio} registrada como fiado para ${cliente?.name || 'cliente'}. Total: ${formatCurrency(sale.total)}`);
       } else {
         showSuccess(`Venta ${sale.folio} registrada correctamente`);
@@ -269,51 +295,76 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     } catch (error: any) {
       console.error('Sale Registration Error (Modal):', error);
       showError(`Error al registrar la venta: ${error?.message || 'Error de conexión o permisos'}`);
-    } finally {
-      setIsSaving(false);
     }
-  }, [items, paymentMethod, amountPaid, total, subtotalAfterDiscount, iva, cardSurcharge, change, registerSale, currentUserRole, pointsEarned, pointsUsed, discountAmount, discountType, registerFiado, clienteId, clientes, showSuccess, showError]);
+  }, [items, fields.paymentMethod.value, fields.amountPaid.value, fields.discountType.value, fields.clienteId.value, total, subtotalAfterDiscount, iva, cardSurcharge, change, registerSale, currentUserRole, pointsEarned, pointsUsed, discountAmount, registerFiado, clientes, showSuccess, showError]);
+
+  // ── Customer Display Synchronization ──
+  useEffect(() => {
+    const channel = new BroadcastChannel('customer_display');
+    
+    // Determine status
+    let status: 'idle' | 'active' | 'paying' | 'finished' = 'idle';
+    if (open) {
+      if (completedSale) status = 'finished';
+      else if (submitting || mpProcessing) status = 'paying';
+      else if (items.length > 0) status = 'active';
+      else status = 'idle';
+    }
+
+    channel.postMessage({
+      type: 'UPDATE_SALE',
+      payload: {
+        items,
+        total,
+        subtotal,
+        iva,
+        cardSurcharge,
+        discountAmount,
+        paymentMethod: fields.paymentMethod.value,
+        status,
+        folio: completedSale?.folio
+      }
+    });
+
+    return () => channel.close();
+  }, [open, items, total, subtotal, iva, cardSurcharge, discountAmount, fields.paymentMethod.value, submitting, mpProcessing, completedSale]);
 
   const handleSale = useCallback(async () => {
     console.log('--- EVENTO: CLICK EN COBRAR ---');
     if (items.length === 0) { showError('Agrega al menos un producto a la venta'); return; }
-    
-    // Validación de efectivo robusta contra NaN
-    if (paymentMethod === 'efectivo') {
-      const paid = parseFloat(amountPaid);
-      if (isNaN(paid) || paid < total) {
-        showError(`Monto insuficiente. El total es ${formatCurrency(total)}`);
-        return;
-      }
+
+    const errors = validateCheckout();
+    if (errors.length > 0) {
+      showError(errors[0].message);
+      return;
     }
 
-    if (paymentMethod === 'fiado') {
-      if (!clienteId) { showError('Selecciona un cliente para el fiado'); return; }
-      const cliente = clientes.find((c) => c.id === clienteId);
+    // Verificar horario de cierre
+    const now = new Date();
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    if (storeConfig.closeSystemTime && currentTime >= storeConfig.closeSystemTime) {
+      showError(`Sistema cerrado. Cierre: ${storeConfig.closeSystemTime}`);
+      return;
+    }
+
+    if (fields.paymentMethod.value === 'fiado') {
+      const cliente = clientes.find((c) => c.id === fields.clienteId.value);
       if (cliente && (parseFloat(String(cliente.balance)) + total) > parseFloat(String(cliente.creditLimit))) {
-        showError(`El cliente excede su límite de crédito. Disponible: ${formatCurrency(Math.max(0, parseFloat(String(cliente.creditLimit)) - parseFloat(String(cliente.balance))))}`);
+        showError(`Excede límite de crédito. Disponible: ${formatCurrency(Math.max(0, parseFloat(String(cliente.creditLimit)) - parseFloat(String(cliente.balance))))}`);
         return;
       }
     }
     
-    if (paymentMethod === 'puntos') {
-      if (!clienteId) { showError('Debes seleccionar un cliente para usar sus puntos'); return; }
-      if (pointsAvailable <= 0) { showError('El cliente no tiene puntos disponibles'); return; }
-    }
-    
-    if (paymentMethod === 'tarjeta' && mpConfig.enabled) { 
-      if (handleMPTerminalPaymentRef.current) {
-        await handleMPTerminalPaymentRef.current(); 
-      } else {
-        showError('No se pudo iniciar el pago con terminal. Intenta de nuevo.');
-      }
+    if (fields.paymentMethod.value === 'tarjeta' && mpConfig.enabled) { 
+      if (handleMPTerminalPaymentRef.current) await handleMPTerminalPaymentRef.current(); 
+      else showError('Error terminal MP');
       return; 
     }
     
-    if (paymentMethod === 'tarjeta_web') { showError('Completa el pago mediante el formulario de Mercado Pago arriba.'); return; }
+    if (fields.paymentMethod.value === 'tarjeta_web') { showError('Completa el pago MP Web'); return; }
 
     await finishSale();
-  }, [items, paymentMethod, amountPaid, total, clienteId, clientes, pointsAvailable, mpConfig.enabled, showError, finishSale]);
+  }, [items, fields.paymentMethod.value, fields.clienteId.value, total, clientes, mpConfig.enabled, storeConfig.closeSystemTime, validateCheckout, showError, finishSale]);
 
   const handleClose = useCallback(() => { resetForm(); onClose(); }, [resetForm, onClose]);
 
@@ -324,7 +375,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         open={open}
         completedSale={completedSale}
         storeConfig={storeConfig}
-        clienteId={clienteId}
+        clienteId={fields.clienteId.value}
         clientes={clientes}
         onPrint={handlePrint}
         onNewSale={resetForm}
@@ -341,10 +392,10 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         onClose={handleClose}
         title="Registrar Venta"
         primaryAction={{
-          content: isSaving ? 'Procesando...' : `Cobrar ${formatCurrency(total)}`,
+          content: submitting ? 'Procesando...' : `Cobrar ${formatCurrency(total)}`,
           onAction: handleSale,
-          loading: isSaving,
-          disabled: items.length === 0 || isSaving,
+          loading: submitting,
+          disabled: items.length === 0 || submitting,
         }}
         secondaryActions={[{ content: 'Cancelar', onAction: handleClose }]}
         size="large"
@@ -352,8 +403,8 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         <Modal.Section>
           <BlockStack gap="400">
             <BarcodeScannerCard
-              barcodeInput={barcodeInput}
-              onBarcodeInputChange={(val) => { setBarcodeInput(val); setBarcodeError(''); }}
+              barcodeInput={fields.barcodeInput.value}
+              onBarcodeInputChange={(val) => { fields.barcodeInput.onChange(val); setBarcodeError(''); }}
               barcodeError={barcodeError}
               onScan={handleBarcodeScan}
             />
@@ -397,29 +448,26 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
             {items.length > 0 && (
               <SaleTotalsCard
                 subtotal={subtotal}
-                discountType={discountType}
-                discount={discount}
+                discountType={fields.discountType.value}
+                discount={fields.discount.value}
                 discountAmount={discountAmount}
                 discountPending={discountPending}
                 iva={iva}
                 cardSurcharge={cardSurcharge}
                 total={total}
-                onDiscountTypeChange={(type) => { setDiscountType(type); setDiscount(''); }}
-                onDiscountChange={(v) => { setDiscount(v); setDiscountPending(false); }}
+                onDiscountTypeChange={(type) => { fields.discountType.onChange(type); fields.discount.onChange(''); }}
+                onDiscountChange={(v) => { fields.discount.onChange(v); setDiscountPending(false); }}
                 onApplyDiscount={handleApplyDiscount}
-                onRemoveDiscount={() => { setDiscount(''); setDiscountPending(false); }}
+                onRemoveDiscount={() => { fields.discount.onChange(''); setDiscountPending(false); }}
               />
             )}
 
             <PaymentDetailsSection
               currentUserRole={currentUserRole}
-              paymentMethod={paymentMethod}
-              onPaymentMethodChange={(v) => setPaymentMethod(v as any)}
-              clienteId={clienteId}
-              onClienteIdChange={setClienteId}
+              paymentMethodField={fields.paymentMethod}
+              clienteIdField={fields.clienteId}
+              amountPaidField={fields.amountPaid}
               clientes={clientes}
-              amountPaid={amountPaid}
-              onAmountPaidChange={setAmountPaid}
               total={total}
               subtotal={subtotalAfterDiscount}
               iva={iva}

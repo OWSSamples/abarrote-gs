@@ -12,6 +12,7 @@ import {
   Grid,
   Card,
   Badge,
+  InlineGrid,
 } from '@shopify/polaris';
 import {
   CartIcon,
@@ -281,15 +282,13 @@ export default function DashboardOverviewPage() {
               items={kpiOrder}
               strategy={rectSortingStrategy}
             >
-              <Grid>
+              <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400">
                 {kpiOrder.map((id) => (
-                  <Grid.Cell key={id} columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-                    <SortableItem id={id}>
-                      {renderKPI(id)}
-                    </SortableItem>
-                  </Grid.Cell>
+                  <SortableItem key={id} id={id}>
+                    {renderKPI(id)}
+                  </SortableItem>
                 ))}
-              </Grid>
+              </InlineGrid>
             </SortableContext>
             <DragOverlay dropAnimation={{
               sideEffects: defaultDropAnimationSideEffects({

@@ -5,6 +5,7 @@ import { Frame, Loading, Page, Banner, Button, SkeletonPage, Layout, SkeletonBod
 import { useDashboardStore } from '@/store/dashboardStore';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
 import { CustomTopBar } from '@/components/navigation/CustomTopBar';
+import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { useRequireAuth } from '@/lib/auth/useRequireAuth';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -20,6 +21,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isLoading = useDashboardStore((s) => s.isLoading);
   const error = useDashboardStore((s) => s.error);
   const fetchDashboardData = useDashboardStore((s) => s.fetchDashboardData);
+  const getUserRole = useDashboardStore((s) => s.getUserRole);
+  const checkMidnightCorte = useDashboardStore((s) => s.checkMidnightCorte);
+  const storeConfig = useDashboardStore((s) => s.storeConfig);
   const kpiData = useDashboardStore((s) => s.kpiData);
   const inventoryAlerts = useDashboardStore((s) => s.inventoryAlerts);
 
@@ -32,9 +36,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (user) {
+      getUserRole(user.uid);
       fetchDashboardData();
     }
-  }, [user, fetchDashboardData]);
+  }, [user, fetchDashboardData, getUserRole]);
+
+  // Handle auto-corte based on config time
+  useEffect(() => {
+    if (!user) return;
+    
+    const interval = setInterval(() => {
+      const now = new Date();
+      const currentH = now.getHours().toString().padStart(2, '0');
+      const currentM = now.getMinutes().toString().padStart(2, '0');
+      const currentTime = `${currentH}:${currentM}`;
+      
+      // If we reach or pass the auto-corte time, trigger it
+      // The server action handles idempotency for today
+      if (storeConfig.autoCorteTime && currentTime >= storeConfig.autoCorteTime) {
+        checkMidnightCorte();
+      }
+    }, 1000 * 60 * 10); // Check every 10 mins
+
+    return () => clearInterval(interval);
+  }, [user, storeConfig.autoCorteTime, checkMidnightCorte]);
 
   // Handle Auth Expiration: FORCE REDIRECT - NO VISUALIZATION ALLOWED
   useEffect(() => {
@@ -146,6 +171,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           />
         )}
       </Frame>
+      <MobileBottomNav />
     </>
   );
 }

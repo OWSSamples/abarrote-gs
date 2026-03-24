@@ -63,9 +63,9 @@ export async function fetchSalesData(): Promise<SalesData[]> {
 
 export async function fetchHourlySalesData(): Promise<HourlySalesData[]> {
   await requirePermission('sales.view');
-  const today = new Date();
-  const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-  const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+  const startOfDay = new Date(`${todayStr}T00:00:00-06:00`);
+  const endOfDay = new Date(`${todayStr}T23:59:59-06:00`);
 
   const rows = await db.select({
     hour: sql<number>`extract(hour from date)::int`,
@@ -276,6 +276,17 @@ export async function createSale(
     }
   }
 
+  // Notificación de venta exitosa
+  await sendNotification(
+    `🛒 <b>VENTA REGISTRADA (#${folio})</b>\n\n` +
+    `Cajero: ${cajero}\n` +
+    `Método: ${saleData.paymentMethod.toUpperCase()}\n\n` +
+    `Productos: ${saleData.items.length}\n` +
+    `Total: <b>$${numVal(String(saleData.total)).toFixed(2)}</b>\n` +
+    (saleData.pointsUsed > 0 ? `Puntos canjeados: ${saleData.pointsUsed}\n` : '') +
+    `Hora: ${now.toLocaleTimeString('es-MX')}`
+  );
+
   return {
     ...saleData,
     id,
@@ -359,7 +370,7 @@ export async function createCorteCaja(data: {
   notas: string;
 }): Promise<CorteCaja> {
   await requirePermission('corte.create');
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
 
   const salesRows = await db
     .select()

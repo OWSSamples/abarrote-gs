@@ -78,6 +78,9 @@ export interface StoreConfig {
   // Supports template variables: {{storeName}}, {{folio}}, {{fecha}}, {{items}}, {{total}}, etc.
   ticketTemplateVenta?: string;
   ticketTemplateProveedor?: string;
+  // System Schedules
+  closeSystemTime: string;
+  autoCorteTime: string;
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -109,6 +112,8 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   pointsValue: 1, // 1 point = $1 discount
   inventoryGeneralColumns: '["title","sku","available","onHand"]',
   defaultMargin: '30',
+  closeSystemTime: '23:00',
+  autoCorteTime: '00:00',
 };
 
 export interface Product {

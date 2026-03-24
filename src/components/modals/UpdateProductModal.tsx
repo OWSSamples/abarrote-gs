@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useForm, useField, notEmpty } from '@shopify/react-form';
 import {
   Modal,
   FormLayout,
@@ -56,47 +57,136 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
   const updateProductStore = useDashboardStore((s) => s.updateProduct);
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const { showSuccess, showError } = useToast();
-
-  const [name, setName] = useState('');
-  const [sku, setSku] = useState('');
-  const [barcode, setBarcode] = useState('');
-  const [category, setCategory] = useState('');
-  const [unitPrice, setUnitPrice] = useState('');
-  const [costPrice, setCostPrice] = useState('');
-  const [unit, setUnit] = useState('pieza');
-  const [unitMultiple, setUnitMultiple] = useState('1');
-  const [currentStock, setCurrentStock] = useState('');
-  const [minStock, setMinStock] = useState('');
-  const [expirationDate, setExpirationDate] = useState('');
-  const [isPerishable, setIsPerishable] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  const {
+    fields,
+    makeClean,
+    reset,
+  } = useForm({
+    fields: {
+      name: useField({
+        value: product?.name || '',
+        validates: [notEmpty('El nombre es obligatorio')],
+      }),
+      sku: useField({
+        value: product?.sku || '',
+        validates: [notEmpty('El SKU es obligatorio')],
+      }),
+      barcode: useField(product?.barcode || ''),
+      category: useField({
+        value: product?.category || '',
+        validates: [notEmpty('Selecciona una categoría')],
+      }),
+      unitPrice: useField({
+        value: product?.unitPrice?.toString() || '',
+        validates: [
+          notEmpty('Ingresa un precio de venta'),
+          (val: string) => (parseFloat(val) <= 0 ? 'Debe ser mayor a 0' : undefined),
+        ],
+      }),
+      costPrice: useField({
+        value: product?.costPrice?.toString() || '',
+        validates: [
+          notEmpty('Ingresa un precio de costo'),
+          (val: string) => (parseFloat(val) <= 0 ? 'Debe ser mayor a 0' : undefined),
+        ],
+      }),
+      unit: useField(product?.unit || 'pieza'),
+      unitMultiple: useField(product?.unitMultiple?.toString() || '1'),
+      currentStock: useField({
+        value: product?.currentStock?.toString() || '0',
+        validates: [
+          (val: string) => (parseInt(val) < 0 ? 'No puede ser negativo' : undefined),
+        ],
+      }),
+      minStock: useField(product?.minStock?.toString() || '0'),
+      isPerishable: useField(product?.isPerishable || false),
+      expirationDate: useField(product?.expirationDate || ''),
+    },
+    onSubmit: async () => ({ status: 'success' }),
+  });
+
+  // Sync form when product changes
   useEffect(() => {
     if (product) {
-      setName(product.name || '');
-      setSku(product.sku || '');
-      setBarcode(product.barcode || '');
-      setCategory(product.category || '');
-      setUnitPrice(product.unitPrice?.toString() || '');
-      setCostPrice(product.costPrice?.toString() || '');
-      setUnit(product.unit || 'pieza');
-      setUnitMultiple(product.unitMultiple?.toString() || '1');
-      setCurrentStock(product.currentStock?.toString() || '0');
-      setMinStock(product.minStock?.toString() || '0');
-      setExpirationDate(product.expirationDate || '');
-      setIsPerishable(product.isPerishable || false);
-      setFile(null);
-      setErrors({});
+      fields.name.onChange(product.name || '');
+      fields.sku.onChange(product.sku || '');
+      fields.barcode.onChange(product.barcode || '');
+      fields.category.onChange(product.category || '');
+      fields.unitPrice.onChange(product.unitPrice?.toString() || '');
+      fields.costPrice.onChange(product.costPrice?.toString() || '');
+      fields.unit.onChange(product.unit || 'pieza');
+      fields.unitMultiple.onChange(product.unitMultiple?.toString() || '1');
+      fields.currentStock.onChange(product.currentStock?.toString() || '0');
+      fields.minStock.onChange(product.minStock?.toString() || '0');
+      fields.isPerishable.onChange(product.isPerishable || false);
+      fields.expirationDate.onChange(product.expirationDate || '');
+      makeClean();
     }
-  }, [product]);
+  }, [product, makeClean]);
+
+  const autoSave = useCallback(async (fieldKey: string, value: any) => {
+    if (!product) return;
+    const field = (fields as any)[fieldKey];
+    if (!field || !field.dirty) return;
+
+    const error = field.validate(value);
+    if (error) {
+      showError(`Error en ${fieldKey}: ${error}`);
+      return;
+    }
+
+    try {
+      await updateProductStore(product.id, { [fieldKey]: value });
+      field.makeClean();
+    } catch (err) {
+      console.error(`Error auto-saving ${fieldKey}:`, err);
+    }
+  }, [product, fields, updateProductStore, showError]);
+
+  const handleCostPriceChange = useCallback((value: string) => {
+    fields.costPrice.onChange(value);
+    const cost = parseFloat(value);
+    if (!isNaN(cost) && cost > 0 && !fields.unitPrice.dirty) {
+      const defaultMargin = parseFloat(storeConfig.defaultMargin || '30');
+      const calculatedPrice = cost + (cost * (defaultMargin / 100));
+      fields.unitPrice.onChange(calculatedPrice.toFixed(2));
+    }
+  }, [storeConfig.defaultMargin, fields.costPrice, fields.unitPrice]);
+
+  const handleImageUpload = useCallback(async (newFile: File) => {
+    if (!product) return;
+    setIsUploadingImage(true);
+    try {
+      const path = getProductImagePath(fields.sku.value || product.id, newFile.name);
+      const imageUrl = await uploadFile(newFile, path);
+      await updateProductStore(product.id, { imageUrl });
+      showSuccess('Imagen actualizada');
+    } catch (err) {
+      showError('Error al subir imagen');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }, [product, fields.sku.value, updateProductStore, showSuccess, showError]);
+
+  useEffect(() => {
+    if (file) {
+      handleImageUpload(file);
+      setFile(null);
+    }
+  }, [file, handleImageUpload]);
 
   const handleDropZoneDrop = useCallback(
     (_dropFiles: File[], acceptedFiles: File[], _rejectedFiles: File[]) =>
       setFile(acceptedFiles[0]),
     [],
   );
+
+  const margin = parseFloat(fields.unitPrice.value) > 0 && parseFloat(fields.costPrice.value) > 0
+    ? (((parseFloat(fields.unitPrice.value) - parseFloat(fields.costPrice.value)) / parseFloat(fields.costPrice.value)) * 100).toFixed(1)
+    : null;
 
   const fileUploadMarkup = !file && !product?.imageUrl && <DropZone.FileUpload actionHint="Archivos permitidos: .jpg, .png, .gif" />;
   const uploadedFileMarkup = (file || product?.imageUrl) && (
@@ -116,80 +206,16 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
     </InlineStack>
   );
 
-  const validate = useCallback(() => {
-    const newErrors: Record<string, string> = {};
-    if (!name.trim()) newErrors.name = 'El nombre es obligatorio';
-    if (!sku.trim()) newErrors.sku = 'El SKU es obligatorio';
-    if (!category) newErrors.category = 'Selecciona una categoría';
-    if (!costPrice || parseFloat(costPrice) <= 0) newErrors.costPrice = 'Ingresa un precio de costo válido';
-    if (!unitPrice || parseFloat(unitPrice) <= 0) newErrors.unitPrice = 'Ingresa un precio de venta válido';
-    if (!currentStock || parseInt(currentStock) < 0) newErrors.currentStock = 'Ingresa un stock válido';
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [name, sku, category, costPrice, unitPrice, currentStock]);
-
-  const handleCostPriceChange = useCallback((value: string) => {
-    setCostPrice(value);
-    const cost = parseFloat(value);
-    if (!isNaN(cost) && cost > 0) {
-      const defaultMargin = parseFloat(storeConfig.defaultMargin || '30');
-      const calculatedPrice = cost + (cost * (defaultMargin / 100));
-      setUnitPrice(calculatedPrice.toFixed(2));
-    }
-  }, [storeConfig.defaultMargin]);
-
-  const margin = parseFloat(unitPrice) > 0 && parseFloat(costPrice) > 0
-    ? (((parseFloat(unitPrice) - parseFloat(costPrice)) / parseFloat(costPrice)) * 100).toFixed(1)
-    : null;
-
-  // --- Auto Save Logic ---
-  const autoSave = useCallback(async (field: string, value: any) => {
-    if (!product) return;
-    
-    // Básica validación local antes de mandar al server si el campo es crítico
-    if (field === 'name' && !value.trim()) return;
-    if (field === 'costPrice' && (parseFloat(value) <= 0 || isNaN(parseFloat(value)))) return;
-    if (field === 'unitPrice' && (parseFloat(value) <= 0 || isNaN(parseFloat(value)))) return;
-
-    try {
-      // Usamos la acción del STORE (Zustand) que ya incluye la actualización optimista
-      // Esto hace que el cambio sea instantáneo en la UI sin recargar.
-      await updateProductStore(product.id, { [field]: value });
-    } catch (err) {
-      console.error('Error auto-saving:', err);
-    }
-  }, [product, updateProductStore]);
-
-  // Manejador especial para la imagen (subida inmediata)
-  const handleImageUpload = useCallback(async (newFile: File) => {
-    if (!product) return;
-    setUploading(true);
-    try {
-      const path = getProductImagePath(sku || product.id, newFile.name);
-      const imageUrl = await uploadFile(newFile, path);
-      
-      // Actualizamos el store inmediatamente
-      await updateProductStore(product.id, { imageUrl });
-      showSuccess('Imagen actualizada');
-    } catch (err) {
-      showError('Error al subir imagen');
-    } finally {
-      setUploading(false);
-    }
-  }, [product, sku, updateProductStore, showSuccess, showError]);
-
-  useEffect(() => {
-    if (file) {
-      handleImageUpload(file);
-      setFile(null);
-    }
-  }, [file, handleImageUpload]);
+  const handleClose = useCallback(() => {
+    reset();
+    setFile(null);
+    onClose();
+  }, [reset, onClose]);
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title={product ? `Editando: ${product.name}` : 'Editar Producto'}
       primaryAction={{
         content: 'Listo',
@@ -211,7 +237,7 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
               labelHidden
               accept="image/*"
               type="image"
-              disabled={uploading}
+              disabled={isUploadingImage}
             >
               {uploadedFileMarkup}
               {fileUploadMarkup}
@@ -226,76 +252,82 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
             <FormLayout.Group>
               <TextField 
                 label="Nombre" 
-                value={name} 
-                onChange={setName} 
-                onBlur={() => autoSave('name', name.trim())}
                 autoComplete="off" 
+                value={fields.name.value}
+                onChange={fields.name.onChange}
+                error={fields.name.error}
+                onBlur={() => autoSave('name', fields.name.value)}
               />
               <TextField 
                 label="SKU" 
-                value={sku} 
-                onChange={setSku} 
-                onBlur={() => autoSave('sku', sku.trim())}
                 autoComplete="off" 
+                value={fields.sku.value}
+                onChange={fields.sku.onChange}
+                error={fields.sku.error}
+                onBlur={() => autoSave('sku', fields.sku.value)}
               />
             </FormLayout.Group>
 
             <FormLayout.Group>
-            <TextField 
-              label="Código de barras" 
-              value={barcode} 
-              onChange={setBarcode} 
-              onBlur={() => autoSave('barcode', barcode.trim())}
-              autoComplete="off" 
-            />
-            <CameraScanner
-              onScan={(code) => {
-                setBarcode(code);
-                autoSave('barcode', code);
-              }}
-              buttonLabel="Escanear"
-              compact
-            />
+              <TextField 
+                label="Código de barras" 
+                autoComplete="off" 
+                value={fields.barcode.value}
+                onChange={fields.barcode.onChange}
+                error={fields.barcode.error}
+                onBlur={() => autoSave('barcode', fields.barcode.value)}
+              />
+              <CameraScanner
+                onScan={(code) => {
+                  fields.barcode.onChange(code);
+                  autoSave('barcode', code);
+                }}
+                buttonLabel="Escanear"
+                compact
+              />
             </FormLayout.Group>
 
             <FormSelect 
               label="Categoría" 
               options={categoryOptions} 
-              value={category} 
+              value={fields.category.value}
               onChange={(v) => {
-                setCategory(v);
+                fields.category.onChange(v);
                 autoSave('category', v);
-              }} 
+              }}
+              error={fields.category.error}
             />
 
             <FormLayout.Group>
               <TextField 
                 label="Costo" 
                 type="number" 
-                value={costPrice} 
-                onChange={handleCostPriceChange} 
-                onBlur={() => autoSave('costPrice', parseFloat(costPrice))}
                 autoComplete="off" 
                 prefix="$" 
+                value={fields.costPrice.value}
+                onChange={handleCostPriceChange}
+                error={fields.costPrice.error}
+                onBlur={() => autoSave('costPrice', parseFloat(fields.costPrice.value))}
               />
               <TextField 
                 label="Venta" 
                 type="number" 
-                value={unitPrice} 
-                onChange={setUnitPrice} 
-                onBlur={() => autoSave('unitPrice', parseFloat(unitPrice))}
                 autoComplete="off" 
                 prefix="$" 
                 helpText={margin ? `Margen: ${margin}%` : ''} 
+                value={fields.unitPrice.value}
+                onChange={fields.unitPrice.onChange}
+                error={fields.unitPrice.error}
+                onBlur={() => autoSave('unitPrice', parseFloat(fields.unitPrice.value))}
               />
               <FormSelect 
                 label="Unidad" 
                 options={unitOptions} 
-                value={unit} 
+                value={fields.unit.value}
                 onChange={(v) => {
-                  setUnit(v);
+                  fields.unit.onChange(v);
                   autoSave('unit', v);
-                }} 
+                }}
               />
             </FormLayout.Group>
 
@@ -303,37 +335,40 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
               <TextField 
                 label="Stock actual" 
                 type="number" 
-                value={currentStock} 
-                onChange={setCurrentStock} 
-                onBlur={() => autoSave('currentStock', parseInt(currentStock, 10))}
                 autoComplete="off" 
+                value={fields.currentStock.value}
+                onChange={fields.currentStock.onChange}
+                error={fields.currentStock.error}
+                onBlur={() => autoSave('currentStock', parseInt(fields.currentStock.value, 10))}
               />
               <TextField 
                 label="Stock mínimo" 
                 type="number" 
-                value={minStock} 
-                onChange={setMinStock} 
-                onBlur={() => autoSave('minStock', parseInt(minStock, 10))}
                 autoComplete="off" 
+                value={fields.minStock.value}
+                onChange={fields.minStock.onChange}
+                error={fields.minStock.error}
+                onBlur={() => autoSave('minStock', parseInt(fields.minStock.value, 10))}
               />
             </FormLayout.Group>
 
             <Checkbox 
               label="Producto perecedero" 
-              checked={isPerishable} 
+              checked={fields.isPerishable.value} 
               onChange={(v) => {
-                setIsPerishable(v);
+                fields.isPerishable.onChange(v);
                 autoSave('isPerishable', v);
-              }} 
+              }}
             />
-            {isPerishable && (
+            {fields.isPerishable.value && (
               <TextField 
                 label="Vencimiento" 
                 type="date" 
-                value={expirationDate} 
-                onChange={setExpirationDate} 
-                onBlur={() => autoSave('expirationDate', expirationDate)}
                 autoComplete="off" 
+                value={fields.expirationDate.value}
+                onChange={fields.expirationDate.onChange}
+                error={fields.expirationDate.error}
+                onBlur={() => autoSave('expirationDate', fields.expirationDate.value)}
               />
             )}
           </FormLayout>

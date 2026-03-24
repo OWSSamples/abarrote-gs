@@ -137,5 +137,10 @@ body,
   font-size: 2rem;
   color: #202223;
 }
-
+/* Padding for mobile bottom nav */
+@media screen and (max-width: 768px) {
+  .Polaris-Frame__Main {
+    padding-bottom: 70px !important;
+  }
+}
 

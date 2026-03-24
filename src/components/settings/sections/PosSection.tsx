@@ -97,6 +97,31 @@ ${center(`Vigencia ${config.ticketVigencia || 'N/A'}`)}
         </Card>
       </Layout.AnnotatedSection>
 
+      <Layout.AnnotatedSection title="Horarios de operación" description="Configura el cierre automático del sistema y la ejecución del corte diario.">
+        <Card>
+          <FormLayout>
+            <FormLayout.Group>
+              <TextField
+                label="Hora de cierre de sistema"
+                type="time"
+                value={config.closeSystemTime}
+                onChange={(v) => updateField('closeSystemTime', v)}
+                autoComplete="off"
+                helpText="A esta hora el sistema dejará de permitir nuevas ventas hasta el día siguiente."
+              />
+              <TextField
+                label="Hora de corte automático"
+                type="time"
+                value={config.autoCorteTime}
+                onChange={(v) => updateField('autoCorteTime', v)}
+                autoComplete="off"
+                helpText="Hora en la que se generará el reporte de corte de caja del día de manera automática."
+              />
+            </FormLayout.Group>
+          </FormLayout>
+        </Card>
+      </Layout.AnnotatedSection>
+
       <Layout.AnnotatedSection title="Formatos de Ticket" description="Mensajes de pie de página y estándar tecnológico para el código de barras.">
         <Card>
           <FormLayout>

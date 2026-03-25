@@ -289,9 +289,33 @@ export async function completeInventoryAudit(id: string): Promise<void> {
     .where(eq(inventoryAudits.id, id));
 
   await sendNotification(
-    `📋 <b>AUDITORÍA FINALIZADA</b>\n\n` +
-    `Título: ${audit.title}\n` +
-    `Auditor: ${audit.auditor}\n` +
-    `Resultados: Se revisaron ${audit.items?.length || 0} productos.`
+    `<b>REPORTE DE AUDITORÍA FINALIZADA</b>\n\n` +
+    `Título: ${escapeHTML(audit.title)}\n` +
+    `Auditor: ${escapeHTML(audit.auditor)}\n` +
+    `Resultado: Se revisaron ${audit.items?.length || 0} productos.`
+  );
+}
+
+export async function sendStockReport(): Promise<void> {
+  await requirePermission('inventory.view');
+  const allProducts = await fetchAllProducts();
+  const { escapeHTML } = await import('./_notifications');
+
+  const stockList = allProducts
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(p => {
+      const isLow = p.currentStock < p.minStock;
+      const status = isLow ? ' [STOCK BAJO]' : '';
+      return `• ${escapeHTML(p.name)} (${p.sku}): ${p.currentStock} ${p.unit}${status}`;
+    })
+    .join('\n');
+
+  await sendNotification(
+    `<b>REPORTE DE EXISTENCIAS DE INVENTARIO</b>\n\n` +
+    `Total de productos: ${allProducts.length}\n` +
+    `---------------------------------\n` +
+    `${stockList}\n` +
+    `---------------------------------\n` +
+    `Fecha: ${new Date().toLocaleDateString('es-MX')} ${new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
   );
 }

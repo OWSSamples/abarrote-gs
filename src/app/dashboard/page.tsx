@@ -90,12 +90,29 @@ export default function DashboardOverviewPage() {
   const saleRecords = useDashboardStore((s) => s.saleRecords);
   const fetchDashboardData = useDashboardStore((s) => s.fetchDashboardData);
 
-  // Ventas de hoy
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todaySales = useMemo(
-    () => saleRecords.filter((r) => r.date.startsWith(todayStr)),
-    [saleRecords, todayStr]
-  );
+  // Ventas de hoy usando zona horaria local (para evitar que UTC salte al día siguiente antes de tiempo)
+  const todayStr = useMemo(() => {
+    return new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Mexico_City',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+  }, []);
+
+  const todaySales = useMemo(() => {
+    return saleRecords.filter((r) => {
+      // Convertimos la fecha de la venta (UTC) a la cadena local de México
+      const saleLocalDate = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Mexico_City',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(r.date));
+      
+      return saleLocalDate === todayStr;
+    });
+  }, [saleRecords, todayStr]);
 
   // Datos para HourlySalesChart: ventas por hora de hoy
   const hourlySalesData = useMemo(() => {
@@ -284,7 +301,7 @@ export default function DashboardOverviewPage() {
               strategy={rectSortingStrategy}
             >
               <StatsBar data={{
-                dailySales: kpiData?.dailySales || 0,
+                dailySales: todaySales.reduce((acc, sale) => acc + sale.total, 0),
                 unitsSold: todaySales.reduce((acc, sale) => acc + sale.items.reduce((s, it) => s + it.quantity, 0), 0),
                 lowStock: kpiData?.lowStockProducts || 0,
                 returnRate: "0%"

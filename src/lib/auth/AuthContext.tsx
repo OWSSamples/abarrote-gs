@@ -110,10 +110,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(expInterval);
   }, [user, handleSignOut]);
 
-  const getIdToken = useCallback(async (): Promise<string | null> => {
+  const getIdToken = useCallback(async (forceRefresh = false): Promise<string | null> => {
     if (!user) return null;
     try {
-      return await user.getIdToken();
+      const token = await user.getIdToken(forceRefresh);
+      // Sincronizar cookie de inmediato para asegurar que el servidor la vea
+      document.cookie = `__session=${token}; path=/; max-age=3600; SameSite=Strict; Secure`;
+      return token;
     } catch {
       return null;
     }

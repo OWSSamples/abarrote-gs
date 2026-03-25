@@ -53,19 +53,41 @@ export function CorteCajaModal({ open, onClose }: CorteCajaModalProps) {
   const [savingMovement, setSavingMovement] = useState(false);
   const [showMovementForm, setShowMovementForm] = useState(false);
 
-  const today = new Date().toISOString().split('T')[0];
+  // Obtener fecha actual en formato YYYY-MM-DD (Hora de México)
+  const todayStr = useMemo(() => {
+    return new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Mexico_City',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+  }, []);
+
+  // Función auxiliar para comparar fechas locales
+  const isFromToday = useCallback((dateStr: string) => {
+    try {
+      if (!dateStr) return false;
+      const localDate = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Mexico_City',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(dateStr));
+      return localDate === todayStr;
+    } catch { return false; }
+  }, [todayStr]);
 
   // Today's summaries for preview
-  const todaySales = useMemo(() => saleRecords.filter((s) => s.date.startsWith(today)), [saleRecords, today]);
+  const todaySales = useMemo(() => saleRecords.filter((s) => isFromToday(s.date)), [saleRecords, isFromToday]);
   const todayEfectivo = useMemo(() => todaySales.filter((s) => s.paymentMethod === 'efectivo').reduce((sum, s) => sum + s.total, 0), [todaySales]);
   const todayTarjeta = useMemo(() => todaySales.filter((s) => s.paymentMethod === 'tarjeta').reduce((sum, s) => sum + s.total, 0), [todaySales]);
   const todayTransferencia = useMemo(() => todaySales.filter((s) => s.paymentMethod === 'transferencia').reduce((sum, s) => sum + s.total, 0), [todaySales]);
   const todayFiado = useMemo(() => todaySales.filter((s) => s.paymentMethod === 'fiado').reduce((sum, s) => sum + s.total, 0), [todaySales]);
   const todayTotal = todayEfectivo + todayTarjeta + todayTransferencia + todayFiado;
-  const todayGastos = useMemo(() => gastos.filter((g) => g.fecha.startsWith(today)).reduce((sum, g) => sum + g.monto, 0), [gastos, today]);
+  const todayGastos = useMemo(() => gastos.filter((g) => isFromToday(g.fecha)).reduce((sum, g) => sum + g.monto, 0), [gastos, isFromToday]);
 
   // Today's cash movements
-  const todayMovements = useMemo(() => cashMovements.filter((m) => m.fecha.startsWith(today)), [cashMovements, today]);
+  const todayMovements = useMemo(() => cashMovements.filter((m) => isFromToday(m.fecha)), [cashMovements, isFromToday]);
 
   // AUTO-SET fondoInicial from Apertura
   useEffect(() => {

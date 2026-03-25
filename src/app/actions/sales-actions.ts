@@ -6,7 +6,7 @@ import { saleRecords, saleItems, products, clientes, gastos, cortesCaja, loyalty
 import { eq, desc, sql, inArray } from 'drizzle-orm';
 import type { SaleRecord, SaleItem, SalesData, CorteCaja, HourlySalesData } from '@/types';
 import { numVal } from './_helpers';
-import { sendNotification } from './_notifications';
+import { sendNotification, escapeHTML } from './_notifications';
 import { logger } from '@/lib/logger';
 
 // ==================== FOLIO ====================
@@ -268,23 +268,29 @@ export async function createSale(
     const p = await db.select().from(products).where(eq(products.id, item.productId)).limit(1);
     if (p.length > 0 && p[0].currentStock <= p[0].minStock * 0.2) {
       await sendNotification(
-        `⚠️ <b>STOCK CRÍTICO</b>\n\n` +
-        `Producto: ${p[0].name}\n` +
+        `<b>REPORTE DE STOCK CRÍTICO</b>\n\n` +
+        `Producto: ${escapeHTML(p[0].name)}\n` +
         `Stock actual: ${p[0].currentStock}\n` +
         `Mínimo sugerido: ${p[0].minStock}`
       );
     }
   }
 
-  // Notificación de venta exitosa
+  // Notificación de venta detallada y estética
+  const itemsList = saleData.items.map(it => 
+    `• ${it.quantity}x ${escapeHTML(it.productName)} ($${numVal(String(it.unitPrice)).toFixed(2)})`
+  ).join('\n');
+
   await sendNotification(
-    `🛒 <b>VENTA REGISTRADA (#${folio})</b>\n\n` +
-    `Cajero: ${cajero}\n` +
-    `Método: ${saleData.paymentMethod.toUpperCase()}\n\n` +
-    `Productos: ${saleData.items.length}\n` +
-    `Total: <b>$${numVal(String(saleData.total)).toFixed(2)}</b>\n` +
+    `<b>REPORTE DE VENTA (#${folio})</b>\n\n` +
+    `Cajero: ${escapeHTML(cajero)}\n` +
+    `Método de Pago: ${saleData.paymentMethod.toUpperCase()}\n` +
+    `---------------------------------\n` +
+    `<b>DETALLE DE PRODUCTOS:</b>\n${itemsList}\n` +
+    `---------------------------------\n` +
+    `<b>TOTAL: $${numVal(String(saleData.total)).toFixed(2)}</b>\n\n` +
     (saleData.pointsUsed > 0 ? `Puntos canjeados: ${saleData.pointsUsed}\n` : '') +
-    `Hora: ${now.toLocaleTimeString('es-MX')}`
+    `Hora: ${now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
   );
 
   return {
@@ -375,7 +381,7 @@ export async function createCorteCaja(data: {
   const salesRows = await db
     .select()
     .from(saleRecords)
-    .where(sql`date::date = ${todayStr}`);
+    .where(sql`(${saleRecords.date} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`);
 
   const ventasEfectivo = salesRows.filter((s) => s.paymentMethod === 'efectivo').reduce((sum, s) => sum + numVal(s.total), 0);
   const ventasTarjeta = salesRows.filter((s) => s.paymentMethod === 'tarjeta').reduce((sum, s) => sum + numVal(s.total), 0);
@@ -384,7 +390,7 @@ export async function createCorteCaja(data: {
   const totalVentas = ventasEfectivo + ventasTarjeta + ventasTransferencia + ventasFiado;
   const totalTransacciones = salesRows.length;
 
-  const gastosRows = await db.select().from(gastos).where(sql`fecha::date = ${todayStr}`);
+  const gastosRows = await db.select().from(gastos).where(sql`(${gastos.fecha} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`);
   const gastosDelDia = gastosRows.reduce((sum, g) => sum + numVal(g.monto), 0);
 
   const efectivoEsperado = data.fondoInicial + ventasEfectivo - gastosDelDia;
@@ -429,13 +435,13 @@ export async function createCorteCaja(data: {
   });
 
   await sendNotification(
-    `💰 <b>CORTE DE CAJA REALIZADO</b>\n\n` +
-    `Cajero: ${corte.cajero}\n` +
+    `<b>REPORTE DE CORTE DE CAJA</b>\n\n` +
+    `Cajero: ${escapeHTML(corte.cajero)}\n` +
     `Total Ventas: $${numVal(String(corte.totalVentas)).toFixed(2)}\n` +
     `Efectivo Contado: $${numVal(String(corte.efectivoContado)).toFixed(2)}\n` +
     `Diferencia: $${numVal(String(corte.diferencia)).toFixed(2)}\n` +
-    `Status: <b>${corte.status.toUpperCase()}</b>\n\n` +
-    (corte.notas ? `Notas: ${corte.notas}` : '')
+    `Estatus: <b>${corte.status.toUpperCase()}</b>\n\n` +
+    (corte.notas ? `Notas: ${escapeHTML(corte.notas)}` : '')
   );
 
   return corte;

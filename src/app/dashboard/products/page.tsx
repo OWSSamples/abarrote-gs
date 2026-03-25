@@ -100,6 +100,7 @@ export default function ProductsPage() {
       <RegisterProductModal open={registerProductOpen} onClose={() => setRegisterProductOpen(false)} />
 
       <UpdateProductModal
+        key={productToUpdate?.id || 'none'}
         open={updateProductOpen}
         onClose={() => {
           setUpdateProductOpen(false);

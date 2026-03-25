@@ -132,7 +132,7 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
     const field = (fields as any)[fieldKey];
     if (!field || !field.dirty) return;
 
-    const error = field.validate(value);
+    const error = field.runValidation(value);
     if (error) {
       showError(`Error en ${fieldKey}: ${error}`);
       return;
@@ -140,7 +140,7 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
 
     try {
       await updateProductStore(product.id, { [fieldKey]: value });
-      field.makeClean();
+      field.newDefaultValue(value);
     } catch (err) {
       console.error(`Error auto-saving ${fieldKey}:`, err);
     }
@@ -214,6 +214,9 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
 
   return (
     <Modal
+      // Forcing remount when the target product changes ensures form fields are
+      // properly populated with the current product data on edit
+      key={product?.id ?? 'new'}
       open={open}
       onClose={handleClose}
       title={product ? `Editando: ${product.name}` : 'Editar Producto'}

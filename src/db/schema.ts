@@ -52,6 +52,16 @@ export const storeConfig = pgTable('store_config', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// ==================== CATEGORIAS ====================
+export const productCategories = pgTable('product_categories', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  icon: text('icon'), // Nombre del icono de Polaris
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // ==================== PRODUCTOS ====================
 export const products = pgTable('products', {
   id: text('id').primaryKey(),

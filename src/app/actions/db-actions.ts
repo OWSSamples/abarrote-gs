@@ -109,6 +109,14 @@ export {
   getSaleItemsForDevolucion,
 } from './devolucion-actions';
 
+// Categories
+export {
+  fetchCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+} from './category-actions';
+
 // Movimientos de Caja
 export {
   fetchCashMovements,

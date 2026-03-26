@@ -3,6 +3,7 @@ import '@shopify/polaris/build/esm/styles.css';
 import './globals.css';
 import { PolarisProvider } from './PolarisProvider';
 import { AuthProvider } from '@/lib/auth/AuthContext';
+import { OfflineProvider } from '@/components/providers/OfflineProvider';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Analytics } from '@vercel/analytics/next';
 
@@ -27,7 +28,9 @@ export default function RootLayout({
       </head>
       <body suppressHydrationWarning>
         <AuthProvider>
-          <PolarisProvider>{children}</PolarisProvider>
+          <PolarisProvider>
+            <OfflineProvider>{children}</OfflineProvider>
+          </PolarisProvider>
         </AuthProvider>
         <SpeedInsights />
         <Analytics />

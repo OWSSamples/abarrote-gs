@@ -12,7 +12,6 @@ import {
 } from '@shopify/polaris';
 import { InventoryAlert, Product } from '@/types';
 import { formatDate, getDaysUntil, getStockStatus } from '@/lib/utils';
-import { Chip } from '@/components/ui/Chip';
 
 interface InventoryTableProps {
   alerts: InventoryAlert[];
@@ -20,12 +19,10 @@ interface InventoryTableProps {
 }
 
 export function InventoryTable({ alerts, onProductClick }: InventoryTableProps) {
-  const selectedItems: string[] = [];
-  
   const getAlertBadge = (alert: InventoryAlert) => {
     switch (alert.alertType) {
       case 'expiration':
-        return <Badge tone="critical">Por vencer</Badge>;
+        return <Badge tone="critical">Vence pronto</Badge>;
       case 'expired':
         return <Badge tone="critical">Vencido</Badge>;
       case 'low_stock':
@@ -44,7 +41,7 @@ export function InventoryTable({ alerts, onProductClick }: InventoryTableProps) 
       case 'warning':
         return <Badge tone="warning">Advertencia</Badge>;
       case 'info':
-        return <Badge tone="info">Info</Badge>;
+        return <Badge tone="info">Información</Badge>;
       default:
         return <Badge>{severity}</Badge>;
     }
@@ -61,55 +58,58 @@ export function InventoryTable({ alerts, onProductClick }: InventoryTableProps) 
       <IndexTable.Row
         id={alert.id}
         key={alert.id}
-        selected={selectedItems.includes(alert.id)}
         position={index}
         onClick={() => onProductClick?.(product)}
       >
         <IndexTable.Cell>
-          <Text as="p" variant="bodyMd" fontWeight="semibold">
-            {product.name}
-          </Text>
-          <Box paddingBlockStart="100">
-             <Chip tone="subdued" pill>{product.sku}</Chip>
-          </Box>
-        </IndexTable.Cell>
-        
-        <IndexTable.Cell>
-          <BlockStack gap="100">
-            <InlineStack align="space-between">
-              <Text as="p" variant="bodySm">
-                {product.currentStock} / {product.minStock} unidades
-              </Text>
-              <Text as="p" variant="bodySm" tone={stockStatus.status === 'critical' ? 'critical' : 'subdued'}>
-                {Math.round(stockStatus.percentage)}%
-              </Text>
-            </InlineStack>
-            <ProgressBar
-              progress={stockStatus.percentage}
-              tone={stockStatus.status === 'critical' ? 'critical' : undefined}
-              size="small"
-            />
+          <BlockStack gap="050">
+            <Text as="span" variant="bodyMd" fontWeight="bold">
+              {product.name}
+            </Text>
+            <Text as="span" variant="bodySm" tone="subdued">
+              {product.sku}
+            </Text>
           </BlockStack>
         </IndexTable.Cell>
         
         <IndexTable.Cell>
-          {product.expirationDate ? (
+          <Box maxWidth="140px">
             <BlockStack gap="100">
-              <Text as="p" variant="bodyMd">
+              <InlineStack align="space-between">
+                <Text as="span" variant="bodySm">
+                  {product.currentStock} / {product.minStock} uds
+                </Text>
+                <Text as="span" variant="bodySm" tone={stockStatus.status === 'critical' ? 'critical' : 'subdued'}>
+                  {Math.round(stockStatus.percentage)}%
+                </Text>
+              </InlineStack>
+              <ProgressBar
+                progress={stockStatus.percentage}
+                tone={stockStatus.status === 'critical' ? 'critical' : undefined}
+                size="small"
+              />
+            </BlockStack>
+          </Box>
+        </IndexTable.Cell>
+        
+        <IndexTable.Cell>
+          {product.expirationDate ? (
+            <BlockStack gap="050">
+              <Text as="span" variant="bodyMd">
                 {formatDate(product.expirationDate)}
               </Text>
               {daysUntil !== null && (
-                <Text as="p" variant="bodySm" tone={daysUntil <= 2 ? 'critical' : 'subdued'}>
+                <Text as="span" variant="bodySm" tone={daysUntil <= 2 ? 'critical' : 'subdued'}>
                   {daysUntil <= 0 
-                    ? 'Vencido' 
+                    ? '⚠️ Expired' 
                     : daysUntil === 1 
-                    ? 'Vence mañana' 
-                    : `En ${daysUntil} días`}
+                    ? 'Tomorrow' 
+                    : `In ${daysUntil} days`}
                 </Text>
               )}
             </BlockStack>
           ) : (
-            <Text as="p" variant="bodyMd" tone="subdued">
+            <Text as="span" variant="bodyMd" tone="subdued">
               N/A
             </Text>
           )}
@@ -127,31 +127,32 @@ export function InventoryTable({ alerts, onProductClick }: InventoryTableProps) 
   });
 
   return (
-    <Card>
-      <BlockStack gap="400">
+    <Card padding="0">
+      <Box padding="400" borderBlockEndWidth="025" borderColor="border">
         <BlockStack gap="100">
-          <Text as="h3" variant="headingMd">
+          <Text as="h3" variant="headingMd" fontWeight="semibold">
             Inventario Prioritario
           </Text>
           <Text as="p" variant="bodySm" tone="subdued">
             {alerts.length} productos requieren atención inmediata
           </Text>
         </BlockStack>
+      </Box>
 
-        <IndexTable
-          itemCount={alerts.length}
-          headings={[
-            { title: 'Producto' },
-            { title: 'Stock' },
-            { title: 'Vencimiento' },
-            { title: 'Tipo Alerta' },
-            { title: 'Severidad' },
-          ]}
-          selectable={false}
-        >
-          {rowMarkup}
-        </IndexTable>
-      </BlockStack>
+      <IndexTable
+        resourceName={{ singular: 'alerta', plural: 'alertas' }}
+        itemCount={alerts.length}
+        headings={[
+          { title: 'Producto' },
+          { title: 'Stock' },
+          { title: 'Vencimiento' },
+          { title: 'Alerta' },
+          { title: 'Severidad' },
+        ]}
+        selectable={false}
+      >
+        {rowMarkup}
+      </IndexTable>
     </Card>
   );
 }

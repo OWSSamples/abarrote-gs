@@ -1,38 +1,11 @@
 'use client';
 
-import { useRef } from 'react';
-import { Modal, Text } from '@shopify/polaris';
-import { PrintIcon } from '@shopify/polaris-icons';
+import { useRef, useEffect } from 'react';
+import { Modal, Text, Box, BlockStack, InlineStack, Icon, Badge, Button } from '@shopify/polaris';
+import { PrintIcon, CheckCircleIcon, ExportIcon } from '@shopify/polaris-icons';
 import JsBarcode from 'jsbarcode';
 import type { SaleRecord, Cliente, StoreConfig } from '@/types';
-
-const TICKET_WIDTH = 40;
-
-function centerLine(text: string, width = TICKET_WIDTH) {
-  const t = text.trim();
-  if (t.length >= width) return t;
-  const pad = width - t.length;
-  const left = Math.floor(pad / 2);
-  const right = pad - left;
-  return `${' '.repeat(left)}${t}${' '.repeat(right)}`;
-}
-
-function wrapAndCenter(text: string, width = TICKET_WIDTH) {
-  const words = text.trim().split(/\s+/);
-  const lines: string[] = [];
-  let current = '';
-  for (const w of words) {
-    const candidate = current ? `${current} ${w}` : w;
-    if (candidate.length > width) {
-      if (current) lines.push(centerLine(current, width));
-      current = w;
-    } else {
-      current = candidate;
-    }
-  }
-  if (current) lines.push(centerLine(current, width));
-  return lines.join('\n');
-}
+import { formatCurrency } from '@/lib/utils';
 
 export interface TicketPreviewProps {
   open: boolean;
@@ -55,106 +28,39 @@ export function TicketPreview({
   onNewSale,
   onClose,
 }: TicketPreviewProps) {
-  const ticketRef = useRef<HTMLDivElement>(null);
-
-  const saleDate = new Date(completedSale.date);
-  const dateStr = saleDate.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const timeStr = saleDate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const paymentLabels: Record<string, string> = {
-    efectivo: 'EFECTIVO',
-    tarjeta: 'T. BANCARIA',
-    transferencia: 'TRANSFERENCIA',
-    fiado: 'CREDITO CLIENTE',
-  };
-  const pmLabel = paymentLabels[completedSale.paymentMethod] || completedSale.paymentMethod.toUpperCase();
-  const totalArticles = completedSale.items.reduce((s, i) => s + i.quantity, 0);
-  const dashes = '----------------------------------------';
-
-  const fmtAmt = (n: number) => {
-    const s = '$ ' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return s.padStart(16);
-  };
-
-  let itemsTxt = '';
-  for (const item of completedSale.items) {
-    const name = item.productName.toUpperCase();
-    const truncName = name.length > 40 ? name.substring(0, 39) + '.' : name;
-    itemsTxt += `  ${truncName}\n`;
-    itemsTxt += `    ${item.quantity} pza x $${item.unitPrice.toFixed(2)}${fmtAmt(item.subtotal)}\n`;
-  }
-
-  let fiadoTxt = '';
-  if (clienteId) {
-    const c = clientes.find((cl) => cl.id === clienteId);
-    if (c && completedSale.paymentMethod === 'fiado') {
-      fiadoTxt = `\n${dashes}\n       ** VENTA A CREDITO **\n  CLIENTE:        ${c.name.toUpperCase()}\n  SALDO ANTERIOR:${fmtAmt(c.balance - completedSale.total)}\n  NUEVO SALDO:   ${fmtAmt(c.balance)}\n`;
-    } else if (c) {
-      fiadoTxt = `\n${dashes}\n       ** PROGRAMA LEALTAD **\n  PUNTOS GANADOS:      +${Math.floor(completedSale.total / 20)}\n  PUNTOS TOTALES:      ${Math.floor(parseFloat(String(c.points)))}\n`;
-    }
-  }
-
+  const barcodeRef = useRef<SVGSVGElement>(null);
   const sc = storeConfig;
-  const footerLines = sc.ticketFooter.split('\n').map((l: string) => centerLine(l)).join('\n');
-  const tcCode = completedSale.folio;
+  
+  const isOffline = completedSale.folio.startsWith('OFF-');
+  const cliente = clientes.find(c => c.id === clienteId);
 
-  const previewText = `
-${centerLine(sc.legalName)}
-${centerLine(sc.address)}
-${centerLine(`C.P. ${sc.postalCode}, ${sc.city}`)}
-${centerLine(`RFC: ${sc.rfc}`)}
-${centerLine(`TEL: ${sc.phone}`)}
-${centerLine(`REGIMEN FISCAL - ${sc.regimenFiscal}`)}
-${wrapAndCenter(sc.regimenDescription)}
-${centerLine('ESTE COMPROBANTE NO ES VALIDO PARA')}
-${centerLine('EFECTOS FISCALES')}
-
-${centerLine(`TDA#${sc.storeNumber} OP#${completedSale.cajero.toUpperCase().substring(0, 12).padEnd(12)}  TR# ${completedSale.folio}`)}
-${centerLine(`${dateStr}              ${timeStr}`)}
-${centerLine('RFC: SIN R.F.C.')}
-${dashes}
-${itemsTxt}${dashes}
-  SUBTOTAL               ${fmtAmt(completedSale.subtotal + (completedSale.discount ?? 0))}
-${(completedSale.discount ?? 0) > 0 ? `  DESCUENTO             ${fmtAmt(-(completedSale.discount ?? 0))}\n` : ''}${completedSale.cardSurcharge > 0 ? `  COMISION TARJETA       ${fmtAmt(completedSale.cardSurcharge)}\n` : ''}
-  TOTAL                  ${fmtAmt(completedSale.total)}
-  ${pmLabel.padEnd(20)}${fmtAmt(completedSale.total)}
-  CAMBIO                 ${fmtAmt(completedSale.change)}
-${completedSale.paymentMethod === 'efectivo' ? `  RECIBIDO               ${fmtAmt(completedSale.amountPaid)}\n` : ''}${fiadoTxt}
-${dashes}
-  IVA    ${sc.ivaRate}.0%  ${fmtAmt(completedSale.subtotal)}${fmtAmt(completedSale.iva)}
-${dashes}
-  TOTAL IVA              ${fmtAmt(completedSale.iva)}
-
-       ARTICULOS VENDIDOS    ${totalArticles}
-`;
-
-  const previewTextAfter = `${dashes}
-
-${footerLines}
-${centerLine('Necesitas ayuda ahora?')}
-${centerLine(sc.ticketServicePhone)}
-${dashes}
-${centerLine(`Vigencia ${sc.ticketVigencia}`)}
-${centerLine(`${dateStr}     ${timeStr}`)}
-${centerLine(`TC: ${tcCode}`)}
-`;
-
-  const preStyle: React.CSSProperties = {
-    fontFamily: "'Courier New', 'Consolas', 'Lucida Console', monospace",
-    fontSize: '11.5px',
-    lineHeight: '1.3',
-    margin: 0,
-    padding: '4px 6px',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-all',
-    color: '#000',
-    background: '#fff',
-  };
+  useEffect(() => {
+    if (barcodeRef.current && completedSale.folio) {
+      try {
+        JsBarcode(barcodeRef.current, completedSale.folio, {
+          format: sc.ticketBarcodeFormat || 'CODE128',
+          width: 2,
+          height: 40,
+          displayValue: true,
+          fontSize: 12,
+          margin: 10,
+        });
+      } catch (e) {
+        console.error('Error generating barcode:', e);
+      }
+    }
+  }, [completedSale.folio, sc.ticketBarcodeFormat, open]);
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Ticket de Venta"
+      title={
+        <InlineStack gap="200" blockAlign="center">
+          <Icon source={CheckCircleIcon} tone="success" />
+          <Text as="h2" variant="headingMd">Venta Completada</Text>
+        </InlineStack>
+      }
       primaryAction={{
         content: 'Imprimir Ticket',
         icon: PrintIcon,
@@ -162,34 +68,207 @@ ${centerLine(`TC: ${tcCode}`)}
       }}
       secondaryActions={[
         { content: 'Nueva Venta', onAction: onNewSale },
-        { content: 'Cerrar', onAction: onClose },
+        { content: 'Compartir', icon: ExportIcon, onAction: () => {} },
       ]}
     >
       <Modal.Section>
-        <div ref={ticketRef}>
-          <div style={{ background: '#fff', padding: '8px', maxWidth: '340px', margin: '0 auto', border: '1px solid #ddd' }}>
-            <pre style={preStyle}>{previewText}</pre>
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '6px 0', width: '100%' }}>
-              <svg style={{ display: 'block', margin: '0 auto', maxWidth: '260px' }} ref={(el) => {
-                if (el) {
-                  try {
-                    JsBarcode(el, tcCode, {
-                      format: sc.ticketBarcodeFormat || 'CODE128',
-                      width: 1.5,
-                      height: 40,
-                      displayValue: true,
-                      fontSize: 10,
-                      font: 'Courier New',
-                      textMargin: 2,
-                      margin: 0,
-                    });
-                  } catch { /* ignore */ }
-                }
-              }} />
+        <Box padding="400" background="bg-surface-secondary">
+          <BlockStack gap="400" align="center">
+            
+            {/* Contenedor del Ticket Estilo Papel */}
+            <div className={`ticket-paper ${isOffline ? 'offline-border' : ''}`}>
+              
+              {/* Encabezado */}
+              <div className="ticket-header">
+                <Text as="h1" variant="headingLg" alignment="center" fontWeight="bold">
+                  {sc.storeName.toUpperCase()}
+                </Text>
+                <div className="store-details">
+                  <p>{sc.legalName}</p>
+                  <p>{sc.address}</p>
+                  <p>C.P. {sc.postalCode}, {sc.city}</p>
+                  <p>RFC: {sc.rfc}</p>
+                  <p>TEL: {sc.phone}</p>
+                </div>
+              </div>
+
+              {isOffline && (
+                <div className="offline-banner">
+                  <Badge tone="warning">MODO OFFLINE ACTIVADO</Badge>
+                  <p className="offline-msg">Comprobante de Emergencia local</p>
+                </div>
+              )}
+
+              <div className="divider-dashed" />
+
+              {/* Info de Venta */}
+              <div className="sale-info">
+                <InlineStack align="space-between">
+                  <p><strong>Folio:</strong> #{completedSale.folio}</p>
+                  <p>{new Date(completedSale.date).toLocaleDateString()}</p>
+                </InlineStack>
+                <InlineStack align="space-between">
+                  <p><strong>Cajero:</strong> {completedSale.cajero.substring(0, 15)}</p>
+                  <p>{new Date(completedSale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                </InlineStack>
+              </div>
+
+              <div className="divider-dashed" />
+
+              {/* Tabla de Productos */}
+              <table className="items-table">
+                <thead>
+                  <tr>
+                    <th align="left">CANT. / PRODUCTO</th>
+                    <th align="right">TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completedSale.items.map((item, idx) => (
+                    <tr key={idx}>
+                      <td>
+                        <div className="item-row">
+                          <span className="qty">{item.quantity}x</span>
+                          <span className="name">{item.productName.toUpperCase()}</span>
+                        </div>
+                        <span className="unit-price">P.U. {formatCurrency(item.unitPrice)}</span>
+                      </td>
+                      <td align="right" valign="top">
+                        {formatCurrency(item.subtotal)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="divider-dashed" />
+
+              {/* Resumen de Pago */}
+              <div className="totals-section">
+                <InlineStack align="space-between">
+                  <p>SUBTOTAL</p>
+                  <p>{formatCurrency(completedSale.subtotal)}</p>
+                </InlineStack>
+                {completedSale.discount > 0 && (
+                  <InlineStack align="space-between" className="discount">
+                    <p>DESCUENTO</p>
+                    <p>-{formatCurrency(completedSale.discount)}</p>
+                  </InlineStack>
+                )}
+                {completedSale.cardSurcharge > 0 && (
+                  <InlineStack align="space-between">
+                    <p>COMISIÓN TARJETA</p>
+                    <p>{formatCurrency(completedSale.cardSurcharge)}</p>
+                  </InlineStack>
+                )}
+                <div className="grand-total">
+                  <InlineStack align="space-between">
+                    <Text as="p" variant="headingLg" fontWeight="bold">TOTAL</Text>
+                    <Text as="p" variant="headingLg" fontWeight="bold">{formatCurrency(completedSale.total)}</Text>
+                  </InlineStack>
+                </div>
+                
+                <InlineStack align="space-between" className="payment-method">
+                  <p>METODO DE PAGO:</p>
+                  <p>{completedSale.paymentMethod.toUpperCase()}</p>
+                </InlineStack>
+                
+                {completedSale.paymentMethod === 'efectivo' && (
+                  <>
+                    <InlineStack align="space-between">
+                      <p>RECIBIDO:</p>
+                      <p>{formatCurrency(completedSale.amountPaid)}</p>
+                    </InlineStack>
+                    <InlineStack align="space-between" className="change">
+                      <p>CAMBIO:</p>
+                      <p>{formatCurrency(completedSale.change)}</p>
+                    </InlineStack>
+                  </>
+                )}
+              </div>
+
+              {cliente && (
+                <div className="loyalty-box">
+                  <div className="divider-dashed" />
+                  <p className="client-name">CLIENTE: {cliente.name.toUpperCase()}</p>
+                  <InlineStack align="space-between">
+                    <p>PUNTOS OBTENIDOS:</p>
+                    <p>+{completedSale.pointsEarned}</p>
+                  </InlineStack>
+                </div>
+              )}
+
+              <div className="divider-dashed" />
+
+              {/* Pie de Ticket */}
+              <div className="footer">
+                <p className="footer-msg">{sc.ticketFooter}</p>
+                <div className="barcode-wrap">
+                   <svg ref={barcodeRef}></svg>
+                </div>
+                <p className="slogan">POWERED BY OPENDEX POS</p>
+              </div>
             </div>
-            <pre style={preStyle}>{previewTextAfter}</pre>
-          </div>
-        </div>
+
+          </BlockStack>
+        </Box>
+
+        <style>{`
+          .ticket-paper {
+            background: #fff;
+            width: 300px;
+            padding: 24px 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            font-family: 'Inter', sans-serif;
+            color: #1a1a1a;
+            position: relative;
+            border-top: 5px solid #1a1a1a;
+          }
+          .ticket-paper.offline-border {
+            border-top-color: #f59e0b;
+          }
+          .offline-banner {
+            text-align: center;
+            margin: 12px 0;
+            background: #fef3c7;
+            padding: 8px;
+            border-radius: 4px;
+          }
+          .offline-msg { font-size: 10px; color: #92400e; font-weight: 600; margin-top: 4px; }
+          
+          .ticket-header { text-align: center; margin-bottom: 12px; }
+          .store-details { font-size: 11px; color: #666; line-height: 1.4; margin-top: 4px; }
+          
+          .divider-dashed {
+            border-top: 1px dashed #ccc;
+            margin: 12px 0;
+            width: 100%;
+          }
+          
+          .sale-info { font-size: 12px; color: #333; }
+          
+          .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+          .items-table th { font-size: 10px; color: #888; padding-bottom: 8px; }
+          .item-row { display: flex; gap: 8px; font-size: 12px; font-weight: 600; }
+          .qty { color: #666; min-width: 25px; }
+          .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+          .unit-price { font-size: 10px; color: #999; margin-left: 33px; display: block; margin-top: 2px; }
+          .items-table td { padding: 6px 0; }
+
+          .totals-section { font-size: 12px; line-height: 1.6; }
+          .grand-total { margin: 8px 0; padding-top: 8px; border-top: 1px solid #eee; }
+          .payment-method { margin-top: 12px; font-weight: 600; }
+          .discount { color: #ef4444; }
+          .change { font-weight: bold; color: #10b981; }
+
+          .loyalty-box { font-size: 11px; }
+          .client-name { font-weight: bold; margin-bottom: 4px; }
+
+          .footer { text-align: center; margin-top: 20px; }
+          .footer-msg { font-size: 11px; white-space: pre-wrap; line-height: 1.4; color: #666; }
+          .barcode-wrap { margin: 15px 0; display: flex; justify-content: center; }
+          .slogan { font-size: 9px; letter-spacing: 2px; color: #ddd; font-weight: bold; margin-top: 10px; }
+        `}</style>
       </Modal.Section>
     </Modal>
   );

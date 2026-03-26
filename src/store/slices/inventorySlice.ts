@@ -9,6 +9,10 @@ import {
   fetchKPIData,
   fetchAllProducts,
   fetchInventoryAudits,
+  createCategory as dbCreateCategory,
+  updateCategory as dbUpdateCategory,
+  deleteCategory as dbDeleteCategory,
+  fetchCategories as dbFetchCategories,
 } from '@/app/actions/db-actions';
 
 /** Refresh only product-related data: products list, alerts, KPIs */
@@ -112,5 +116,35 @@ export const createInventorySlice = (set: StoreSet, get: StoreGet): InventorySli
       fetchInventoryAudits(),
     ]);
     set({ products, inventoryAlerts: alerts, kpiData: kpi, inventoryAudits: audits });
+  },
+  
+  createCategory: async (data: { id: string; name: string; description: string | null; icon: string | null }) => {
+    try {
+      const newCat = await dbCreateCategory(data);
+      const state = get();
+      set({ categories: [newCat, ...state.categories] });
+    } catch (error) {
+      console.error('Error creating category:', error);
+    }
+  },
+
+  updateCategory: async (id, data) => {
+    try {
+      const updated = await dbUpdateCategory(id, data);
+      const state = get();
+      set({ categories: state.categories.map(c => c.id === id ? updated : c) });
+    } catch (error) {
+      console.error('Error updating category:', error);
+    }
+  },
+
+  deleteCategory: async (id) => {
+    try {
+      await dbDeleteCategory(id);
+      const state = get();
+      set({ categories: state.categories.filter(c => c.id !== id) });
+    } catch (error) {
+      console.error('Error deleting category:', error);
+    }
   },
 });

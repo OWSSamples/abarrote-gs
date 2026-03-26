@@ -9,6 +9,7 @@ import { fetchStoreConfig } from './store-config-actions';
 import { fetchDevoluciones } from './devolucion-actions';
 import { fetchCashMovements } from './cash-movement-actions';
 import { fetchLoyaltyTransactions } from './loyalty-actions';
+import { fetchCategories } from './category-actions';
 import type { KPIData } from '@/types';
 import { DEFAULT_STORE_CONFIG } from '@/types';
 
@@ -19,7 +20,17 @@ async function safe<T>(promise: Promise<T>, fallback: T, label: string): Promise
   try {
     return await promise;
   } catch (error) {
-    console.error(`[Dashboard] Failed to fetch ${label}:`, error instanceof Error ? error.message : error);
+    const isConnError = error instanceof Error && (
+      error.message.includes('ECONNREFUSED') || 
+      error.message.includes('ETIMEDOUT') || 
+      error.message.includes('Connection failed')
+    );
+    
+    if (isConnError) {
+      console.warn(`[Dashboard] OFFLINE: No se pudo conectar a la base de datos en la nube para "${label}".`);
+    } else {
+      console.error(`[Dashboard] Error inesperado en "${label}":`, error instanceof Error ? error.message : error);
+    }
     return fallback;
   }
 }
@@ -53,6 +64,7 @@ export async function fetchDashboardFromDB() {
     cashMovementsList,
     loyaltyTransactionsList,
     hourlySalesList,
+    categoriesList,
   ] = await Promise.all([
     safe(fetchKPIData(), DEFAULT_KPI, 'KPI'),
     safe(fetchAllProducts(), [], 'products'),
@@ -72,6 +84,7 @@ export async function fetchDashboardFromDB() {
     safe(fetchCashMovements(), [], 'cash movements'),
     safe(fetchLoyaltyTransactions(), [], 'loyalty transactions'),
     safe(fetchHourlySalesData(), [], 'hourly sales'),
+    safe(fetchCategories(), [], 'categories'),
   ]);
 
   return {
@@ -93,5 +106,7 @@ export async function fetchDashboardFromDB() {
     cashMovements: cashMovementsList,
     loyaltyTransactions: loyaltyTransactionsList,
     hourlySalesData: hourlySalesList,
+    categories: categoriesList,
+    isOffline: allProducts.length === 0 && kpiData.dailySales === 0, // Inferencia básica de offline
   };
 }

@@ -35,7 +35,9 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { RegisterProductModal } from '@/components/modals/RegisterProductModal';
 import { SaleTicketModal } from '@/components/modals/SaleTicketModal';
 import { ServiciosModal } from '@/components/modals/ServiciosModal';
+import { PinPadModal } from '@/components/modals/PinPadModal';
 import { formatCurrency } from '@/lib/utils';
+import { useTicketPrinter } from '@/hooks/useTicketPrinter';
 
 export function QuickActions() {
   const inventoryAlerts = useDashboardStore((s) => s.inventoryAlerts);
@@ -60,6 +62,8 @@ export function QuickActions() {
   const [saleTicketOpen, setSaleTicketOpen] = useState(false);
   const [serviciosOpen, setServiciosOpen] = useState(false);
   const [aperturaOpen, setAperturaOpen] = useState(false);
+  const [pinPadOpen, setPinPadOpen] = useState(false);
+  const { openDrawer } = useTicketPrinter();
 
   const [abonoOpen, setAbonoOpen] = useState(false);
   const [abonoClienteId, setAbonoClienteId] = useState('');
@@ -197,7 +201,8 @@ export function QuickActions() {
 
   const actions = [
     canCreateSales && { label: 'Punto de Venta', desc: 'Venta rápida', icon: CartIcon, onClick: () => setSaleTicketOpen(true), tone: 'var(--p-color-bg-fill-brand-subdued)', color: 'var(--p-color-text-brand)', disabled: false },
-    { label: 'Abrir Caja', desc: 'Fondo inicial', icon: PlusMinorIcon, onClick: () => setAperturaOpen(true), tone: 'var(--p-color-bg-fill-success-subdued)', color: 'var(--p-color-text-success)', disabled: false },
+    { label: 'Abrir Turno', desc: 'Fondo inicial', icon: PlusMinorIcon, onClick: () => setAperturaOpen(true), tone: 'var(--p-color-bg-fill-success-subdued)', color: 'var(--p-color-text-success)', disabled: false },
+    { label: 'Abrir Cajón', desc: 'Acceso físico', icon: CashDollarIcon, onClick: () => setPinPadOpen(true), tone: 'var(--p-color-bg-fill-info-subdued)', color: 'var(--p-color-text-info)', disabled: false },
     canCreateFiado && { label: 'Abonos', desc: 'Registrar pagos', icon: CashDollarIcon, onClick: () => setAbonoOpen(true), tone: 'var(--p-color-bg-fill-warning-subdued)', color: 'var(--p-color-text-warning)', disabled: false },
     canManageInventory && { label: 'Mermas', desc: 'Control de pérdidas', icon: ArchiveIcon, onClick: () => setMermaModalOpen(true), tone: 'var(--p-color-bg-fill-critical-subdued)', color: 'var(--p-color-text-critical)', disabled: false },
     canManagePedidos && { label: 'Surtidos', desc: 'Pedido a proveedor', icon: PlusIcon, onClick: () => setPedidoModalOpen(true), tone: 'var(--p-color-bg-fill-info-subdued)', color: 'var(--p-color-text-info)', disabled: false },
@@ -530,6 +535,20 @@ export function QuickActions() {
       <AperturaCajaModal
         open={aperturaOpen}
         onClose={() => setAperturaOpen(false)}
+      />
+
+      <PinPadModal
+        open={pinPadOpen}
+        onClose={() => setPinPadOpen(false)}
+        requiredPermission="cashdrawer.open"
+        onSuccess={(uid: string, name: string) => {
+          setPinPadOpen(false);
+          // 1. Enviar señal de apertura física (vía el driver industrial)
+          openDrawer();
+          console.log(`[Seguridad] Cajón abierto por: ${name} (UID: ${uid})`);
+        }}
+        title="Autorizar Apertura de Cajón"
+        label="Ingresa PIN para abrir cajón de dinero"
       />
     </>
   );

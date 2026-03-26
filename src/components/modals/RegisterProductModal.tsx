@@ -15,8 +15,11 @@ import {
   DropZone,
   Thumbnail,
   Divider,
+  Popover,
+  DatePicker,
+  Icon,
 } from '@shopify/polaris';
-import { NoteIcon } from '@shopify/polaris-icons';
+import { NoteIcon, CalendarIcon } from '@shopify/polaris-icons';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { uploadFile, getProductImagePath } from '@/lib/storage';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -28,20 +31,7 @@ interface RegisterProductModalProps {
   onClose: () => void;
 }
 
-const categoryOptions = [
-  { label: 'Seleccionar categoría...', value: '' },
-  { label: 'Lácteos', value: 'lacteos' },
-  { label: 'Panadería', value: 'panaderia' },
-  { label: 'Huevo', value: 'huevo' },
-  { label: 'Botanas', value: 'botanas' },
-  { label: 'Bebidas', value: 'bebidas' },
-  { label: 'Limpieza', value: 'limpieza' },
-  { label: 'Abarrotes', value: 'abarrotes' },
-  { label: 'Frutas y Verduras', value: 'frutas_verduras' },
-  { label: 'Carnes', value: 'carnes' },
-  { label: 'Otros', value: 'otros' },
-];
-
+// Hardcoded default units
 const unitOptions = [
   { label: 'Pieza', value: 'pieza' },
   { label: 'Kilo (kg)', value: 'kilo' },
@@ -54,8 +44,16 @@ const unitOptions = [
 
 export function RegisterProductModal({ open, onClose }: RegisterProductModalProps) {
   const registerProduct = useDashboardStore((s) => s.registerProduct);
+  const categories = useDashboardStore((s) => s.categories);
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const { showSuccess, showError } = useToast();
+  
+  const categoryOptions = [
+    { label: 'Seleccionar categoría...', value: '' },
+    ...categories.map(c => ({ label: c.name, value: c.id }))
+  ];
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [{ month, year }, setDate] = useState({ month: new Date().getMonth(), year: new Date().getFullYear() });
 
   const {
     fields,
@@ -345,12 +343,40 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
             />
 
             {fields.isPerishable.value && (
-              <TextField
-                label="Fecha de vencimiento"
-                type="date"
-                autoComplete="off"
-                {...fields.expirationDate}
-              />
+              <Box paddingBlockStart="200" paddingBlockEnd="200">
+                <Box paddingBlockEnd="200">
+                   <Text as="p" variant="bodySm" tone="subdued">La fecha de vencimiento es obligatoria para perecederos.</Text>
+                </Box>
+                <Popover
+                  active={isDatePickerOpen}
+                  activator={
+                    <TextField
+                      label="Fecha de vencimiento"
+                      value={fields.expirationDate.value}
+                      placeholder="YYYY-MM-DD"
+                      autoComplete="off"
+                      suffix={<Icon source={CalendarIcon} tone="subdued" />}
+                      onFocus={() => setIsDatePickerOpen(true)}
+                    />
+                  }
+                  onClose={() => setIsDatePickerOpen(false)}
+                >
+                  <Box padding="400">
+                    <DatePicker
+                      month={month}
+                      year={year}
+                      onChange={(range) => {
+                        const date = range.start;
+                        const formattedDate = date.toISOString().split('T')[0];
+                        fields.expirationDate.onChange(formattedDate);
+                        setIsDatePickerOpen(false);
+                      }}
+                      onMonthChange={(month, year) => setDate({ month, year })}
+                      selected={fields.expirationDate.value ? new Date(fields.expirationDate.value) : new Date()}
+                    />
+                  </Box>
+                </Popover>
+              </Box>
             )}
           </FormLayout>
 

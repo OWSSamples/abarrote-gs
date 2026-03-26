@@ -8,7 +8,8 @@ import {
   ImportIcon, 
   ViewIcon, 
   EmailIcon, 
-  SettingsIcon 
+  SettingsIcon,
+  CollectionIcon 
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { AllProductsTable } from '@/components/inventory/AllProductsTable';
@@ -16,6 +17,7 @@ import { RegisterProductModal } from '@/components/modals/RegisterProductModal';
 import { UpdateProductModal } from '@/components/modals/UpdateProductModal';
 import { deleteProduct } from '@/app/actions/db-actions';
 import { useToast } from '@/components/notifications/ToastProvider';
+import { CategoryManagerModal } from '@/components/modals/CategoryManagerModal';
 import { Product } from '@/types';
 
 export default function ProductsPage() {
@@ -27,6 +29,7 @@ export default function ProductsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [updateProductOpen, setUpdateProductOpen] = useState(false);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [productToUpdate, setProductToUpdate] = useState<Product | null>(null);
 
   const handleProductClick = useCallback((product: Product) => {
@@ -72,6 +75,11 @@ export default function ProductsPage() {
             icon: ImportIcon,
             onAction: () => setImportOpen(true) 
           },
+          {
+            content: 'Categorías',
+            icon: CollectionIcon,
+            onAction: () => setCategoryManagerOpen(true),
+          },
         ]}
         actionGroups={[
           {
@@ -98,6 +106,8 @@ export default function ProductsPage() {
       </Page>
 
       <RegisterProductModal open={registerProductOpen} onClose={() => setRegisterProductOpen(false)} />
+
+      <CategoryManagerModal open={categoryManagerOpen} onClose={() => setCategoryManagerOpen(false)} />
 
       <UpdateProductModal
         key={productToUpdate?.id || 'none'}

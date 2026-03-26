@@ -118,6 +118,15 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   defaultStartingFund: 500,
 };
 
+export interface ProductCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -219,6 +228,7 @@ export interface DashboardState {
   kpiData: KPIData | null;
   inventoryAlerts: InventoryAlert[];
   products: Product[];
+  categories: ProductCategory[];
   salesData: SalesData[];
   hourlySalesData: HourlySalesData[];
   saleRecords: SaleRecord[];
@@ -371,7 +381,8 @@ export type PermissionKey =
   | 'sales.discount'
   | 'sales.delete_item'
   | 'sales.change_price'
-  | 'corte.blind_view';
+  | 'corte.blind_view'
+  | 'cashdrawer.open';
 
 export interface RoleDefinition {
   id: string;
@@ -440,11 +451,12 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   'sales.delete_item': 'Eliminar articulos del ticket',
   'sales.change_price': 'Modificar precio de articulos manual mente',
   'corte.blind_view': 'Ver totales en corte (Evita el Arqueo Ciego)',
+  'cashdrawer.open': 'Abrir cajón de dinero (Manual)',
 };
 
 export const PERMISSION_GROUPS: { title: string; permissions: PermissionKey[] }[] = [
   { title: 'Dashboard', permissions: ['dashboard.view'] },
-  { title: 'Ventas', permissions: ['sales.create', 'sales.view', 'sales.cancel', 'sales.discount', 'sales.delete_item', 'sales.change_price', 'corte.create', 'corte.view', 'corte.blind_view'] },
+  { title: 'Ventas', permissions: ['sales.create', 'sales.view', 'sales.cancel', 'sales.discount', 'sales.delete_item', 'sales.change_price', 'corte.create', 'corte.view', 'corte.blind_view', 'cashdrawer.open'] },
   { title: 'Inventario', permissions: ['inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete', 'inventory.audit'] },
   { title: 'Clientes', permissions: ['customers.view', 'customers.edit', 'fiado.create', 'fiado.view'] },
   { title: 'Gastos', permissions: ['expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete'] },
@@ -460,7 +472,7 @@ export const ALL_PERMISSIONS: PermissionKey[] = [
   'expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete',
   'suppliers.view', 'suppliers.edit', 'pedidos.view', 'pedidos.create',
   'analytics.view', 'reports.view', 'reports.export',
-  'corte.create', 'corte.view', 'corte.blind_view',
+  'corte.create', 'corte.view', 'corte.blind_view', 'cashdrawer.open',
   'settings.view', 'settings.edit', 'roles.manage', 'pos.settings', 'notifications.edit',
   'servicios.view', 'servicios.create', 'servicios.edit',
 ];

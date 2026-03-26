@@ -22,6 +22,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => {
     kpiData: null,
     inventoryAlerts: [],
     products: [],
+    categories: [],
     salesData: [],
     saleRecords: [],
     mermaRecords: [],
@@ -72,6 +73,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => {
           cashMovements: data.cashMovements,
           loyaltyTransactions: data.loyaltyTransactions,
           hourlySalesData: data.hourlySalesData,
+          categories: data.categories || [],
           isLoading: false,
         });
       } catch (error) {

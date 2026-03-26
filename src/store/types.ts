@@ -4,7 +4,7 @@ import type {
   MermaRecord, PedidoRecord, Product, Gasto, Proveedor,
   RoleDefinition, UserRoleRecord, PermissionKey, InventoryAudit,
   Devolucion, DevolucionItem, CashMovement, LoyaltyTransaction,
-  HourlySalesData,
+  HourlySalesData, ProductCategory,
 } from '@/types';
 
 // Re-export for convenience
@@ -51,6 +51,10 @@ export interface InventorySlice {
   getAllProducts: () => Product[];
   createInventoryAudit: (data: { title: string; auditor: string; notes: string }) => Promise<string>;
   completeInventoryAudit: (id: string) => Promise<void>;
+  // Categorias
+  createCategory: (data: { id: string; name: string; description: string | null; icon: string | null }) => Promise<void>;
+  updateCategory: (id: string, data: Partial<ProductCategory>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
 }
 
 export interface CustomerSlice {

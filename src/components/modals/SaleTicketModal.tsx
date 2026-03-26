@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   TextField,
+  Spinner,
 } from '@shopify/polaris';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -31,6 +32,7 @@ import { SaleItemsTable } from './sale/SaleItemsTable';
 import { SaleTotalsCard } from './sale/SaleTotalsCard';
 import { PaymentDetailsSection } from './sale/PaymentDetailsSection';
 import { PinPadModal } from './PinPadModal';
+import { posEngine } from '@/lib/pos/pos-engine';
 
 interface SaleTicketModalProps {
   open: boolean;
@@ -280,17 +282,36 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       } as any;
 
       console.log('Payload de venta:', payload);
-      const sale = await registerSale(payload);
-      console.log('Venta registrada con éxito:', sale);
+      const result = await posEngine.processSale(payload);
+      console.log('Resultado de venta PosEngine:', result);
 
       if (fields.paymentMethod.value === 'fiado') {
-        const itemDescriptions = items.map((i) => `${i.productName} x${i.quantity}`).join(', ');
-        await registerFiado(fields.clienteId.value, total, itemDescriptions, sale.folio, items);
-        const cliente = clientes.find((c) => c.id === fields.clienteId.value);
-        showSuccess(`Venta ${sale.folio} registrada como fiado para ${cliente?.name || 'cliente'}. Total: ${formatCurrency(sale.total)}`);
+        // El fiado offline requiere lógica extra, por ahora lo manejamos como venta normal
+        // si es offline, pero notificamos.
+        if (!result.isOffline) {
+          const itemDescriptions = items.map((i) => `${i.productName} x${i.quantity}`).join(', ');
+          await registerFiado(fields.clienteId.value, total, itemDescriptions, result.folio, items);
+          const cliente = clientes.find((c) => c.id === fields.clienteId.value);
+          showSuccess(`Venta ${result.folio} registrada como fiado para ${cliente?.name || 'cliente'}. Total: ${formatCurrency(total)}`);
+        } else {
+          showSuccess(`VENTA OFFLINE (#${result.folio}): Se sincronizará el fiado al volver el internet.`);
+        }
       } else {
-        showSuccess(`Venta ${sale.folio} registrada correctamente`);
+        if (result.isOffline) {
+          showSuccess(`Venta OFFLINE (#${result.folio}) guardada localmente ✔️`);
+        } else {
+          showSuccess(`Venta ${result.folio} registrada correctamente`);
+        }
       }
+
+      // IMPORTANTE: Para el ticket offline creamos un registro temporal
+      const sale = {
+        ...payload,
+        id: `temp-${Date.now()}`,
+        folio: result.folio,
+        date: new Date().toISOString(),
+      } as SaleRecord;
+
       setCompletedSale(sale);
     } catch (error: any) {
       console.error('Sale Registration Error (Modal):', error);
@@ -401,90 +422,108 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         size="large"
       >
         <Modal.Section>
-          <BlockStack gap="400">
-            <BarcodeScannerCard
-              barcodeInput={fields.barcodeInput.value}
-              onBarcodeInputChange={(val) => { fields.barcodeInput.onChange(val); setBarcodeError(''); }}
-              barcodeError={barcodeError}
-              onScan={handleBarcodeScan}
-            />
-
-            {/* Add product manually */}
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h3" variant="headingSm">Agregar producto</Text>
-                <InlineStack gap="200" align="end" blockAlign="end">
-                  <Box minWidth="300px">
-                    <SearchableSelect
-                      label="Producto"
-                      options={allProducts.map((p) => ({
-                        label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
-                        value: p.id,
-                      }))}
-                      selected={selectedProduct}
-                      onChange={setSelectedProduct}
-                    />
-                  </Box>
-                  <Box minWidth="80px">
-                    <TextField
-                      label="Cantidad"
-                      type="number"
-                      value={quantity}
-                      onChange={setQuantity}
-                      autoComplete="off"
-                      min={1}
-                      selectTextOnFocus
-                    />
-                  </Box>
-                  <Button variant="primary" onClick={addItem} disabled={!selectedProduct}>
-                    Agregar
-                  </Button>
-                </InlineStack>
+          {submitting ? (
+            <Box padding="800">
+              <BlockStack gap="400" align="center" inlineAlign="center">
+                <Spinner size="large" />
+                <BlockStack gap="100" align="center">
+                  <Text as="p" variant="headingMd" alignment="center">
+                    Procesando Venta...
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                    {navigator.onLine 
+                      ? "Sincronizando con la nube de prueba" 
+                      : "Guardando en modo resiliencia offline"}
+                  </Text>
+                </BlockStack>
               </BlockStack>
-            </Card>
+            </Box>
+          ) : (
+            <BlockStack gap="400">
+              <BarcodeScannerCard
+                barcodeInput={fields.barcodeInput.value}
+                onBarcodeInputChange={(val) => { fields.barcodeInput.onChange(val); setBarcodeError(''); }}
+                barcodeError={barcodeError}
+                onScan={handleBarcodeScan}
+              />
 
-            <SaleItemsTable items={items} allProducts={allProducts} onRemove={handleRemoveClick} />
+              {/* Add product manually */}
+              <Card>
+                <BlockStack gap="300">
+                  <Text as="h3" variant="headingSm">Agregar producto</Text>
+                  <InlineStack gap="200" align="end" blockAlign="end">
+                    <Box minWidth="300px">
+                      <SearchableSelect
+                        label="Producto"
+                        options={allProducts.map((p) => ({
+                          label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
+                          value: p.id,
+                        }))}
+                        selected={selectedProduct}
+                        onChange={setSelectedProduct}
+                      />
+                    </Box>
+                    <Box minWidth="80px">
+                      <TextField
+                        label="Cantidad"
+                        type="number"
+                        value={quantity}
+                        onChange={setQuantity}
+                        autoComplete="off"
+                        min={1}
+                        selectTextOnFocus
+                      />
+                    </Box>
+                    <Button variant="primary" onClick={addItem} disabled={!selectedProduct}>
+                      Agregar
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
 
-            {items.length > 0 && (
-              <SaleTotalsCard
-                subtotal={subtotal}
-                discountType={fields.discountType.value}
-                discount={fields.discount.value}
-                discountAmount={discountAmount}
-                discountPending={discountPending}
+              <SaleItemsTable items={items} allProducts={allProducts} onRemove={handleRemoveClick} />
+
+              {items.length > 0 && (
+                <SaleTotalsCard
+                  subtotal={subtotal}
+                  discountType={fields.discountType.value}
+                  discount={fields.discount.value}
+                  discountAmount={discountAmount}
+                  discountPending={discountPending}
+                  iva={iva}
+                  cardSurcharge={cardSurcharge}
+                  total={total}
+                  onDiscountTypeChange={(type) => { fields.discountType.onChange(type); fields.discount.onChange(''); }}
+                  onDiscountChange={(v) => { fields.discount.onChange(v); setDiscountPending(false); }}
+                  onApplyDiscount={handleApplyDiscount}
+                  onRemoveDiscount={() => { fields.discount.onChange(''); setDiscountPending(false); }}
+                />
+              )}
+
+              <PaymentDetailsSection
+                currentUserRole={currentUserRole}
+                paymentMethodField={fields.paymentMethod}
+                clienteIdField={fields.clienteId}
+                amountPaidField={fields.amountPaid}
+                clientes={clientes}
+                total={total}
+                subtotal={subtotalAfterDiscount}
                 iva={iva}
                 cardSurcharge={cardSurcharge}
-                total={total}
-                onDiscountTypeChange={(type) => { fields.discountType.onChange(type); fields.discount.onChange(''); }}
-                onDiscountChange={(v) => { fields.discount.onChange(v); setDiscountPending(false); }}
-                onApplyDiscount={handleApplyDiscount}
-                onRemoveDiscount={() => { fields.discount.onChange(''); setDiscountPending(false); }}
+                change={change}
+                pointsAvailable={pointsAvailable}
+                mpConfig={mpConfig}
+                mpProcessing={mpProcessing}
+                mpStatus={mpStatus}
+                mpError={mpError}
+                mpWebSuccess={mpWebSuccess}
+                onCancelMPPayment={handleCancelMPPayment}
+                onMpWebSuccess={() => setMpWebSuccess(true)}
+                finishSale={finishSale}
+                showError={showError}
               />
-            )}
-
-            <PaymentDetailsSection
-              currentUserRole={currentUserRole}
-              paymentMethodField={fields.paymentMethod}
-              clienteIdField={fields.clienteId}
-              amountPaidField={fields.amountPaid}
-              clientes={clientes}
-              total={total}
-              subtotal={subtotalAfterDiscount}
-              iva={iva}
-              cardSurcharge={cardSurcharge}
-              change={change}
-              pointsAvailable={pointsAvailable}
-              mpConfig={mpConfig}
-              mpProcessing={mpProcessing}
-              mpStatus={mpStatus}
-              mpError={mpError}
-              mpWebSuccess={mpWebSuccess}
-              onCancelMPPayment={handleCancelMPPayment}
-              onMpWebSuccess={() => setMpWebSuccess(true)}
-              finishSale={finishSale}
-              showError={showError}
-            />
-          </BlockStack>
+            </BlockStack>
+          )}
         </Modal.Section>
       </Modal>
 

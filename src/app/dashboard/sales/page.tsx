@@ -5,7 +5,7 @@ import { SalesHistory } from '@/components/sales/SalesHistory';
 
 export default function SalesPage() {
   return (
-    <Page fullWidth title="Historial de Ventas">
+    <Page fullWidth title="Ventas">
       <SalesHistory />
     </Page>
   );

@@ -29,19 +29,6 @@ interface UpdateProductModalProps {
   product: Product | null;
 }
 
-const categoryOptions = [
-  { label: 'Seleccionar categoría...', value: '' },
-  { label: 'Lácteos', value: 'lacteos' },
-  { label: 'Panadería', value: 'panaderia' },
-  { label: 'Huevo', value: 'huevo' },
-  { label: 'Botanas', value: 'botanas' },
-  { label: 'Bebidas', value: 'bebidas' },
-  { label: 'Limpieza', value: 'limpieza' },
-  { label: 'Abarrotes', value: 'abarrotes' },
-  { label: 'Frutas y Verduras', value: 'frutas_verduras' },
-  { label: 'Carnes', value: 'carnes' },
-  { label: 'Otros', value: 'otros' },
-];
 
 const unitOptions = [
   { label: 'Pieza', value: 'pieza' },
@@ -55,7 +42,13 @@ const unitOptions = [
 
 export function UpdateProductModal({ open, onClose, product }: UpdateProductModalProps) {
   const updateProductStore = useDashboardStore((s) => s.updateProduct);
+  const categories = useDashboardStore((s) => s.categories);
   const storeConfig = useDashboardStore((s) => s.storeConfig);
+  
+  const categoryOptions = [
+    { label: 'Seleccionar categoría...', value: '' },
+    ...categories.map(c => ({ label: c.name, value: c.id }))
+  ];
   const { showSuccess, showError } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);

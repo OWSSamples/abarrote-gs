@@ -13,6 +13,9 @@ import {
   Card,
   Badge,
   InlineGrid,
+  IndexTable,
+  EmptyState,
+  Link,
 } from '@shopify/polaris';
 import {
   CartIcon,
@@ -338,34 +341,53 @@ export default function DashboardOverviewPage() {
                   </InlineStack>
                 </Box>
                 {todaySales.length === 0 ? (
-                  <Box padding="800">
-                    <BlockStack gap="200" align="center">
-                      <Text as="p" alignment="center" tone="subdued">No hay ventas registradas hoy.</Text>
-                    </BlockStack>
-                  </Box>
+                  <Card>
+                    <Box padding="800">
+                      <EmptyState
+                        heading="Aún no hay ventas para mostrar hoy"
+                        action={{ content: 'Ir a Caja', onAction: () => setSaleTicketOpen(true) }}
+                        secondaryAction={{ content: 'Ver historial', onAction: () => console.log('Historial') }}
+                        image="/illustrations/empty-sales.png"
+                        footerHelp={
+                          <p>
+                            ¿Necesitas ayuda? Consulta nuestra {' '}
+                            <Link url="#">guía de soporte</Link>.
+                          </p>
+                        }
+                      >
+                        <p>Cuando realices una venta, los detalles de la transacción aparecerán aquí para un seguimiento rápido y profesional.</p>
+                      </EmptyState>
+                    </Box>
+                  </Card>
                 ) : (
-                  <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid #e1e3e5', backgroundColor: '#f9fafb' }}>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', color: '#6d7175', fontWeight: 600 }}>Folio</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', color: '#6d7175', fontWeight: 600 }}>Hora</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', color: '#6d7175', fontWeight: 600 }}>Cajero</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: '12px', color: '#6d7175', fontWeight: 600 }}>Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {todaySales.slice(0, 10).map((sale) => (
-                          <tr key={sale.id} style={{ borderBottom: '1px solid #f1f2f4' }}>
-                            <td style={{ padding: '10px 16px', fontWeight: 600 }}>{sale.folio}</td>
-                            <td style={{ padding: '10px 16px', color: '#6d7175' }}>{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                            <td style={{ padding: '10px 16px' }}>{sale.cajero || 'Central'}</td>
-                            <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(sale.total)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <IndexTable
+                    resourceName={{ singular: 'venta', plural: 'ventas' }}
+                    itemCount={todaySales.length}
+                    headings={[
+                      { title: 'Folio' },
+                      { title: 'Hora' },
+                      { title: 'Cajero' },
+                      { title: 'Total', alignment: 'end' },
+                    ]}
+                    selectable={false}
+                  >
+                    {todaySales.slice(0, 10).map((sale, index) => (
+                      <IndexTable.Row id={sale.id} key={sale.id} position={index}>
+                        <IndexTable.Cell>
+                          <Text as="span" variant="bodyMd" fontWeight="bold">{sale.folio}</Text>
+                        </IndexTable.Cell>
+                        <IndexTable.Cell>
+                          {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </IndexTable.Cell>
+                        <IndexTable.Cell>{sale.cajero || 'Central'}</IndexTable.Cell>
+                        <IndexTable.Cell>
+                          <div style={{ textAlign: 'right' }}>
+                            <Text as="span" variant="bodyMd" fontWeight="bold">{formatCurrency(sale.total)}</Text>
+                          </div>
+                        </IndexTable.Cell>
+                      </IndexTable.Row>
+                    ))}
+                  </IndexTable>
                 )}
               </Card>
             </Layout.Section>

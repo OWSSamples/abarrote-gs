@@ -13,6 +13,12 @@ import {
   Select,
   Box,
   Icon,
+  IndexFilters,
+  useSetIndexFiltersMode,
+  IndexFiltersProps,
+  ChoiceList,
+  ButtonGroup,
+  InlineGrid,
 } from '@shopify/polaris';
 import { ExportIcon, SearchIcon, ReceiptIcon, RefreshIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -147,75 +153,114 @@ export function SalesHistory() {
     }
   }, [selectedSale, cancelSale, showSuccess, showError]);
 
-  const methodOptions = [
-    { label: 'Todos los métodos', value: '' },
-    { label: 'Efectivo',          value: 'efectivo' },
-    { label: 'Tarjeta',           value: 'tarjeta' },
-    { label: 'Transferencia',     value: 'transferencia' },
+  const searchFilters = [
+    {
+      key: 'paymentMethod',
+      label: 'Método de Pago',
+      filter: (
+        <ChoiceList
+          title="Método de Pago"
+          titleHidden
+          choices={[
+            { label: 'Efectivo', value: 'efectivo' },
+            { label: 'Tarjeta', value: 'tarjeta' },
+            { label: 'Transferencia', value: 'transferencia' },
+          ]}
+          selected={[filterMethod]}
+          onChange={(val) => setFilterMethod(val[0])}
+        />
+      ),
+      shortcut: true,
+    },
+    {
+      key: 'dateRange',
+      label: 'Rango de Fechas',
+      filter: (
+        <Box padding="200">
+          <DateRangeFilter
+            activeDateRange={activeDateRange}
+            onApply={setActiveDateRange}
+            onClear={() => setActiveDateRange(null)}
+          />
+        </Box>
+      ),
+      shortcut: true,
+    },
   ];
+
+  const appliedFilters = useMemo(() => {
+    const tmp = [];
+    if (filterMethod) {
+      tmp.push({
+        key: 'paymentMethod',
+        label: `Método: ${filterMethod}`,
+        onRemove: () => setFilterMethod(''),
+      });
+    }
+    if (activeDateRange) {
+      tmp.push({
+        key: 'dateRange',
+        label: `Período: ${activeDateRange.label}`,
+        onRemove: () => setActiveDateRange(null),
+      });
+    }
+    return tmp;
+  }, [filterMethod, activeDateRange]);
+
+  const { mode, setMode } = useSetIndexFiltersMode();
 
   return (
     <BlockStack gap="500">
-      <style>{`
-        .custom-search-folio {
-          width: 1200px;
-          transition: width 0.3s ease;
-        }
-        .custom-search-folio .Polaris-TextField__Backdrop {
-          border-color: transparent !important;
-          background-color: var(--p-color-bg-surface-secondary) !important;
-          transition: border-color 0.2s ease;
-        }
-        .custom-search-folio:focus-within .Polaris-TextField__Backdrop,
-        .custom-search-folio input:not(:placeholder-shown) + .Polaris-TextField__Backdrop {
-          border-color: var(--p-color-border-focus) !important;
-        }
-      `}</style>
       <Card padding="0">
-        <Box
-          paddingInlineStart="500"
-          paddingInlineEnd="500"
-          paddingBlockStart="400"
-          paddingBlockEnd="400"
-          borderBlockEndWidth="025"
-          borderColor="border"
-        >
-          <InlineStack align="space-between" blockAlign="center">
-            <InlineStack gap="400">
-              <div className="custom-search-folio">
-                <TextField
-                  label="Buscar por folio"
-                  labelHidden
-                  value={searchFolio}
-                  onChange={setSearchFolio}
-                  placeholder="Buscar folio (ej. 309001)..."
-                  autoComplete="off"
-                  clearButton
-                  onClearButtonClick={() => setSearchFolio('')}
-                />
-              </div>
-              <div style={{ width: '200px' }}>
-                <Select
-                  label="Método de pago"
-                  labelHidden
-                  options={methodOptions}
-                  value={filterMethod}
-                  onChange={setFilterMethod}
-                />
-              </div>
-              <DateRangeFilter
-                activeDateRange={activeDateRange}
-                onApply={setActiveDateRange}
-                onClear={() => setActiveDateRange(null)}
-              />
-            </InlineStack>
-
+        <Box padding="400" borderBlockEndWidth="025" borderColor="border">
+          <InlineGrid columns="1fr auto">
+            <Text as="h2" variant="headingMd">Historial de ventas</Text>
             <InlineStack gap="200">
-              <Button onClick={() => window.location.reload()}>Actualizar</Button>
-              <Button variant="primary" onClick={() => setIsExportOpen(true)}>Exportar</Button>
+              <Button 
+                onClick={() => window.location.reload()}
+                icon={RefreshIcon}
+              >
+                Actualizar
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={() => setIsExportOpen(true)}
+                icon={ExportIcon}
+              >
+                Exportar
+              </Button>
             </InlineStack>
-          </InlineStack>
+          </InlineGrid>
         </Box>
+
+        <IndexFilters
+          queryValue={searchFolio}
+          queryPlaceholder="Filtrar ventas..."
+          onQueryChange={setSearchFolio}
+          onQueryClear={() => setSearchFolio('')}
+          cancelAction={{
+            onAction: () => {
+              setSearchFolio('');
+              setFilterMethod('');
+              setActiveDateRange(null);
+            },
+            disabled: !searchFolio && !filterMethod && !activeDateRange,
+            loading: false,
+          }}
+          tabs={[]}
+          selected={0}
+          onSelect={() => {}}
+          filters={searchFilters}
+          appliedFilters={appliedFilters}
+          onClearAll={() => {
+            setSearchFolio('');
+            setFilterMethod('');
+            setActiveDateRange(null);
+          }}
+          mode={mode}
+          setMode={setMode}
+          loading={false}
+        />
 
         <Box>
           {filteredSales.length === 0 ? (
@@ -272,7 +317,7 @@ export function SalesHistory() {
                         )}
                       </IndexTable.Cell>
                       <IndexTable.Cell>
-                        <InlineStack gap="200">
+                        <ButtonGroup variant="segmented">
                           <Button size="slim" onClick={() => handleViewSale(sale)}>Ver</Button>
                           <Button 
                             size="slim" 
@@ -283,7 +328,7 @@ export function SalesHistory() {
                           >
                             Imprimir
                           </Button>
-                        </InlineStack>
+                        </ButtonGroup>
                       </IndexTable.Cell>
                     </IndexTable.Row>
                   );

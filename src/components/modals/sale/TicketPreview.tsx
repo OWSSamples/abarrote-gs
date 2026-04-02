@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { Modal, Text, Box, BlockStack, InlineStack, Icon, Badge, Button } from '@shopify/polaris';
+import { Modal, Text, Box, BlockStack, InlineStack, Icon, Badge } from '@shopify/polaris';
 import { PrintIcon, CheckCircleIcon, ExportIcon } from '@shopify/polaris-icons';
 import JsBarcode from 'jsbarcode';
 import type { SaleRecord, Cliente, StoreConfig } from '@/types';
@@ -75,138 +75,134 @@ export function TicketPreview({
         <Box padding="400" background="bg-surface-secondary">
           <BlockStack gap="400" align="center">
             
-            {/* Contenedor del Ticket Estilo Papel */}
-            <div className={`ticket-paper ${isOffline ? 'offline-border' : ''}`}>
-              
-              {/* Encabezado */}
-              <div className="ticket-header">
-                <Text as="h1" variant="headingLg" alignment="center" fontWeight="bold">
-                  {sc.storeName.toUpperCase()}
-                </Text>
-                <div className="store-details">
-                  <p>{sc.legalName}</p>
-                  <p>{sc.address}</p>
-                  <p>C.P. {sc.postalCode}, {sc.city}</p>
-                  <p>RFC: {sc.rfc}</p>
-                  <p>TEL: {sc.phone}</p>
+            <div className={`ticket-paper ${isOffline ? 'ticket-offline' : ''}`}>
+
+              {/* ── Logo / Store Identity ── */}
+              <div className="header-area">
+                {sc.logoUrl ? (
+                  <img src={sc.logoUrl} alt={sc.storeName} className="store-logo" />
+                ) : (
+                  <div className="logo-monogram">{sc.storeName.charAt(0)}</div>
+                )}
+                <div className="store-name">{sc.storeName.toUpperCase()}</div>
+                <div className="store-meta">
+                  {sc.legalName}<br/>
+                  {sc.address}<br/>
+                  C.P. {sc.postalCode}, {sc.city}<br/>
+                  RFC: {sc.rfc} · TEL: {sc.phone}
                 </div>
               </div>
+
+              <div className="sep-line" />
 
               {isOffline && (
-                <div className="offline-banner">
-                  <Badge tone="warning">MODO OFFLINE ACTIVADO</Badge>
-                  <p className="offline-msg">Comprobante de Emergencia local</p>
-                </div>
+                <div className="offline-strip">MODO OFFLINE — COMPROBANTE DE EMERGENCIA</div>
               )}
 
-              <div className="divider-dashed" />
+              {/* ── Document type ── */}
+              <div className="doc-label">Ticket de Venta</div>
 
-              {/* Info de Venta */}
-              <div className="sale-info">
-                <InlineStack align="space-between">
-                  <p><strong>Folio:</strong> #{completedSale.folio}</p>
-                  <p>{new Date(completedSale.date).toLocaleDateString()}</p>
-                </InlineStack>
-                <InlineStack align="space-between">
-                  <p><strong>Cajero:</strong> {completedSale.cajero.substring(0, 15)}</p>
-                  <p>{new Date(completedSale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                </InlineStack>
+              {/* ── Sale metadata ── */}
+              <div className="meta-grid">
+                <div className="meta-item">
+                  <span className="meta-key">Folio</span>
+                  <span className="meta-val">#{completedSale.folio}</span>
+                </div>
+                <div className="meta-item">
+                  <span className="meta-key">Fecha</span>
+                  <span className="meta-val">{new Date(completedSale.date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                </div>
+                <div className="meta-item">
+                  <span className="meta-key">Hora</span>
+                  <span className="meta-val">{new Date(completedSale.date).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div className="meta-item">
+                  <span className="meta-key">Cajero</span>
+                  <span className="meta-val">{completedSale.cajero.substring(0, 18)}</span>
+                </div>
               </div>
 
-              <div className="divider-dashed" />
+              <div className="sep-line" />
 
-              {/* Tabla de Productos */}
-              <table className="items-table">
-                <thead>
-                  <tr>
-                    <th align="left">CANT. / PRODUCTO</th>
-                    <th align="right">TOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {completedSale.items.map((item, idx) => (
-                    <tr key={idx}>
-                      <td>
-                        <div className="item-row">
-                          <span className="qty">{item.quantity}x</span>
-                          <span className="name">{item.productName.toUpperCase()}</span>
-                        </div>
-                        <span className="unit-price">P.U. {formatCurrency(item.unitPrice)}</span>
-                      </td>
-                      <td align="right" valign="top">
-                        {formatCurrency(item.subtotal)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* ── Items ── */}
+              <div className="items-section">
+                {completedSale.items.map((item, idx) => (
+                  <div key={idx} className="item-row">
+                    <div className="item-left">
+                      <span className="item-name">{item.productName}</span>
+                      <span className="item-detail">{item.quantity} × {formatCurrency(item.unitPrice)}</span>
+                    </div>
+                    <span className="item-amount">{formatCurrency(item.subtotal)}</span>
+                  </div>
+                ))}
+              </div>
 
-              <div className="divider-dashed" />
+              <div className="sep-double" />
 
-              {/* Resumen de Pago */}
-              <div className="totals-section">
-                <InlineStack align="space-between">
-                  <p>SUBTOTAL</p>
-                  <p>{formatCurrency(completedSale.subtotal)}</p>
-                </InlineStack>
+              {/* ── Totals ── */}
+              <div className="totals">
+                <div className="total-line">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(completedSale.subtotal)}</span>
+                </div>
                 {completedSale.discount > 0 && (
-                  <InlineStack align="space-between" className="discount">
-                    <p>DESCUENTO</p>
-                    <p>-{formatCurrency(completedSale.discount)}</p>
-                  </InlineStack>
+                  <div className="total-line total-discount">
+                    <span>Descuento</span>
+                    <span>−{formatCurrency(completedSale.discount)}</span>
+                  </div>
                 )}
                 {completedSale.cardSurcharge > 0 && (
-                  <InlineStack align="space-between">
-                    <p>COMISIÓN TARJETA</p>
-                    <p>{formatCurrency(completedSale.cardSurcharge)}</p>
-                  </InlineStack>
-                )}
-                <div className="grand-total">
-                  <InlineStack align="space-between">
-                    <Text as="p" variant="headingLg" fontWeight="bold">TOTAL</Text>
-                    <Text as="p" variant="headingLg" fontWeight="bold">{formatCurrency(completedSale.total)}</Text>
-                  </InlineStack>
-                </div>
-                
-                <InlineStack align="space-between" className="payment-method">
-                  <p>METODO DE PAGO:</p>
-                  <p>{completedSale.paymentMethod.toUpperCase()}</p>
-                </InlineStack>
-                
-                {completedSale.paymentMethod === 'efectivo' && (
-                  <>
-                    <InlineStack align="space-between">
-                      <p>RECIBIDO:</p>
-                      <p>{formatCurrency(completedSale.amountPaid)}</p>
-                    </InlineStack>
-                    <InlineStack align="space-between" className="change">
-                      <p>CAMBIO:</p>
-                      <p>{formatCurrency(completedSale.change)}</p>
-                    </InlineStack>
-                  </>
+                  <div className="total-line">
+                    <span>Comisión tarjeta</span>
+                    <span>{formatCurrency(completedSale.cardSurcharge)}</span>
+                  </div>
                 )}
               </div>
 
-              {cliente && (
-                <div className="loyalty-box">
-                  <div className="divider-dashed" />
-                  <p className="client-name">CLIENTE: {cliente.name.toUpperCase()}</p>
-                  <InlineStack align="space-between">
-                    <p>PUNTOS OBTENIDOS:</p>
-                    <p>+{completedSale.pointsEarned}</p>
-                  </InlineStack>
+              <div className="grand-total-box">
+                <span>TOTAL</span>
+                <span>{formatCurrency(completedSale.total)}</span>
+              </div>
+
+              <div className="payment-label">
+                {completedSale.paymentMethod.toUpperCase().replace('_', ' ')}
+              </div>
+
+              {completedSale.paymentMethod === 'efectivo' && (
+                <div className="cash-area">
+                  <div className="total-line">
+                    <span>Recibido</span>
+                    <span>{formatCurrency(completedSale.amountPaid)}</span>
+                  </div>
+                  <div className="total-line total-change">
+                    <span>Cambio</span>
+                    <span>{formatCurrency(completedSale.change)}</span>
+                  </div>
                 </div>
               )}
 
-              <div className="divider-dashed" />
+              {cliente && (
+                <>
+                  <div className="sep-thin" />
+                  <div className="loyalty-area">
+                    <div className="loyalty-label">PROGRAMA DE LEALTAD</div>
+                    <div className="loyalty-row">
+                      <span>{cliente.name}</span>
+                      <span className="loyalty-pts">+{completedSale.pointsEarned} pts</span>
+                    </div>
+                  </div>
+                </>
+              )}
 
-              {/* Pie de Ticket */}
-              <div className="footer">
+              <div className="sep-line" />
+
+              {/* ── Footer ── */}
+              <div className="footer-area">
                 <p className="footer-msg">{sc.ticketFooter}</p>
                 <div className="barcode-wrap">
                    <svg ref={barcodeRef}></svg>
                 </div>
-                <p className="slogan">POWERED BY OPENDEX POS</p>
+                <div className="powered-label">OPENDEX POS</div>
               </div>
             </div>
 
@@ -217,57 +213,181 @@ export function TicketPreview({
           .ticket-paper {
             background: #fff;
             width: 300px;
-            padding: 24px 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            font-family: 'Inter', sans-serif;
-            color: #1a1a1a;
+            padding: 28px 20px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06);
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            color: #111;
             position: relative;
-            border-top: 5px solid #1a1a1a;
           }
-          .ticket-paper.offline-border {
-            border-top-color: #f59e0b;
+          .ticket-offline { border-top: 2px solid #111; }
+
+          /* ── Header ── */
+          .header-area { text-align: center; margin-bottom: 4px; }
+          .store-logo {
+            max-width: 120px;
+            max-height: 48px;
+            object-fit: contain;
+            margin-bottom: 6px;
           }
-          .offline-banner {
+          .logo-monogram {
+            width: 40px; height: 40px;
+            border: 2px solid #111;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; font-weight: 800;
+            margin: 0 auto 6px;
+            letter-spacing: -1px;
+          }
+          .store-name {
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            margin-bottom: 4px;
+          }
+          .store-meta {
+            font-size: 9px;
+            color: #888;
+            line-height: 1.5;
+          }
+
+          /* ── Separators ── */
+          .sep-line { border-top: 1px solid #111; margin: 12px 0; }
+          .sep-thin { border-top: 1px solid #e0e0e0; margin: 10px 0; }
+          .sep-double { border-top: 3px double #111; margin: 10px 0; }
+
+          .offline-strip {
             text-align: center;
-            margin: 12px 0;
-            background: #fef3c7;
-            padding: 8px;
-            border-radius: 4px;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            border: 1px solid #111;
+            padding: 4px 8px;
+            margin-bottom: 8px;
           }
-          .offline-msg { font-size: 10px; color: #92400e; font-weight: 600; margin-top: 4px; }
-          
-          .ticket-header { text-align: center; margin-bottom: 12px; }
-          .store-details { font-size: 11px; color: #666; line-height: 1.4; margin-top: 4px; }
-          
-          .divider-dashed {
-            border-top: 1px dashed #ccc;
-            margin: 12px 0;
-            width: 100%;
+
+          /* ── Doc label ── */
+          .doc-label {
+            text-align: center;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: #111;
+            margin-bottom: 10px;
           }
-          
-          .sale-info { font-size: 12px; color: #333; }
-          
-          .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-          .items-table th { font-size: 10px; color: #888; padding-bottom: 8px; }
-          .item-row { display: flex; gap: 8px; font-size: 12px; font-weight: 600; }
-          .qty { color: #666; min-width: 25px; }
-          .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-          .unit-price { font-size: 10px; color: #999; margin-left: 33px; display: block; margin-top: 2px; }
-          .items-table td { padding: 6px 0; }
 
-          .totals-section { font-size: 12px; line-height: 1.6; }
-          .grand-total { margin: 8px 0; padding-top: 8px; border-top: 1px solid #eee; }
-          .payment-method { margin-top: 12px; font-weight: 600; }
-          .discount { color: #ef4444; }
-          .change { font-weight: bold; color: #10b981; }
+          /* ── Metadata ── */
+          .meta-grid { }
+          .meta-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            font-size: 11px;
+          }
+          .meta-key {
+            color: #999;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+          }
+          .meta-val { font-weight: 600; }
 
-          .loyalty-box { font-size: 11px; }
-          .client-name { font-weight: bold; margin-bottom: 4px; }
+          /* ── Items ── */
+          .items-section { margin: 4px 0; }
+          .item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 5px 0;
+            border-bottom: 1px dotted #ddd;
+          }
+          .item-row:last-child { border-bottom: none; }
+          .item-left { flex: 1; }
+          .item-name {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.3;
+          }
+          .item-detail {
+            display: block;
+            font-size: 9px;
+            color: #999;
+            margin-top: 1px;
+          }
+          .item-amount {
+            font-size: 11px;
+            font-weight: 700;
+            margin-left: 8px;
+            white-space: nowrap;
+            padding-top: 1px;
+          }
 
-          .footer { text-align: center; margin-top: 20px; }
-          .footer-msg { font-size: 11px; white-space: pre-wrap; line-height: 1.4; color: #666; }
-          .barcode-wrap { margin: 15px 0; display: flex; justify-content: center; }
-          .slogan { font-size: 9px; letter-spacing: 2px; color: #ddd; font-weight: bold; margin-top: 10px; }
+          /* ── Totals ── */
+          .totals { }
+          .total-line {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 2px 0;
+            color: #555;
+          }
+          .total-discount { color: #c00; }
+          .grand-total-box {
+            display: flex;
+            justify-content: space-between;
+            font-size: 20px;
+            font-weight: 800;
+            padding: 6px 0;
+            border-top: 2px solid #111;
+            border-bottom: 2px solid #111;
+            margin: 6px 0;
+            letter-spacing: .5px;
+          }
+          .payment-label {
+            text-align: center;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: #888;
+            margin: 6px 0;
+          }
+          .cash-area { margin-top: 2px; }
+          .total-change { font-weight: 700; color: #111; }
+
+          /* ── Loyalty ── */
+          .loyalty-area { text-align: center; }
+          .loyalty-label {
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: #aaa;
+            margin-bottom: 4px;
+          }
+          .loyalty-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+          }
+          .loyalty-pts { font-weight: 700; }
+
+          /* ── Footer ── */
+          .footer-area { text-align: center; margin-top: 8px; }
+          .footer-msg {
+            font-size: 9px;
+            white-space: pre-wrap;
+            line-height: 1.4;
+            color: #999;
+          }
+          .barcode-wrap { margin: 10px 0; display: flex; justify-content: center; }
+          .powered-label {
+            font-size: 7px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: #ccc;
+            margin-top: 4px;
+          }
         `}</style>
       </Modal.Section>
     </Modal>

@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import type { StoreConfig } from '@/types';
 import { DEFAULT_STORE_CONFIG } from '@/types';
 import { numVal } from './_helpers';
+import { validateSchema, saveStoreConfigSchema } from '@/lib/validation/schemas';
 
 // ==================== STORE CONFIG ====================
 
@@ -18,12 +19,25 @@ function isMissingColumnError(error: unknown): boolean {
     msg.includes('inventory_general_columns') ||
     msg.includes('ticket_template') ||
     msg.includes('default_margin') ||
-    msg.includes('default_starting_fund')
+    msg.includes('default_starting_fund') ||
+    msg.includes('clabe_number') ||
+    msg.includes('paypal_username') ||
+    msg.includes('cobrar_qr_url') ||
+    msg.includes('mp_device_id') ||
+    msg.includes('mp_public_key') ||
+    msg.includes('mp_enabled') ||
+    msg.includes('conekta_enabled') ||
+    msg.includes('conekta_public_key') ||
+    msg.includes('stripe_enabled') ||
+    msg.includes('stripe_public_key') ||
+    msg.includes('clip_enabled') ||
+    msg.includes('clip_api_key') ||
+    msg.includes('clip_serial_number')
   );
 }
 
 function mapStoreConfigRow(
-  row: Omit<StoreConfig, 'telegramToken' | 'telegramChatId' | 'printerIp' | 'cashDrawerPort' | 'scalePort' | 'logoUrl' | 'inventoryGeneralColumns' | 'defaultMargin' | 'ticketTemplateVenta' | 'ticketTemplateProveedor'> & {
+  row: Omit<StoreConfig, 'telegramToken' | 'telegramChatId' | 'printerIp' | 'cashDrawerPort' | 'scalePort' | 'logoUrl' | 'inventoryGeneralColumns' | 'defaultMargin' | 'ticketTemplateVenta' | 'ticketTemplateProveedor' | 'clabeNumber' | 'paypalUsername' | 'cobrarQrUrl' | 'mpDeviceId' | 'mpPublicKey' | 'mpEnabled' | 'closeSystemTime' | 'autoCorteTime' | 'defaultStartingFund'> & {
     telegramToken?: string | null;
     telegramChatId?: string | null;
     printerIp?: string | null;
@@ -34,6 +48,22 @@ function mapStoreConfigRow(
     defaultMargin?: string | null;
     ticketTemplateVenta?: string | null;
     ticketTemplateProveedor?: string | null;
+    clabeNumber?: string | null;
+    paypalUsername?: string | null;
+    cobrarQrUrl?: string | null;
+    mpDeviceId?: string | null;
+    mpPublicKey?: string | null;
+    mpEnabled?: boolean | null;
+    conektaEnabled?: boolean | null;
+    conektaPublicKey?: string | null;
+    stripeEnabled?: boolean | null;
+    stripePublicKey?: string | null;
+    clipEnabled?: boolean | null;
+    clipApiKey?: string | null;
+    clipSerialNumber?: string | null;
+    closeSystemTime?: string | null;
+    autoCorteTime?: string | null;
+    defaultStartingFund?: string | number | null;
     updatedAt?: Date;
   }
 ): StoreConfig {
@@ -74,6 +104,22 @@ function mapStoreConfigRow(
     defaultMargin: row.defaultMargin ?? DEFAULT_STORE_CONFIG.defaultMargin,
     ticketTemplateVenta: row.ticketTemplateVenta ?? undefined,
     ticketTemplateProveedor: row.ticketTemplateProveedor ?? undefined,
+    clabeNumber: row.clabeNumber ?? undefined,
+    paypalUsername: row.paypalUsername ?? undefined,
+    cobrarQrUrl: row.cobrarQrUrl ?? undefined,
+    mpDeviceId: row.mpDeviceId ?? undefined,
+    mpPublicKey: row.mpPublicKey ?? undefined,
+    mpEnabled: row.mpEnabled ?? DEFAULT_STORE_CONFIG.mpEnabled,
+    conektaEnabled: row.conektaEnabled ?? DEFAULT_STORE_CONFIG.conektaEnabled,
+    conektaPublicKey: row.conektaPublicKey ?? undefined,
+    stripeEnabled: row.stripeEnabled ?? DEFAULT_STORE_CONFIG.stripeEnabled,
+    stripePublicKey: row.stripePublicKey ?? undefined,
+    clipEnabled: row.clipEnabled ?? DEFAULT_STORE_CONFIG.clipEnabled,
+    clipApiKey: row.clipApiKey ?? undefined,
+    clipSerialNumber: row.clipSerialNumber ?? undefined,
+    closeSystemTime: (row.closeSystemTime as string) ?? DEFAULT_STORE_CONFIG.closeSystemTime,
+    autoCorteTime: (row.autoCorteTime as string) ?? DEFAULT_STORE_CONFIG.autoCorteTime,
+    defaultStartingFund: Number(row.defaultStartingFund) || DEFAULT_STORE_CONFIG.defaultStartingFund,
   };
 }
 
@@ -138,11 +184,18 @@ export async function fetchStoreConfig(): Promise<StoreConfig> {
 
 export async function saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig> {
   await requireOwner();
+  validateSchema(saveStoreConfigSchema, data, 'saveStoreConfig');
   const { id, ...rest } = data;
   const persist = async (values: Partial<StoreConfig>) => {
-    const result = await db.update(storeConfig).set({ ...values, updatedAt: new Date() }).where(eq(storeConfig.id, 'main'));
+    // Strip fields that don't exist as DB columns
+    const { defaultStartingFund, closeSystemTime: _cst, autoCorteTime: _act, ...rest } = values;
+    const dbValues: Record<string, unknown> = { ...rest, updatedAt: new Date() };
+    if (defaultStartingFund !== undefined) {
+      dbValues.defaultStartingFund = String(defaultStartingFund);
+    }
+    const result = await db.update(storeConfig).set(dbValues).where(eq(storeConfig.id, 'main'));
     if (!result.rowCount || result.rowCount === 0) {
-      await db.insert(storeConfig).values({ id: 'main', ...values });
+      await db.insert(storeConfig).values({ id: 'main', ...dbValues });
     }
   };
 
@@ -159,6 +212,19 @@ export async function saveStoreConfig(data: Partial<StoreConfig>): Promise<Store
       ticketTemplateProveedor: _ignored3, 
       defaultMargin: _ignored4,
       defaultStartingFund: _ignored5,
+      clabeNumber: _ignored6,
+      paypalUsername: _ignored7,
+      cobrarQrUrl: _ignored8,
+      mpDeviceId: _ignored9,
+      mpPublicKey: _ignored10,
+      mpEnabled: _ignored11,
+      conektaEnabled: _ignored12,
+      conektaPublicKey: _ignored13,
+      stripeEnabled: _ignored14,
+      stripePublicKey: _ignored15,
+      clipEnabled: _ignored16,
+      clipApiKey: _ignored17,
+      clipSerialNumber: _ignored18,
       ...legacyRest 
     } = rest;
     await persist(legacyRest);

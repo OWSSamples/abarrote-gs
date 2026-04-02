@@ -35,8 +35,8 @@ import {
   createRecarga,
   createPagoServicio,
   cancelarServicio,
-  SERVICIO_CATALOGO,
 } from '@/app/actions/servicios-actions';
+import { SERVICIO_CATALOGO } from '@/app/actions/servicios-catalogo';
 import { useToast } from '@/components/notifications/ToastProvider';
 import type { Servicio } from '@/types';
 

@@ -8,6 +8,12 @@ import type { SaleRecord, SaleItem, SalesData, CorteCaja, HourlySalesData } from
 import { numVal } from './_helpers';
 import { sendNotification, escapeHTML } from './_notifications';
 import { logger } from '@/lib/logger';
+import { createConektaSPEICharge, createConektaOXXOCharge } from '@/lib/conekta-provider';
+import { createStripeSPEICharge, createStripeOXXOCharge } from '@/lib/stripe-provider';
+import { createClipCheckoutCharge, createClipTerminalCharge } from '@/lib/clip-provider';
+import { paymentCharges } from '@/db/schema';
+import { createSaleSchema } from '@/lib/validation/schemas';
+import { publishJob } from '@/infrastructure/qstash';
 
 // ==================== FOLIO ====================
 
@@ -141,6 +147,8 @@ export async function fetchSaleRecords(): Promise<SaleRecord[]> {
     pointsUsed: numVal(row.pointsUsed),
     discount: numVal((row as any).discount ?? '0'),
     discountType: ((row as any).discountType ?? 'amount') as 'amount' | 'percent',
+    installments: (row as any).installments ?? 1,
+    mpPaymentId: (row as any).mpPaymentId ?? null,
   }));
 }
 
@@ -149,6 +157,15 @@ export async function createSale(
 ): Promise<SaleRecord> {
   return logger.withTiming('createSale', async () => {
   await requirePermission('sales.create');
+
+  // ── Runtime validation ──
+  const parsed = createSaleSchema.safeParse(saleData);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ');
+    logger.warn('createSale validation failed', { action: 'sale_validation_error', issues });
+    throw new Error(`Datos de venta inválidos: ${issues}`);
+  }
+
   const now = new Date();
   const cajero = saleData.cajero?.trim() || 'Cajero';
   const id = `sale-${crypto.randomUUID()}`;
@@ -199,14 +216,22 @@ export async function createSale(
       pointsUsed: String(saleData.pointsUsed),
       discount: String(saleData.discount ?? 0),
       discountType: saleData.discountType ?? 'amount',
+      installments: saleData.installments ?? 1,
+      mpPaymentId: saleData.mpPaymentId ?? null,
       date: now,
     });
   } catch (err: any) {
     const pgCode    = err?.code ?? err?.cause?.code;
     const pgMessage = err?.message ?? err?.cause?.message;
     const detail    = err?.detail ?? err?.cause?.detail ?? err?.hint ?? err?.constraint;
-    console.error('\n🔴 ERROR VENTA\n', { pgCode, pgMessage, detail, full: JSON.stringify(err, Object.getOwnPropertyNames(err)) });
-    throw new Error(`VENTA ERROR [${pgCode ?? 'sin código'}] ${pgMessage ?? 'sin mensaje'} | ${detail ?? ''}`);
+    // Log full error internally — never expose PG internals to the client
+    logger.error('Sale insert failed', {
+      action: 'create_sale_error',
+      pgCode,
+      pgMessage,
+      detail,
+    });
+    throw new Error('No se pudo registrar la venta. Intenta de nuevo o contacta soporte.');
   }
 
   const clienteId = (saleData as any).clienteId;
@@ -256,22 +281,27 @@ export async function createSale(
     });
   }
 
+  // Batch stock update: use RETURNING to avoid N+1 queries
   for (const item of saleData.items) {
-    await db
+    const [updated] = await db
       .update(products)
       .set({
         currentStock: sql`greatest(0, current_stock - ${item.quantity})`,
         updatedAt: now,
       })
-      .where(eq(products.id, item.productId));
+      .where(eq(products.id, item.productId))
+      .returning({
+        name: products.name,
+        currentStock: products.currentStock,
+        minStock: products.minStock,
+      });
 
-    const p = await db.select().from(products).where(eq(products.id, item.productId)).limit(1);
-    if (p.length > 0 && p[0].currentStock <= p[0].minStock * 0.2) {
+    if (updated && updated.currentStock <= updated.minStock * 0.2) {
       await sendNotification(
         `<b>REPORTE DE STOCK CRÍTICO</b>\n\n` +
-        `Producto: ${escapeHTML(p[0].name)}\n` +
-        `Stock actual: ${p[0].currentStock}\n` +
-        `Mínimo sugerido: ${p[0].minStock}`
+        `Producto: ${escapeHTML(updated.name)}\n` +
+        `Stock actual: ${updated.currentStock}\n` +
+        `Mínimo sugerido: ${updated.minStock}`
       );
     }
   }
@@ -293,6 +323,132 @@ export async function createSale(
     `Hora: ${now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
   );
 
+  // ── Automated payment charge creation ──
+  // For SPEI/OXXO automated methods, create a charge with the provider
+  // and link it to this sale. The charge returns a CLABE or OXXO reference.
+  let chargeResult: Record<string, unknown> | null = null;
+  const pm = saleData.paymentMethod;
+  const clienteId2 = (saleData as any).clienteId;
+  const customerEmail = 'pos@tienda.local';
+  const customerName = 'Cliente POS';
+  if (clienteId2) {
+    const [c] = await db.select().from(clientes).where(eq(clientes.id, clienteId2)).limit(1);
+    if (c) {
+      // Use name from DB if available
+      Object.assign({ customerName: c.name }, { customerEmail: `${c.id}@pos.local` });
+    }
+  }
+
+  try {
+    if (pm === 'spei_conekta') {
+      const result = await createConektaSPEICharge({
+        amount: numVal(String(saleData.total)),
+        customerName,
+        customerEmail,
+        description: `Venta #${folio}`,
+        saleReference: folio,
+      });
+      // Link charge to sale
+      await db.update(paymentCharges)
+        .set({ saleId: id })
+        .where(eq(paymentCharges.referenceNumber, result.referenceNumber));
+      chargeResult = result as unknown as Record<string, unknown>;
+    } else if (pm === 'oxxo_conekta') {
+      const result = await createConektaOXXOCharge({
+        amount: numVal(String(saleData.total)),
+        customerName,
+        customerEmail,
+        description: `Venta #${folio}`,
+        saleReference: folio,
+      });
+      await db.update(paymentCharges)
+        .set({ saleId: id })
+        .where(eq(paymentCharges.referenceNumber, result.reference));
+      chargeResult = result as unknown as Record<string, unknown>;
+    } else if (pm === 'spei_stripe') {
+      const result = await createStripeSPEICharge({
+        amount: numVal(String(saleData.total)),
+        customerEmail,
+        description: `Venta #${folio}`,
+        saleReference: folio,
+      });
+      await db.update(paymentCharges)
+        .set({ saleId: id })
+        .where(eq(paymentCharges.referenceNumber, result.referenceNumber));
+      chargeResult = result as unknown as Record<string, unknown>;
+    } else if (pm === 'oxxo_stripe') {
+      const result = await createStripeOXXOCharge({
+        amount: numVal(String(saleData.total)),
+        customerEmail,
+        description: `Venta #${folio}`,
+        saleReference: folio,
+      });
+      await db.update(paymentCharges)
+        .set({ saleId: id })
+        .where(eq(paymentCharges.referenceNumber, result.reference));
+      chargeResult = result as unknown as Record<string, unknown>;
+    } else if (pm === 'tarjeta_clip') {
+      const result = await createClipCheckoutCharge({
+        amount: numVal(String(saleData.total)),
+        description: `Venta #${folio}`,
+        saleReference: folio,
+      });
+      await db.update(paymentCharges)
+        .set({ saleId: id })
+        .where(eq(paymentCharges.referenceNumber, result.referenceNumber));
+      chargeResult = result as unknown as Record<string, unknown>;
+    } else if (pm === 'clip_terminal') {
+      const result = await createClipTerminalCharge({
+        amount: numVal(String(saleData.total)),
+        saleReference: folio,
+      });
+      await db.update(paymentCharges)
+        .set({ saleId: id })
+        .where(eq(paymentCharges.referenceNumber, result.referenceNumber));
+      chargeResult = result as unknown as Record<string, unknown>;
+    }
+  } catch (chargeErr) {
+    // Charge creation failed — sale is already recorded.
+    // Log and continue; the cashier can retry the charge separately.
+    logger.error('Automated payment charge creation failed', {
+      action: 'charge_creation_failed',
+      saleId: id,
+      paymentMethod: pm,
+      error: chargeErr instanceof Error ? chargeErr.message : String(chargeErr),
+    });
+  }
+
+  // Schedule background payment status poll (belt + suspenders alongside webhooks)
+  if (chargeResult) {
+    const providerMap: Record<string, 'conekta' | 'stripe' | 'clip'> = {
+      spei_conekta: 'conekta', oxxo_conekta: 'conekta',
+      spei_stripe: 'stripe', oxxo_stripe: 'stripe',
+      tarjeta_clip: 'clip', clip_terminal: 'clip',
+    };
+    const provider = providerMap[pm];
+    if (provider) {
+      const refNum = (chargeResult as Record<string, string>).referenceNumber
+                  || (chargeResult as Record<string, string>).reference;
+      if (refNum) {
+        // Query the charge ID from DB by reference
+        const [charge] = await db
+          .select({ id: paymentCharges.id })
+          .from(paymentCharges)
+          .where(eq(paymentCharges.referenceNumber, refNum))
+          .limit(1);
+
+        if (charge) {
+          // Poll after 2 min delay — gives webhooks time to arrive first
+          publishJob(
+            'payment-poll',
+            { chargeId: charge.id, provider },
+            { delaySec: 120, retries: 5 },
+          ).catch(() => { /* fire-and-forget */ });
+        }
+      }
+    }
+  }
+
   return {
     ...saleData,
     id,
@@ -300,7 +456,8 @@ export async function createSale(
     date: now.toISOString(),
     discount: saleData.discount ?? 0,
     discountType: saleData.discountType ?? 'amount',
-  };
+    ...(chargeResult ? { chargeData: chargeResult } : {}),
+  } as SaleRecord;
   }, { items: saleData.items.length });
 }
 
@@ -383,10 +540,15 @@ export async function createCorteCaja(data: {
     .from(saleRecords)
     .where(sql`(${saleRecords.date} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`);
 
-  const ventasEfectivo = salesRows.filter((s) => s.paymentMethod === 'efectivo').reduce((sum, s) => sum + numVal(s.total), 0);
-  const ventasTarjeta = salesRows.filter((s) => s.paymentMethod === 'tarjeta').reduce((sum, s) => sum + numVal(s.total), 0);
-  const ventasTransferencia = salesRows.filter((s) => s.paymentMethod === 'transferencia').reduce((sum, s) => sum + numVal(s.total), 0);
-  const ventasFiado = salesRows.filter((s) => s.paymentMethod === 'fiado').reduce((sum, s) => sum + numVal(s.total), 0);
+  const EFECTIVO_METHODS = new Set(['efectivo']);
+  const TARJETA_METHODS = new Set(['tarjeta', 'tarjeta_web', 'tarjeta_manual', 'oxxo_conekta', 'oxxo_stripe', 'tarjeta_clip', 'clip_terminal']);
+  const TRANSFER_METHODS = new Set(['transferencia', 'spei', 'spei_conekta', 'spei_stripe', 'paypal', 'qr_cobro', 'puntos']);
+  const FIADO_METHODS = new Set(['fiado']);
+
+  const ventasEfectivo = salesRows.filter((s) => EFECTIVO_METHODS.has(s.paymentMethod)).reduce((sum, s) => sum + numVal(s.total), 0);
+  const ventasTarjeta = salesRows.filter((s) => TARJETA_METHODS.has(s.paymentMethod)).reduce((sum, s) => sum + numVal(s.total), 0);
+  const ventasTransferencia = salesRows.filter((s) => TRANSFER_METHODS.has(s.paymentMethod)).reduce((sum, s) => sum + numVal(s.total), 0);
+  const ventasFiado = salesRows.filter((s) => FIADO_METHODS.has(s.paymentMethod)).reduce((sum, s) => sum + numVal(s.total), 0);
   const totalVentas = ventasEfectivo + ventasTarjeta + ventasTransferencia + ventasFiado;
   const totalTransacciones = salesRows.length;
 

@@ -6,6 +6,7 @@ import { productCategories } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
+import { validateSchema, createCategorySchema, updateCategorySchema, idSchema } from '@/lib/validation/schemas';
 
 export async function fetchCategories() {
   await requireAuth();
@@ -22,11 +23,9 @@ export async function fetchCategories() {
 
 export async function createCategory(data: { id?: string; name: string; description: string | null; icon: string | null }) {
   await requirePermission('inventory.edit');
+  validateSchema(createCategorySchema, { name: data.name, description: data.description ?? undefined, icon: data.icon ?? undefined }, 'createCategory');
   const id = data.id || `cat-${crypto.randomUUID()}`;
   const safeName = sanitize(data.name);
-  if (!safeName || safeName.length < 1) {
-    throw new Error('El nombre de categoría es requerido');
-  }
   try {
     const [newCategory] = await db.insert(productCategories).values({
       id,
@@ -55,7 +54,8 @@ export async function createCategory(data: { id?: string; name: string; descript
 
 export async function updateCategory(id: string, data: Partial<{ name: string; description: string | null; icon: string | null }>) {
   await requirePermission('inventory.edit');
-  validateId(id, 'Category ID');
+  validateSchema(idSchema, id, 'updateCategory:id');
+  validateSchema(updateCategorySchema, { name: data.name, description: data.description ?? undefined, icon: data.icon ?? undefined }, 'updateCategory');
   try {
     const safeData: Record<string, unknown> = { updatedAt: new Date() };
     if (data.name !== undefined) safeData.name = sanitize(data.name);
@@ -81,7 +81,7 @@ export async function updateCategory(id: string, data: Partial<{ name: string; d
 
 export async function deleteCategory(id: string) {
   await requirePermission('inventory.delete');
-  validateId(id, 'Category ID');
+  validateSchema(idSchema, id, 'deleteCategory:id');
   try {
     await db.delete(productCategories).where(eq(productCategories.id, id));
     revalidatePath('/dashboard');

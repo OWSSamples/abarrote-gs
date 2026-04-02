@@ -20,6 +20,7 @@ import { PrintIcon, PlusIcon, MinusIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { formatCurrency } from '@/lib/utils';
+import { corteTicketCSS } from '@/lib/printTicket';
 import type { CorteCaja } from '@/types';
 
 interface CorteCajaModalProps {
@@ -80,8 +81,8 @@ export function CorteCajaModal({ open, onClose }: CorteCajaModalProps) {
   // Today's summaries for preview
   const todaySales = useMemo(() => saleRecords.filter((s) => isFromToday(s.date)), [saleRecords, isFromToday]);
   const todayEfectivo = useMemo(() => todaySales.filter((s) => s.paymentMethod === 'efectivo').reduce((sum, s) => sum + s.total, 0), [todaySales]);
-  const todayTarjeta = useMemo(() => todaySales.filter((s) => s.paymentMethod === 'tarjeta').reduce((sum, s) => sum + s.total, 0), [todaySales]);
-  const todayTransferencia = useMemo(() => todaySales.filter((s) => s.paymentMethod === 'transferencia').reduce((sum, s) => sum + s.total, 0), [todaySales]);
+  const todayTarjeta = useMemo(() => todaySales.filter((s) => ['tarjeta', 'tarjeta_web', 'tarjeta_manual', 'oxxo_conekta', 'oxxo_stripe', 'tarjeta_clip', 'clip_terminal'].includes(s.paymentMethod)).reduce((sum, s) => sum + s.total, 0), [todaySales]);
+  const todayTransferencia = useMemo(() => todaySales.filter((s) => ['transferencia', 'spei', 'spei_conekta', 'spei_stripe', 'paypal', 'qr_cobro', 'puntos'].includes(s.paymentMethod)).reduce((sum, s) => sum + s.total, 0), [todaySales]);
   const todayFiado = useMemo(() => todaySales.filter((s) => s.paymentMethod === 'fiado').reduce((sum, s) => sum + s.total, 0), [todaySales]);
   const todayTotal = todayEfectivo + todayTarjeta + todayTransferencia + todayFiado;
   const todayGastos = useMemo(() => gastos.filter((g) => isFromToday(g.fecha)).reduce((sum, g) => sum + g.monto, 0), [gastos, isFromToday]);
@@ -163,98 +164,75 @@ export function CorteCajaModal({ open, onClose }: CorteCajaModalProps) {
     const d = new Date(completedCorte.fecha);
     const dateStr = d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const timeStr = d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const diffColor = completedCorte.diferencia >= 0 ? '#000' : '#000';
     const diffSign = completedCorte.diferencia >= 0 ? '+' : '';
+
+    const statusMsg = Math.abs(completedCorte.diferencia) <= 10
+      ? '— CAJA CUADRADA —'
+      : completedCorte.diferencia < 0
+        ? '— FALTANTE EN CAJA —'
+        : '— SOBRANTE EN CAJA —';
+
+    const logoHtml = storeConfig.logoUrl
+      ? `<div class="logo-area"><img src="${storeConfig.logoUrl}" alt="${storeConfig.storeName}"/></div>`
+      : '';
 
     const printWindow = window.open('', '_blank', 'width=400,height=700');
     if (!printWindow) return;
     printWindow.document.write(`<!DOCTYPE html><html><head><title>Corte de Caja</title>
-<style>
-@media print { @page { size: 80mm auto; margin: 0; } body { margin: 0; } }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  font-family: 'Consolas', 'Courier New', 'Lucida Console', monospace;
-  font-size: 11px;
-  width: 302px;
-  margin: 0 auto;
-  padding: 6px 10px;
-  color: #000;
-  line-height: 1.35;
-}
-.center { text-align: center; }
-.bold { font-weight: bold; }
-.store-name { font-size: 18px; font-weight: 900; letter-spacing: 2px; margin: 4px 0 2px; }
-.store-sub { font-size: 9px; color: #333; margin: 1px 0; }
-.sep { border-top: 1px solid #000; margin: 5px 0; }
-.sep-dashed { border-top: 1px dashed #555; margin: 5px 0; }
-.sep-double { border-top: 3px double #000; margin: 6px 0; }
-.sep-thick { border-top: 2px solid #000; margin: 5px 0; }
-.section-title { font-size: 11px; font-weight: 900; text-align: center; letter-spacing: 1px; margin: 3px 0; text-transform: uppercase; }
-.data-row { display: flex; justify-content: space-between; font-size: 11px; margin: 1px 0; }
-.total-line { display: flex; justify-content: space-between; font-size: 14px; font-weight: 900; margin: 4px 0; }
-.footer-legal { font-size: 8px; text-align: center; color: #555; margin: 1px 0; }
-</style></head><body>
+<style>${corteTicketCSS}</style></head><body>
 
-<div class="sep-thick"></div>
-<div class="center store-name">${storeConfig.storeName}</div>
-<div class="center store-sub">${storeConfig.address}</div>
-<div class="center store-sub">TEL: ${storeConfig.phone}</div>
-<div class="sep-thick"></div>
+${logoHtml}
+<div class="store-name">${storeConfig.storeName}</div>
+<div class="store-sub">${storeConfig.address}</div>
+<div class="store-sub">TEL: ${storeConfig.phone}</div>
 
-<div class="data-row"><span>CAJERO:</span><span>${completedCorte.cajero.toUpperCase()}</span></div>
-<div class="data-row"><span>FECHA:</span><span>${dateStr}</span></div>
-<div class="data-row"><span>HORA:</span><span>${timeStr}</span></div>
+<div class="line"></div>
 
-<div class="sep"></div>
-<div class="section-title">===== CORTE DE CAJA =====</div>
-<div class="sep"></div>
+<div class="section-title">Corte de Caja</div>
 
-<div class="section-title">RESUMEN DE VENTAS</div>
-<div class="sep-dashed"></div>
-<div class="data-row"><span>TRANSACCIONES</span><span>${completedCorte.totalTransacciones}</span></div>
-<div class="sep-dashed"></div>
-<div class="data-row"><span>VENTAS EFECTIVO</span><span>$${completedCorte.ventasEfectivo.toFixed(2)}</span></div>
-<div class="data-row"><span>VENTAS TARJETA</span><span>$${completedCorte.ventasTarjeta.toFixed(2)}</span></div>
-<div class="data-row"><span>VENTAS TRANSFERENCIA</span><span>$${completedCorte.ventasTransferencia.toFixed(2)}</span></div>
-<div class="data-row"><span>VENTAS FIADO</span><span>$${completedCorte.ventasFiado.toFixed(2)}</span></div>
-<div class="sep-double"></div>
+<div class="data-row"><span class="lbl">Cajero</span><span class="val">${completedCorte.cajero.toUpperCase()}</span></div>
+<div class="data-row"><span class="lbl">Fecha</span><span class="val">${dateStr}</span></div>
+<div class="data-row"><span class="lbl">Hora</span><span class="val">${timeStr}</span></div>
+
+<div class="line"></div>
+
+<div class="section-title">Resumen de Ventas</div>
+<div class="dots"></div>
+<div class="data-row"><span>Transacciones</span><span class="val">${completedCorte.totalTransacciones}</span></div>
+<div class="dots"></div>
+<div class="data-row"><span>Ventas efectivo</span><span class="val">$${completedCorte.ventasEfectivo.toFixed(2)}</span></div>
+<div class="data-row"><span>Ventas tarjeta</span><span class="val">$${completedCorte.ventasTarjeta.toFixed(2)}</span></div>
+<div class="data-row"><span>Ventas transferencia</span><span class="val">$${completedCorte.ventasTransferencia.toFixed(2)}</span></div>
+<div class="data-row"><span>Ventas fiado</span><span class="val">$${completedCorte.ventasFiado.toFixed(2)}</span></div>
+<div class="line-double"></div>
 <div class="total-line"><span>TOTAL VENTAS</span><span>$${completedCorte.totalVentas.toFixed(2)}</span></div>
-<div class="sep-double"></div>
 
-<div class="section-title">ARQUEO DE CAJA</div>
-<div class="sep-dashed"></div>
-<div class="data-row"><span>FONDO INICIAL</span><span>$${completedCorte.fondoInicial.toFixed(2)}</span></div>
-<div class="data-row"><span>(+) VENTAS EFECTIVO</span><span>$${completedCorte.ventasEfectivo.toFixed(2)}</span></div>
-<div class="data-row"><span>(-) GASTOS DEL DIA</span><span>$${completedCorte.gastosDelDia.toFixed(2)}</span></div>
-<div class="sep-dashed"></div>
-<div class="data-row bold"><span>= EFECTIVO ESPERADO</span><span>$${completedCorte.efectivoEsperado.toFixed(2)}</span></div>
-<div class="data-row bold"><span>  EFECTIVO CONTADO</span><span>$${completedCorte.efectivoContado.toFixed(2)}</span></div>
-<div class="sep-double"></div>
-<div class="total-line" style="color:${diffColor}"><span>DIFERENCIA</span><span>${diffSign}$${completedCorte.diferencia.toFixed(2)}</span></div>
-${Math.abs(completedCorte.diferencia) <= 10
-        ? '<div class="center bold" style="font-size:10px;margin:2px 0">*** CAJA CUADRADA ***</div>'
-        : completedCorte.diferencia < 0
-          ? '<div class="center bold" style="font-size:10px;margin:2px 0">*** FALTANTE EN CAJA ***</div>'
-          : '<div class="center bold" style="font-size:10px;margin:2px 0">*** SOBRANTE EN CAJA ***</div>'
-      }
-<div class="sep-double"></div>
+<div class="section-title">Arqueo de Caja</div>
+<div class="dots"></div>
+<div class="data-row"><span>Fondo inicial</span><span class="val">$${completedCorte.fondoInicial.toFixed(2)}</span></div>
+<div class="data-row"><span>(+) Ventas efectivo</span><span class="val">$${completedCorte.ventasEfectivo.toFixed(2)}</span></div>
+<div class="data-row"><span>(−) Gastos del día</span><span class="val">$${completedCorte.gastosDelDia.toFixed(2)}</span></div>
+<div class="dots"></div>
+<div class="data-row bold"><span>= Efectivo esperado</span><span class="val">$${completedCorte.efectivoEsperado.toFixed(2)}</span></div>
+<div class="data-row bold"><span>  Efectivo contado</span><span class="val">$${completedCorte.efectivoContado.toFixed(2)}</span></div>
+<div class="line-double"></div>
+<div class="total-line"><span>DIFERENCIA</span><span>${diffSign}$${completedCorte.diferencia.toFixed(2)}</span></div>
+<div class="status-msg">${statusMsg}</div>
 
-${completedCorte.notas ? `<div class="data-row" style="font-size:10px"><span>NOTAS:</span></div><div style="font-size:9px;padding:2px 0">${completedCorte.notas}</div><div class="sep-dashed"></div>` : ''}
+${completedCorte.notas ? `<div class="dots"></div><div class="data-row"><span class="lbl">Notas</span></div><div style="font-size:9px;padding:2px 0;color:#888">${completedCorte.notas}</div>` : ''}
 
-<div style="margin-top:20px">
-<div class="center" style="font-size:10px">________________________________</div>
-<div class="center" style="font-size:9px;margin-top:2px">FIRMA DEL CAJERO</div>
+<div class="signature-block">
+  <div class="signature-line"></div>
+  <div class="signature-label">Firma del Cajero</div>
+</div>
+<div class="signature-block">
+  <div class="signature-line"></div>
+  <div class="signature-label">Firma del Encargado</div>
 </div>
 
-<div style="margin-top:16px">
-<div class="center" style="font-size:10px">________________________________</div>
-<div class="center" style="font-size:9px;margin-top:2px">FIRMA DEL ENCARGADO</div>
-</div>
-
-<div class="sep-thick" style="margin-top:12px"></div>
-<div class="footer-legal">DOCUMENTO INTERNO - NO VALIDO COMO COMPROBANTE</div>
-<div class="footer-legal">${dateStr} ${timeStr}</div>
-<div class="sep-thick"></div>
+<div class="line" style="margin-top:14px"></div>
+<div class="footer-legal">DOCUMENTO INTERNO — NO VÁLIDO COMO COMPROBANTE FISCAL</div>
+<div class="footer-legal">${dateStr} · ${timeStr}</div>
 
 <script>window.onload=()=>{window.print();window.close();}<\/script></body></html>`);
     printWindow.document.close();

@@ -106,24 +106,31 @@ export function SalesHistory() {
         <span>$${item.subtotal.toFixed(2)}</span>
       </div>`).join('');
 
+    const logoHtml = storeConfig.logoUrl
+      ? `<div class="logo-area"><img src="${storeConfig.logoUrl}" alt="${storeConfig.storeName}"/></div>`
+      : `<div class="logo-area"><div class="logo-placeholder">${(storeConfig.storeName || 'T').charAt(0)}</div></div>`;
+
     const html = `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"/><title>Ticket ${selectedSale.folio}</title><style>${posTicketCSS}</style></head>
 <body><div class="ticket">
+  ${logoHtml}
   <div class="store-name">${storeConfig.storeName || storeConfig.legalName || 'Tienda'}</div>
   ${storeConfig.address ? `<div class="store-sub">${storeConfig.address}</div>` : ''}
-  <hr class="dash"/>
+  <hr class="line"/>
+  <div class="doc-type">Ticket de Venta</div>
   <div class="folio">Folio: ${selectedSale.folio}</div>
-  <div class="fecha">${dateStr} ${timeStr}</div>
-  <hr class="dash"/>
+  <div class="fecha">${dateStr} · ${timeStr}</div>
+  <hr class="line-thin"/>
   <div class="row"><span class="label">Cajero</span><span class="val">${selectedSale.cajero || '—'}</span></div>
   <div class="row"><span class="label">Pago</span><span class="val">${paymentLabels[selectedSale.paymentMethod] || selectedSale.paymentMethod}</span></div>
-  <hr class="dash"/>
+  <hr class="line"/>
   ${itemsHtml}
-  <hr class="solid"/>
+  <hr class="line-double"/>
   <div class="total-row main"><span>TOTAL</span><span>$${selectedSale.total.toFixed(2)}</span></div>
-  <hr class="dash"/>
-  <div style="text-align:center;margin:4px 0;"><span class="reprint-badge">REIMPRESIÓN</span></div>
+  <hr class="line-thin"/>
+  <div class="reprint-badge">— REIMPRESIÓN —</div>
   <div class="footer-line">Impreso el ${now}</div>
+  <div class="powered-by">OPENDEX POS</div>
 </div></body></html>`;
 
     const templateVars: Record<string, string> = {

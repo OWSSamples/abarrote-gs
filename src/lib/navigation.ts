@@ -4,6 +4,7 @@ export const SECTION_TO_PATH: Record<string, string> = {
   sales: '/dashboard/sales',
   'sales-history': '/dashboard/sales',
   'sales-corte': '/dashboard/sales/corte',
+  'pagos-mp': '/dashboard/sales/pagos-mp',
   catalog: '/dashboard/products',
   inventory: '/dashboard/products/inventory',
   'inventory-priority': '/dashboard/products/priority',

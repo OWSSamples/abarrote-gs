@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  getMPConfig,
+  getMPConfigFromStore,
   createPaymentIntent,
   getPaymentIntentStatus,
   cancelPaymentIntent,
@@ -50,9 +50,10 @@ export function useMercadoPagoTerminal({
     onSaleCompleteRef.current = onSaleComplete;
   }, [onSaleComplete]);
 
-  // Load MP config from localStorage
+  // Load MP config from storeConfig (DB-backed)
   useEffect(() => {
-    const config = getMPConfig();
+    const storeConfigData = useDashboardStore.getState().storeConfig;
+    const config = getMPConfigFromStore(storeConfigData);
     setMpConfig(config);
   }, [open]);
 

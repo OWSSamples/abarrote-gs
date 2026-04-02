@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { MercadoPagoConfig, Preference, Payment, Point } from 'mercadopago';
+import { MercadoPagoConfig, Preference, Payment, Point, PaymentRefund } from 'mercadopago';
 import { requireAuth, AuthError } from '@/lib/auth/guard';
+import { getMPAccessToken } from '@/lib/oauth-providers';
 
 export async function POST(req: Request) {
     try {
@@ -9,11 +10,11 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { action, ...data } = body;
 
-        // El token SIEMPRE se toma de las variables de entorno del servidor
-        const accessToken = process.env.MP_ACCESS_TOKEN;
+        // Token priority: OAuth DB (encrypted) → env fallback
+        const accessToken = await getMPAccessToken();
         if (!accessToken) {
             return NextResponse.json(
-                { error: 'MP_ACCESS_TOKEN no configurado en el servidor' },
+                { error: 'MercadoPago no conectado. Ve a Configuración → Pagos para conectar tu cuenta.' },
                 { status: 500 }
             );
         }
@@ -108,6 +109,36 @@ export async function POST(req: Request) {
                 });
                 const devicesData = await request.json();
                 return NextResponse.json(devicesData);
+            }
+
+            // 6. Reembolso total o parcial de un pago
+            case 'create_refund': {
+                const refundClient = new PaymentRefund(client);
+                const refundAmount = Number(data.amount);
+                const paymentId = String(data.paymentId);
+
+                const response = await refundClient.create({
+                    payment_id: paymentId,
+                    body: {
+                        amount: refundAmount,
+                    },
+                });
+
+                return NextResponse.json({
+                    id: response.id,
+                    status: response.status,
+                    amount: response.amount,
+                    date_created: response.date_created,
+                });
+            }
+
+            // 7. Consultar reembolsos de un pago
+            case 'list_refunds': {
+                const refundClient = new PaymentRefund(client);
+                const response = await refundClient.list({
+                    payment_id: String(data.paymentId),
+                });
+                return NextResponse.json(response);
             }
 
             default:

@@ -1,6 +1,7 @@
 'use server';
 
 import { requirePermission, requireAuth, validateId } from '@/lib/auth/guard';
+import { validateSchema, createClienteSchema, updateClienteSchema, createFiadoSchema, createAbonoSchema, idSchema } from '@/lib/validation/schemas';
 import { db } from '@/db';
 import { clientes, fiadoTransactions, fiadoItems } from '@/db/schema';
 import { eq, desc, sql, inArray } from 'drizzle-orm';
@@ -29,6 +30,7 @@ export async function createCliente(
   data: Omit<Cliente, 'id' | 'balance' | 'createdAt' | 'lastTransaction'>
 ): Promise<Cliente> {
   await requirePermission('customers.edit');
+  validateSchema(createClienteSchema, data, 'createCliente');
   const id = `cli-${crypto.randomUUID()}`;
   const now = new Date();
 
@@ -54,7 +56,8 @@ export async function createCliente(
 
 export async function updateCliente(id: string, data: Partial<Cliente>): Promise<void> {
   await requirePermission('customers.edit');
-  validateId(id, 'Cliente ID');
+  validateSchema(idSchema, id, 'updateCliente.id');
+  validateSchema(updateClienteSchema, data, 'updateCliente');
   const updateData: Record<string, unknown> = {};
   if (data.name !== undefined) updateData.name = data.name;
   if (data.phone !== undefined) updateData.phone = data.phone;
@@ -121,7 +124,7 @@ export async function createFiado(
   items?: SaleItem[]
 ): Promise<void> {
   await requirePermission('customers.edit');
-  validateId(clienteId, 'Cliente ID');
+  validateSchema(createFiadoSchema, { clienteId, amount, description, saleFolio, items }, 'createFiado');
   const now = new Date();
   const clienteRows = await db.select().from(clientes).where(eq(clientes.id, clienteId));
   if (!clienteRows.length) return;
@@ -170,7 +173,7 @@ export async function createAbono(
   description: string
 ): Promise<void> {
   await requirePermission('customers.edit');
-  validateId(clienteId, 'Cliente ID');
+  validateSchema(createAbonoSchema, { clienteId, amount, description }, 'createAbono');
   const now = new Date();
   const clienteRows = await db.select().from(clientes).where(eq(clientes.id, clienteId));
   if (!clienteRows.length) return;

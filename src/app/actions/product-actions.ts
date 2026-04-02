@@ -1,7 +1,8 @@
 'use server';
 
-import { cache } from '@/lib/cache';
+import { cache } from '@/infrastructure/redis';
 import { requirePermission, requireAuth, sanitize, validateNumber, validateId } from '@/lib/auth/guard';
+import { validateSchema, createProductSchema, updateProductSchema, idSchema } from '@/lib/validation/schemas';
 import { db } from '@/db';
 import { products, saleItems, mermaRecords, pedidoItems, fiadoItems } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -33,9 +34,10 @@ export async function fetchAllProducts(): Promise<Product[]> {
 
 export async function createProduct(data: Omit<Product, 'id'>): Promise<Product> {
   await requirePermission('inventory.edit');
+  validateSchema(createProductSchema, data, 'createProduct');
   const id = `p-${crypto.randomUUID()}`;
 
-  cache.invalidatePattern('products:');
+  await cache.invalidatePattern('products:');
 
   await db.insert(products).values({
     id,
@@ -66,7 +68,7 @@ export async function updateProductStock(productId: string, newStock: number): P
 export async function deleteProduct(productId: string): Promise<void> {
   await requirePermission('inventory.delete');
   validateId(productId, 'Product ID');
-  cache.invalidatePattern('products:');
+  await cache.invalidatePattern('products:');
 
   await db.delete(saleItems).where(eq(saleItems.productId, productId));
   await db.delete(mermaRecords).where(eq(mermaRecords.productId, productId));
@@ -77,7 +79,8 @@ export async function deleteProduct(productId: string): Promise<void> {
 
 export async function updateProduct(id: string, data: Partial<Product>): Promise<void> {
   await requirePermission('inventory.edit');
-  validateId(id, 'Product ID');
+  validateSchema(idSchema, id, 'updateProduct.id');
+  validateSchema(updateProductSchema, data, 'updateProduct');
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) updateData.name = data.name;
   if (data.sku !== undefined) updateData.sku = data.sku;

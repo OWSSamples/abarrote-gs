@@ -61,105 +61,69 @@ export function printTicketSurtido(params: {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{
-      font-family:ui-monospace,'SF Mono','Cascadia Mono','Segoe UI Mono',monospace;
-      font-size:12px;color:#000;background:#fff;
+      font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+      font-size:12px;color:#111;background:#fff;
       -webkit-print-color-adjust:exact;print-color-adjust:exact;
     }
 
-    /* ── TICKET WRAPPER ── */
-    .ticket{
-      width:72mm;
-      margin:0 auto;
-      padding:6mm 4mm;
-      background:#fff;
-    }
+    .ticket{width:72mm;margin:0 auto;padding:6mm 4mm;background:#fff;}
 
     /* ── HEADER ── */
-    .store-name{
-      font-size:16px;font-weight:700;text-align:center;
-      letter-spacing:-.3px;line-height:1.2;margin-bottom:2px;
-    }
-    .store-addr{
-      font-size:10px;text-align:center;color:#555;line-height:1.5;
-    }
+    .store-name{font-size:14px;font-weight:800;text-align:center;letter-spacing:2px;text-transform:uppercase;line-height:1.2;}
+    .store-addr{font-size:9px;text-align:center;color:#888;line-height:1.5;margin-top:2px;}
 
     /* ── DIVIDERS ── */
-    .dash{
-      border:none;border-top:1px dashed #999;
-      margin:6px 0;
-    }
-    .solid{
-      border:none;border-top:1px solid #000;
-      margin:6px 0;
-    }
+    .line{border:none;border-top:1px solid #111;margin:8px 0;}
+    .line-thin{border:none;border-top:1px solid #ddd;margin:6px 0;}
+    .line-double{border:none;border-top:3px double #111;margin:8px 0;}
+    .dots{border:none;border-top:1px dotted #ccc;margin:5px 0;}
 
     /* ── DOC TITLE ── */
-    .doc-title{
-      text-align:center;font-size:11px;font-weight:700;
-      text-transform:uppercase;letter-spacing:1px;
-      margin:4px 0 2px;
-    }
-    .folio-line{
-      text-align:center;font-size:11px;color:#333;
-      margin-bottom:2px;
-    }
-    .fecha-line{
-      text-align:center;font-size:10px;color:#666;
-    }
+    .doc-title{text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:4px;color:#111;margin:6px 0 2px;}
+    .folio-line{text-align:center;font-size:11px;font-weight:600;margin-bottom:1px;letter-spacing:.5px;}
+    .fecha-line{text-align:center;font-size:10px;color:#888;letter-spacing:.3px;}
 
     /* ── INFO BLOCK ── */
-    .info-row{
-      display:flex;justify-content:space-between;
-      font-size:10px;padding:1px 0;
-    }
-    .info-row .label{color:#555;}
+    .info-row{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;}
+    .info-row .label{color:#888;text-transform:uppercase;font-size:9px;letter-spacing:.5px;}
     .info-row .value{font-weight:700;text-align:right;max-width:55%;}
 
     /* ── TABLE ── */
     table{width:100%;border-collapse:collapse;margin:0;}
-    .th-row td{
-      font-size:10px;font-weight:700;
-      text-transform:uppercase;letter-spacing:.5px;
-      padding:3px 0;border-bottom:1px solid #000;
-    }
+    .th-row td{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;padding:4px 0;border-bottom:1px solid #111;}
     .th-row .td-qty,.th-row .td-price,.th-row .td-total{text-align:right;}
-    .td-name{font-size:11px;padding:4px 0 2px;width:50%;}
-    .td-qty{font-size:11px;text-align:right;padding:4px 2px;width:10%;}
-    .td-price{font-size:11px;text-align:right;padding:4px 2px;width:20%;}
-    .td-total{font-size:11px;text-align:right;padding:4px 0;width:20%;font-weight:700;}
-    .prod-name{display:block;font-weight:600;}
-    .prod-sku{display:block;font-size:9px;color:#777;}
-    tr+tr .td-name,tr+tr .td-qty,tr+tr .td-price,tr+tr .td-total{
-      border-top:1px dotted #ccc;
-    }
+    .td-name{font-size:11px;padding:5px 0 3px;width:50%}
+    .td-qty{font-size:11px;text-align:right;padding:5px 2px;width:10%}
+    .td-price{font-size:11px;text-align:right;padding:5px 2px;width:20%;color:#888}
+    .td-total{font-size:11px;text-align:right;padding:5px 0;width:20%;font-weight:700}
+    .prod-name{display:block;font-weight:600}
+    .prod-sku{display:block;font-size:8px;color:#aaa;letter-spacing:.3px}
+    tr+tr .td-name,tr+tr .td-qty,tr+tr .td-price,tr+tr .td-total{border-top:1px dotted #ddd}
 
     /* ── TOTALS ── */
-    .totals-row{
-      display:flex;justify-content:space-between;
-      font-size:11px;padding:2px 0;
-    }
+    .totals-row{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:#555;}
     .totals-row.main{
-      font-size:13px;font-weight:700;padding:4px 0 2px;
+      font-size:15px;font-weight:800;letter-spacing:.5px;
+      padding:6px 0;margin:2px 0;
+      border-top:2px solid #111;border-bottom:2px solid #111;
     }
-    .totals-row .t-label{color:#333;}
-    .totals-row .t-value{font-weight:700;}
-    .totals-row.main .t-label,.totals-row.main .t-value{font-weight:700;color:#000;}
+    .totals-row .t-label{color:#888;}
+    .totals-row .t-value{font-weight:700;color:#111;}
+    .totals-row.main .t-label,.totals-row.main .t-value{color:#111;}
 
     /* ── NOTES ── */
-    .notes-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
-    .notes-text{font-size:10px;color:#333;line-height:1.5;white-space:pre-wrap;}
+    .notes-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:2px;}
+    .notes-text{font-size:10px;color:#555;line-height:1.5;white-space:pre-wrap;}
 
     /* ── FOOTER ── */
-    .footer-line{font-size:10px;text-align:center;color:#555;line-height:1.6;}
-    .footer-bold{font-weight:700;color:#000;}
+    .footer-line{font-size:9px;text-align:center;color:#999;line-height:1.5;}
+    .footer-bold{font-weight:700;color:#111;}
+    .powered-by{font-size:7px;letter-spacing:4px;text-transform:uppercase;color:#ccc;text-align:center;margin-top:8px;}
 
     @media print{
       body{background:#fff;}
       .ticket{margin:0;padding:4mm 3mm;}
-      @page{
-        size:80mm auto;
-        margin:0;
-      }
+      @page{size:80mm auto;margin:0;}
     }
   </style>
 </head>
@@ -168,16 +132,16 @@ export function printTicketSurtido(params: {
 
   <!-- STORE HEADER -->
   <div class="store-name">${storeName}</div>
-  ${storeAddress ? `<div class="store-addr">${storeAddress}${storePhone ? '<br/>Tel: ' + storePhone : ''}</div>` : ''}
+  ${storeAddress ? `<div class="store-addr">${storeAddress}${storePhone ? ' · Tel: ' + storePhone : ''}</div>` : ''}
 
-  <hr class="dash"/>
+  <hr class="line"/>
 
   <!-- DOCUMENT TITLE -->
   <div class="doc-title">Orden de Surtido</div>
   <div class="folio-line">Folio: #${folioShort}</div>
   <div class="fecha-line">${fechaFmt}</div>
 
-  <hr class="dash"/>
+  <hr class="line-thin"/>
 
   <!-- INFO BLOCK -->
   <div class="info-row"><span class="label">Proveedor</span><span class="value">${proveedor}</span></div>
@@ -185,7 +149,7 @@ export function printTicketSurtido(params: {
   <div class="info-row"><span class="label">Pago</span><span class="value">${terminosLabel[terminosPago] || terminosPago || '—'}</span></div>
   <div class="info-row"><span class="label">Moneda</span><span class="value">${moneda}</span></div>
 
-  <hr class="dash"/>
+  <hr class="line"/>
 
   <!-- PRODUCTS TABLE -->
   <table>
@@ -198,25 +162,25 @@ export function printTicketSurtido(params: {
     ${rows}
   </table>
 
-  <hr class="solid"/>
+  <hr class="line-double"/>
 
   <!-- TOTALS -->
   <div class="totals-row"><span class="t-label">Artículos</span><span class="t-value">${totalQty} pzas</span></div>
   <div class="totals-row"><span class="t-label">Subtotal</span><span class="t-value">$${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${moneda}</span></div>
   <div class="totals-row"><span class="t-label">Envío</span><span class="t-value">—</span></div>
-  <hr class="solid"/>
   <div class="totals-row main"><span class="t-label">TOTAL</span><span class="t-value">$${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${moneda}</span></div>
 
   ${notas ? `
-  <hr class="dash"/>
+  <hr class="line-thin"/>
   <div class="notes-label">Notas</div>
   <div class="notes-text">${notas}</div>` : ''}
 
-  <hr class="dash"/>
+  <hr class="line"/>
 
   <!-- FOOTER -->
   <div class="footer-line">Impreso el ${now}</div>
   <div class="footer-line"><span class="footer-bold">Documento de uso interno</span></div>
+  <div class="powered-by">OPENDEX POS</div>
 
 </div>
 </body>

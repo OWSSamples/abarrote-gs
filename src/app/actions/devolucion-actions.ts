@@ -6,6 +6,7 @@ import { devoluciones, devolucionItems, products, clientes, saleRecords, saleIte
 import { eq, desc, sql } from 'drizzle-orm';
 import type { Devolucion, DevolucionItem } from '@/types';
 import { numVal } from './_helpers';
+import { validateSchema, createDevolucionSchema } from '@/lib/validation/schemas';
 
 function mapDevolucion(row: typeof devoluciones.$inferSelect, items: DevolucionItem[]): Devolucion {
   return {
@@ -58,6 +59,7 @@ export async function createDevolucion(data: {
   items: Omit<DevolucionItem, 'id'>[];
 }): Promise<Devolucion> {
   await requirePermission('sales.cancel');
+  const validated = validateSchema(createDevolucionSchema, data, 'createDevolucion');
 
   const id = `dev-${crypto.randomUUID()}`;
   const now = new Date();

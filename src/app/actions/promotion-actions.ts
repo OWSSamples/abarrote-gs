@@ -6,6 +6,7 @@ import { promotions } from '@/db/schema';
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 import { numVal } from './_helpers';
 import type { Promotion, PromotionType, ApplicableTo } from '@/types';
+import { validateSchema, createPromotionSchema, updatePromotionSchema, idSchema } from '@/lib/validation/schemas';
 
 // ==================== FETCH ====================
 
@@ -41,6 +42,7 @@ export async function createPromotion(
   data: Omit<Promotion, 'id' | 'usageCount' | 'createdAt' | 'updatedAt' | 'createdBy'>,
 ): Promise<Promotion> {
   const user = await requirePermission('inventory.edit');
+  validateSchema(createPromotionSchema, data, 'createPromotion');
   const id = `promo-${crypto.randomUUID()}`;
 
   validate(data);
@@ -76,7 +78,8 @@ export async function createPromotion(
 
 export async function updatePromotion(id: string, data: Partial<Promotion>): Promise<void> {
   await requirePermission('inventory.edit');
-  validateId(id, 'Promotion ID');
+  validateSchema(idSchema, id, 'updatePromotion:id');
+  validateSchema(updatePromotionSchema, data, 'updatePromotion');
 
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) updateData.name = sanitize(data.name);
@@ -97,19 +100,19 @@ export async function updatePromotion(id: string, data: Partial<Promotion>): Pro
 
 export async function deletePromotion(id: string): Promise<void> {
   await requirePermission('inventory.edit');
-  validateId(id, 'Promotion ID');
+  validateSchema(idSchema, id, 'deletePromotion:id');
   await db.delete(promotions).where(eq(promotions.id, id));
 }
 
 export async function togglePromotionActive(id: string, active: boolean): Promise<void> {
   await requirePermission('inventory.edit');
-  validateId(id, 'Promotion ID');
+  validateSchema(idSchema, id, 'togglePromotionActive:id');
   await db.update(promotions).set({ active, updatedAt: new Date() }).where(eq(promotions.id, id));
 }
 
 export async function incrementPromotionUsage(id: string): Promise<void> {
   await requirePermission('sales.create');
-  validateId(id, 'Promotion ID');
+  validateSchema(idSchema, id, 'incrementPromotionUsage:id');
   await db.update(promotions).set({
     usageCount: sql`${promotions.usageCount} + 1`,
   }).where(eq(promotions.id, id));

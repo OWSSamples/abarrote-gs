@@ -8,6 +8,8 @@ import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
 import type { Servicio, ServicioEstado } from '@/types';
 import { sendNotification, escapeHTML } from './_notifications';
+import { SERVICIO_CATALOGO } from './servicios-catalogo';
+import { validateSchema, createRecargaSchema, createPagoServicioSchema, idSchema } from '@/lib/validation/schemas';
 
 // ==================== HELPERS ====================
 
@@ -45,32 +47,7 @@ async function generateFolio(): Promise<string> {
   return `SRV-${String(seq).padStart(6, '0')}`;
 }
 
-// ==================== CATÁLOGO DE SERVICIOS ====================
-
-/** Available service categories with display names and commission rates */
-export const SERVICIO_CATALOGO = {
-  recargas: [
-    { id: 'telcel', nombre: 'Telcel', montos: [20, 30, 50, 80, 100, 150, 200, 300, 500], comisionPct: 4 },
-    { id: 'movistar', nombre: 'Movistar', montos: [20, 30, 50, 80, 100, 150, 200, 300, 500], comisionPct: 4 },
-    { id: 'att', nombre: 'AT&T / Unefon', montos: [20, 30, 50, 80, 100, 150, 200, 300, 500], comisionPct: 3.5 },
-    { id: 'bait', nombre: 'Bait', montos: [30, 50, 100, 150, 200, 300], comisionPct: 5 },
-    { id: 'virgin', nombre: 'Virgin Mobile', montos: [30, 50, 100, 200], comisionPct: 4 },
-    { id: 'altan', nombre: 'Altán Redes', montos: [50, 100, 150, 200, 300], comisionPct: 5 },
-  ],
-  servicios: [
-    { id: 'cfe', nombre: 'CFE (Luz)', montoLibre: true, comisionFija: 8 },
-    { id: 'agua', nombre: 'Agua', montoLibre: true, comisionFija: 8 },
-    { id: 'gas_natural', nombre: 'Gas Natural', montoLibre: true, comisionFija: 8 },
-    { id: 'telmex', nombre: 'Telmex', montoLibre: true, comisionFija: 10 },
-    { id: 'izzi', nombre: 'izzi', montoLibre: true, comisionFija: 10 },
-    { id: 'totalplay', nombre: 'Totalplay', montoLibre: true, comisionFija: 10 },
-    { id: 'megacable', nombre: 'Megacable', montoLibre: true, comisionFija: 10 },
-    { id: 'sky', nombre: 'Sky', montoLibre: true, comisionFija: 8 },
-    { id: 'dish', nombre: 'Dish', montoLibre: true, comisionFija: 8 },
-  ],
-} as const;
-
-// ==================== QUERIES ====================
+// ==================== QUERIES ==
 
 export async function fetchServicios(filtro?: {
   tipo?: 'recarga' | 'servicio';
@@ -143,6 +120,7 @@ export async function createRecarga(data: {
   cajero: string;
 }): Promise<Servicio> {
   const user = await requirePermission('servicios.create');
+  validateSchema(createRecargaSchema, data, 'createRecarga');
 
   const nombre = sanitize(data.nombre);
   const categoria = sanitize(data.categoria);
@@ -201,6 +179,7 @@ export async function createPagoServicio(data: {
   cajero: string;
 }): Promise<Servicio> {
   const user = await requirePermission('servicios.create');
+  validateSchema(createPagoServicioSchema, data, 'createPagoServicio');
 
   const nombre = sanitize(data.nombre);
   const categoria = sanitize(data.categoria);
@@ -251,6 +230,7 @@ export async function createPagoServicio(data: {
 
 export async function cancelarServicio(id: string): Promise<void> {
   await requirePermission('servicios.edit');
+  validateSchema(idSchema, id, 'cancelarServicio:id');
 
   const rows = await db.select().from(servicios).where(eq(servicios.id, id));
   if (rows.length === 0) throw new Error('Servicio no encontrado');

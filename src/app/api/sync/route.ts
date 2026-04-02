@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError, sanitize, validateNumber } from '@/lib/auth/guard';
 import { createSale } from '@/app/actions/sales-actions';
 import { updateProduct } from '@/app/actions/product-actions';
-import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
 
 /** Rate limit: 30 sync requests per minute per IP */

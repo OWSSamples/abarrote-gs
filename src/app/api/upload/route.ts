@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { requireAuth, AuthError } from '@/lib/auth/guard';
-import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
 
 const s3 = new S3Client({
@@ -25,15 +25,21 @@ const ALLOWED_PATH_PREFIXES = ['products/', 'avatars/', 'logos/', 'receipts/'];
  * Returns the sanitized key or null if invalid.
  */
 function validateUploadPath(rawPath: string): string | null {
-  // Normalize: remove leading slashes, collapse double dots
-  const normalized = rawPath.replace(/^\/+/, '').replace(/\.\./g, '');
+  // Normalize: remove leading slashes, collapse double dots, NUL bytes
+  const normalized = rawPath
+    .replace(/\0/g, '')           // strip NUL bytes
+    .replace(/^\/+/, '')          // strip leading slashes
+    .replace(/\.\./g, '')         // strip path traversal
+    .replace(/%2e/gi, '')         // strip URL-encoded dots
+    .replace(/%2f/gi, '/');       // normalize encoded slashes
 
   // Must start with an allowed prefix
   const isAllowed = ALLOWED_PATH_PREFIXES.some((prefix) => normalized.startsWith(prefix));
   if (!isAllowed) return null;
 
-  // Only allow alphanumeric, hyphens, underscores, dots, and forward slashes
-  if (!/^[a-zA-Z0-9/_\-.\u00C0-\u024F]+$/.test(normalized)) return null;
+  // Only allow strict ASCII alphanumeric, hyphens, underscores, dots, and forward slashes
+  // No Unicode ranges — prevents encoded traversal attacks
+  if (!/^[a-zA-Z0-9/_\-.]+$/.test(normalized)) return null;
 
   // Prevent empty segments (double slashes)
   if (/\/\//.test(normalized)) return null;

@@ -36,6 +36,62 @@
       "when": 1774714891401,
       "tag": "0004_left_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774800000000,
+      "tag": "0004_promotions",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774886400000,
+      "tag": "0005_product_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1774972800000,
+      "tag": "0006_payment_methods",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775059200000,
+      "tag": "0007_payment_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775145600000,
+      "tag": "0008_oauth_provider_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775232000000,
+      "tag": "0009_payment_providers_multi",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775318400000,
+      "tag": "0010_clip_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1775404800000,
+      "tag": "0011_performance_indexes",
+      "breakpoints": true
     }
   ]
 }

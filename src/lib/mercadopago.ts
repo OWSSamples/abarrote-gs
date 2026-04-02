@@ -123,23 +123,21 @@ export async function getDevices(): Promise<{ id: string; operating_mode: string
 }
 
 /**
- * Obtiene la configuración de MP guardada en localStorage
+ * Obtiene la configuración de MP.
+ * Priority: storeConfig from DB (passed via props) > localStorage (legacy fallback)
  */
 export function getMPConfig(): MercadoPagoConfig {
   if (typeof window === 'undefined') {
     return { deviceId: '', enabled: false };
   }
   try {
+    // Legacy localStorage fallback
     const stored = localStorage.getItem('mp_config');
     if (stored) {
       const parsed = JSON.parse(stored);
-      // Migrar: eliminar accessToken/publicKey si existen en localStorage
-      if (parsed.accessToken || parsed.publicKey) {
-        const { accessToken: _a, publicKey: _p, ...clean } = parsed;
-        localStorage.setItem('mp_config', JSON.stringify(clean));
-        return { deviceId: clean.deviceId || '', enabled: clean.enabled || false };
-      }
-      return parsed;
+      // Strip sensitive fields from localStorage
+      const { accessToken: _a, ...clean } = parsed;
+      return { deviceId: clean.deviceId || '', publicKey: clean.publicKey || '', enabled: clean.enabled || false };
     }
   } catch {
     // ignore
@@ -148,11 +146,31 @@ export function getMPConfig(): MercadoPagoConfig {
 }
 
 /**
- * Guarda la configuración de MP en localStorage
+ * Builds MP config from the DB-backed storeConfig values.
+ * This is the primary source of truth — call this with storeConfig data.
+ */
+export function getMPConfigFromStore(storeConfig: {
+  mpDeviceId?: string;
+  mpPublicKey?: string;
+  mpEnabled?: boolean;
+}): MercadoPagoConfig {
+  return {
+    deviceId: storeConfig.mpDeviceId || '',
+    publicKey: storeConfig.mpPublicKey || '',
+    enabled: storeConfig.mpEnabled ?? false,
+  };
+}
+
+/**
+ * Guarda la configuración de MP en localStorage (legacy — prefer DB storeConfig)
  */
 export function saveMPConfig(config: MercadoPagoConfig): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('mp_config', JSON.stringify(config));
+  localStorage.setItem('mp_config', JSON.stringify({
+    deviceId: config.deviceId,
+    publicKey: config.publicKey,
+    enabled: config.enabled,
+  }));
 }
 
 /**

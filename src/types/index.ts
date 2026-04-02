@@ -2,7 +2,7 @@
 
 // === Enums / Constantes de Dominio ===
 
-export const PAYMENT_METHODS = ['efectivo', 'tarjeta', 'transferencia', 'fiado'] as const;
+export const PAYMENT_METHODS = ['efectivo', 'tarjeta', 'tarjeta_web', 'transferencia', 'fiado', 'spei', 'paypal', 'qr_cobro', 'spei_conekta', 'spei_stripe', 'oxxo_conekta', 'oxxo_stripe', 'tarjeta_clip', 'clip_terminal'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const MERMA_REASONS = ['expiration', 'damage', 'spoilage', 'other'] as const;
@@ -78,6 +78,24 @@ export interface StoreConfig {
   // Supports template variables: {{storeName}}, {{folio}}, {{fecha}}, {{items}}, {{total}}, etc.
   ticketTemplateVenta?: string;
   ticketTemplateProveedor?: string;
+  // Métodos de pago adicionales
+  clabeNumber?: string;
+  paypalUsername?: string;
+  cobrarQrUrl?: string;
+  // MercadoPago terminal config
+  mpDeviceId?: string;
+  mpPublicKey?: string;
+  mpEnabled: boolean;
+  // Conekta
+  conektaEnabled: boolean;
+  conektaPublicKey?: string;
+  // Stripe
+  stripeEnabled: boolean;
+  stripePublicKey?: string;
+  // Clip
+  clipEnabled: boolean;
+  clipApiKey?: string;
+  clipSerialNumber?: string;
   // System Schedules
   closeSystemTime: string;
   autoCorteTime: string;
@@ -116,6 +134,10 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   closeSystemTime: '23:00',
   autoCorteTime: '00:00',
   defaultStartingFund: 500,
+  mpEnabled: false,
+  conektaEnabled: false,
+  stripeEnabled: false,
+  clipEnabled: false,
 };
 
 export interface ProductCategory {
@@ -214,6 +236,8 @@ export interface SaleRecord {
   cardSurcharge: number;
   total: number;
   paymentMethod: PaymentMethod;
+  installments: number;
+  mpPaymentId: string | null;
   amountPaid: number;
   change: number;
   date: string;
@@ -222,6 +246,22 @@ export interface SaleRecord {
   pointsUsed: number;
   discount: number;
   discountType: 'amount' | 'percent';
+}
+
+export const REFUND_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export type RefundStatus = (typeof REFUND_STATUSES)[number];
+
+export interface MercadoPagoRefund {
+  id: string;
+  mpPaymentId: string;
+  mpRefundId: string;
+  saleId: string | null;
+  amount: number;
+  status: RefundStatus;
+  reason: string;
+  initiatedBy: string;
+  createdAt: string;
+  resolvedAt: string | null;
 }
 
 export interface DashboardState {
@@ -350,6 +390,8 @@ export type PermissionKey =
   | 'sales.create'
   | 'sales.view'
   | 'sales.cancel'
+  | 'sales.refund'
+  | 'sales.refund'
   | 'inventory.view'
   | 'inventory.edit'
   | 'inventory.create'
@@ -418,6 +460,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   'dashboard.view': 'Ver dashboard',
   'sales.create': 'Registrar ventas',
   'sales.view': 'Ver ventas',
+  'sales.refund': 'Procesar reembolsos (MercadoPago)',
   'sales.cancel': 'Cancelar ventas',
   'inventory.view': 'Ver inventario',
   'inventory.edit': 'Editar inventario',
@@ -458,7 +501,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
 
 export const PERMISSION_GROUPS: { title: string; permissions: PermissionKey[] }[] = [
   { title: 'Dashboard', permissions: ['dashboard.view'] },
-  { title: 'Ventas', permissions: ['sales.create', 'sales.view', 'sales.cancel', 'sales.discount', 'sales.delete_item', 'sales.change_price', 'corte.create', 'corte.view', 'corte.blind_view', 'cashdrawer.open'] },
+  { title: 'Ventas', permissions: ['sales.create', 'sales.view', 'sales.cancel', 'sales.refund', 'sales.discount', 'sales.delete_item', 'sales.change_price', 'corte.create', 'corte.view', 'corte.blind_view', 'cashdrawer.open'] },
   { title: 'Inventario', permissions: ['inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete', 'inventory.audit'] },
   { title: 'Clientes', permissions: ['customers.view', 'customers.edit', 'fiado.create', 'fiado.view'] },
   { title: 'Gastos', permissions: ['expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete'] },
@@ -468,7 +511,7 @@ export const PERMISSION_GROUPS: { title: string; permissions: PermissionKey[] }[
 ];
 
 export const ALL_PERMISSIONS: PermissionKey[] = [
-  'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel', 'sales.discount', 'sales.delete_item', 'sales.change_price',
+  'dashboard.view', 'sales.create', 'sales.view', 'sales.cancel', 'sales.refund', 'sales.discount', 'sales.delete_item', 'sales.change_price',
   'inventory.view', 'inventory.edit', 'inventory.create', 'inventory.delete', 'inventory.audit',
   'customers.view', 'customers.edit', 'fiado.create', 'fiado.view',
   'expenses.view', 'expenses.create', 'expenses.edit', 'expenses.delete',

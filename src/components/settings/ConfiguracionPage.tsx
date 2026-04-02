@@ -17,9 +17,8 @@ import {
   ContextualSaveBar,
 } from '@shopify/polaris';
 import {
-  getMPConfig,
-  saveMPConfig,
   getDevices,
+  getMPConfigFromStore,
 } from '@/lib/mercadopago';
 import type { MercadoPagoConfig } from '@/lib/mercadopago';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -110,6 +109,19 @@ export function ConfiguracionPage() {
       closeSystemTime: useField(storeConfig.closeSystemTime || '23:00'),
       autoCorteTime: useField(storeConfig.autoCorteTime || '00:00'),
       defaultStartingFund: useField(storeConfig.defaultStartingFund ?? 500),
+      clabeNumber: useField(storeConfig.clabeNumber || ''),
+      paypalUsername: useField(storeConfig.paypalUsername || ''),
+      cobrarQrUrl: useField(storeConfig.cobrarQrUrl || ''),
+      mpEnabled: useField(storeConfig.mpEnabled ?? false),
+      mpPublicKey: useField(storeConfig.mpPublicKey || ''),
+      mpDeviceId: useField(storeConfig.mpDeviceId || ''),
+      conektaEnabled: useField(storeConfig.conektaEnabled ?? false),
+      conektaPublicKey: useField(storeConfig.conektaPublicKey || ''),
+      stripeEnabled: useField(storeConfig.stripeEnabled ?? false),
+      stripePublicKey: useField(storeConfig.stripePublicKey || ''),
+      clipEnabled: useField(storeConfig.clipEnabled ?? false),
+      clipApiKey: useField(storeConfig.clipApiKey || ''),
+      clipSerialNumber: useField(storeConfig.clipSerialNumber || ''),
     },
     onSubmit: async (f) => {
       await saveStoreConfig(f as any);
@@ -153,9 +165,13 @@ export function ConfiguracionPage() {
   }, [fields]);
 
 
-  // Mercado Pago config
-  const [mpConfig, setMpConfig] = useState<MercadoPagoConfig>({ publicKey: '', deviceId: '', enabled: false });
-  const [mpSaved, setMpSaved] = useState(false);
+  // Mercado Pago — derived from form fields (persisted to DB)
+  const mpConfig = useMemo<MercadoPagoConfig>(() => ({
+    enabled: fields.mpEnabled.value,
+    publicKey: fields.mpPublicKey.value,
+    deviceId: fields.mpDeviceId.value,
+  }), [fields.mpEnabled.value, fields.mpPublicKey.value, fields.mpDeviceId.value]);
+
   const [mpTesting, setMpTesting] = useState(false);
   const [mpTestResult, setMpTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [mpDevices, setMpDevices] = useState<{ id: string; operating_mode: string }[]>([]);
@@ -167,10 +183,6 @@ export function ConfiguracionPage() {
   // Logo upload
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setMpConfig(getMPConfig());
-  }, []);
 
   const handleLogoDrop = useCallback((_accepted: File[], rejected: File[]) => {
     if (rejected.length > 0) {
@@ -195,10 +207,8 @@ export function ConfiguracionPage() {
   }, [updateField]);
 
   const handleMPSave = useCallback(() => {
-    saveMPConfig(mpConfig);
-    setMpSaved(true);
-    setTimeout(() => setMpSaved(false), 3000);
-  }, [mpConfig]);
+    handleSave();
+  }, [handleSave]);
 
   const handleMPTest = useCallback(async () => {
     setMpTesting(true);
@@ -208,8 +218,8 @@ export function ConfiguracionPage() {
       setMpDevices(devices);
       if (devices.length > 0) {
         setMpTestResult({ success: true, message: `Conexión exitosa. ${devices.length} terminal(es) encontrada(s).` });
-        if (!mpConfig.deviceId && devices.length > 0) {
-          setMpConfig(prev => ({ ...prev, deviceId: devices[0].id }));
+        if (!fields.mpDeviceId.value && devices.length > 0) {
+          fields.mpDeviceId.onChange(devices[0].id);
         }
       } else {
         setMpTestResult({ success: false, message: 'Conexión exitosa pero no se encontraron terminales vinculadas.' });
@@ -218,7 +228,7 @@ export function ConfiguracionPage() {
       setMpTestResult({ success: false, message: err instanceof Error ? err.message : 'Error al conectar con Mercado Pago' });
     }
     setMpTesting(false);
-  }, [mpConfig.deviceId]);
+  }, [fields.mpDeviceId]);
 
   const handleTGTest = useCallback(async () => {
     if (!fields.telegramToken.value || !fields.telegramChatId.value) {
@@ -289,15 +299,15 @@ export function ConfiguracionPage() {
       case 'payments':
         return (
           <PaymentsSection
-            mpConfig={mpConfig}
-            setMpConfig={setMpConfig}
-            mpSaved={mpSaved}
-            setMpSaved={setMpSaved}
+            config={config}
+            updateField={updateField}
             mpTesting={mpTesting}
             mpTestResult={mpTestResult}
             mpDevices={mpDevices}
             handleMPTest={handleMPTest}
-            handleMPSave={handleMPSave}
+            clabeNumberField={fields.clabeNumber}
+            paypalUsernameField={fields.paypalUsername}
+            cobrarQrUrlField={fields.cobrarQrUrl}
           />
         );
       default:
@@ -352,7 +362,7 @@ export function ConfiguracionPage() {
   const storeConfigured = !!(config.storeName && config.address);
   const fiscalConfigured = !!(config.rfc && config.regimenFiscal);
   const notificationsConfigured = !!(config.enableNotifications && config.telegramToken && config.telegramChatId);
-  const mpLinked = mpConfig.enabled;
+  const mpLinked = config.mpEnabled;
   const hardwareConfigured = !!(config.printerIp);
   const loyaltyConfigured = config.loyaltyEnabled;
 

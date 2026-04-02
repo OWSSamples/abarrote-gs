@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import crypto from 'crypto';
-import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/audit';
 import { db } from '@/db';
-import { mercadopagoPayments } from '@/db/schema';
+import { mercadopagoPayments, saleRecords } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { getMPAccessToken } from '@/lib/oauth-providers';
 
 /** Rate limit: 30 webhook calls per minute per IP */
 const RATE_LIMIT = { maxRequests: 30, windowMs: 60_000 } as const;
@@ -98,10 +100,11 @@ export async function POST(req: Request) {
         if (eventType === 'payment' && paymentId) {
             logger.info('Payment webhook received', { paymentId });
 
-            const accessToken = process.env.MP_ACCESS_TOKEN;
+            // Token priority: OAuth DB (encrypted) → env fallback
+            const accessToken = await getMPAccessToken();
 
             if (!accessToken) {
-                logger.error('MP_ACCESS_TOKEN not configured');
+                logger.error('No MP access token available (OAuth nor env)');
                 return NextResponse.json({ received: true }, { status: 200 });
             }
 
@@ -118,19 +121,61 @@ export async function POST(req: Request) {
 
                 if (paymentData.status === 'approved') {
                     logger.info('Payment approved — updating DB', { paymentId });
-                    
+
+                    // Reconcile: find the sale linked by external_reference (folio)
+                    let linkedSaleId: string | null = null;
+                    const extRef = paymentData.external_reference;
+                    if (extRef) {
+                        const [sale] = await db
+                            .select({ id: saleRecords.id })
+                            .from(saleRecords)
+                            .where(eq(saleRecords.folio, extRef))
+                            .limit(1);
+                        if (sale) {
+                            linkedSaleId = sale.id;
+                            // Update sale with MP payment reference
+                            await db
+                                .update(saleRecords)
+                                .set({ mpPaymentId: paymentId })
+                                .where(eq(saleRecords.id, sale.id));
+                        }
+                    }
+
                     await db.insert(mercadopagoPayments).values({
                         id: `mp-${crypto.randomUUID()}`,
                         paymentId: paymentId || 'unknown',
                         status: paymentData.status || 'unknown',
-                        externalReference: paymentData.external_reference || null,
-                        amount: String(paymentData.transaction_amount || 0)
+                        externalReference: extRef || null,
+                        saleId: linkedSaleId,
+                        amount: String(paymentData.transaction_amount || 0),
+                        paymentMethodId: paymentData.payment_method_id || null,
+                        paymentType: paymentData.payment_type_id || null,
+                        installments: paymentData.installments || 1,
+                        feeAmount: paymentData.fee_details?.length
+                            ? String(paymentData.fee_details.reduce((s: number, f: { amount: number }) => s + f.amount, 0))
+                            : null,
+                        netAmount: paymentData.transaction_details?.net_received_amount
+                            ? String(paymentData.transaction_details.net_received_amount)
+                            : null,
+                        payerEmail: paymentData.payer?.email || null,
                     }).onConflictDoUpdate({
                         target: mercadopagoPayments.paymentId,
                         set: {
                             status: paymentData.status || 'unknown',
-                            amount: String(paymentData.transaction_amount || 0)
-                        }
+                            amount: String(paymentData.transaction_amount || 0),
+                            saleId: linkedSaleId,
+                            paymentMethodId: paymentData.payment_method_id || null,
+                            paymentType: paymentData.payment_type_id || null,
+                            installments: paymentData.installments || 1,
+                            feeAmount: paymentData.fee_details?.length
+                                ? String(paymentData.fee_details.reduce((s: number, f: { amount: number }) => s + f.amount, 0))
+                                : null,
+                            netAmount: paymentData.transaction_details?.net_received_amount
+                                ? String(paymentData.transaction_details.net_received_amount)
+                                : null,
+                            payerEmail: paymentData.payer?.email || null,
+                            updatedAt: new Date(),
+                        },
                     });
 
                     // Aseguramos trazabilidad en la base de datos de auditoría

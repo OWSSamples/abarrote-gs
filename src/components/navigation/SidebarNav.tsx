@@ -32,7 +32,7 @@ interface SidebarNavProps {
   };
 }
 
-const SALES_PATHS = ['/dashboard/sales', '/dashboard/sales/corte'];
+const SALES_PATHS = ['/dashboard/sales', '/dashboard/sales/corte', '/dashboard/sales/pagos-mp'];
 const PRODUCT_PATHS = ['/dashboard/products', '/dashboard/products/inventory', '/dashboard/products/priority', '/dashboard/products/audit', '/dashboard/products/pedidos', '/dashboard/products/mermas'];
 const CUSTOMER_PATHS = ['/dashboard/customers', '/dashboard/customers/fiado'];
 const FINANCE_PATHS = ['/dashboard/finance/expenses', '/dashboard/finance/suppliers'];
@@ -74,6 +74,12 @@ export function SidebarNav({ onSelect, badges }: SidebarNavProps) {
         onClick: () => onSelect('sales-corte'),
       });
     }
+    subNav.push({
+      url: '#',
+      label: 'Pagos MP',
+      matches: isPath('/dashboard/sales/pagos-mp'),
+      onClick: () => onSelect('pagos-mp'),
+    });
     const isSel = isAnyPath(SALES_PATHS);
     mainItems.push({
       url: '#',

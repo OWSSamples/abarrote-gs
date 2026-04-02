@@ -1,7 +1,52 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth/server';
 
 const authHandler = auth.middleware({ loginUrl: '/auth/login' });
+
+/**
+ * CSRF Protection via Origin header verification.
+ *
+ * Next.js Server Actions use POST requests. We verify the Origin header
+ * against the Host header to prevent cross-site request forgery.
+ * Follows OWASP "Verifying the Origin with Standard Headers" approach.
+ *
+ * GET/HEAD/OPTIONS are safe methods — no CSRF check needed.
+ * Webhook routes use HMAC/signature auth. Cron routes use secret-based auth.
+ */
+function csrfCheck(request: NextRequest): NextResponse | null {
+  const method = request.method.toUpperCase();
+
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return null;
+  }
+
+  const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith('/api/webhooks') || pathname.startsWith('/api/cron') || pathname.startsWith('/api/jobs')) {
+    return null;
+  }
+
+  const origin = request.headers.get('origin');
+  const host = request.headers.get('host');
+
+  if (!origin || !host) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+
+  if (originHost !== host) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+
+  return null;
+}
 
 /**
  * Applies security headers to the response.
@@ -49,6 +94,13 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
 }
 
 export async function proxy(request: Parameters<typeof authHandler>[0]) {
+  // 1. CSRF check first — block cross-origin mutations early
+  const csrfResponse = csrfCheck(request as NextRequest);
+  if (csrfResponse) {
+    return csrfResponse;
+  }
+
+  // 2. Auth + security headers
   const response = await authHandler(request);
 
   // authHandler returns either a redirect or NextResponse.next()

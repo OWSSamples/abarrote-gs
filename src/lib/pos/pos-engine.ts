@@ -3,6 +3,12 @@ import { createSale } from '@/app/actions/sales-actions';
 import { SaleRecord } from '@/types';
 import invariant from 'tiny-invariant';
 
+// Payment methods that require server-side API calls to payment providers.
+// These CANNOT be processed offline because they need to create charges via Conekta/Stripe.
+const ONLINE_ONLY_METHODS = new Set([
+  'spei_conekta', 'spei_stripe', 'oxxo_conekta', 'oxxo_stripe', 'tarjeta_web', 'tarjeta_clip', 'clip_terminal',
+]);
+
 /**
  * POS ENGINE (Advanced Hybrid Mode)
  * Orquestador inteligente que decide dónde y cuándo guardar las ventas.
@@ -17,6 +23,14 @@ export class PosEngine {
     // Blindaje Industrial: Invariantes de Seguridad de Datos
     invariant(saleData.items.length > 0, "No se puede procesar una venta sin artículos.");
     invariant(saleData.total >= 0, "El total de la venta no puede ser negativo.");
+
+    // Guard: automated payment methods require internet connection
+    if (!navigator.onLine && ONLINE_ONLY_METHODS.has(saleData.paymentMethod)) {
+      throw new Error(
+        `El método de pago "${saleData.paymentMethod}" requiere conexión a internet para generar el cargo automático. ` +
+        'Usa un método manual (efectivo, transferencia, SPEI manual) o espera a tener conexión.'
+      );
+    }
 
     try {
       // 1. Intentar guardar en la nube primero (Modo Online)

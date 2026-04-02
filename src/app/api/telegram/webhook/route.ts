@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { products } from '@/db/schema';
 import { fetchStoreConfig } from '@/app/actions/store-config-actions';
 import { escapeHTML } from '@/app/actions/_notifications';
-import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
 
 /** Allowed Telegram bot commands */

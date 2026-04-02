@@ -60,7 +60,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     submitting,
   } = useForm({
     fields: {
-      paymentMethod: useField<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'tarjeta_web' | 'transferencia' | 'fiado' | 'puntos'>('efectivo'),
+      paymentMethod: useField<'efectivo' | 'tarjeta' | 'tarjeta_manual' | 'tarjeta_web' | 'transferencia' | 'fiado' | 'puntos' | 'spei' | 'paypal' | 'qr_cobro' | 'spei_conekta' | 'spei_stripe' | 'oxxo_conekta' | 'oxxo_stripe' | 'tarjeta_clip' | 'clip_terminal'>('efectivo'),
       amountPaid: useField({
         value: '',
         validates: [
@@ -384,8 +384,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     
     if (fields.paymentMethod.value === 'tarjeta_web') { showError('Completa el pago MP Web'); return; }
 
-    await finishSale();
-  }, [items, fields.paymentMethod.value, fields.clienteId.value, total, clientes, mpConfig.enabled, storeConfig.closeSystemTime, validateCheckout, showError, finishSale]);
+    await finishSale();  }, [items, fields.paymentMethod.value, fields.clienteId.value, total, clientes, mpConfig.enabled, storeConfig.closeSystemTime, validateCheckout, showError, finishSale]);
 
   const handleClose = useCallback(() => { resetForm(); onClose(); }, [resetForm, onClose]);
 
@@ -521,6 +520,9 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 onMpWebSuccess={() => setMpWebSuccess(true)}
                 finishSale={finishSale}
                 showError={showError}
+                clabeNumber={storeConfig.clabeNumber}
+                paypalUsername={storeConfig.paypalUsername}
+                cobrarQrUrl={storeConfig.cobrarQrUrl}
               />
             </BlockStack>
           )}

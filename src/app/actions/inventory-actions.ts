@@ -9,6 +9,7 @@ import type { InventoryAudit, InventoryAuditItem } from '@/types';
 import { numVal } from './_helpers';
 import { sendNotification } from './_notifications';
 import { fetchAllProducts } from './product-actions';
+import { validateSchema, createMermaSchema, createInventoryAuditSchema, saveAuditItemSchema, idSchema } from '@/lib/validation/schemas';
 
 // ==================== INVENTORY ALERTS (computed) ====================
 
@@ -158,7 +159,7 @@ export async function fetchMermaRecords(): Promise<MermaRecord[]> {
 
 export async function createMerma(data: Omit<MermaRecord, 'id'>): Promise<MermaRecord> {
   await requirePermission('inventory.edit');
-  validateId(data.productId, 'Product ID');
+  validateSchema(createMermaSchema, data, 'createMerma');
   const id = `merma-${crypto.randomUUID()}`;
   await db.insert(mermaRecords).values({
     id,
@@ -202,6 +203,7 @@ export async function createInventoryAudit(data: {
   notes: string;
 }): Promise<string> {
   await requirePermission('inventory.edit');
+  validateSchema(createInventoryAuditSchema, data, 'createInventoryAudit');
   const id = `audit-${crypto.randomUUID()}`;
   await db.insert(inventoryAudits).values({
     id,
@@ -244,8 +246,7 @@ export async function getInventoryAudit(id: string): Promise<InventoryAudit | nu
 
 export async function saveAuditItem(data: Omit<InventoryAuditItem, 'id'>): Promise<void> {
   await requirePermission('inventory.edit');
-  validateId(data.auditId, 'Audit ID');
-  validateId(data.productId, 'Product ID');
+  validateSchema(saveAuditItemSchema, data, 'saveAuditItem');
   const id = `ai-${crypto.randomUUID()}`;
   await db.insert(inventoryAuditItems).values({
     id,
@@ -261,7 +262,7 @@ export async function saveAuditItem(data: Omit<InventoryAuditItem, 'id'>): Promi
 
 export async function completeInventoryAudit(id: string): Promise<void> {
   await requirePermission('inventory.edit');
-  validateId(id, 'Audit ID');
+  validateSchema(idSchema, id, 'completeInventoryAudit:id');
   const audit = await getInventoryAudit(id);
   if (!audit || audit.status === 'completed') return;
 

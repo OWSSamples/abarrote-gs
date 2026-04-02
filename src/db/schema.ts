@@ -46,13 +46,99 @@ export const storeConfig = pgTable('store_config', {
   logoUrl: text('logo_url'),
   ticketTemplateVenta: text('ticket_template_venta'),
   ticketTemplateProveedor: text('ticket_template_proveedor'),
+  // Métodos de pago adicionales
+  clabeNumber: text('clabe_number'),
+  paypalUsername: text('paypal_username'),
+  cobrarQrUrl: text('cobrar_qr_url'),
+  // MercadoPago terminal config (persisted; replaces localStorage)
+  mpDeviceId: text('mp_device_id'),
+  mpPublicKey: text('mp_public_key'),
+  mpEnabled: boolean('mp_enabled').notNull().default(false),
+  // Conekta
+  conektaEnabled: boolean('conekta_enabled').notNull().default(false),
+  conektaPublicKey: text('conekta_public_key'),
+  // Stripe
+  stripeEnabled: boolean('stripe_enabled').notNull().default(false),
+  stripePublicKey: text('stripe_public_key'),
+  // Clip
+  clipEnabled: boolean('clip_enabled').notNull().default(false),
+  clipApiKey: text('clip_api_key'),
+  clipSerialNumber: text('clip_serial_number'),
   inventoryGeneralColumns: text('inventory_general_columns').notNull().default('["title","sku","available","onHand"]'),
   defaultMargin: text('default_margin').notNull().default('30'),
   defaultStartingFund: numeric('default_starting_fund', { precision: 10, scale: 2 }).notNull().default('500'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-// ==================== CATEGORIAS ====================
+// ==================== OAUTH PROVIDER CONNECTIONS ====================
+export const paymentProviderConnections = pgTable('payment_provider_connections', {
+  id: text('id').primaryKey(),
+  provider: text('provider').notNull(), // 'mercadopago' | 'conekta' | 'stripe' | 'clip'
+  storeId: text('store_id').notNull().default('main').references(() => storeConfig.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('disconnected'), // 'connected' | 'disconnected' | 'expired'
+  accessTokenEnc: text('access_token_enc'),
+  refreshTokenEnc: text('refresh_token_enc'),
+  publicKey: text('public_key'),
+  tokenExpiresAt: timestamp('token_expires_at'),
+  mpUserId: text('mp_user_id'),
+  mpEmail: text('mp_email'),
+  // Multi-provider generic columns
+  webhookSecretEnc: text('webhook_secret_enc'),
+  providerAccountId: text('provider_account_id'),
+  providerEmail: text('provider_email'),
+  providerMetadata: jsonb('provider_metadata').default({}),
+  environment: text('environment').notNull().default('sandbox'),
+  scopes: text('scopes'),
+  connectedAt: timestamp('connected_at'),
+  disconnectedAt: timestamp('disconnected_at'),
+  lastRefreshedAt: timestamp('last_refreshed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('ppc_provider_store_idx').on(t.provider, t.storeId),
+  index('ppc_status_idx').on(t.status),
+]);
+
+export const oauthStates = pgTable('oauth_states', {
+  id: text('id').primaryKey(),
+  provider: text('provider').notNull(),
+  codeVerifier: text('code_verifier').notNull(),
+  state: text('state').notNull().unique(),
+  redirectUri: text('redirect_uri').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  expiresAt: timestamp('expires_at').notNull(),
+});
+
+// ==================== PAYMENT CHARGES (automated SPEI/OXXO tracking) ====================
+export const paymentCharges = pgTable('payment_charges', {
+  id: text('id').primaryKey(),
+  provider: text('provider').notNull(), // 'conekta' | 'stripe' | 'mercadopago' | 'clip'
+  providerChargeId: text('provider_charge_id').notNull(),
+  saleId: text('sale_id'),
+  storeId: text('store_id').notNull().default('main'),
+  amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+  currency: text('currency').notNull().default('MXN'),
+  paymentMethod: text('payment_method').notNull(), // 'spei' | 'oxxo' | 'card'
+  status: text('status').notNull().default('pending'), // 'pending' | 'paid' | 'expired' | 'failed'
+  customerName: text('customer_name'),
+  customerEmail: text('customer_email'),
+  referenceNumber: text('reference_number'),
+  clabeReference: text('clabe_reference'),
+  oxxoBarcode: text('oxxo_barcode'),
+  oxxoReference: text('oxxo_reference'),
+  expiresAt: timestamp('expires_at'),
+  paidAt: timestamp('paid_at'),
+  providerMetadata: jsonb('provider_metadata').default({}),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('pc_provider_charge_idx').on(t.provider, t.providerChargeId),
+  index('pc_sale_idx').on(t.saleId),
+  index('pc_status_idx').on(t.status),
+  index('pc_reference_idx').on(t.referenceNumber),
+]);
+
+// ==================== CATEGORIAS ==
 export const productCategories = pgTable('product_categories', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -91,6 +177,8 @@ export const saleRecords = pgTable('sale_records', {
   cardSurcharge: numeric('card_surcharge', { precision: 10, scale: 2 }).notNull().default('0'),
   total: numeric('total', { precision: 10, scale: 2 }).notNull(),
   paymentMethod: text('payment_method').notNull(), // efectivo, tarjeta, transferencia
+  installments: integer('installments').notNull().default(1),
+  mpPaymentId: text('mp_payment_id'),
   amountPaid: numeric('amount_paid', { precision: 10, scale: 2 }).notNull(),
   change: numeric('change', { precision: 10, scale: 2 }).notNull().default('0'),
   cajero: text('cajero').notNull().default('Cajero 1'),
@@ -102,6 +190,7 @@ export const saleRecords = pgTable('sale_records', {
 }, (t) => [
   index('sale_records_date_idx').on(t.date),
   index('sale_records_payment_method_idx').on(t.paymentMethod),
+  index('sale_records_mp_payment_id_idx').on(t.mpPaymentId),
 ]);
 
 export const saleItems = pgTable('sale_items', {
@@ -436,6 +525,35 @@ export const mercadopagoPayments = pgTable('mercadopago_payments', {
   paymentId: text('payment_id').notNull().unique(),
   status: text('status').notNull(),
   externalReference: text('external_reference'),
+  saleId: text('sale_id').references(() => saleRecords.id, { onDelete: 'set null' }),
   amount: numeric('amount', { precision: 10, scale: 2 }),
+  paymentMethodId: text('payment_method_id'),
+  paymentType: text('payment_type'),
+  installments: integer('installments').notNull().default(1),
+  feeAmount: numeric('fee_amount', { precision: 10, scale: 2 }),
+  netAmount: numeric('net_amount', { precision: 10, scale: 2 }),
+  payerEmail: text('payer_email'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (t) => [
+  index('mp_payments_sale_id_idx').on(t.saleId),
+  index('mp_payments_status_idx').on(t.status),
+  index('mp_payments_external_ref_idx').on(t.externalReference),
+]);
+
+// ==================== REEMBOLSOS MERCADO PAGO ====================
+export const mercadopagoRefunds = pgTable('mercadopago_refunds', {
+  id: text('id').primaryKey(),
+  mpPaymentId: text('mp_payment_id').notNull(),
+  mpRefundId: text('mp_refund_id').notNull().unique(),
+  saleId: text('sale_id').references(() => saleRecords.id, { onDelete: 'set null' }),
+  amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+  status: text('status').notNull().default('pending'),
+  reason: text('reason').notNull().default(''),
+  initiatedBy: text('initiated_by').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at'),
+}, (t) => [
+  index('mp_refunds_sale_id_idx').on(t.saleId),
+  index('mp_refunds_payment_id_idx').on(t.mpPaymentId),
+]);

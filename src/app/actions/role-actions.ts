@@ -8,8 +8,9 @@ import { eq, isNotNull } from 'drizzle-orm';
 import type { UserRoleRecord, RoleDefinition, PermissionKey } from '@/types';
 import { DEFAULT_SYSTEM_ROLES } from '@/types';
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
-import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
+import { validateSchema, createRoleSchema, updateRoleSchema, assignUserRoleSchema, createUserWithRoleSchema, updateUserPinSchema, updateUserProfileSchema, idSchema } from '@/lib/validation/schemas';
 
 // ==================== PIN RATE LIMITING ====================
 
@@ -81,6 +82,8 @@ export async function createRoleDefinition(
   createdByUid: string
 ): Promise<RoleDefinition> {
   await requirePermission('roles.manage');
+  validateSchema(createRoleSchema, data, 'createRoleDefinition');
+  validateSchema(idSchema, createdByUid, 'createRoleDefinition.createdByUid');
   const id = crypto.randomUUID();
   const now = new Date();
   await db.insert(roleDefinitions).values({
@@ -110,7 +113,8 @@ export async function updateRoleDefinition(
   data: { name?: string; description?: string; permissions?: PermissionKey[] }
 ): Promise<void> {
   await requirePermission('roles.manage');
-  validateId(id, 'Role ID');
+  validateSchema(idSchema, id, 'updateRoleDefinition.id');
+  validateSchema(updateRoleSchema, data, 'updateRoleDefinition');
 
   // System roles can only be modified by the owner
   const existing = await db.select().from(roleDefinitions).where(eq(roleDefinitions.id, id));
@@ -235,6 +239,8 @@ export async function assignUserRole(
   assignedByUid: string
 ): Promise<UserRoleRecord> {
   await requirePermission('roles.manage');
+  validateSchema(assignUserRoleSchema, data, 'assignUserRole');
+  validateSchema(idSchema, assignedByUid, 'assignUserRole.assignedByUid');
   const existingRows = await db.select().from(userRoles).where(eq(userRoles.firebaseUid, data.firebaseUid));
 
   if (existingRows.length > 0) {
@@ -277,6 +283,8 @@ export async function createFirebaseUserWithRole(
   assignedByUid: string
 ): Promise<UserRoleRecord> {
   await requirePermission('roles.manage');
+  validateSchema(createUserWithRoleSchema, data, 'createFirebaseUserWithRole');
+  validateSchema(idSchema, assignedByUid, 'createFirebaseUserWithRole.assignedByUid');
 
   const userRecord = await adminAuth.createUser({
     email: data.email,
@@ -303,6 +311,7 @@ export async function createFirebaseUserWithRole(
 
 export async function updateUserPin(firebaseUid: string, pinCode: string): Promise<void> {
   await requirePermission('roles.manage');
+  validateSchema(updateUserPinSchema, { firebaseUid, pinCode }, 'updateUserPin');
   const hashed = hashPin(pinCode);
   const now = new Date();
   await db.update(userRoles)
@@ -405,6 +414,7 @@ export async function updateUserProfile(
   data: { displayName?: string; avatarUrl?: string }
 ): Promise<UserRoleRecord> {
   const currentUser = await requireAuth();
+  validateSchema(updateUserProfileSchema, { firebaseUid, ...data }, 'updateUserProfile');
 
   // Users can only update their own profile — unless they have roles.manage
   if (currentUser.uid !== firebaseUid) {

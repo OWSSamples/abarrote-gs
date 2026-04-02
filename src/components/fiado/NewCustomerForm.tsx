@@ -22,7 +22,7 @@ import {
   ChevronRightIcon,
   PlusIcon,
 } from '@shopify/polaris-icons';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 
@@ -35,6 +35,21 @@ export function NewCustomerForm({ onBack, onSuccess }: NewCustomerFormProps) {
   const addCliente = useDashboardStore((s) => s.addCliente);
   const { showSuccess, showError } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const styleId = 'new-customer-form-style';
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = [
+      'body { overflow: hidden !important; height: 100vh !important; margin: 0; }',
+      '.Polaris-Frame__Content { height: 100vh !important; overflow: hidden !important; display: flex; flex-direction: column; }',
+      '.custom-scroll { height: calc(100vh - 60px); overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 20px 0; }',
+      '.custom-scroll::-webkit-scrollbar { display: none; }',
+    ].join('\n');
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
 
   // Form State
   const [firstName, setFirstName] = useState('');
@@ -106,18 +121,6 @@ export function NewCustomerForm({ onBack, onSuccess }: NewCustomerFormProps) {
 
   return (
     <Frame>
-      <style dangerouslySetInnerHTML={{ __html: `
-        body { overflow: hidden !important; height: 100vh !important; margin: 0; }
-        .Polaris-Frame__Content { height: 100vh !important; overflow: hidden !important; display: flex; flex-direction: column; }
-        .custom-scroll { 
-          height: calc(100vh - 60px); 
-          overflow-y: auto; 
-          scrollbar-width: none; 
-          -ms-overflow-style: none; 
-          padding: 20px 0;
-        }
-        .custom-scroll::-webkit-scrollbar { display: none; }
-      `}} />
       {contextualSaveBar}
       <Page>
         <div className="custom-scroll">

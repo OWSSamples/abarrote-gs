@@ -1,6 +1,7 @@
 'use server';
 
 import { requirePermission, validateId } from '@/lib/auth/guard';
+import { validateSchema, createGastoSchema, updateGastoSchema, createProveedorSchema, updateProveedorSchema, createPedidoSchema, updatePedidoStatusSchema, idSchema } from '@/lib/validation/schemas';
 import { db } from '@/db';
 import { gastos, proveedores, pedidos, pedidoItems, products } from '@/db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
@@ -25,6 +26,7 @@ export async function fetchGastos(): Promise<Gasto[]> {
 
 export async function createGasto(data: Omit<Gasto, 'id'>): Promise<Gasto> {
   await requirePermission('expenses.create');
+  validateSchema(createGastoSchema, data, 'createGasto');
   const id = `gasto-${crypto.randomUUID()}`;
 
   await db.insert(gastos).values({
@@ -42,7 +44,8 @@ export async function createGasto(data: Omit<Gasto, 'id'>): Promise<Gasto> {
 
 export async function updateGasto(id: string, data: Partial<Gasto>): Promise<void> {
   await requirePermission('expenses.create');
-  validateId(id, 'Gasto ID');
+  validateSchema(idSchema, id, 'updateGasto.id');
+  validateSchema(updateGastoSchema, data, 'updateGasto');
   const updateData: Record<string, unknown> = {};
   if (data.concepto !== undefined) updateData.concepto = data.concepto;
   if (data.categoria !== undefined) updateData.categoria = data.categoria;
@@ -84,6 +87,7 @@ export async function createProveedor(
   data: Omit<Proveedor, 'id' | 'ultimoPedido'>
 ): Promise<Proveedor> {
   await requirePermission('suppliers.edit');
+  validateSchema(createProveedorSchema, data, 'createProveedor');
   const id = `prov-${crypto.randomUUID()}`;
   await db.insert(proveedores).values({
     id,
@@ -101,7 +105,8 @@ export async function createProveedor(
 
 export async function updateProveedor(id: string, data: Partial<Proveedor>): Promise<void> {
   await requirePermission('suppliers.edit');
-  validateId(id, 'Proveedor ID');
+  validateSchema(idSchema, id, 'updateProveedor.id');
+  validateSchema(updateProveedorSchema, data, 'updateProveedor');
   const updateData: Record<string, unknown> = {};
   if (data.nombre !== undefined) updateData.nombre = data.nombre;
   if (data.contacto !== undefined) updateData.contacto = data.contacto;
@@ -188,7 +193,7 @@ export async function createPedido(
 
 export async function updatePedidoStatus(id: string, estado: 'pendiente' | 'enviado' | 'recibido'): Promise<void> {
   await requirePermission('suppliers.edit');
-  validateId(id, 'Pedido ID');
+  validateSchema(updatePedidoStatusSchema, { id, estado }, 'updatePedidoStatus');
   await db.update(pedidos).set({ estado }).where(eq(pedidos.id, id));
 }
 

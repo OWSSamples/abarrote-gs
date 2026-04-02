@@ -6,6 +6,7 @@ import { cashMovements } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import type { CashMovement } from '@/types';
 import { numVal } from './_helpers';
+import { validateSchema, createCashMovementSchema } from '@/lib/validation/schemas';
 
 function mapMovement(row: typeof cashMovements.$inferSelect): CashMovement {
   return {
@@ -37,6 +38,7 @@ export async function createCashMovement(data: {
   cajero: string;
 }): Promise<CashMovement> {
   await requirePermission('corte.create');
+  const validated = validateSchema(createCashMovementSchema, data, 'createCashMovement');
 
   const id = `cm-${crypto.randomUUID()}`;
   const now = new Date();

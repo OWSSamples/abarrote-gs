@@ -6,6 +6,7 @@ import { loyaltyTransactions, clientes } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import type { LoyaltyTransaction } from '@/types';
 import { numVal } from './_helpers';
+import { validateSchema, createLoyaltyTransactionSchema } from '@/lib/validation/schemas';
 
 function mapTransaction(row: typeof loyaltyTransactions.$inferSelect): LoyaltyTransaction {
   return {
@@ -45,6 +46,7 @@ export async function createLoyaltyTransaction(data: {
   cajero: string;
 }): Promise<LoyaltyTransaction> {
   await requirePermission('sales.create');
+  const validated = validateSchema(createLoyaltyTransactionSchema, data, 'createLoyaltyTransaction');
 
   const id = `lt-${crypto.randomUUID()}`;
   const now = new Date();

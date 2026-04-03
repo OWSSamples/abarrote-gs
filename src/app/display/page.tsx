@@ -127,6 +127,31 @@ export default function CustomerDisplayPage() {
   }, [sale.status]);
 
   const storeName = storeConfig.storeName || 'Tu Tienda';
+
+  // ── Gate: display must be enabled in settings ──
+  if (!storeConfig.customerDisplayEnabled) {
+    return (
+      <div className="cd-fullscreen">
+        <Box padding="0" minHeight="100vh" background="bg-surface">
+          <div className="cd-center-col">
+            <BlockStack gap="400" inlineAlign="center">
+              <Box padding="500" background="bg-surface-secondary" borderRadius="full">
+                <Icon source={StoreIcon} tone="subdued" />
+              </Box>
+              <Text variant="headingLg" as="h1" alignment="center">
+                Pantalla del cliente desactivada
+              </Text>
+              <Text variant="bodyMd" as="p" tone="subdued" alignment="center">
+                Actívala desde Configuración → Pantalla del Cliente
+              </Text>
+            </BlockStack>
+          </div>
+        </Box>
+        <DisplayStyles />
+      </div>
+    );
+  }
+
   const logoUrl = storeConfig.logoUrl;
   const paymentLabel = PAYMENT_LABELS[sale.paymentMethod] ?? sale.paymentMethod;
   const welcomeMsg = storeConfig.customerDisplayWelcome || `¡Bienvenido a ${storeName}!`;

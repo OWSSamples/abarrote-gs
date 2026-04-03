@@ -25,6 +25,8 @@ import type { SettingsSectionProps } from './types';
 
 export function CustomerDisplaySection({ config, updateField }: SettingsSectionProps) {
   const saveStoreConfig = useDashboardStore((s) => s.saveStoreConfig);
+  const storeEnabled = useDashboardStore((s) => s.storeConfig.customerDisplayEnabled);
+  const [toggling, setToggling] = useState(false);
   const [promoUploading, setPromoUploading] = useState(false);
   const [promoUploadError, setPromoUploadError] = useState<string | null>(null);
   const [urlCopied, setUrlCopied] = useState(false);
@@ -33,11 +35,18 @@ export function CustomerDisplaySection({ config, updateField }: SettingsSectionP
     ? `${window.location.origin}/display`
     : '/display';
 
-  // Toggle auto-saves immediately without triggering the form save bar
+  // Toggle persists directly to DB + Zustand store (bypasses form)
   const handleToggle = useCallback(async () => {
-    const next = !config.customerDisplayEnabled;
-    await saveStoreConfig({ customerDisplayEnabled: next });
-  }, [config.customerDisplayEnabled, saveStoreConfig]);
+    setToggling(true);
+    try {
+      const next = !storeEnabled;
+      await saveStoreConfig({ customerDisplayEnabled: next });
+      // Also sync the form field so the UI below reacts immediately
+      updateField('customerDisplayEnabled', next);
+    } finally {
+      setToggling(false);
+    }
+  }, [storeEnabled, saveStoreConfig, updateField]);
 
   const handleOpenDisplay = useCallback(() => {
     window.open(
@@ -90,7 +99,7 @@ export function CustomerDisplaySection({ config, updateField }: SettingsSectionP
     updateField('customerDisplayPromoImage', '');
   }, [updateField]);
 
-  const isEnabled = config.customerDisplayEnabled;
+  const isEnabled = storeEnabled;
 
   return (
     <BlockStack gap="500">
@@ -115,7 +124,10 @@ export function CustomerDisplaySection({ config, updateField }: SettingsSectionP
                 ariaChecked={isEnabled}
                 onClick={handleToggle}
                 variant={isEnabled ? 'primary' : undefined}
+                tone={isEnabled ? 'success' : undefined}
                 size="slim"
+                loading={toggling}
+                accessibilityLabel={isEnabled ? 'Desactivar pantalla' : 'Activar pantalla'}
               >
                 {isEnabled ? 'Activada' : 'Desactivada'}
               </Button>

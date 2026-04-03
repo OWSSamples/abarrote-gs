@@ -127,6 +127,16 @@ export default function CustomerDisplayPage() {
   }, [sale.status]);
 
   const storeName = storeConfig.storeName || 'Tu Tienda';
+  const logoUrl = storeConfig.logoUrl;
+  const paymentLabel = PAYMENT_LABELS[sale.paymentMethod] ?? sale.paymentMethod;
+  const welcomeMsg = storeConfig.customerDisplayWelcome || `¡Bienvenido a ${storeName}!`;
+  const farewellMsg = storeConfig.customerDisplayFarewell || `${storeName} le agradece su preferencia`;
+  const promoText = storeConfig.customerDisplayPromoText || '';
+  const promoImage = storeConfig.customerDisplayPromoImage || '';
+  const itemCount = useMemo(
+    () => sale.items.reduce((sum, i) => sum + i.quantity, 0),
+    [sale.items],
+  );
 
   // ── Gate: display must be enabled in settings ──
   if (!storeConfig.customerDisplayEnabled) {
@@ -151,17 +161,6 @@ export default function CustomerDisplayPage() {
       </div>
     );
   }
-
-  const logoUrl = storeConfig.logoUrl;
-  const paymentLabel = PAYMENT_LABELS[sale.paymentMethod] ?? sale.paymentMethod;
-  const welcomeMsg = storeConfig.customerDisplayWelcome || `¡Bienvenido a ${storeName}!`;
-  const farewellMsg = storeConfig.customerDisplayFarewell || `${storeName} le agradece su preferencia`;
-  const promoText = storeConfig.customerDisplayPromoText || '';
-  const promoImage = storeConfig.customerDisplayPromoImage || '';
-  const itemCount = useMemo(
-    () => sale.items.reduce((sum, i) => sum + i.quantity, 0),
-    [sale.items],
-  );
 
   // ── IDLE SCREEN ──
   if (sale.status === 'idle') {

@@ -19,14 +19,10 @@ import {
   Spinner,
 } from '@shopify/polaris';
 import { ImageIcon } from '@shopify/polaris-icons';
-import { useDashboardStore } from '@/store/dashboardStore';
 import { uploadFile } from '@/lib/storage';
 import type { SettingsSectionProps } from './types';
 
 export function CustomerDisplaySection({ config, updateField }: SettingsSectionProps) {
-  const saveStoreConfig = useDashboardStore((s) => s.saveStoreConfig);
-  const storeEnabled = useDashboardStore((s) => s.storeConfig.customerDisplayEnabled);
-  const [toggling, setToggling] = useState(false);
   const [promoUploading, setPromoUploading] = useState(false);
   const [promoUploadError, setPromoUploadError] = useState<string | null>(null);
   const [urlCopied, setUrlCopied] = useState(false);
@@ -35,18 +31,9 @@ export function CustomerDisplaySection({ config, updateField }: SettingsSectionP
     ? `${window.location.origin}/display`
     : '/display';
 
-  // Toggle persists directly to DB + Zustand store (bypasses form)
-  const handleToggle = useCallback(async () => {
-    setToggling(true);
-    try {
-      const next = !storeEnabled;
-      await saveStoreConfig({ customerDisplayEnabled: next });
-      // Also sync the form field so the UI below reacts immediately
-      updateField('customerDisplayEnabled', next);
-    } finally {
-      setToggling(false);
-    }
-  }, [storeEnabled, saveStoreConfig, updateField]);
+  const handleToggle = useCallback(() => {
+    updateField('customerDisplayEnabled', !config.customerDisplayEnabled);
+  }, [config.customerDisplayEnabled, updateField]);
 
   const handleOpenDisplay = useCallback(() => {
     window.open(
@@ -99,11 +86,11 @@ export function CustomerDisplaySection({ config, updateField }: SettingsSectionP
     updateField('customerDisplayPromoImage', '');
   }, [updateField]);
 
-  const isEnabled = storeEnabled;
+  const isEnabled = config.customerDisplayEnabled;
 
   return (
     <BlockStack gap="500">
-      {/* ── Toggle (auto-save, no save bar) ── */}
+      {/* ── Toggle ── */}
       <Layout.AnnotatedSection
         title="Pantalla del cliente"
         description="Muestra a tus clientes los productos que están comprando en tiempo real desde un segundo monitor o tablet."
@@ -124,10 +111,8 @@ export function CustomerDisplaySection({ config, updateField }: SettingsSectionP
                 ariaChecked={isEnabled}
                 onClick={handleToggle}
                 variant={isEnabled ? 'primary' : undefined}
-                tone={isEnabled ? 'success' : undefined}
                 size="slim"
-                loading={toggling}
-                accessibilityLabel={isEnabled ? 'Desactivar pantalla' : 'Activar pantalla'}
+                accessibilityLabel={isEnabled ? 'Desactivar pantalla del cliente' : 'Activar pantalla del cliente'}
               >
                 {isEnabled ? 'Activada' : 'Desactivada'}
               </Button>

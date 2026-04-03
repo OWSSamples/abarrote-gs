@@ -105,6 +105,7 @@ export interface StoreConfig {
   customerDisplayWelcome: string;
   customerDisplayFarewell: string;
   customerDisplayPromoText: string;
+  customerDisplayPromoImage: string;
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -147,6 +148,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   customerDisplayWelcome: '',
   customerDisplayFarewell: '',
   customerDisplayPromoText: '',
+  customerDisplayPromoImage: '',
 };
 
 export interface ProductCategory {

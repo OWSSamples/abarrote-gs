@@ -69,6 +69,7 @@ export const storeConfig = pgTable('store_config', {
   customerDisplayWelcome: text('customer_display_welcome'),
   customerDisplayFarewell: text('customer_display_farewell'),
   customerDisplayPromoText: text('customer_display_promo_text'),
+  customerDisplayPromoImage: text('customer_display_promo_image'),
   inventoryGeneralColumns: text('inventory_general_columns').notNull().default('["title","sku","available","onHand"]'),
   defaultMargin: text('default_margin').notNull().default('30'),
   defaultStartingFund: numeric('default_starting_fund', { precision: 10, scale: 2 }).notNull().default('500'),

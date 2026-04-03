@@ -132,6 +132,7 @@ export default function CustomerDisplayPage() {
   const welcomeMsg = storeConfig.customerDisplayWelcome || `¡Bienvenido a ${storeName}!`;
   const farewellMsg = storeConfig.customerDisplayFarewell || `${storeName} le agradece su preferencia`;
   const promoText = storeConfig.customerDisplayPromoText || '';
+  const promoImage = storeConfig.customerDisplayPromoImage || '';
   const itemCount = useMemo(
     () => sale.items.reduce((sum, i) => sum + i.quantity, 0),
     [sale.items],
@@ -166,6 +167,17 @@ export default function CustomerDisplayPage() {
                   <Text variant="bodyLg" as="p" alignment="center" tone="success">
                     {promoText}
                   </Text>
+                </Box>
+              )}
+
+              {promoImage && (
+                <Box borderRadius="300" overflow="hidden" maxWidth="500px">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={promoImage}
+                    alt="Promoción"
+                    style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 12 }}
+                  />
                 </Box>
               )}
 

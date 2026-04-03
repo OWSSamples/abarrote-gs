@@ -1,0 +1,1 @@
+ALTER TABLE "store_config" ADD COLUMN "customer_display_promo_image" text;

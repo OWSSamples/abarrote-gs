@@ -65,6 +65,7 @@ function mapStoreConfigRow(
     customerDisplayWelcome?: string | null;
     customerDisplayFarewell?: string | null;
     customerDisplayPromoText?: string | null;
+    customerDisplayPromoImage?: string | null;
     closeSystemTime?: string | null;
     autoCorteTime?: string | null;
     defaultStartingFund?: string | number | null;
@@ -125,6 +126,7 @@ function mapStoreConfigRow(
     customerDisplayWelcome: row.customerDisplayWelcome ?? DEFAULT_STORE_CONFIG.customerDisplayWelcome,
     customerDisplayFarewell: row.customerDisplayFarewell ?? DEFAULT_STORE_CONFIG.customerDisplayFarewell,
     customerDisplayPromoText: row.customerDisplayPromoText ?? DEFAULT_STORE_CONFIG.customerDisplayPromoText,
+    customerDisplayPromoImage: row.customerDisplayPromoImage ?? DEFAULT_STORE_CONFIG.customerDisplayPromoImage,
     closeSystemTime: (row.closeSystemTime as string) ?? DEFAULT_STORE_CONFIG.closeSystemTime,
     autoCorteTime: (row.autoCorteTime as string) ?? DEFAULT_STORE_CONFIG.autoCorteTime,
     defaultStartingFund: Number(row.defaultStartingFund) || DEFAULT_STORE_CONFIG.defaultStartingFund,

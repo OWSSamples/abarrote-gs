@@ -129,6 +129,7 @@ export function ConfiguracionPage() {
       customerDisplayWelcome: useField(storeConfig.customerDisplayWelcome || ''),
       customerDisplayFarewell: useField(storeConfig.customerDisplayFarewell || ''),
       customerDisplayPromoText: useField(storeConfig.customerDisplayPromoText || ''),
+      customerDisplayPromoImage: useField(storeConfig.customerDisplayPromoImage || ''),
     },
     onSubmit: async (f) => {
       await saveStoreConfig(f as any);

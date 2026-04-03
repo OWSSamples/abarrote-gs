@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { useDashboardStore } from '@/store/dashboardStore';
 import {
   FormLayout,
   TextField,
@@ -20,7 +21,7 @@ import {
 import { ClipboardIcon } from '@shopify/polaris-icons';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
-import { MercadoPagoPaymentBrick } from '@/components/mercadopago/MercadoPagoPaymentBrick';
+import { CustomCardPaymentForm } from '@/components/mercadopago/CustomCardPaymentForm';
 import { formatCurrency } from '@/lib/utils';
 import type { Cliente, UserRoleRecord } from '@/types';
 import type { MercadoPagoConfig } from '@/lib/mercadopago';
@@ -59,21 +60,31 @@ function generatePaymentReference(): string {
   return `REF-${ts.slice(-4)}${rand}`.substring(0, 12);
 }
 
-const paymentMethodOptions = [
+/**
+ * Full catalog of payment methods. Each entry includes an optional `requires`
+ * field that maps to a StoreConfig boolean flag. When `requires` is set the
+ * option is only shown if the corresponding flag is `true`.
+ * Options without `requires` are always visible.
+ */
+const ALL_PAYMENT_METHOD_OPTIONS: ReadonlyArray<{
+  label: string;
+  value: string;
+  requires?: 'mpEnabled' | 'conektaEnabled' | 'stripeEnabled' | 'clipEnabled' | 'clabeNumber' | 'paypalUsername' | 'cobrarQrUrl';
+}> = [
   { label: 'Efectivo', value: 'efectivo' },
-  { label: 'Tarjeta (Terminal Mercado Pago)', value: 'tarjeta' },
-  { label: 'Mercado Pago Web (Lector Blando / QR)', value: 'tarjeta_web' },
+  { label: 'Tarjeta (Terminal Mercado Pago)', value: 'tarjeta', requires: 'mpEnabled' },
+  { label: 'Mercado Pago Web (Lector Blando / QR)', value: 'tarjeta_web', requires: 'mpEnabled' },
   { label: 'Tarjeta (manual sin terminal)', value: 'tarjeta_manual' },
   { label: 'Transferencia bancaria', value: 'transferencia' },
-  { label: 'SPEI (CLABE manual)', value: 'spei' },
-  { label: 'SPEI automático (Conekta)', value: 'spei_conekta' },
-  { label: 'SPEI automático (Stripe)', value: 'spei_stripe' },
-  { label: 'OXXO (Conekta)', value: 'oxxo_conekta' },
-  { label: 'OXXO (Stripe)', value: 'oxxo_stripe' },
-  { label: 'Clip Checkout (link de pago)', value: 'tarjeta_clip' },
-  { label: 'Clip Terminal (PinPad)', value: 'clip_terminal' },
-  { label: 'PayPal', value: 'paypal' },
-  { label: 'QR de Cobro (CoDi / Banco)', value: 'qr_cobro' },
+  { label: 'SPEI (CLABE manual)', value: 'spei', requires: 'clabeNumber' },
+  { label: 'SPEI automático (Conekta)', value: 'spei_conekta', requires: 'conektaEnabled' },
+  { label: 'SPEI automático (Stripe)', value: 'spei_stripe', requires: 'stripeEnabled' },
+  { label: 'OXXO (Conekta)', value: 'oxxo_conekta', requires: 'conektaEnabled' },
+  { label: 'OXXO (Stripe)', value: 'oxxo_stripe', requires: 'stripeEnabled' },
+  { label: 'Clip Checkout (link de pago)', value: 'tarjeta_clip', requires: 'clipEnabled' },
+  { label: 'Clip Terminal (PinPad)', value: 'clip_terminal', requires: 'clipEnabled' },
+  { label: 'PayPal', value: 'paypal', requires: 'paypalUsername' },
+  { label: 'QR de Cobro (CoDi / Banco)', value: 'qr_cobro', requires: 'cobrarQrUrl' },
   { label: 'Fiado (crédito a cliente)', value: 'fiado' },
   { label: 'Puntos de Lealtad (Monedero)', value: 'puntos' },
 ];
@@ -132,6 +143,32 @@ export function PaymentDetailsSection({
   paypalUsername,
   cobrarQrUrl,
 }: PaymentDetailsSectionProps) {
+  const storeConfig = useDashboardStore((s) => s.storeConfig);
+
+  const paymentMethodOptions = useMemo(() => {
+    const flagMap: Record<string, boolean> = {
+      mpEnabled: storeConfig.mpEnabled,
+      conektaEnabled: storeConfig.conektaEnabled,
+      stripeEnabled: storeConfig.stripeEnabled,
+      clipEnabled: storeConfig.clipEnabled,
+      clabeNumber: Boolean(clabeNumber),
+      paypalUsername: Boolean(paypalUsername),
+      cobrarQrUrl: Boolean(cobrarQrUrl),
+    };
+
+    return ALL_PAYMENT_METHOD_OPTIONS
+      .filter((opt) => !opt.requires || flagMap[opt.requires])
+      .map(({ label, value }) => ({ label, value }));
+  }, [
+    storeConfig.mpEnabled,
+    storeConfig.conektaEnabled,
+    storeConfig.stripeEnabled,
+    storeConfig.clipEnabled,
+    clabeNumber,
+    paypalUsername,
+    cobrarQrUrl,
+  ]);
+
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const paymentRef = useMemo(() => generatePaymentReference(), []);
 
@@ -333,7 +370,7 @@ export function PaymentDetailsSection({
             </Banner>
           )}
           {mpConfig.publicKey && total > 0 && !mpWebSuccess && (
-            <MercadoPagoPaymentBrick
+            <CustomCardPaymentForm
               amount={total}
               externalReference={`venta-${Date.now()}`}
               publicKey={mpConfig.publicKey}

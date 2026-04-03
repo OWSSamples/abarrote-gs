@@ -1,17 +1,47 @@
 'use client';
 
-import { Page } from '@shopify/polaris';
-import { PagosReembolsosPanel } from '@/components/mercadopago/PagosReembolsosPanel';
+import { Page, EmptyState, BlockStack } from '@shopify/polaris';
+import { MercadoPagoHub } from '@/components/mercadopago/MercadoPagoHub';
+import { useDashboardStore } from '@/store/dashboardStore';
 
 export default function PagosMPPage() {
+  const mpEnabled = useDashboardStore((s) => s.storeConfig.mpEnabled);
+
+  if (!mpEnabled) {
+    return (
+      <Page
+        fullWidth
+        title="MercadoPago"
+        backAction={{ content: 'Ventas', url: '/dashboard/sales' }}
+      >
+        <BlockStack gap="400">
+          <EmptyState
+            heading="Conecta tu cuenta de MercadoPago"
+            image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+            action={{
+              content: 'Ir a Configuración → Pagos',
+              url: '/dashboard/settings',
+            }}
+          >
+            <p>
+              Para acceder a pagos, reembolsos, QR y links de cobro, primero
+              vincula tu cuenta de MercadoPago desde la sección de pagos en
+              Configuración.
+            </p>
+          </EmptyState>
+        </BlockStack>
+      </Page>
+    );
+  }
+
   return (
     <Page
       fullWidth
-      title="Pagos MercadoPago"
-      subtitle="Consulta pagos procesados y gestiona reembolsos"
+      title="MercadoPago"
+      subtitle="Saldo, pagos, reembolsos, links de cobro y terminales"
       backAction={{ content: 'Ventas', url: '/dashboard/sales' }}
     >
-      <PagosReembolsosPanel />
+      <MercadoPagoHub />
     </Page>
   );
 }

@@ -523,6 +523,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 clabeNumber={storeConfig.clabeNumber}
                 paypalUsername={storeConfig.paypalUsername}
                 cobrarQrUrl={storeConfig.cobrarQrUrl}
+                storeConfig={storeConfig}
               />
             </BlockStack>
           )}

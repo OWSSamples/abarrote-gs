@@ -64,6 +64,11 @@ export const storeConfig = pgTable('store_config', {
   clipEnabled: boolean('clip_enabled').notNull().default(false),
   clipApiKey: text('clip_api_key'),
   clipSerialNumber: text('clip_serial_number'),
+  // Customer Display
+  customerDisplayEnabled: boolean('customer_display_enabled').notNull().default(false),
+  customerDisplayWelcome: text('customer_display_welcome'),
+  customerDisplayFarewell: text('customer_display_farewell'),
+  customerDisplayPromoText: text('customer_display_promo_text'),
   inventoryGeneralColumns: text('inventory_general_columns').notNull().default('["title","sku","available","onHand"]'),
   defaultMargin: text('default_margin').notNull().default('30'),
   defaultStartingFund: numeric('default_starting_fund', { precision: 10, scale: 2 }).notNull().default('500'),

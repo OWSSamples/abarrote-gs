@@ -23,6 +23,7 @@ import {
   AppsFilledIcon,
 } from '@shopify/polaris-icons';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useDashboardStore } from '@/store/dashboardStore';
 
 interface SidebarNavProps {
   onSelect: (section: string) => void;
@@ -42,6 +43,7 @@ const OTHERS_PATHS = ['/dashboard/others/promotions', '/dashboard/others/categor
 export function SidebarNav({ onSelect, badges }: SidebarNavProps) {
   const { hasAnyPermission, isLoaded } = usePermissions();
   const pathname = usePathname();
+  const mpEnabled = useDashboardStore((s) => s.storeConfig.mpEnabled);
 
   const isPath = (path: string) => pathname === path;
   const isAnyPath = (paths: string[]) => paths.some(p => pathname === p);
@@ -74,12 +76,14 @@ export function SidebarNav({ onSelect, badges }: SidebarNavProps) {
         onClick: () => onSelect('sales-corte'),
       });
     }
-    subNav.push({
-      url: '#',
-      label: 'Pagos MP',
-      matches: isPath('/dashboard/sales/pagos-mp'),
-      onClick: () => onSelect('pagos-mp'),
-    });
+    if (mpEnabled) {
+      subNav.push({
+        url: '#',
+        label: 'MercadoPago',
+        matches: isPath('/dashboard/sales/pagos-mp'),
+        onClick: () => onSelect('pagos-mp'),
+      });
+    }
     const isSel = isAnyPath(SALES_PATHS);
     mainItems.push({
       url: '#',

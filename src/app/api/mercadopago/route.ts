@@ -141,6 +141,55 @@ export async function POST(req: Request) {
                 return NextResponse.json(response);
             }
 
+            // 8. Saldo de cuenta MP
+            case 'get_balance': {
+                const userReq = await fetch('https://api.mercadopago.com/users/me', {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                });
+                if (!userReq.ok) {
+                    return NextResponse.json({ error: 'No se pudo obtener información de la cuenta' }, { status: 502 });
+                }
+                const userData = await userReq.json() as { id: number; nickname: string; email: string };
+
+                const balReq = await fetch(
+                    `https://api.mercadopago.com/users/${userData.id}/mercadopago_account/balance`,
+                    { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                );
+                if (!balReq.ok) {
+                    return NextResponse.json({ error: 'No se pudo obtener el saldo' }, { status: 502 });
+                }
+                const balData = await balReq.json() as Record<string, unknown>;
+
+                return NextResponse.json({
+                    userId: userData.id,
+                    nickname: userData.nickname,
+                    email: userData.email,
+                    balance: balData,
+                });
+            }
+
+            // 9. Búsqueda de pagos con filtros
+            case 'search_payments': {
+                const params = new URLSearchParams();
+                params.set('sort', 'date_created');
+                params.set('criteria', 'desc');
+                if (data.status) params.set('status', String(data.status));
+                if (data.beginDate) params.set('begin_date', String(data.beginDate));
+                if (data.endDate) params.set('end_date', String(data.endDate));
+                if (data.externalReference) params.set('external_reference', String(data.externalReference));
+                params.set('offset', String(data.offset ?? 0));
+                params.set('limit', String(Math.min(Number(data.limit) || 30, 50)));
+
+                const searchReq = await fetch(
+                    `https://api.mercadopago.com/v1/payments/search?${params.toString()}`,
+                    { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                );
+                if (!searchReq.ok) {
+                    return NextResponse.json({ error: 'Error al buscar pagos en MercadoPago' }, { status: 502 });
+                }
+                return NextResponse.json(await searchReq.json());
+            }
+
             default:
                 return NextResponse.json({ error: 'Acción de Mercado Pago no soportada' }, { status: 400 });
         }

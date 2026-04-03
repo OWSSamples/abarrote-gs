@@ -223,3 +223,193 @@ export async function createMercadoPagoRefund(input: {
 
   return refundRecord;
 }
+
+// ==================== ACCOUNT & BALANCE ====================
+
+export interface MPAccountBalance {
+  userId: number;
+  nickname: string;
+  email: string;
+  balance: {
+    available_balance: number;
+    unavailable_balance: number;
+    total_amount: number;
+    currency_id: string;
+  };
+}
+
+export async function fetchMPAccountBalance(): Promise<MPAccountBalance> {
+  await requirePermission('sales.view');
+
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const response = await fetch(`${baseUrl}/api/mercadopago`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'get_balance' }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      (errorData as Record<string, string>).error || 'Error al consultar saldo de MercadoPago',
+    );
+  }
+
+  return response.json() as Promise<MPAccountBalance>;
+}
+
+// ==================== PAYMENT LINKS (PREFERENCES) ====================
+
+export interface MPPaymentLink {
+  preferenceId: string;
+  initPoint: string;
+  sandboxInitPoint: string;
+  externalReference: string;
+}
+
+export async function generateMPPaymentLink(input: {
+  amount: number;
+  description: string;
+  externalReference?: string;
+}): Promise<MPPaymentLink> {
+  const user = await requirePermission('sales.create');
+
+  const amount = validateNumber(input.amount, { min: 1, max: 999_999 });
+  const description = sanitize(input.description);
+  const externalReference = input.externalReference
+    ? sanitize(input.externalReference)
+    : `link-${crypto.randomUUID().slice(0, 8)}`;
+
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const response = await fetch(`${baseUrl}/api/mercadopago`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'create_preference',
+      amount,
+      description,
+      external_reference: externalReference,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      (errorData as Record<string, string>).error || 'Error al crear link de pago',
+    );
+  }
+
+  const data = (await response.json()) as {
+    id: string;
+    init_point: string;
+    sandbox_init_point: string;
+  };
+
+  await logAudit({
+    userId: user.uid,
+    userEmail: user.email,
+    action: 'create',
+    entity: 'mp_payment_link',
+    entityId: data.id,
+    changes: { after: { amount, description, externalReference } },
+  });
+
+  logger.info('MP payment link created', {
+    preferenceId: data.id,
+    amount,
+    description,
+  });
+
+  return {
+    preferenceId: data.id,
+    initPoint: data.init_point,
+    sandboxInitPoint: data.sandbox_init_point,
+    externalReference,
+  };
+}
+
+// ==================== DEVICES (POINT TERMINALS) ====================
+
+export interface MPDevice {
+  id: string;
+  pos_id: number;
+  store_id: string;
+  external_pos_id: string;
+  operating_mode: string;
+}
+
+export async function fetchMPDevices(): Promise<MPDevice[]> {
+  await requirePermission('sales.view');
+
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const response = await fetch(`${baseUrl}/api/mercadopago`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'get_devices' }),
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = (await response.json()) as { devices?: MPDevice[] };
+  return data.devices ?? [];
+}
+
+// ==================== SEARCH PAYMENTS (MP API) ====================
+
+export interface MPSearchResult {
+  results: Array<{
+    id: number;
+    status: string;
+    status_detail: string;
+    date_created: string;
+    date_approved: string | null;
+    transaction_amount: number;
+    currency_id: string;
+    payment_method_id: string;
+    payment_type_id: string;
+    description: string | null;
+    external_reference: string | null;
+    payer: { email: string | null };
+    fee_details: Array<{ amount: number; type: string }>;
+  }>;
+  paging: { total: number; limit: number; offset: number };
+}
+
+export async function searchMPPayments(input: {
+  status?: string;
+  beginDate?: string;
+  endDate?: string;
+  externalReference?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<MPSearchResult> {
+  await requirePermission('sales.view');
+
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const response = await fetch(`${baseUrl}/api/mercadopago`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'search_payments',
+      status: input.status || undefined,
+      beginDate: input.beginDate || undefined,
+      endDate: input.endDate || undefined,
+      externalReference: input.externalReference
+        ? sanitize(input.externalReference)
+        : undefined,
+      offset: input.offset ?? 0,
+      limit: input.limit ?? 30,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      (errorData as Record<string, string>).error || 'Error al buscar pagos en MercadoPago',
+    );
+  }
+
+  return response.json() as Promise<MPSearchResult>;
+}

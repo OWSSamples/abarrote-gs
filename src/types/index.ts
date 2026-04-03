@@ -100,6 +100,11 @@ export interface StoreConfig {
   closeSystemTime: string;
   autoCorteTime: string;
   defaultStartingFund: number;
+  // Customer Display
+  customerDisplayEnabled: boolean;
+  customerDisplayWelcome: string;
+  customerDisplayFarewell: string;
+  customerDisplayPromoText: string;
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -138,6 +143,10 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   conektaEnabled: false,
   stripeEnabled: false,
   clipEnabled: false,
+  customerDisplayEnabled: false,
+  customerDisplayWelcome: '',
+  customerDisplayFarewell: '',
+  customerDisplayPromoText: '',
 };
 
 export interface ProductCategory {

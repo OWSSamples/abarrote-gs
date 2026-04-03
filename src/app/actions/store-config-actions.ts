@@ -61,6 +61,10 @@ function mapStoreConfigRow(
     clipEnabled?: boolean | null;
     clipApiKey?: string | null;
     clipSerialNumber?: string | null;
+    customerDisplayEnabled?: boolean | null;
+    customerDisplayWelcome?: string | null;
+    customerDisplayFarewell?: string | null;
+    customerDisplayPromoText?: string | null;
     closeSystemTime?: string | null;
     autoCorteTime?: string | null;
     defaultStartingFund?: string | number | null;
@@ -117,6 +121,10 @@ function mapStoreConfigRow(
     clipEnabled: row.clipEnabled ?? DEFAULT_STORE_CONFIG.clipEnabled,
     clipApiKey: row.clipApiKey ?? undefined,
     clipSerialNumber: row.clipSerialNumber ?? undefined,
+    customerDisplayEnabled: row.customerDisplayEnabled ?? DEFAULT_STORE_CONFIG.customerDisplayEnabled,
+    customerDisplayWelcome: row.customerDisplayWelcome ?? DEFAULT_STORE_CONFIG.customerDisplayWelcome,
+    customerDisplayFarewell: row.customerDisplayFarewell ?? DEFAULT_STORE_CONFIG.customerDisplayFarewell,
+    customerDisplayPromoText: row.customerDisplayPromoText ?? DEFAULT_STORE_CONFIG.customerDisplayPromoText,
     closeSystemTime: (row.closeSystemTime as string) ?? DEFAULT_STORE_CONFIG.closeSystemTime,
     autoCorteTime: (row.autoCorteTime as string) ?? DEFAULT_STORE_CONFIG.autoCorteTime,
     defaultStartingFund: Number(row.defaultStartingFund) || DEFAULT_STORE_CONFIG.defaultStartingFund,

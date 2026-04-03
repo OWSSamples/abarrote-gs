@@ -34,6 +34,7 @@ import {
   PrintIcon,
   StarFilledIcon,
   SettingsFilledIcon,
+  ViewIcon,
 } from '@shopify/polaris-icons';
 
 import { GeneralSection } from './sections/GeneralSection';
@@ -44,6 +45,7 @@ import { LoyaltySection } from './sections/LoyaltySection';
 import { InventorySection } from './sections/InventorySection';
 import { NotificationsSection } from './sections/NotificationsSection';
 import { PaymentsSection } from './sections/PaymentsSection';
+import { CustomerDisplaySection } from './sections/CustomerDisplaySection';
 
 const SETTINGS_CATEGORIES = [
   { id: 'general', title: 'Detalles de la tienda', description: 'Gestiona la identidad de tu negocio, dirección y preferencias básicas.', icon: StoreIcon },
@@ -54,6 +56,7 @@ const SETTINGS_CATEGORIES = [
   { id: 'inventory', title: 'Inventario de productos', description: 'Establece reglas y umbrales para alertas de stock y caducidad.', icon: InventoryIcon },
   { id: 'notifications', title: 'Notificaciones', description: 'Conecta notificaciones push a tu celular mediante Telegram.', icon: ChatIcon },
   { id: 'payments', title: 'Pagos Integrados', description: 'Vincula tu terminal Point de Mercado Pago para cobros físicos.', icon: CreditCardIcon },
+  { id: 'customer-display', title: 'Pantalla del Cliente', description: 'Muestra al cliente sus productos y totales en un segundo monitor o tablet.', icon: ViewIcon },
 ];
 
 import { uploadFile } from '@/lib/storage';
@@ -122,6 +125,10 @@ export function ConfiguracionPage() {
       clipEnabled: useField(storeConfig.clipEnabled ?? false),
       clipApiKey: useField(storeConfig.clipApiKey || ''),
       clipSerialNumber: useField(storeConfig.clipSerialNumber || ''),
+      customerDisplayEnabled: useField(storeConfig.customerDisplayEnabled ?? false),
+      customerDisplayWelcome: useField(storeConfig.customerDisplayWelcome || ''),
+      customerDisplayFarewell: useField(storeConfig.customerDisplayFarewell || ''),
+      customerDisplayPromoText: useField(storeConfig.customerDisplayPromoText || ''),
     },
     onSubmit: async (f) => {
       await saveStoreConfig(f as any);
@@ -310,6 +317,8 @@ export function ConfiguracionPage() {
             cobrarQrUrlField={fields.cobrarQrUrl}
           />
         );
+      case 'customer-display':
+        return <CustomerDisplaySection config={config} updateField={updateField} />;
       default:
         return null;
     }
@@ -374,8 +383,7 @@ export function ConfiguracionPage() {
     loyalty: { configured: loyaltyConfigured, label: loyaltyConfigured ? 'Activo' : 'Inactivo' },
     inventory: { configured: true, label: 'Activo' },
     notifications: { configured: notificationsConfigured, label: notificationsConfigured ? 'Conectado' : 'Sin conectar' },
-    payments: { configured: mpLinked, label: mpLinked ? 'Vinculado' : 'Sin vincular' },
-  };
+    payments: { configured: mpLinked, label: mpLinked ? 'Vinculado' : 'Sin vincular' },    'customer-display': { configured: config.customerDisplayEnabled, label: config.customerDisplayEnabled ? 'Activo' : 'Inactivo' },  };
 
   // Group categories
   const GROUPS = [
@@ -387,7 +395,7 @@ export function ConfiguracionPage() {
     {
       title: 'Punto de Venta',
       description: 'Tickets, periféricos y configuración del mostrador.',
-      items: SETTINGS_CATEGORIES.filter(c => ['pos', 'hardware'].includes(c.id)),
+      items: SETTINGS_CATEGORIES.filter(c => ['pos', 'hardware', 'customer-display'].includes(c.id)),
     },
     {
       title: 'Comercial',

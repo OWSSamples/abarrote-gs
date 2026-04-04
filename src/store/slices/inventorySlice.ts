@@ -63,6 +63,7 @@ export const createInventorySlice = (set: StoreSet, get: StoreGet): InventorySli
       await refreshProductData(set);
     } catch (error) {
       console.error('[store:inventory] registerProduct failed', error);
+      throw error;
     }
   },
 

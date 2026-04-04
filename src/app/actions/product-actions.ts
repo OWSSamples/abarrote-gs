@@ -5,9 +5,10 @@ import { requirePermission, requireAuth, sanitize, validateNumber, validateId } 
 import { validateSchema, createProductSchema, updateProductSchema, idSchema } from '@/lib/validation/schemas';
 import { db } from '@/db';
 import { products, saleItems, mermaRecords, pedidoItems, fiadoItems } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import type { Product } from '@/types';
 import { numVal } from './_helpers';
+import { AppError } from '@/lib/errors';
 
 // ==================== PRODUCTS ====================
 
@@ -35,6 +36,35 @@ export async function fetchAllProducts(): Promise<Product[]> {
 export async function createProduct(data: Omit<Product, 'id'>): Promise<Product> {
   await requirePermission('inventory.edit');
   validateSchema(createProductSchema, data, 'createProduct');
+  
+  const sanitizedSku = sanitize(data.sku);
+  const sanitizedBarcode = sanitize(data.barcode);
+  
+  // Check for existing products with same SKU or barcode
+  const existing = await db
+    .select({ sku: products.sku, barcode: products.barcode, name: products.name })
+    .from(products)
+    .where(or(eq(products.sku, sanitizedSku), eq(products.barcode, sanitizedBarcode)))
+    .limit(1);
+  
+  if (existing.length > 0) {
+    const match = existing[0];
+    if (match.sku === sanitizedSku) {
+      throw new AppError(
+        'DUPLICATE_SKU',
+        `Ya existe un producto con el SKU "${sanitizedSku}": ${match.name}`,
+        409
+      );
+    }
+    if (match.barcode === sanitizedBarcode) {
+      throw new AppError(
+        'DUPLICATE_BARCODE',
+        `Ya existe un producto con el código de barras "${sanitizedBarcode}": ${match.name}`,
+        409
+      );
+    }
+  }
+  
   const id = `p-${crypto.randomUUID()}`;
 
   await cache.invalidatePattern('products:');
@@ -42,8 +72,8 @@ export async function createProduct(data: Omit<Product, 'id'>): Promise<Product>
   await db.insert(products).values({
     id,
     name: sanitize(data.name),
-    sku: sanitize(data.sku),
-    barcode: sanitize(data.barcode),
+    sku: sanitizedSku,
+    barcode: sanitizedBarcode,
     currentStock: validateNumber(data.currentStock, { label: 'Stock' }),
     minStock: validateNumber(data.minStock, { label: 'Stock mínimo' }),
     expirationDate: data.expirationDate,

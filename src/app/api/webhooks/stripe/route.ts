@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { paymentCharges } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { idempotencyCheck } from '@/infrastructure/redis';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
@@ -45,6 +46,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       eventType: event.type,
       eventId: event.id,
     });
+
+    // Idempotency: prevent duplicate processing on webhook retries
+    const isNew = await idempotencyCheck(`stripe_webhook:${event.id}`, { ttlMs: 86_400_000 });
+    if (!isNew) {
+      logger.info('Stripe webhook duplicate skipped', { action: 'stripe_webhook_duplicate', eventId: event.id });
+      return NextResponse.json({ received: true, duplicate: true });
+    }
 
     switch (event.type) {
       case 'payment_intent.succeeded': {

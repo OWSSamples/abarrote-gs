@@ -5,6 +5,7 @@ import { paymentCharges, paymentProviderConnections } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { idempotencyCheck } from '@/infrastructure/redis';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
@@ -53,6 +54,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       eventType: event.type,
       orderId: event.data?.object?.id,
     });
+
+    // Idempotency: prevent duplicate processing on webhook retries
+    const idempotencyKey = `conekta_webhook:${event.type}:${event.data?.object?.id}`;
+    const isNew = await idempotencyCheck(idempotencyKey, { ttlMs: 86_400_000 });
+    if (!isNew) {
+      logger.info('Conekta webhook duplicate skipped', { action: 'conekta_webhook_duplicate', orderId: event.data?.object?.id });
+      return NextResponse.json({ received: true, duplicate: true });
+    }
 
     switch (event.type) {
       case 'order.paid': {

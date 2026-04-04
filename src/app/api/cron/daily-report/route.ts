@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendDailyTelegramReport } from '@/app/actions/analytics-advanced-actions';
 import { logger } from '@/lib/logger';
+import { idempotencyCheck } from '@/infrastructure/redis';
 
 /**
  * Cron endpoint for the automated daily Telegram report.
@@ -22,6 +23,14 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // Idempotency: prevent duplicate reports if cron retries
+    const today = new Date().toISOString().split('T')[0];
+    const isNew = await idempotencyCheck(`cron_daily_report:${today}`, { ttlMs: 86_400_000 });
+    if (!isNew) {
+      logger.info('Daily report already sent today', { action: 'cron_daily_report_duplicate', date: today });
+      return NextResponse.json({ sent: false, reason: 'already_sent_today' });
+    }
+
     const result = await sendDailyTelegramReport();
     logger.info('Daily Telegram report', { sent: result.sent });
     return NextResponse.json(result);

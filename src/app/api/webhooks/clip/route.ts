@@ -4,7 +4,7 @@ import { db } from '@/db';
 import { paymentCharges } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
-import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
+import { checkRateLimit, getClientIp, idempotencyCheck } from '@/infrastructure/redis';
 
 /**
  * Clip Webhook Handler
@@ -123,6 +123,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const providerChargeId = data.payment_request_id;
       const status = mapClipWebhookStatus(data.status);
 
+      // Idempotency: prevent duplicate processing on webhook retries
+      const isNew = await idempotencyCheck(`clip_webhook:checkout:${providerChargeId}:${data.status}`, { ttlMs: 86_400_000 });
+      if (!isNew) {
+        logger.info('Clip checkout webhook duplicate skipped', { action: 'clip_checkout_duplicate', providerChargeId });
+        return NextResponse.json({ received: true, duplicate: true });
+      }
+
       logger.info('Clip checkout webhook received', {
         action: 'clip_checkout_webhook',
         paymentRequestId: providerChargeId,
@@ -180,6 +187,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const data = payload as unknown as ClipPinpadWebhookPayload;
       const providerChargeId = data.pinpad_request_id;
       const status = mapClipPinpadWebhookStatus(data.status);
+
+      // Idempotency: prevent duplicate processing on webhook retries
+      const isNew = await idempotencyCheck(`clip_webhook:pinpad:${providerChargeId}:${data.status}`, { ttlMs: 86_400_000 });
+      if (!isNew) {
+        logger.info('Clip PinPad webhook duplicate skipped', { action: 'clip_pinpad_duplicate', providerChargeId });
+        return NextResponse.json({ received: true, duplicate: true });
+      }
 
       logger.info('Clip PinPad webhook received', {
         action: 'clip_pinpad_webhook',

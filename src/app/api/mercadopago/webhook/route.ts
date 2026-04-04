@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/audit';
+import { env } from '@/lib/env';
 import { db } from '@/db';
 import { mercadopagoPayments, saleRecords } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -22,7 +23,7 @@ const RATE_LIMIT = { maxRequests: 30, windowMs: 60_000 } as const;
  * Docs: https://www.mercadopago.com.mx/developers/es/docs/your-integrations/notifications/webhooks
  */
 function verifyWebhookSignature(req: Request, body: string): boolean {
-  const secret = process.env.MP_WEBHOOK_SECRET;
+  const secret = env.MP_WEBHOOK_SECRET;
   if (!secret) {
     logger.error('MP_WEBHOOK_SECRET not configured — rejecting all webhooks');
     return false;

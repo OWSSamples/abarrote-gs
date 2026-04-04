@@ -1,5 +1,6 @@
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { env } from '@/lib/env';
 
 interface ServiceAccountCredential {
     projectId: string;
@@ -14,10 +15,10 @@ interface ServiceAccountCredential {
  *   2. FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY — individual fields (fallback)
  */
 function resolveCredentials(): ServiceAccountCredential | null {
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'consola-shop';
+    const projectId = env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'consola-shop';
 
     // ── Strategy 1: full service account JSON ──
-    const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    const serviceAccountRaw = env.FIREBASE_SERVICE_ACCOUNT_KEY;
     if (serviceAccountRaw) {
         try {
             // The value may be base64-encoded or a raw JSON string
@@ -42,8 +43,8 @@ function resolveCredentials(): ServiceAccountCredential | null {
     }
 
     // ── Strategy 2: individual env vars ──
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const rawKey = process.env.FIREBASE_PRIVATE_KEY;
+    const clientEmail = env.FIREBASE_CLIENT_EMAIL;
+    const rawKey = env.FIREBASE_PRIVATE_KEY;
     if (clientEmail && rawKey) {
         // Normalize: strip surrounding quotes, then replace \n literals with real newlines
         const privateKey = rawKey
@@ -57,7 +58,7 @@ function resolveCredentials(): ServiceAccountCredential | null {
 }
 
 export function getFirebaseAdminApp() {
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'consola-shop';
+    const projectId = env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'consola-shop';
 
     if (!process.env.GOOGLE_CLOUD_PROJECT) {
         process.env.GOOGLE_CLOUD_PROJECT = projectId;

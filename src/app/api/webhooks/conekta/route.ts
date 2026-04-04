@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 import { idempotencyCheck } from '@/infrastructure/redis';
+import { env } from '@/lib/env';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const signature = request.headers.get('digest') ?? '';
 
     // Get webhook signing key
-    const webhookKey = process.env.CONEKTA_WEBHOOK_KEY;
+    const webhookKey = env.CONEKTA_WEBHOOK_KEY;
     if (!webhookKey) {
       logger.warn('Conekta webhook key not configured', { action: 'conekta_webhook_no_key' });
       return NextResponse.json({ error: 'Webhook key not configured' }, { status: 500 });

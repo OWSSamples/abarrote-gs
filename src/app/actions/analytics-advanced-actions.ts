@@ -22,6 +22,7 @@ import type {
 } from '@/types';
 import { logger } from '@/lib/logger';
 import { isNotDeleted } from '@/infrastructure/soft-delete';
+import { env } from '@/lib/env';
 
 // ==================== 1. ABC INVENTORY CLASSIFICATION ====================
 
@@ -361,9 +362,9 @@ async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
     .where(eq(saleItems.saleId, request.saleId));
 
   // -- PAC Integration point --
-  const pacUrl = process.env.CFDI_PAC_URL;
-  const pacUser = process.env.CFDI_PAC_USER;
-  const pacPassword = process.env.CFDI_PAC_PASSWORD;
+  const pacUrl = env.CFDI_PAC_URL;
+  const pacUser = env.CFDI_PAC_USER;
+  const pacPassword = env.CFDI_PAC_PASSWORD;
 
   if (!pacUrl || !pacUser || !pacPassword) {
     logger.warn('CFDI PAC not configured, generating local record only');

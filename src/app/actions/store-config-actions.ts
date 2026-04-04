@@ -10,6 +10,7 @@ import { DEFAULT_STORE_CONFIG } from '@/types';
 import { numVal } from './_helpers';
 import { validateSchema, saveStoreConfigSchema } from '@/lib/validation/schemas';
 import { cache } from '@/infrastructure/redis';
+import { emitDomainEvent } from '@/domain/events';
 
 // ==================== STORE CONFIG ====================
 
@@ -172,7 +173,7 @@ async function _fetchStoreConfig(): Promise<StoreConfig> {
 }
 
 async function _saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig> {
-  await requireOwner();
+  const user = await requireOwner();
   validateSchema(saveStoreConfigSchema, data, 'saveStoreConfig');
 
   const { id: _id, ...fields } = data;
@@ -206,6 +207,15 @@ async function _saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig
 
   // Invalidate cached config so next read picks up changes
   await cache.invalidatePattern('config:');
+
+  const changedKeys = Object.keys(fields);
+  for (const key of changedKeys) {
+    emitDomainEvent({
+      type: 'config.changed',
+      payload: { field: key, before: undefined, after: (fields as Record<string, unknown>)[key] },
+      metadata: { userId: user.uid, userEmail: user.email ?? '' },
+    });
+  }
 
   return _fetchStoreConfig();
 }

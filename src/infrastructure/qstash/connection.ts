@@ -1,5 +1,6 @@
 import { Client } from '@upstash/qstash';
 import { logger } from '@/lib/logger';
+import { env } from '@/lib/env';
 
 // ══════════════════════════════════════════════════════════════
 // QStash Connection — Singleton client for background job publishing
@@ -18,7 +19,7 @@ export function getQStashClient(): Client | null {
   if (_initialized) return _client;
   _initialized = true;
 
-  const token = process.env.QSTASH_TOKEN;
+  const token = env.QSTASH_TOKEN;
 
   if (!token) {
     logger.info('QStash not configured — background jobs will execute inline', {

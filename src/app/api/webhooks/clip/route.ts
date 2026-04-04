@@ -5,6 +5,7 @@ import { paymentCharges } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { checkRateLimit, getClientIp, idempotencyCheck } from '@/infrastructure/redis';
+import { env } from '@/lib/env';
 
 /**
  * Clip Webhook Handler
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.text();
 
     // ── Shared secret verification ──
-    const webhookSecret = process.env.CLIP_WEBHOOK_SECRET;
+    const webhookSecret = env.CLIP_WEBHOOK_SECRET;
     if (webhookSecret) {
       // Option 1: HMAC signature header (preferred)
       const signature = request.headers.get('x-clip-signature');

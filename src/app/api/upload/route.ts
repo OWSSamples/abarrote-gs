@@ -3,16 +3,17 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client
 import { requireAuth, AuthError } from '@/lib/auth/guard';
 import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
+import { env } from '@/lib/env';
 
 const s3 = new S3Client({
-  region: process.env.AWS_REGION!,
+  region: env.AWS_REGION!,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    accessKeyId: env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
   },
 });
 
-const BUCKET = process.env.AWS_S3_BUCKET!;
+const BUCKET = env.AWS_S3_BUCKET!;
 
 /**
  * Allowed S3 path prefixes — user-provided paths MUST start with one of these.
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
       }),
     );
 
-    const url = `https://${BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${sanitizedKey}`;
+    const url = `https://${BUCKET}.s3.${env.AWS_REGION}.amazonaws.com/${sanitizedKey}`;
 
     return NextResponse.json({ url }, { status: 200 });
   } catch (err) {
@@ -128,7 +129,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Validate the URL belongs to our S3 bucket
-    const expectedHost = `${BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com`;
+    const expectedHost = `${BUCKET}.s3.${env.AWS_REGION}.amazonaws.com`;
     let urlObj: URL;
     try {
       urlObj = new URL(url);

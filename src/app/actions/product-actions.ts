@@ -11,6 +11,7 @@ import { numVal } from './_helpers';
 import { AppError, withLogging } from '@/lib/errors';
 import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
 import { withRateLimit, STRICT } from '@/infrastructure/redis';
+import { emitDomainEvent } from '@/domain/events';
 
 // ==================== PRODUCTS ====================
 
@@ -81,6 +82,7 @@ async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
 
   await cache.invalidatePattern('products:');
 
+  const user = await requirePermission('inventory.edit');
   await db.insert(products).values({
     id,
     name: sanitize(data.name),
@@ -97,6 +99,13 @@ async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
     isPerishable: data.isPerishable,
     imageUrl: data.imageUrl,
   });
+
+  emitDomainEvent({
+    type: 'product.created',
+    payload: { productId: id, name: data.name, sku: sanitizedSku },
+    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+  });
+
   return { ...data, id };
 }
 
@@ -108,16 +117,22 @@ async function _updateProductStock(productId: string, newStock: number): Promise
 }
 
 async function _deleteProduct(productId: string): Promise<void> {
-  await requirePermission('inventory.delete');
+  const user = await requirePermission('inventory.delete');
   validateId(productId, 'Product ID');
   await cache.invalidatePattern('products:');
 
   // Soft delete: mark as deleted instead of physically removing
   await softDelete(products, productId);
+
+  emitDomainEvent({
+    type: 'product.deleted',
+    payload: { productId, name: productId },
+    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+  });
 }
 
 async function _updateProduct(id: string, data: Partial<Product>): Promise<void> {
-  await requirePermission('inventory.edit');
+  const user = await requirePermission('inventory.edit');
   validateSchema(idSchema, id, 'updateProduct.id');
   validateSchema(updateProductSchema, data, 'updateProduct');
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
@@ -135,6 +150,12 @@ async function _updateProduct(id: string, data: Partial<Product>): Promise<void>
   if (data.expirationDate !== undefined) updateData.expirationDate = data.expirationDate;
   if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
   await db.update(products).set(updateData).where(eq(products.id, id));
+
+  emitDomainEvent({
+    type: 'product.updated',
+    payload: { productId: id, changes: data as Record<string, unknown> },
+    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+  });
 }
 
 // ==================== WRAPPED EXPORTS ====================

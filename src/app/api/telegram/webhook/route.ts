@@ -5,6 +5,7 @@ import { fetchStoreConfig } from '@/app/actions/store-config-actions';
 import { escapeHTML } from '@/app/actions/_notifications';
 import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
+import { env } from '@/lib/env';
 
 /** Allowed Telegram bot commands */
 const ALLOWED_COMMANDS = new Set(['/stock', '/inventario', 'stock']);
@@ -20,7 +21,7 @@ const RATE_LIMIT = { maxRequests: 10, windowMs: 60_000 } as const;
  * @see https://core.telegram.org/bots/api#setwebhook
  */
 function verifyTelegramSecret(req: NextRequest): boolean {
-  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const secret = env.TELEGRAM_WEBHOOK_SECRET;
   if (!secret) {
     logger.error('TELEGRAM_WEBHOOK_SECRET not configured — rejecting all webhook requests');
     return false;

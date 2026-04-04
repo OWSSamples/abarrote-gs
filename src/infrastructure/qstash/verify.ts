@@ -1,5 +1,6 @@
 import { Receiver } from '@upstash/qstash';
 import { logger } from '@/lib/logger';
+import { env } from '@/lib/env';
 
 // ══════════════════════════════════════════════════════════════
 // QStash Signature Verification
@@ -14,8 +15,8 @@ let _receiver: Receiver | null = null;
 function getReceiver(): Receiver | null {
   if (_receiver) return _receiver;
 
-  const currentKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
-  const nextKey = process.env.QSTASH_NEXT_SIGNING_KEY;
+  const currentKey = env.QSTASH_CURRENT_SIGNING_KEY;
+  const nextKey = env.QSTASH_NEXT_SIGNING_KEY;
 
   if (!currentKey || !nextKey) {
     logger.warn('QStash signing keys not configured — cannot verify signatures', {

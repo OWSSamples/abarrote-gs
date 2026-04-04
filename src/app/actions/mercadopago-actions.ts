@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/audit';
 import type { MercadoPagoRefund } from '@/types';
 import crypto from 'crypto';
 import { validateSchema, createMPRefundSchema } from '@/lib/validation/schemas';
+import { getBaseUrl } from '@/lib/env';
 
 // ==================== QUERIES ====================
 
@@ -129,7 +130,7 @@ async function _createMercadoPagoRefund(input: {
 
   // 2. Call MP Refund API (via our internal API route)
   const refundResponse = await fetch(
-    `${process.env.BASE_URL || 'http://localhost:3000'}/api/mercadopago`,
+    `${getBaseUrl()}/api/mercadopago`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -242,7 +243,7 @@ export interface MPAccountBalance {
 async function _fetchMPAccountBalance(): Promise<MPAccountBalance> {
   await requirePermission('sales.view');
 
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = getBaseUrl();
   const response = await fetch(`${baseUrl}/api/mercadopago`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -281,7 +282,7 @@ async function _generateMPPaymentLink(input: {
     ? sanitize(input.externalReference)
     : `link-${crypto.randomUUID().slice(0, 8)}`;
 
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = getBaseUrl();
   const response = await fetch(`${baseUrl}/api/mercadopago`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -342,7 +343,7 @@ export interface MPDevice {
 async function _fetchMPDevices(): Promise<MPDevice[]> {
   await requirePermission('sales.view');
 
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = getBaseUrl();
   const response = await fetch(`${baseUrl}/api/mercadopago`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -388,7 +389,7 @@ async function _searchMPPayments(input: {
 }): Promise<MPSearchResult> {
   await requirePermission('sales.view');
 
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = getBaseUrl();
   const response = await fetch(`${baseUrl}/api/mercadopago`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

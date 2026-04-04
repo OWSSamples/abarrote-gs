@@ -34,6 +34,7 @@
  */
 
 import { logger, getRequestContext } from '@/lib/logger';
+import { isFeatureEnabled } from '@/infrastructure/feature-flags';
 
 // ══════════════════════════════════════════════════════════════
 // Event Types (Discriminated Union)
@@ -193,6 +194,22 @@ export function onAnyDomainEvent(handler: EventHandler): void {
  * to ensure emitters never await side effects.
  */
 export function emitDomainEvent(event: DomainEvent): void {
+  // Feature flag gate — allows kill-switch in production
+  void isFeatureEnabled('domain-events').then((enabled) => {
+    if (!enabled) {
+      logger.debug(`Domain events disabled by feature flag, skipping '${event.type}'`, {
+        action: 'domain_event_flag_disabled',
+        eventType: event.type,
+      });
+      return;
+    }
+
+    _dispatchEvent(event);
+  });
+}
+
+/** Internal dispatch — separated from flag check for testability */
+function _dispatchEvent(event: DomainEvent): void {
   // Enrich with timestamp and correlation ID
   const enriched = {
     ...event,

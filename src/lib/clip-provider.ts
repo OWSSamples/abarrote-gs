@@ -6,6 +6,8 @@ import { paymentProviderConnections, paymentCharges } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { clipBreaker } from '@/infrastructure/circuit-breaker';
+import { env, getAppUrl } from '@/lib/env';
 
 // ── Constants ──
 
@@ -89,9 +91,9 @@ async function getClipAuthToken(): Promise<string> {
     // accessTokenEnc stores the encrypted secret key; publicKey stores the API key
     secretKey = decrypt(connection.accessTokenEnc);
     apiKey = connection.publicKey;
-  } else if (process.env.CLIP_API_KEY && process.env.CLIP_SECRET_KEY) {
-    apiKey = process.env.CLIP_API_KEY;
-    secretKey = process.env.CLIP_SECRET_KEY;
+  } else if (env.CLIP_API_KEY && env.CLIP_SECRET_KEY) {
+    apiKey = env.CLIP_API_KEY;
+    secretKey = env.CLIP_SECRET_KEY;
   } else {
     throw new Error('Clip no configurado. Agrega tus credenciales en Configuración → Pagos.');
   }
@@ -115,7 +117,7 @@ async function getClipSerialNumber(): Promise<string | null> {
     .limit(1);
 
   const metadata = connection?.providerMetadata as Record<string, unknown> | null;
-  return (metadata?.serialNumber as string) ?? process.env.CLIP_SERIAL_NUMBER ?? null;
+  return (metadata?.serialNumber as string) ?? env.CLIP_SERIAL_NUMBER ?? null;
 }
 
 // ── Checkout (Payment Link) ──
@@ -127,12 +129,11 @@ export async function createClipCheckoutCharge(params: {
   successUrl?: string;
   errorUrl?: string;
 }): Promise<ClipCheckoutResult> {
+  return clipBreaker.execute(async () => {
   const { amount, description, saleReference } = params;
   const authToken = await getClipAuthToken();
 
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : 'http://localhost:3000';
+  const appBaseUrl = getAppUrl();
 
   const successUrl = params.successUrl ?? `${appBaseUrl}/dashboard?clip_payment=success&ref=${encodeURIComponent(saleReference)}`;
   const errorUrl = params.errorUrl ?? `${appBaseUrl}/dashboard?clip_payment=error&ref=${encodeURIComponent(saleReference)}`;
@@ -208,6 +209,7 @@ export async function createClipCheckoutCharge(params: {
     status: data.status,
     referenceNumber,
   };
+  }); // clipBreaker.execute end
 }
 
 // ── PinPad Terminal Payment ──
@@ -218,6 +220,7 @@ export async function createClipTerminalCharge(params: {
   serialNumber?: string;
   webhookUrl?: string;
 }): Promise<ClipTerminalResult> {
+  return clipBreaker.execute(async () => {
   const { amount, saleReference } = params;
   const authToken = await getClipAuthToken();
 
@@ -229,9 +232,7 @@ export async function createClipTerminalCharge(params: {
     );
   }
 
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : 'http://localhost:3000';
+  const appBaseUrl = getAppUrl();
 
   const body = {
     amount: Number(amount.toFixed(2)),
@@ -307,11 +308,13 @@ export async function createClipTerminalCharge(params: {
     status: data.status ?? 'PENDING',
     referenceNumber,
   };
+  }); // clipBreaker.execute end
 }
 
 // ── Charge Status ──
 
 export async function getClipCheckoutStatus(paymentRequestId: string): Promise<ClipChargeStatus> {
+  return clipBreaker.execute(async () => {
   const authToken = await getClipAuthToken();
 
   const response = await fetch(`${CLIP_CHECKOUT_BASE}/${encodeURIComponent(paymentRequestId)}`, {
@@ -335,9 +338,11 @@ export async function getClipCheckoutStatus(paymentRequestId: string): Promise<C
     status,
     paidAt: status === 'paid' && data.approved_at ? new Date(data.approved_at) : null,
   };
+  }); // clipBreaker.execute end
 }
 
 export async function getClipTerminalStatus(pinpadRequestId: string): Promise<ClipChargeStatus> {
+  return clipBreaker.execute(async () => {
   const authToken = await getClipAuthToken();
 
   const response = await fetch(
@@ -365,6 +370,7 @@ export async function getClipTerminalStatus(pinpadRequestId: string): Promise<Cl
     status,
     paidAt: status === 'paid' ? new Date(data.create_date) : null,
   };
+  }); // clipBreaker.execute end
 }
 
 // ── Connection Management ──

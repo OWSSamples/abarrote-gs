@@ -10,6 +10,7 @@ import { numVal } from './_helpers';
 import { withLogging, AppError } from '@/lib/errors';
 import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
 import { withRateLimit, STRICT } from '@/infrastructure/redis';
+import { emitDomainEvent } from '@/domain/events';
 
 // ==================== CLIENTES ====================
 
@@ -32,7 +33,7 @@ async function _fetchClientes(): Promise<Cliente[]> {
 async function _createCliente(
   data: Omit<Cliente, 'id' | 'balance' | 'createdAt' | 'lastTransaction'>
 ): Promise<Cliente> {
-  await requirePermission('customers.edit');
+  const user = await requirePermission('customers.edit');
   validateSchema(createClienteSchema, data, 'createCliente');
   const id = `cli-${crypto.randomUUID()}`;
   const now = new Date();
@@ -46,6 +47,12 @@ async function _createCliente(
     creditLimit: String(data.creditLimit),
     createdAt: now,
     lastTransaction: null,
+  });
+
+  emitDomainEvent({
+    type: 'customer.created',
+    payload: { customerId: id, name: data.name },
+    metadata: { userId: user.uid, userEmail: user.email ?? '' },
   });
 
   return {
@@ -72,10 +79,16 @@ async function _updateCliente(id: string, data: Partial<Cliente>): Promise<void>
 }
 
 async function _deleteCliente(id: string): Promise<void> {
-  await requirePermission('customers.edit');
+  const user = await requirePermission('customers.edit');
   validateId(id, 'Cliente ID');
   // Soft delete: preserve customer data and transaction history
   await softDelete(clientes, id);
+
+  emitDomainEvent({
+    type: 'customer.deleted',
+    payload: { customerId: id, name: id },
+    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+  });
 }
 
 // ==================== FIADO ====================

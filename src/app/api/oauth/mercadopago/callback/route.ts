@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { exchangeMPAuthorizationCode } from '@/lib/oauth-providers';
 import { logger } from '@/lib/logger';
+import { getBaseUrl } from '@/lib/env';
 
 /**
  * OAuth Callback for MercadoPago.
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
   const state = url.searchParams.get('state');
   const error = url.searchParams.get('error');
 
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = getBaseUrl();
   const settingsUrl = `${baseUrl}/dashboard/settings`;
 
   // User denied authorization

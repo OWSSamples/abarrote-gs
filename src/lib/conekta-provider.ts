@@ -7,6 +7,8 @@ import { paymentProviderConnections, paymentCharges } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { conektaBreaker } from '@/infrastructure/circuit-breaker';
+import { env } from '@/lib/env';
 
 // ── Types ──
 
@@ -55,8 +57,8 @@ async function getConektaClient(): Promise<OrdersApi> {
 
   if (connection?.accessTokenEnc) {
     apiKey = decrypt(connection.accessTokenEnc);
-  } else if (process.env.CONEKTA_PRIVATE_KEY) {
-    apiKey = process.env.CONEKTA_PRIVATE_KEY;
+  } else if (env.CONEKTA_PRIVATE_KEY) {
+    apiKey = env.CONEKTA_PRIVATE_KEY;
   } else {
     throw new Error('Conekta no configurado. Agrega tu API Key en Configuración → Pagos.');
   }
@@ -66,7 +68,7 @@ async function getConektaClient(): Promise<OrdersApi> {
 }
 
 function getConektaEnvironment(): 'production' | 'sandbox' {
-  return process.env.CONEKTA_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
+  return env.CONEKTA_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
 }
 
 // ── SPEI Charge ──
@@ -79,6 +81,7 @@ export async function createConektaSPEICharge(params: {
   saleReference: string;
   expirationHours?: number;
 }): Promise<ConektaSPEIResult> {
+  return conektaBreaker.execute(async () => {
   const { amount, customerName, customerEmail, description, saleReference, expirationHours = 72 } = params;
   const ordersApi = await getConektaClient();
 
@@ -160,6 +163,7 @@ export async function createConektaSPEICharge(params: {
     expiresAt: new Date(expiresAt * 1000),
     referenceNumber,
   };
+  }); // conektaBreaker.execute end
 }
 
 // ── OXXO Charge ──
@@ -172,6 +176,7 @@ export async function createConektaOXXOCharge(params: {
   saleReference: string;
   expirationHours?: number;
 }): Promise<ConektaOXXOResult> {
+  return conektaBreaker.execute(async () => {
   const { amount, customerName, customerEmail, description, saleReference, expirationHours = 72 } = params;
   const ordersApi = await getConektaClient();
 
@@ -250,11 +255,13 @@ export async function createConektaOXXOCharge(params: {
     amount,
     expiresAt: new Date(expiresAt * 1000),
   };
+  }); // conektaBreaker.execute end
 }
 
 // ── Charge Status ──
 
 export async function getConektaChargeStatus(orderId: string): Promise<ConektaChargeStatus> {
+  return conektaBreaker.execute(async () => {
   const ordersApi = await getConektaClient();
   const response = await ordersApi.getOrderById(orderId);
   const order = response.data;
@@ -277,6 +284,7 @@ export async function getConektaChargeStatus(orderId: string): Promise<ConektaCh
     status,
     paidAt: status === 'paid' ? new Date((charge.paid_at ?? 0) * 1000) : null,
   };
+  }); // conektaBreaker.execute end
 }
 
 // ── Connection Management ──

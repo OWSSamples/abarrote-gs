@@ -5,6 +5,7 @@ import { paymentCharges } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { idempotencyCheck } from '@/infrastructure/redis';
+import { env } from '@/lib/env';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
@@ -17,14 +18,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
     }
 
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
       logger.warn('Stripe webhook secret not configured', { action: 'stripe_webhook_no_secret' });
       return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
     }
 
     // Verify signature
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    const stripeSecretKey = env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
       logger.error('Stripe secret key not configured', { action: 'stripe_webhook_no_key' });
       return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });

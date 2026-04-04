@@ -6,6 +6,7 @@ import { paymentProviderConnections, oauthStates } from '@/db/schema';
 import { eq, and, lt } from 'drizzle-orm';
 import { encrypt, decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { env, getBaseUrl } from '@/lib/env';
 
 // ── Constants ──
 
@@ -41,14 +42,11 @@ function generateCodeChallenge(verifier: string): string {
  * Stores PKCE code_verifier in DB for later exchange.
  */
 export async function generateMPAuthorizationUrl(): Promise<{ url: string; state: string }> {
-  const appId = process.env.MP_APP_ID;
-  const baseUrl = process.env.BASE_URL;
+  const appId = env.MP_APP_ID;
+  const baseUrl = getBaseUrl();
 
   if (!appId) {
     throw new Error('MP_APP_ID no configurado. Crea una aplicación en developers.mercadopago.com');
-  }
-  if (!baseUrl) {
-    throw new Error('BASE_URL no configurado en variables de entorno');
   }
 
   const state = crypto.randomUUID();
@@ -94,8 +92,8 @@ export async function exchangeMPAuthorizationCode(
   code: string,
   state: string,
 ): Promise<{ success: boolean; email?: string; error?: string }> {
-  const appId = process.env.MP_APP_ID;
-  const clientSecret = process.env.MP_CLIENT_SECRET;
+  const appId = env.MP_APP_ID;
+  const clientSecret = env.MP_CLIENT_SECRET;
 
   if (!appId || !clientSecret) {
     return { success: false, error: 'MP_APP_ID o MP_CLIENT_SECRET no configurados' };
@@ -247,8 +245,8 @@ export async function refreshMPAccessToken(
   connectionId: string,
   refreshTokenEnc: string,
 ): Promise<boolean> {
-  const appId = process.env.MP_APP_ID;
-  const clientSecret = process.env.MP_CLIENT_SECRET;
+  const appId = env.MP_APP_ID;
+  const clientSecret = env.MP_CLIENT_SECRET;
 
   if (!appId || !clientSecret) {
     logger.error('Cannot refresh MP token: MP_APP_ID or MP_CLIENT_SECRET missing');
@@ -322,7 +320,7 @@ export async function getMPAccessToken(): Promise<string | null> {
 
     if (!connection || connection.status === 'disconnected' || !connection.accessTokenEnc) {
       // Fallback to env variable (legacy / dev mode)
-      return process.env.MP_ACCESS_TOKEN ?? null;
+      return env.MP_ACCESS_TOKEN ?? null;
     }
 
     // Check if token needs refresh (within 24 hours of expiry)
@@ -349,18 +347,18 @@ export async function getMPAccessToken(): Promise<string | null> {
         return decrypt(connection.accessTokenEnc);
       }
       // Token fully expired and refresh failed — fall back to env
-      return process.env.MP_ACCESS_TOKEN ?? null;
+      return env.MP_ACCESS_TOKEN ?? null;
     }
 
     // Token is still valid
     if (connection.status === 'expired') {
-      return process.env.MP_ACCESS_TOKEN ?? null;
+      return env.MP_ACCESS_TOKEN ?? null;
     }
 
     return decrypt(connection.accessTokenEnc);
   } catch (err) {
     logger.error('getMPAccessToken error', { error: err instanceof Error ? err.message : 'Unknown' });
-    return process.env.MP_ACCESS_TOKEN ?? null;
+    return env.MP_ACCESS_TOKEN ?? null;
   }
 }
 

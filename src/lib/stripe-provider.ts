@@ -7,6 +7,8 @@ import { paymentProviderConnections, paymentCharges } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { stripeBreaker } from '@/infrastructure/circuit-breaker';
+import { env } from '@/lib/env';
 
 // ── Types ──
 
@@ -55,8 +57,8 @@ async function getStripeClient(): Promise<Stripe> {
 
   if (connection?.accessTokenEnc) {
     secretKey = decrypt(connection.accessTokenEnc);
-  } else if (process.env.STRIPE_SECRET_KEY) {
-    secretKey = process.env.STRIPE_SECRET_KEY;
+  } else if (env.STRIPE_SECRET_KEY) {
+    secretKey = env.STRIPE_SECRET_KEY;
   } else {
     throw new Error('Stripe no configurado. Agrega tu Secret Key en Configuración → Pagos.');
   }
@@ -72,6 +74,7 @@ export async function createStripeSPEICharge(params: {
   description: string;
   saleReference: string;
 }): Promise<StripeSPEIResult> {
+  return stripeBreaker.execute(async () => {
   const { amount, customerEmail, description, saleReference } = params;
   const stripe = await getStripeClient();
 
@@ -143,6 +146,7 @@ export async function createStripeSPEICharge(params: {
     referenceNumber,
     hostedInstructionsUrl: bankTransfer?.hosted_instructions_url ?? null,
   };
+  }); // stripeBreaker.execute end
 }
 
 // ── OXXO ──
@@ -153,6 +157,7 @@ export async function createStripeOXXOCharge(params: {
   description: string;
   saleReference: string;
 }): Promise<StripeOXXOResult> {
+  return stripeBreaker.execute(async () => {
   const { amount, customerEmail, description, saleReference } = params;
   const stripe = await getStripeClient();
 
@@ -225,11 +230,13 @@ export async function createStripeOXXOCharge(params: {
     expiresAt,
     hostedVoucherUrl: oxxoDisplay?.hosted_voucher_url ?? null,
   };
+  }); // stripeBreaker.execute end
 }
 
 // ── Charge Status ──
 
 export async function getStripeChargeStatus(paymentIntentId: string): Promise<StripeChargeStatus> {
+  return stripeBreaker.execute(async () => {
   const stripe = await getStripeClient();
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
 
@@ -246,6 +253,7 @@ export async function getStripeChargeStatus(paymentIntentId: string): Promise<St
     status,
     paidAt: status === 'paid' ? new Date() : null,
   };
+  }); // stripeBreaker.execute end
 }
 
 // ── Customer Management ──

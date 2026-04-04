@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { scheduleJob, isQStashAvailable, getQStashClient } from '@/infrastructure/qstash';
 import { logger } from '@/lib/logger';
+import { env } from '@/lib/env';
 
 // ══════════════════════════════════════════════════════════════
 // GET  /api/jobs/schedules — List active QStash schedules
@@ -11,7 +12,7 @@ import { logger } from '@/lib/logger';
 // Run once after deployment to set up recurring jobs.
 
 function authorize(request: Request): boolean {
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = env.CRON_SECRET;
   const auth = request.headers.get('authorization');
   return !!cronSecret && auth === `Bearer ${cronSecret}`;
 }

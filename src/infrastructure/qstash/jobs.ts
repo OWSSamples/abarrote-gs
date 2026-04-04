@@ -1,5 +1,6 @@
 import { getQStashClient } from './connection';
 import { logger } from '@/lib/logger';
+import { getBaseUrl } from '@/lib/env';
 
 // ══════════════════════════════════════════════════════════════
 // Background Job Publisher
@@ -48,7 +49,7 @@ export async function publishJob<T extends Record<string, unknown>>(
   fallback?: () => Promise<void>,
 ): Promise<string> {
   const client = getQStashClient();
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = getBaseUrl();
   const destination = `${baseUrl}${JOB_ROUTES[type]}`;
 
   if (client) {
@@ -115,7 +116,7 @@ export async function scheduleJob<T extends Record<string, unknown>>(
     return null;
   }
 
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = getBaseUrl();
   const destination = `${baseUrl}${JOB_ROUTES[type]}`;
 
   try {

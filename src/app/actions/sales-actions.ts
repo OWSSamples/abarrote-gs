@@ -17,6 +17,7 @@ import { createSaleSchema } from '@/lib/validation/schemas';
 import { publishJob } from '@/infrastructure/qstash';
 import { withLogging } from '@/lib/errors';
 import { withRateLimit, STRICT, idempotencyCheck, withLock } from '@/infrastructure/redis';
+import { emitDomainEvent } from '@/domain/events';
 
 // ==================== FOLIO ====================
 
@@ -160,7 +161,7 @@ async function _createSale(
   saleData: Omit<SaleRecord, 'id' | 'folio' | 'date'>
 ): Promise<SaleRecord> {
   return logger.withTiming('createSale', async () => {
-  await requirePermission('sales.create');
+  const user = await requirePermission('sales.create');
 
   // ── Idempotency guard: prevent duplicate sale creation from double-clicks/retries ──
   const idempotencyKey = `sale:${saleData.total}:${saleData.paymentMethod}:${saleData.cajero}:${saleData.amountPaid}`;
@@ -290,6 +291,19 @@ async function _createSale(
   }, { ttlMs: 15_000, waitMs: 10_000 }); // withLock end
 
   // ── Side effects (outside transaction — non-critical) ──
+
+  emitDomainEvent({
+    type: 'sale.created',
+    payload: {
+      saleId: id,
+      folio,
+      total: saleData.total,
+      paymentMethod: saleData.paymentMethod,
+      cajero,
+      itemCount: saleData.items.length,
+    },
+    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+  });
 
   // Stock critical alerts
   for (const alert of stockAlerts) {
@@ -459,7 +473,7 @@ async function _createSale(
 import { fiadoTransactions, fiadoItems } from '@/db/schema'; // We need this import added if it's missing, let's just make sure.
 
 async function _cancelSale(saleId: string): Promise<void> {
-  await requirePermission('sales.cancel');
+  const user = await requirePermission('sales.cancel');
   validateId(saleId, 'Sale ID');
 
   const [sale] = await db.select().from(saleRecords).where(eq(saleRecords.id, saleId)).limit(1);
@@ -495,6 +509,12 @@ async function _cancelSale(saleId: string): Promise<void> {
   
   // Guardado histórico en base de datos.
   await db.update(saleRecords).set({ status: 'cancelada' }).where(eq(saleRecords.id, saleId));
+
+  emitDomainEvent({
+    type: 'sale.cancelled',
+    payload: { saleId, folio: sale.folio },
+    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+  });
 }
 
 async function _deleteSales(saleIds: string[]): Promise<void> {

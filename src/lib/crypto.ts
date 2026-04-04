@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { env } from '@/lib/env';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -10,7 +11,7 @@ const KEY_LENGTH = 32;
  * This allows any-length secrets while guaranteeing correct key size.
  */
 function deriveKey(): Buffer {
-  const secret = process.env.OAUTH_ENCRYPTION_KEY;
+  const secret = env.OAUTH_ENCRYPTION_KEY;
   if (!secret) {
     throw new Error('OAUTH_ENCRYPTION_KEY environment variable is required for token encryption');
   }

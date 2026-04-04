@@ -193,7 +193,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             isInline={false}
             onClose={() => {
               closeProductDetail();
-              setSelectedProduct(null);
             }}
           />
         )}

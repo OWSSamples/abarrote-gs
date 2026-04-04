@@ -8,12 +8,14 @@ import { eq, desc, sql, inArray } from 'drizzle-orm';
 import type { Cliente, FiadoTransaction, SaleItem } from '@/types';
 import { numVal } from './_helpers';
 import { withLogging, AppError } from '@/lib/errors';
+import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
+import { withRateLimit, STRICT } from '@/infrastructure/redis';
 
 // ==================== CLIENTES ====================
 
 async function _fetchClientes(): Promise<Cliente[]> {
   await requirePermission('customers.view');
-  const rows = await db.select().from(clientes).orderBy(clientes.name);
+  const rows = await db.select().from(clientes).where(isNotDeleted(clientes)).orderBy(clientes.name);
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -72,8 +74,8 @@ async function _updateCliente(id: string, data: Partial<Cliente>): Promise<void>
 async function _deleteCliente(id: string): Promise<void> {
   await requirePermission('customers.edit');
   validateId(id, 'Cliente ID');
-  await db.delete(fiadoTransactions).where(eq(fiadoTransactions.clienteId, id));
-  await db.delete(clientes).where(eq(clientes.id, id));
+  // Soft delete: preserve customer data and transaction history
+  await softDelete(clientes, id);
 }
 
 // ==================== FIADO ====================
@@ -206,9 +208,9 @@ async function _createAbono(
 
 // ==================== WRAPPED EXPORTS ====================
 export const fetchClientes = withLogging('customer.fetchAll', _fetchClientes);
-export const createCliente = withLogging('customer.create', _createCliente);
+export const createCliente = withRateLimit('customer.create', withLogging('customer.create', _createCliente));
 export const updateCliente = withLogging('customer.update', _updateCliente);
-export const deleteCliente = withLogging('customer.delete', _deleteCliente);
+export const deleteCliente = withRateLimit('customer.delete', withLogging('customer.delete', _deleteCliente));
 export const fetchFiadoTransactions = withLogging('fiado.fetchAll', _fetchFiadoTransactions);
-export const createFiado = withLogging('fiado.create', _createFiado);
-export const createAbono = withLogging('fiado.createAbono', _createAbono);
+export const createFiado = withRateLimit('fiado.create', withLogging('fiado.create', _createFiado));
+export const createAbono = withRateLimit('fiado.createAbono', withLogging('fiado.createAbono', _createAbono));

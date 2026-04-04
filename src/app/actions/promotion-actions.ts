@@ -8,12 +8,13 @@ import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 import { numVal } from './_helpers';
 import type { Promotion, PromotionType, ApplicableTo } from '@/types';
 import { validateSchema, createPromotionSchema, updatePromotionSchema, idSchema } from '@/lib/validation/schemas';
+import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
 
 // ==================== FETCH ====================
 
 async function _fetchPromotions(): Promise<Promotion[]> {
   await requirePermission('inventory.view');
-  const rows = await db.select().from(promotions).orderBy(desc(promotions.createdAt));
+  const rows = await db.select().from(promotions).where(isNotDeleted(promotions)).orderBy(desc(promotions.createdAt));
   return rows.map(mapRow);
 }
 
@@ -25,6 +26,7 @@ async function _fetchActivePromotions(): Promise<Promotion[]> {
     .from(promotions)
     .where(
       and(
+        isNotDeleted(promotions),
         eq(promotions.active, true),
         lte(promotions.startDate, now),
         gte(promotions.endDate, now),
@@ -102,7 +104,7 @@ async function _updatePromotion(id: string, data: Partial<Promotion>): Promise<v
 async function _deletePromotion(id: string): Promise<void> {
   await requirePermission('inventory.edit');
   validateSchema(idSchema, id, 'deletePromotion:id');
-  await db.delete(promotions).where(eq(promotions.id, id));
+  await softDelete(promotions, id);
 }
 
 async function _togglePromotionActive(id: string, active: boolean): Promise<void> {

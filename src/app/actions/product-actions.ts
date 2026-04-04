@@ -5,17 +5,24 @@ import { requirePermission, requireAuth, sanitize, validateNumber, validateId } 
 import { validateSchema, createProductSchema, updateProductSchema, idSchema } from '@/lib/validation/schemas';
 import { db } from '@/db';
 import { products, saleItems, mermaRecords, pedidoItems, fiadoItems } from '@/db/schema';
-import { eq, or } from 'drizzle-orm';
+import { eq, or, and } from 'drizzle-orm';
 import type { Product } from '@/types';
 import { numVal } from './_helpers';
 import { AppError, withLogging } from '@/lib/errors';
+import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
+import { withRateLimit, STRICT } from '@/infrastructure/redis';
 
 // ==================== PRODUCTS ====================
 
 async function _fetchAllProducts(): Promise<Product[]> {
   await requireAuth();
-  const rows = await db.select().from(products).orderBy(products.name);
-  return rows.map((r) => ({
+
+  // Check cache first — products are fetched on every dashboard load
+  const cached = await cache.get<Product[]>('products:all');
+  if (cached) return cached;
+
+  const rows = await db.select().from(products).where(isNotDeleted(products)).orderBy(products.name);
+  const result = rows.map((r) => ({
     id: r.id,
     name: r.name,
     sku: r.sku,
@@ -31,6 +38,11 @@ async function _fetchAllProducts(): Promise<Product[]> {
     isPerishable: r.isPerishable,
     imageUrl: r.imageUrl ?? undefined,
   }));
+
+  // Cache for 30 seconds — invalidated on product mutations
+  await cache.set('products:all', result, { ttlMs: 30_000 });
+
+  return result;
 }
 
 async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
@@ -40,11 +52,11 @@ async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
   const sanitizedSku = sanitize(data.sku);
   const sanitizedBarcode = sanitize(data.barcode);
   
-  // Check for existing products with same SKU or barcode
+  // Check for existing products with same SKU or barcode (exclude soft-deleted)
   const existing = await db
     .select({ sku: products.sku, barcode: products.barcode, name: products.name })
     .from(products)
-    .where(or(eq(products.sku, sanitizedSku), eq(products.barcode, sanitizedBarcode)))
+    .where(and(isNotDeleted(products), or(eq(products.sku, sanitizedSku), eq(products.barcode, sanitizedBarcode))))
     .limit(1);
   
   if (existing.length > 0) {
@@ -100,11 +112,8 @@ async function _deleteProduct(productId: string): Promise<void> {
   validateId(productId, 'Product ID');
   await cache.invalidatePattern('products:');
 
-  await db.delete(saleItems).where(eq(saleItems.productId, productId));
-  await db.delete(mermaRecords).where(eq(mermaRecords.productId, productId));
-  await db.delete(pedidoItems).where(eq(pedidoItems.productId, productId));
-  await db.delete(fiadoItems).where(eq(fiadoItems.productId, productId));
-  await db.delete(products).where(eq(products.id, productId));
+  // Soft delete: mark as deleted instead of physically removing
+  await softDelete(products, productId);
 }
 
 async function _updateProduct(id: string, data: Partial<Product>): Promise<void> {
@@ -132,7 +141,7 @@ async function _updateProduct(id: string, data: Partial<Product>): Promise<void>
 // All actions wrapped with logging for observability
 
 export const fetchAllProducts = withLogging('product.fetchAll', _fetchAllProducts);
-export const createProduct = withLogging('product.create', _createProduct);
+export const createProduct = withRateLimit('product.create', withLogging('product.create', _createProduct));
 export const updateProductStock = withLogging('product.updateStock', _updateProductStock);
-export const deleteProduct = withLogging('product.delete', _deleteProduct);
+export const deleteProduct = withRateLimit('product.delete', withLogging('product.delete', _deleteProduct));
 export const updateProduct = withLogging('product.update', _updateProduct);

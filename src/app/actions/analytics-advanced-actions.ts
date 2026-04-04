@@ -21,6 +21,7 @@ import type {
   CFDIRecord,
 } from '@/types';
 import { logger } from '@/lib/logger';
+import { isNotDeleted } from '@/infrastructure/soft-delete';
 
 // ==================== 1. ABC INVENTORY CLASSIFICATION ====================
 
@@ -47,7 +48,7 @@ async function _fetchABCAnalysis(periodDays = 30): Promise<ABCAnalysis> {
     .orderBy(desc(sql`sum(${saleItems.subtotal}::numeric)`));
 
   // Get current product data for stock/price info
-  const allProducts = await db.select().from(products);
+  const allProducts = await db.select().from(products).where(isNotDeleted(products));
   const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
   const totalRevenue = revenueRows.reduce((sum, r) => sum + numVal(r.totalRevenue), 0);
@@ -143,8 +144,8 @@ async function _fetchReorderSuggestions(): Promise<ReorderSuggestion[]> {
   const velocityMap = new Map(salesVelocity.map((v) => [v.productId, numVal(v.totalQty) / 30]));
 
   // Get all products and suppliers
-  const allProducts = await db.select().from(products);
-  const allProveedores = await db.select().from(proveedores);
+  const allProducts = await db.select().from(products).where(isNotDeleted(products));
+  const allProveedores = await db.select().from(proveedores).where(isNotDeleted(proveedores));
 
   // Build supplier lookup by category
   const supplierByCategory = new Map<string, string>();
@@ -270,7 +271,7 @@ async function _sendDailyTelegramReport(): Promise<{ sent: boolean; message: str
       total: sql<string>`coalesce(sum(total::numeric), 0)`,
     }).from(saleRecords).where(sql`date::date = ${yesterdayStr}`),
 
-    db.select().from(products).where(sql`${products.currentStock}::numeric <= ${products.minStock}::numeric`),
+    db.select().from(products).where(and(isNotDeleted(products), sql`${products.currentStock}::numeric <= ${products.minStock}::numeric`)),
 
     db.select({
       productName: saleItems.productName,
@@ -633,7 +634,7 @@ async function _fetchDemandForecast(): Promise<ForecastProduct[]> {
     .orderBy(saleItems.productId, sql`extract(year from ${saleRecords.date}::timestamp)`, sql`extract(week from ${saleRecords.date}::timestamp)`);
 
   // Get all products for stock info
-  const allProducts = await db.select().from(products);
+  const allProducts = await db.select().from(products).where(isNotDeleted(products));
   const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
   // Group by product

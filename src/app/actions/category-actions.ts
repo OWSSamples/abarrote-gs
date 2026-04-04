@@ -7,10 +7,20 @@ import { eq, desc } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { withLogging, AppError } from '@/lib/errors';
 import { validateSchema, createCategorySchema, updateCategorySchema, idSchema } from '@/lib/validation/schemas';
+import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
+import { withRateLimit, STRICT, cache } from '@/infrastructure/redis';
 
 async function _fetchCategories() {
   await requireAuth();
-  return await db.select().from(productCategories).orderBy(desc(productCategories.createdAt));
+
+  const cached = await cache.get<(typeof productCategories.$inferSelect)[]>('categories:all');
+  if (cached) return cached;
+
+  const result = await db.select().from(productCategories).where(isNotDeleted(productCategories)).orderBy(desc(productCategories.createdAt));
+
+  await cache.set('categories:all', result, { ttlMs: 60_000 });
+
+  return result;
 }
 
 async function _createCategory(data: { id?: string; name: string; description: string | null; icon: string | null }) {
@@ -29,6 +39,7 @@ async function _createCategory(data: { id?: string; name: string; description: s
     }).returning();
 
     revalidatePath('/dashboard');
+    await cache.invalidatePattern('categories:');
     return newCategory;
   } catch (error: unknown) {
     const err = error as Record<string, unknown>;
@@ -58,18 +69,20 @@ async function _updateCategory(id: string, data: Partial<{ name: string; descrip
     .returning();
 
   revalidatePath('/dashboard');
+  await cache.invalidatePattern('categories:');
   return updated;
 }
 
 async function _deleteCategory(id: string): Promise<void> {
   await requirePermission('inventory.delete');
   validateSchema(idSchema, id, 'deleteCategory:id');
-  await db.delete(productCategories).where(eq(productCategories.id, id));
+  await softDelete(productCategories, id);
+  await cache.invalidatePattern('categories:');
   revalidatePath('/dashboard');
 }
 
 // ==================== WRAPPED EXPORTS ====================
 export const fetchCategories = withLogging('category.fetchAll', _fetchCategories);
-export const createCategory = withLogging('category.create', _createCategory);
+export const createCategory = withRateLimit('category.create', withLogging('category.create', _createCategory));
 export const updateCategory = withLogging('category.update', _updateCategory);
-export const deleteCategory = withLogging('category.delete', _deleteCategory);
+export const deleteCategory = withRateLimit('category.delete', withLogging('category.delete', _deleteCategory));

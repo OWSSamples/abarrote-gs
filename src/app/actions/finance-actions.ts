@@ -8,6 +8,8 @@ import { eq, desc, sql } from 'drizzle-orm';
 import type { Gasto, GastoCategoria, Proveedor, PedidoRecord } from '@/types';
 import { numVal } from './_helpers';
 import { withLogging } from '@/lib/errors';
+import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
+import { withRateLimit, STRICT } from '@/infrastructure/redis';
 
 // ==================== GASTOS ====================
 
@@ -69,7 +71,7 @@ async function _deleteGasto(id: string): Promise<void> {
 
 async function _fetchProveedores(): Promise<Proveedor[]> {
   await requirePermission('suppliers.view');
-  const rows = await db.select().from(proveedores).orderBy(proveedores.nombre);
+  const rows = await db.select().from(proveedores).where(isNotDeleted(proveedores)).orderBy(proveedores.nombre);
   return rows.map((r) => ({
     id: r.id,
     nombre: r.nombre,
@@ -125,7 +127,7 @@ async function _updateProveedor(id: string, data: Partial<Proveedor>): Promise<v
 async function _deleteProveedor(id: string): Promise<void> {
   await requirePermission('suppliers.edit');
   validateId(id, 'Proveedor ID');
-  await db.delete(proveedores).where(eq(proveedores.id, id));
+  await softDelete(proveedores, id);
 }
 
 // ==================== PEDIDOS ====================
@@ -217,14 +219,14 @@ async function _receivePedido(pedidoId: string): Promise<void> {
 // ==================== WRAPPED EXPORTS ====================
 
 export const fetchGastos = withLogging('finance.fetchGastos', _fetchGastos);
-export const createGasto = withLogging('finance.createGasto', _createGasto);
+export const createGasto = withRateLimit('finance.createGasto', withLogging('finance.createGasto', _createGasto));
 export const updateGasto = withLogging('finance.updateGasto', _updateGasto);
-export const deleteGasto = withLogging('finance.deleteGasto', _deleteGasto);
+export const deleteGasto = withRateLimit('finance.deleteGasto', withLogging('finance.deleteGasto', _deleteGasto));
 export const fetchProveedores = withLogging('finance.fetchProveedores', _fetchProveedores);
-export const createProveedor = withLogging('finance.createProveedor', _createProveedor);
+export const createProveedor = withRateLimit('finance.createProveedor', withLogging('finance.createProveedor', _createProveedor));
 export const updateProveedor = withLogging('finance.updateProveedor', _updateProveedor);
-export const deleteProveedor = withLogging('finance.deleteProveedor', _deleteProveedor);
+export const deleteProveedor = withRateLimit('finance.deleteProveedor', withLogging('finance.deleteProveedor', _deleteProveedor));
 export const fetchPedidos = withLogging('finance.fetchPedidos', _fetchPedidos);
-export const createPedido = withLogging('finance.createPedido', _createPedido);
+export const createPedido = withRateLimit('finance.createPedido', withLogging('finance.createPedido', _createPedido));
 export const updatePedidoStatus = withLogging('finance.updatePedidoStatus', _updatePedidoStatus);
 export const receivePedido = withLogging('finance.receivePedido', _receivePedido);

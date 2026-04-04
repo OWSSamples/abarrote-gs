@@ -25,7 +25,7 @@
  * );
  */
 
-import { logger } from '@/lib/logger';
+import { logger, withRequestContext, extractRequestId } from '@/lib/logger';
 import { parseError, AppError } from './index';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -96,6 +96,17 @@ export function createAction<TArgs extends unknown[], TReturn>(
     const startTime = performance.now();
     const timestamp = new Date().toISOString();
 
+    // Auto-extract request context from Next.js headers for correlation
+    let requestId: string | undefined;
+    try {
+      const { headers } = await import('next/headers');
+      const hdrs = await headers();
+      requestId = hdrs.get('x-request-id') ?? undefined;
+    } catch {
+      // Not in a request context (e.g., cron/background job) — ok
+    }
+
+    const execute = async (): Promise<TReturn | ActionResult<TReturn>> => {
     const buildMeta = () => ({
       action: actionName,
       durationMs: Math.round(performance.now() - startTime),
@@ -152,6 +163,13 @@ export function createAction<TArgs extends unknown[], TReturn>(
       // Re-throw for backward compatibility
       throw error;
     }
+    };
+
+    // Wrap in request context for automatic correlation ID propagation
+    if (requestId) {
+      return withRequestContext({ requestId }, execute);
+    }
+    return execute();
   };
 }
 

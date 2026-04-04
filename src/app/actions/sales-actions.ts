@@ -16,6 +16,7 @@ import { paymentCharges } from '@/db/schema';
 import { createSaleSchema } from '@/lib/validation/schemas';
 import { publishJob } from '@/infrastructure/qstash';
 import { withLogging } from '@/lib/errors';
+import { withRateLimit, STRICT, idempotencyCheck } from '@/infrastructure/redis';
 
 // ==================== FOLIO ====================
 
@@ -160,6 +161,14 @@ async function _createSale(
 ): Promise<SaleRecord> {
   return logger.withTiming('createSale', async () => {
   await requirePermission('sales.create');
+
+  // ── Idempotency guard: prevent duplicate sale creation from double-clicks/retries ──
+  const idempotencyKey = `sale:${saleData.total}:${saleData.paymentMethod}:${saleData.cajero}:${saleData.amountPaid}`;
+  const isNew = await idempotencyCheck(idempotencyKey, { ttlMs: 10_000 });
+  if (!isNew) {
+    logger.warn('Duplicate sale creation blocked', { action: 'sale_idempotency_block', key: idempotencyKey });
+    throw new Error('Venta duplicada detectada. Espera unos segundos e intenta de nuevo.');
+  }
 
   // ── Runtime validation ──
   const parsed = createSaleSchema.safeParse(saleData);
@@ -689,10 +698,10 @@ async function _deleteCortes(corteIds: string[]): Promise<void> {
 export const fetchSalesData = withLogging('sales.fetchSalesData', _fetchSalesData);
 export const fetchHourlySalesData = withLogging('sales.fetchHourlySalesData', _fetchHourlySalesData);
 export const fetchSaleRecords = withLogging('sales.fetchSaleRecords', _fetchSaleRecords);
-export const createSale = withLogging('sales.createSale', _createSale);
-export const cancelSale = withLogging('sales.cancelSale', _cancelSale);
-export const deleteSales = withLogging('sales.deleteSales', _deleteSales);
+export const createSale = withRateLimit('sales.createSale', withLogging('sales.createSale', _createSale));
+export const cancelSale = withRateLimit('sales.cancelSale', withLogging('sales.cancelSale', _cancelSale));
+export const deleteSales = withRateLimit('sales.deleteSales', withLogging('sales.deleteSales', _deleteSales));
 export const fetchCortesHistory = withLogging('sales.fetchCortesHistory', _fetchCortesHistory);
-export const createCorteCaja = withLogging('sales.createCorteCaja', _createCorteCaja);
+export const createCorteCaja = withRateLimit('sales.createCorteCaja', withLogging('sales.createCorteCaja', _createCorteCaja));
 export const createAutoCorteCaja = withLogging('sales.createAutoCorteCaja', _createAutoCorteCaja);
-export const deleteCortes = withLogging('sales.deleteCortes', _deleteCortes);
+export const deleteCortes = withRateLimit('sales.deleteCortes', withLogging('sales.deleteCortes', _deleteCortes));

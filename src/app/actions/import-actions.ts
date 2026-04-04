@@ -7,6 +7,7 @@ import { products, clientes } from '@/db/schema';
 import { parse } from 'csv-parse/sync';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { eq } from 'drizzle-orm';
+import { isNotDeleted } from '@/infrastructure/soft-delete';
 
 const s3 = new S3Client({
     region: process.env.AWS_REGION!,
@@ -42,7 +43,7 @@ async function _importProductsFromCSV(formData: FormData, overwrite: boolean, pu
         let updatedCount = 0;
         const errors: string[] = [];
 
-        const existingProducts = await db.select().from(products);
+        const existingProducts = await db.select().from(products).where(isNotDeleted(products));
         const existingMap = new Map(existingProducts.map(p => [p.barcode, p]));
 
         for (const [index, rowData] of (records as any[]).entries()) {

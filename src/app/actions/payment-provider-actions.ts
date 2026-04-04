@@ -3,6 +3,7 @@
 import { requireOwner } from '@/lib/auth/guard';
 import { withLogging } from '@/lib/errors';
 import { logger } from '@/lib/logger';
+import { withRateLimit, STRICT } from '@/infrastructure/redis';
 import {
   connectConekta,
   disconnectConekta,
@@ -354,20 +355,20 @@ async function _getPendingCharges(provider?: 'conekta' | 'stripe' | 'clip'): Pro
 // ── Exports with Logging ──
 // ══════════════════════════════════════════════════
 
-export const connectConektaAction = withLogging('paymentProvider.connectConektaAction', _connectConektaAction);
-export const disconnectConektaAction = withLogging('paymentProvider.disconnectConektaAction', _disconnectConektaAction);
+export const connectConektaAction = withRateLimit('paymentProvider.connectConekta', withLogging('paymentProvider.connectConektaAction', _connectConektaAction));
+export const disconnectConektaAction = withRateLimit('paymentProvider.disconnectConekta', withLogging('paymentProvider.disconnectConektaAction', _disconnectConektaAction));
 export const getConektaStatusAction = withLogging('paymentProvider.getConektaStatusAction', _getConektaStatusAction);
-export const createSPEIConektaAction = withLogging('paymentProvider.createSPEIConektaAction', _createSPEIConektaAction);
-export const createOXXOConektaAction = withLogging('paymentProvider.createOXXOConektaAction', _createOXXOConektaAction);
-export const connectStripeAction = withLogging('paymentProvider.connectStripeAction', _connectStripeAction);
-export const disconnectStripeAction = withLogging('paymentProvider.disconnectStripeAction', _disconnectStripeAction);
+export const createSPEIConektaAction = withRateLimit('paymentProvider.createSPEIConekta', withLogging('paymentProvider.createSPEIConektaAction', _createSPEIConektaAction));
+export const createOXXOConektaAction = withRateLimit('paymentProvider.createOXXOConekta', withLogging('paymentProvider.createOXXOConektaAction', _createOXXOConektaAction));
+export const connectStripeAction = withRateLimit('paymentProvider.connectStripe', withLogging('paymentProvider.connectStripeAction', _connectStripeAction));
+export const disconnectStripeAction = withRateLimit('paymentProvider.disconnectStripe', withLogging('paymentProvider.disconnectStripeAction', _disconnectStripeAction));
 export const getStripeStatusAction = withLogging('paymentProvider.getStripeStatusAction', _getStripeStatusAction);
-export const createSPEIStripeAction = withLogging('paymentProvider.createSPEIStripeAction', _createSPEIStripeAction);
-export const createOXXOStripeAction = withLogging('paymentProvider.createOXXOStripeAction', _createOXXOStripeAction);
-export const connectClipAction = withLogging('paymentProvider.connectClipAction', _connectClipAction);
-export const disconnectClipAction = withLogging('paymentProvider.disconnectClipAction', _disconnectClipAction);
+export const createSPEIStripeAction = withRateLimit('paymentProvider.createSPEIStripe', withLogging('paymentProvider.createSPEIStripeAction', _createSPEIStripeAction));
+export const createOXXOStripeAction = withRateLimit('paymentProvider.createOXXOStripe', withLogging('paymentProvider.createOXXOStripeAction', _createOXXOStripeAction));
+export const connectClipAction = withRateLimit('paymentProvider.connectClip', withLogging('paymentProvider.connectClipAction', _connectClipAction));
+export const disconnectClipAction = withRateLimit('paymentProvider.disconnectClip', withLogging('paymentProvider.disconnectClipAction', _disconnectClipAction));
 export const getClipStatusAction = withLogging('paymentProvider.getClipStatusAction', _getClipStatusAction);
-export const createClipCheckoutAction = withLogging('paymentProvider.createClipCheckoutAction', _createClipCheckoutAction);
-export const createClipTerminalAction = withLogging('paymentProvider.createClipTerminalAction', _createClipTerminalAction);
+export const createClipCheckoutAction = withRateLimit('paymentProvider.createClipCheckout', withLogging('paymentProvider.createClipCheckoutAction', _createClipCheckoutAction));
+export const createClipTerminalAction = withRateLimit('paymentProvider.createClipTerminal', withLogging('paymentProvider.createClipTerminalAction', _createClipTerminalAction));
 export const checkChargeStatus = withLogging('paymentProvider.checkChargeStatus', _checkChargeStatus);
 export const getPendingCharges = withLogging('paymentProvider.getPendingCharges', _getPendingCharges);

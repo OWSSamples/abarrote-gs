@@ -45,28 +45,18 @@ interface RequestContext {
 // ASYNC LOCAL STORAGE FOR REQUEST CONTEXT
 // ══════════════════════════════════════════════════════════════
 //
-// AsyncLocalStorage is Node.js-only. This module is also imported
-// in client components (via store → logger chain), so we guard the
-// import to avoid "Can't resolve 'async_hooks'" in browser bundles.
+// AsyncLocalStorage is Node.js-only. This module is imported in
+// three runtimes: Node.js (server actions), Edge (proxy.ts), and
+// Browser (via store chain). We use a universal no-op stub.
+// Correlation IDs are propagated via x-request-id header instead,
+// read by the action factory from next/headers.
 
 type ALS<T> = { getStore(): T | undefined; run<R>(store: T, fn: () => R): R };
 
-let requestContextStorage: ALS<RequestContext>;
-
-if (typeof globalThis.process !== 'undefined' && typeof globalThis.process.versions?.node === 'string') {
-  // Node.js runtime — use real AsyncLocalStorage
-  // Dynamic require hidden from static analysis so Turbopack doesn't try to bundle async_hooks
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-implied-eval
-  const dynamicRequire = new Function('mod', 'return require(mod)') as (mod: string) => Record<string, unknown>;
-  const mod = dynamicRequire('async_hooks') as { AsyncLocalStorage: new <T>() => ALS<T> };
-  requestContextStorage = new mod.AsyncLocalStorage<RequestContext>();
-} else {
-  // Browser / Edge — no-op stub
-  requestContextStorage = {
-    getStore: () => undefined,
-    run: <R>(_store: RequestContext, fn: () => R) => fn(),
-  };
-}
+const requestContextStorage: ALS<RequestContext> = {
+  getStore: () => undefined,
+  run: <R>(_store: RequestContext, fn: () => R) => fn(),
+};
 
 /**
  * Get current request context (if any)

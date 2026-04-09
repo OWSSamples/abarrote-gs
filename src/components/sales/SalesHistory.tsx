@@ -24,7 +24,7 @@ import { ExportIcon, SearchIcon, ReceiptIcon, RefreshIcon } from '@shopify/polar
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/components/notifications/ToastProvider';
-import { printWithIframe, posTicketCSS, applyTicketTemplate } from '@/lib/printTicket';
+import { printWithIframe, posTicketCSS, applyTicketTemplate, generateTicketHtml } from '@/lib/printTicket';
 import { GenericExportModal } from '@/components/inventory/ShopifyModals';
 import { generateCSV, downloadFile, generatePDF } from '@/components/export/ExportModal';
 import { DevolucionModal } from '@/components/modals/DevolucionModal';
@@ -144,7 +144,48 @@ export function SalesHistory() {
       total: `$${selectedSale.total.toFixed(2)}`,
       footer: storeConfig.ticketFooter || '¡Gracias por su compra!',
     };
-    printWithIframe(applyTicketTemplate(storeConfig.ticketTemplateVenta, templateVars, html));
+
+    // Priority: 1) Custom HTML template, 2) Design config, 3) Hardcoded fallback
+    if (storeConfig.ticketTemplateVenta) {
+      printWithIframe(applyTicketTemplate(storeConfig.ticketTemplateVenta, templateVars, html));
+    } else if (storeConfig.ticketDesignVenta) {
+      const subtotal = selectedSale.items.reduce((s, i) => s + i.subtotal, 0);
+      const ivaRate = parseFloat(storeConfig.ivaRate || '16');
+      const iva = subtotal * (ivaRate / 100);
+      const designHtml = generateTicketHtml(storeConfig.ticketDesignVenta, {
+        storeName: storeConfig.storeName || 'Tienda',
+        legalName: storeConfig.legalName || '',
+        address: storeConfig.address || '',
+        city: storeConfig.city || '',
+        postalCode: storeConfig.postalCode || '',
+        phone: storeConfig.phone || '',
+        rfc: storeConfig.rfc || '',
+        regimenDescription: storeConfig.regimenDescription || '',
+        storeNumber: storeConfig.storeNumber || '001',
+        logoUrl: storeConfig.logoUrl,
+        ivaRate: storeConfig.ivaRate || '16',
+        folio: selectedSale.folio,
+        fecha: `${dateStr} ${timeStr}`,
+        cajero: selectedSale.cajero || '—',
+        metodoPago: paymentLabels[selectedSale.paymentMethod] || selectedSale.paymentMethod,
+        items: selectedSale.items.map(i => ({
+          name: i.productName, qty: i.quantity, unit: 'pza',
+          unitPrice: i.unitPrice, subtotal: i.subtotal,
+        })),
+        subtotal,
+        iva,
+        discount: 0,
+        total: selectedSale.total,
+        amountPaid: selectedSale.total,
+        change: 0,
+        ticketFooter: storeConfig.ticketFooter,
+        ticketServicePhone: storeConfig.ticketServicePhone,
+        ticketVigencia: storeConfig.ticketVigencia,
+      });
+      printWithIframe(designHtml);
+    } else {
+      printWithIframe(html);
+    }
   }, [selectedSale, storeConfig]);
 
   const handleCancelSale = useCallback(async () => {

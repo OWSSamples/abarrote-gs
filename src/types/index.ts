@@ -48,6 +48,91 @@ export type CustomerDisplayTheme = (typeof CUSTOMER_DISPLAY_THEMES)[number];
 export const CUSTOMER_DISPLAY_ORIENTATIONS = ['landscape', 'portrait'] as const;
 export type CustomerDisplayOrientation = (typeof CUSTOMER_DISPLAY_ORIENTATIONS)[number];
 
+// ═══════════════════════════════════════════════════════════
+// Ticket Designer
+// ═══════════════════════════════════════════════════════════
+export const TICKET_PAPER_WIDTHS = ['58mm', '72mm', '80mm'] as const;
+export type TicketPaperWidth = (typeof TICKET_PAPER_WIDTHS)[number];
+
+export const TICKET_SEPARATOR_STYLES = ['dashes', 'dots', 'line', 'double', 'stars', 'none'] as const;
+export type TicketSeparatorStyle = (typeof TICKET_SEPARATOR_STYLES)[number];
+
+export const TICKET_FONT_SIZES = ['small', 'medium', 'large'] as const;
+export type TicketFontSize = (typeof TICKET_FONT_SIZES)[number];
+
+export interface TicketDesignConfig {
+  // Header
+  showLogo: boolean;
+  logoSize: 'small' | 'medium' | 'large';
+  showStoreName: boolean;
+  showLegalName: boolean;
+  showAddress: boolean;
+  showPhone: boolean;
+  showRfc: boolean;
+  showRegimen: boolean;
+  showStoreNumber: boolean;
+  // Body (products)
+  showSku: boolean;
+  showBarcode: boolean;
+  showUnitDetail: boolean; // e.g. "2 pza x $25.00"
+  // Totals
+  showSubtotal: boolean;
+  showIva: boolean;
+  showDiscount: boolean;
+  showAmountPaid: boolean;
+  showChange: boolean;
+  showItemCount: boolean;
+  showPaymentMethod: boolean;
+  // Footer
+  customFooterMessage: string;
+  showServicePhone: boolean;
+  showVigencia: boolean;
+  showPoweredBy: boolean;
+  // Barcode / QR
+  showTicketBarcode: boolean;
+  barcodeFormat: 'CODE128' | 'CODE39' | 'QR';
+  // Style
+  paperWidth: TicketPaperWidth;
+  fontSize: TicketFontSize;
+  separatorStyle: TicketSeparatorStyle;
+  // Extra
+  copies: number;
+  headerNote: string; // e.g. "COMPROBANTE DE VENTA"
+}
+
+export const DEFAULT_TICKET_DESIGN: TicketDesignConfig = {
+  showLogo: true,
+  logoSize: 'medium',
+  showStoreName: true,
+  showLegalName: true,
+  showAddress: true,
+  showPhone: true,
+  showRfc: true,
+  showRegimen: false,
+  showStoreNumber: true,
+  showSku: false,
+  showBarcode: false,
+  showUnitDetail: true,
+  showSubtotal: true,
+  showIva: true,
+  showDiscount: true,
+  showAmountPaid: true,
+  showChange: true,
+  showItemCount: true,
+  showPaymentMethod: true,
+  customFooterMessage: '',
+  showServicePhone: true,
+  showVigencia: true,
+  showPoweredBy: true,
+  showTicketBarcode: true,
+  barcodeFormat: 'CODE128',
+  paperWidth: '72mm',
+  fontSize: 'medium',
+  separatorStyle: 'line',
+  copies: 1,
+  headerNote: 'COMPROBANTE DE VENTA',
+};
+
 // === Configuración de Tienda (Ticket) ===
 export interface StoreConfig {
   id: string;
@@ -94,6 +179,9 @@ export interface StoreConfig {
   // Supports template variables: {{storeName}}, {{folio}}, {{fecha}}, {{items}}, {{total}}, etc.
   ticketTemplateVenta?: string;
   ticketTemplateProveedor?: string;
+  // Ticket designer JSON config
+  ticketDesignVenta: TicketDesignConfig;
+  ticketDesignCorte: TicketDesignConfig;
   // Métodos de pago adicionales
   clabeNumber?: string;
   paypalUsername?: string;
@@ -193,6 +281,8 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   customerDisplayAccentColor: '',
   customerDisplaySoundEnabled: false,
   customerDisplayOrientation: 'landscape',
+  ticketDesignVenta: { ...DEFAULT_TICKET_DESIGN },
+  ticketDesignCorte: { ...DEFAULT_TICKET_DESIGN, headerNote: 'CORTE DE CAJA', showItemCount: false, showDiscount: false, showUnitDetail: false },
 };
 
 export interface ProductCategory {

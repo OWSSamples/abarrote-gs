@@ -392,6 +392,9 @@ export const saveStoreConfigSchema = z.object({
   customerDisplayAccentColor: z.string().max(20).optional(),
   customerDisplaySoundEnabled: z.boolean().optional(),
   customerDisplayOrientation: z.string().max(15).optional(),
+  // Ticket designer JSON
+  ticketDesignVenta: z.string().max(5000).optional(),
+  ticketDesignCorte: z.string().max(5000).optional(),
 }).passthrough(); // Allow unknown fields to not break on new config additions
 
 // ══════════════════════════════════════════════════════

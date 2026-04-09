@@ -5,8 +5,8 @@ import { withLogging } from '@/lib/errors';
 import { db } from '@/db';
 import { storeConfig } from '@/db/schema';
 import { eq, getTableColumns } from 'drizzle-orm';
-import type { StoreConfig } from '@/types';
-import { DEFAULT_STORE_CONFIG } from '@/types';
+import type { StoreConfig, TicketDesignConfig } from '@/types';
+import { DEFAULT_STORE_CONFIG, DEFAULT_TICKET_DESIGN } from '@/types';
 import { numVal } from './_helpers';
 import { validateSchema, saveStoreConfigSchema } from '@/lib/validation/schemas';
 import { cache } from '@/infrastructure/redis';
@@ -51,7 +51,19 @@ const CORE_DB_COLUMNS = new Set([
   'customerDisplayIdleAnimation', 'customerDisplayTransitionSpeed',
   'customerDisplayPromoAnimation', 'customerDisplayShowClock',
   'customerDisplayTheme', 'customerDisplayIdleCarousel', 'customerDisplayCarouselInterval',
+  'customerDisplayLogo', 'customerDisplayFontScale', 'customerDisplayAutoReturnSec',
+  'customerDisplayAccentColor', 'customerDisplaySoundEnabled', 'customerDisplayOrientation',
 ]);
+
+function parseTicketDesign(raw: string | null | undefined, defaults: TicketDesignConfig = DEFAULT_TICKET_DESIGN): TicketDesignConfig {
+  if (!raw) return { ...defaults };
+  try {
+    const parsed = JSON.parse(raw);
+    return { ...defaults, ...parsed };
+  } catch {
+    return { ...defaults };
+  }
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapStoreConfigRow(row: any): StoreConfig {
@@ -120,6 +132,14 @@ function mapStoreConfigRow(row: any): StoreConfig {
     customerDisplayTheme: row.customerDisplayTheme ?? DEFAULT_STORE_CONFIG.customerDisplayTheme,
     customerDisplayIdleCarousel: row.customerDisplayIdleCarousel ?? DEFAULT_STORE_CONFIG.customerDisplayIdleCarousel,
     customerDisplayCarouselInterval: row.customerDisplayCarouselInterval ?? DEFAULT_STORE_CONFIG.customerDisplayCarouselInterval,
+    customerDisplayLogo: row.customerDisplayLogo ?? DEFAULT_STORE_CONFIG.customerDisplayLogo,
+    customerDisplayFontScale: row.customerDisplayFontScale ?? DEFAULT_STORE_CONFIG.customerDisplayFontScale,
+    customerDisplayAutoReturnSec: row.customerDisplayAutoReturnSec ?? DEFAULT_STORE_CONFIG.customerDisplayAutoReturnSec,
+    customerDisplayAccentColor: row.customerDisplayAccentColor ?? DEFAULT_STORE_CONFIG.customerDisplayAccentColor,
+    customerDisplaySoundEnabled: row.customerDisplaySoundEnabled ?? DEFAULT_STORE_CONFIG.customerDisplaySoundEnabled,
+    customerDisplayOrientation: row.customerDisplayOrientation ?? DEFAULT_STORE_CONFIG.customerDisplayOrientation,
+    ticketDesignVenta: parseTicketDesign(row.ticketDesignVenta),
+    ticketDesignCorte: parseTicketDesign(row.ticketDesignCorte, { ...DEFAULT_TICKET_DESIGN, headerNote: 'CORTE DE CAJA', showItemCount: false, showDiscount: false, showUnitDetail: false }),
   };
 }
 
@@ -209,13 +229,18 @@ async function _saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig
   const { id: _id, ...fields } = data;
 
   /** Build a dbValues object containing only keys present in the given column set. */
+  const JSON_FIELDS = new Set(['ticketDesignVenta', 'ticketDesignCorte']);
   const buildDbValues = (allowedKeys: Set<string>): Record<string, unknown> => {
     const dbValues: Record<string, unknown> = { updatedAt: new Date() };
     for (const [key, value] of Object.entries(fields)) {
       if (key === 'id' || !allowedKeys.has(key)) continue;
-      dbValues[key] = key === 'defaultStartingFund' && value !== undefined
-        ? String(value)
-        : value;
+      if (key === 'defaultStartingFund' && value !== undefined) {
+        dbValues[key] = String(value);
+      } else if (JSON_FIELDS.has(key) && typeof value === 'object' && value !== null) {
+        dbValues[key] = JSON.stringify(value);
+      } else {
+        dbValues[key] = value;
+      }
     }
     return dbValues;
   };

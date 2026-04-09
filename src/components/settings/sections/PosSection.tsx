@@ -13,6 +13,7 @@ import {
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { TicketTemplateSection, SAMPLE_VARS_VENTA, SAMPLE_VARS_PROVEEDOR } from './TicketTemplateSection';
+import { TicketDesignerSection } from './TicketDesignerSection';
 import type { SettingsSectionProps } from './types';
 
 // ─── Ticket preview helpers ──────────────────────────────────────────────────
@@ -199,6 +200,11 @@ ${center(`Vigencia ${config.ticketVigencia || 'N/A'}`)}
         onChange={(v: string | undefined) => updateField('ticketTemplateProveedor', v as string)}
         sampleVars={SAMPLE_VARS_PROVEEDOR}
       />
+
+      {/* ── Ticket Designer (self-managed, auto-saves) ── */}
+      <Layout.AnnotatedSection title="Diseñador de Tickets" description="Personaliza cada sección del ticket con controles visuales. Los cambios se guardan automáticamente y se reflejan en tiempo real en la vista previa.">
+        <TicketDesignerSection />
+      </Layout.AnnotatedSection>
     </BlockStack>
   );
 }

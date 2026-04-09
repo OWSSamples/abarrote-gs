@@ -46,6 +46,9 @@ export const storeConfig = pgTable('store_config', {
   logoUrl: text('logo_url'),
   ticketTemplateVenta: text('ticket_template_venta'),
   ticketTemplateProveedor: text('ticket_template_proveedor'),
+  // Ticket designer JSON (per-ticket-type design config)
+  ticketDesignVenta: text('ticket_design_venta'),
+  ticketDesignCorte: text('ticket_design_corte'),
   // Métodos de pago adicionales
   clabeNumber: text('clabe_number'),
   paypalUsername: text('paypal_username'),

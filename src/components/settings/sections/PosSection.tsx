@@ -11,7 +11,6 @@ import {
   Layout,
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
-import { TicketTemplateSection, SAMPLE_VARS_VENTA, SAMPLE_VARS_PROVEEDOR } from './TicketTemplateSection';
 import { TicketDesignerSection } from './TicketDesignerSection';
 import type { SettingsSectionProps } from './types';
 
@@ -84,24 +83,6 @@ export function PosSection({ config, updateField }: SettingsSectionProps) {
           </FormLayout>
         </Card>
       </Layout.AnnotatedSection>
-
-      <TicketTemplateSection
-        label="Plantilla de Ticket de Venta"
-        description="Se usa al imprimir desde 'Registrar Venta' e 'Historial de Ventas'. Si no subes una plantilla, se usará el diseño POS por defecto."
-        templateKey="ticketTemplateVenta"
-        value={config.ticketTemplateVenta}
-        onChange={(v: string | undefined) => updateField('ticketTemplateVenta', v as string)}
-        sampleVars={SAMPLE_VARS_VENTA}
-      />
-
-      <TicketTemplateSection
-        label="Plantilla de Ticket de Proveedor (Orden de Surtido)"
-        description="Se usa al imprimir desde 'Crear / Ver Pedido'. Si no subes una plantilla, se usará el diseño POS por defecto."
-        templateKey="ticketTemplateProveedor"
-        value={config.ticketTemplateProveedor}
-        onChange={(v: string | undefined) => updateField('ticketTemplateProveedor', v as string)}
-        sampleVars={SAMPLE_VARS_PROVEEDOR}
-      />
 
       {/* ── Ticket Designer (self-managed, auto-saves) ── */}
       <Layout.AnnotatedSection title="Diseñador de Tickets" description="Personaliza cada sección del ticket con controles visuales y vista previa en tiempo real. Soporta tickets de venta, corte de caja y órdenes de proveedor.">

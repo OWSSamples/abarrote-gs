@@ -60,7 +60,7 @@
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.576.0",
     "mercadopago": "^2.0.15",
-    "next": "^16.2.2",
+    "next": "^16.2.3",
     "postgres": "^3.4.8",
     "postprocessing": "^6.38.3",
     "radix-ui": "^1.4.3",

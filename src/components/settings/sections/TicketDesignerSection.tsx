@@ -164,15 +164,21 @@ function SectionHeader({
     >
       <BlockStack gap="100">
         <InlineStack align="space-between" blockAlign="center">
-          <InlineStack gap="200" blockAlign="center">
-            <Icon source={icon} tone="base" />
+          <InlineStack gap="300" blockAlign="center">
+            <Box
+              background="bg-surface-secondary"
+              borderRadius="200"
+              padding="150"
+            >
+              <Icon source={icon} tone="base" />
+            </Box>
             <Text variant="headingSm" as="h3">{title}</Text>
             {badge && <Badge tone="info">{badge}</Badge>}
           </InlineStack>
           <Icon source={open ? ChevronUpIcon : ChevronDownIcon} tone="subdued" />
         </InlineStack>
         {description && !open && (
-          <Box paddingInlineStart="600">
+          <Box paddingInlineStart="1000">
             <Text as="p" variant="bodySm" tone="subdued">{description}</Text>
           </Box>
         )}
@@ -338,7 +344,7 @@ export function TicketDesignerSection() {
       </Card>
 
       {/* ── Main layout: Controls + Preview ── */}
-      <InlineGrid columns={{ xs: 1, lg: ['twoThirds', 'oneThird'] }} gap="400">
+      <InlineGrid columns={{ xs: 1, lg: ['oneHalf', 'oneHalf'] }} gap="400">
         {/* ═══════════ LEFT: Controls ═══════════ */}
         <BlockStack gap="300">
 
@@ -771,7 +777,9 @@ export function TicketDesignerSection() {
                 <Text as="p" variant="bodySm" tone="subdued">
                   Simulación con datos de ejemplo. La impresión real usa los datos de la {activeTab === 'proveedor' ? 'orden de compra' : 'operación'}.
                 </Text>
-                <TicketPreview design={currentDesign} config={storeConfig} type={ticketType} />
+                <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
+                  <TicketPreview design={currentDesign} config={storeConfig} type={ticketType} />
+                </div>
               </BlockStack>
             </Card>
           </div>

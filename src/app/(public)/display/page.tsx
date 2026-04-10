@@ -127,6 +127,13 @@ function msgTextStyle(ms: MessageStyle | undefined, fallbackColor?: string): Rea
   };
 }
 
+/** Map CSS text-align values to Polaris Alignment / Align types */
+function toPolarisAlign(align: string | undefined): 'start' | 'center' | 'end' {
+  if (align === 'left') return 'start';
+  if (align === 'right') return 'end';
+  return 'center';
+}
+
 /** Build inline animation style for a given config */
 function buildAnimStyle(
   animation: string,
@@ -442,11 +449,11 @@ export default function CustomerDisplayPage() {
               <div style={buildAnimStyle(idleAnimation, speedMs, 100)}>
                 {activeSlide === 'welcome' && (
                   <BlockStack gap="200" inlineAlign="center">
-                    <Text variant={MSG_SIZE_TO_VARIANT[welcomeStyle?.textSize ?? '2xl']} as="h1" alignment={welcomeStyle?.textAlign ?? 'center'}>
+                    <Text variant={MSG_SIZE_TO_VARIANT[welcomeStyle?.textSize ?? '2xl']} as="h1" alignment={toPolarisAlign(welcomeStyle?.textAlign)}>
                       <span style={msgTextStyle(welcomeStyle, themeConfig.text)}>{welcomeMsg}</span>
                     </Text>
                     {(welcomeStyle?.subtitle ?? 'Estamos a su servicio') && (
-                      <Text variant={MSG_SIZE_TO_SUBTITLE_VARIANT[welcomeStyle?.textSize ?? '2xl']} as="p" alignment={welcomeStyle?.textAlign ?? 'center'}>
+                      <Text variant={MSG_SIZE_TO_SUBTITLE_VARIANT[welcomeStyle?.textSize ?? '2xl']} as="p" alignment={toPolarisAlign(welcomeStyle?.textAlign)}>
                         <span style={{ color: themeConfig.accent }}>{welcomeStyle?.subtitle ?? 'Estamos a su servicio'}</span>
                       </Text>
                     )}
@@ -454,9 +461,9 @@ export default function CustomerDisplayPage() {
                 )}
                 {activeSlide === 'promo-text' && (
                   <Box padding="400" borderRadius="200">
-                    <InlineStack gap="200" blockAlign="center" align={promoStyle?.textAlign ?? 'center'}>
+                    <InlineStack gap="200" blockAlign="center" align={toPolarisAlign(promoStyle?.textAlign)}>
                       {(promoStyle?.showIcon !== false) && <Icon source={GiftCardIcon} tone="success" />}
-                      <Text variant={MSG_SIZE_TO_VARIANT[promoStyle?.textSize ?? 'lg']} as="p" alignment={promoStyle?.textAlign ?? 'center'} tone="success">
+                      <Text variant={MSG_SIZE_TO_VARIANT[promoStyle?.textSize ?? 'lg']} as="p" alignment={toPolarisAlign(promoStyle?.textAlign)} tone="success">
                         <span style={msgTextStyle(promoStyle)}>{promoText}</span>
                       </Text>
                     </InlineStack>
@@ -468,11 +475,11 @@ export default function CustomerDisplayPage() {
                 {/* Welcome text */}
                 <div style={buildAnimStyle(idleAnimation, speedMs, 100)}>
                   <BlockStack gap="200" inlineAlign="center">
-                    <Text variant={MSG_SIZE_TO_VARIANT[welcomeStyle?.textSize ?? '2xl']} as="h1" alignment={welcomeStyle?.textAlign ?? 'center'}>
+                    <Text variant={MSG_SIZE_TO_VARIANT[welcomeStyle?.textSize ?? '2xl']} as="h1" alignment={toPolarisAlign(welcomeStyle?.textAlign)}>
                       <span style={msgTextStyle(welcomeStyle, themeConfig.text)}>{welcomeMsg}</span>
                     </Text>
                     {(welcomeStyle?.subtitle ?? 'Estamos a su servicio') && (
-                      <Text variant={MSG_SIZE_TO_SUBTITLE_VARIANT[welcomeStyle?.textSize ?? '2xl']} as="p" alignment={welcomeStyle?.textAlign ?? 'center'}>
+                      <Text variant={MSG_SIZE_TO_SUBTITLE_VARIANT[welcomeStyle?.textSize ?? '2xl']} as="p" alignment={toPolarisAlign(welcomeStyle?.textAlign)}>
                         <span style={{ color: themeConfig.accent }}>{welcomeStyle?.subtitle ?? 'Estamos a su servicio'}</span>
                       </Text>
                     )}
@@ -483,9 +490,9 @@ export default function CustomerDisplayPage() {
                 {promoText && (
                   <div style={buildAnimStyle(idleAnimation, speedMs, 200)}>
                     <Box padding="400" borderRadius="200">
-                      <InlineStack gap="200" blockAlign="center" align={promoStyle?.textAlign ?? 'center'}>
+                      <InlineStack gap="200" blockAlign="center" align={toPolarisAlign(promoStyle?.textAlign)}>
                         {(promoStyle?.showIcon !== false) && <Icon source={GiftCardIcon} tone="success" />}
-                        <Text variant={MSG_SIZE_TO_VARIANT[promoStyle?.textSize ?? 'lg']} as="p" alignment={promoStyle?.textAlign ?? 'center'} tone="success">
+                        <Text variant={MSG_SIZE_TO_VARIANT[promoStyle?.textSize ?? 'lg']} as="p" alignment={toPolarisAlign(promoStyle?.textAlign)} tone="success">
                           <span style={msgTextStyle(promoStyle)}>{promoText}</span>
                         </Text>
                       </InlineStack>
@@ -615,15 +622,15 @@ export default function CustomerDisplayPage() {
 
               <div style={buildAnimStyle('fade', 600, 500)}>
                 <BlockStack gap="100" inlineAlign="center">
-                  <InlineStack gap="200" blockAlign="center" align={farewellStyle?.textAlign ?? 'center'}>
+                  <InlineStack gap="200" blockAlign="center" align={toPolarisAlign(farewellStyle?.textAlign)}>
                     {(farewellStyle?.showIcon !== false) && <Icon source={StarFilledIcon} tone="warning" />}
-                    <Text variant={MSG_SIZE_TO_VARIANT[farewellStyle?.textSize ?? 'md']} as="p" alignment={farewellStyle?.textAlign ?? 'center'}>
+                    <Text variant={MSG_SIZE_TO_VARIANT[farewellStyle?.textSize ?? 'md']} as="p" alignment={toPolarisAlign(farewellStyle?.textAlign)}>
                       <span style={msgTextStyle(farewellStyle)}>{farewellMsg}</span>
                     </Text>
                     {(farewellStyle?.showIcon !== false) && <Icon source={StarFilledIcon} tone="warning" />}
                   </InlineStack>
                   {farewellStyle?.subtitle && (
-                    <Text variant="bodySm" as="p" tone="subdued" alignment={farewellStyle.textAlign ?? 'center'}>
+                    <Text variant="bodySm" as="p" tone="subdued" alignment={toPolarisAlign(farewellStyle?.textAlign)}>
                       {farewellStyle.subtitle}
                     </Text>
                   )}

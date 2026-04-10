@@ -532,6 +532,4 @@ export {
   BRUTE_FORCE,
   BULK,
   READ_HEAVY,
-  type RateLimitTier,
-  type TieredRateLimitConfig,
 };

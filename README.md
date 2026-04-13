@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/icon/icon-512.png" alt="Kiosko" width="120" height="120" />
+  <img src="public/icon/OWS-Dash.png" alt="Kiosko" width="120" height="120" />
 </p>
 
-<h1 align="center">Kiosko</h1>
+<h1 align="center">Kiosko</h1>s
 
 <p align="center">
   <strong>Sistema de Punto de Venta de Nueva Generación para el Comercio Mexicano</strong>

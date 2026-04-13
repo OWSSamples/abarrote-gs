@@ -150,10 +150,18 @@ export default function DashboardOverviewPage() {
     return 'Buenas noches';
   }, []);
 
+  const userName = useMemo(() => {
+    const name = user?.displayName?.split(' ')[0];
+    if (name && /^[a-záéíóúüñA-ZÁÉÍÓÚÜÑ]{2,}/i.test(name)) return name;
+    const emailName = user?.email?.split('@')[0];
+    if (emailName) return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+    return 'Administrador';
+  }, [user?.displayName, user?.email]);
+
   return (
     <>
       <Page
-        title={`${greeting}, ${user?.displayName?.split(' ')[0] || 'Administrador'}`}
+        title={`${greeting}, ${userName}`}
         subtitle={new Date().toLocaleDateString('es-MX', {
           weekday: 'long',
           day: 'numeric',

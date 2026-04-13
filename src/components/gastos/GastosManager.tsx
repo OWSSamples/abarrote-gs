@@ -10,21 +10,26 @@ import {
   Badge,
   BlockStack,
   InlineStack,
+  InlineGrid,
   TextField,
   Select,
   Button,
   Modal,
-  FormLayout,
   Box,
   Checkbox,
   Banner,
   DropZone,
+  Divider,
+  ProgressBar,
+  Popover,
+  DatePicker,
+  Icon,
+  OptionList,
 } from '@shopify/polaris';
-import { PlusIcon, ExportIcon } from '@shopify/polaris-icons';
+import { PlusIcon, ExportIcon, CalendarIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { formatCurrency } from '@/lib/utils';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyStateCard } from '@/components/ui/EmptyStateCard';
 import { DeleteConfirmation } from '@/components/ui/DeleteConfirmation';
@@ -73,6 +78,16 @@ export function GastosManager() {
   const [uploadedComprobanteUrl, setUploadedComprobanteUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // ── DatePicker state (Add / Edit modals) ──
+  const [addDatePickerOpen, setAddDatePickerOpen] = useState(false);
+  const [addMonthYear, setAddMonthYear] = useState({ month: new Date().getMonth(), year: new Date().getFullYear() });
+  const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
+  const [editMonthYear, setEditMonthYear] = useState({ month: new Date().getMonth(), year: new Date().getFullYear() });
+
+  // ── Category Popover state ──
+  const [addCategoryOpen, setAddCategoryOpen] = useState(false);
+  const [editCategoryOpen, setEditCategoryOpen] = useState(false);
 
   const uploadComprobante = async (file: File) => {
     const formData = new FormData();
@@ -337,66 +352,120 @@ export function GastosManager() {
     ];
   }, []);
 
+  const expenseRatio = totalVentas > 0 ? (totalGastos / totalVentas) * 100 : 0;
+
   return (
     <>
-      <BlockStack gap="400">
-        {/* Summary Cards */}
-        <InlineStack gap="400" align="start">
-          <Box minWidth="200px">
-            <StatCard label="Total Gastos" value={totalGastos} format="currency" tone="critical" />
-          </Box>
-          <Box minWidth="200px">
-            <StatCard label="Total Ventas" value={totalVentas} format="currency" />
-          </Box>
-          <Box minWidth="200px">
-            <StatCard
-              label="Ganancia Estimada"
-              value={gananciaEstimada}
-              format="currency"
-              tone={gananciaEstimada >= 0 ? 'success' : 'critical'}
-            />
-          </Box>
-        </InlineStack>
+      <BlockStack gap="600">
+        {/* ═══ CHAPTER 1: PANORAMA FINANCIERO ═══ */}
+        <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
+          <StatCard
+            label="Total Gastos"
+            value={totalGastos}
+            format="currency"
+            tone="critical"
+            badge={{ content: `${filteredGastos.length} registros`, tone: 'info' }}
+          />
+          <StatCard label="Ingresos del Período" value={totalVentas} format="currency" />
+          <StatCard
+            label="Resultado Neto"
+            value={gananciaEstimada}
+            format="currency"
+            tone={gananciaEstimada >= 0 ? 'success' : 'critical'}
+          />
+          <StatCard
+            label="Eficiencia Operativa"
+            value={totalVentas > 0 ? `${expenseRatio.toFixed(1)}%` : '—'}
+            format="text"
+            badge={{
+              content: totalVentas > 0
+                ? expenseRatio <= 30 ? 'Eficiente' : expenseRatio <= 50 ? 'Moderado' : 'Alto'
+                : 'Sin datos',
+              tone: totalVentas > 0
+                ? expenseRatio <= 30 ? 'success' : expenseRatio <= 50 ? 'warning' : 'critical'
+                : 'info',
+            }}
+          />
+        </InlineGrid>
 
-        {/* Category breakdown */}
+        {/* ═══ CHAPTER 2: DISTRIBUCIÓN DE EGRESOS ═══ */}
         {gastosByCategory.length > 0 && (
           <Card>
-            <BlockStack gap="200">
-              <Text as="h3" variant="headingSm">
-                Gastos por Categoría
-              </Text>
-              {gastosByCategory.map(([cat, amount]) => (
-                <InlineStack key={cat} align="space-between">
-                  <Badge tone={categoriaBadge[cat].tone}>{categoriaBadge[cat].label}</Badge>
-                  <Text as="span" fontWeight="semibold">
-                    {formatCurrency(amount)}
+            <BlockStack gap="400">
+              <InlineStack align="space-between" blockAlign="center">
+                <BlockStack gap="100">
+                  <Text as="h3" variant="headingMd" fontWeight="bold">
+                    Distribución de Gastos
                   </Text>
-                </InlineStack>
-              ))}
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Desglose proporcional por categoría — identifica dónde se concentra el gasto
+                  </Text>
+                </BlockStack>
+                <Badge>{`${gastosByCategory.length} categorías`}</Badge>
+              </InlineStack>
+              <Divider />
+              <BlockStack gap="400">
+                {gastosByCategory.map(([cat, amount]) => {
+                  const pct = totalGastos > 0 ? (amount / totalGastos) * 100 : 0;
+                  return (
+                    <BlockStack key={cat} gap="150">
+                      <InlineStack align="space-between" blockAlign="center">
+                        <Badge tone={categoriaBadge[cat].tone}>{categoriaBadge[cat].label}</Badge>
+                        <InlineStack gap="300" blockAlign="center">
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            {pct.toFixed(1)}%
+                          </Text>
+                          <Text as="span" variant="bodySm" fontWeight="bold">
+                            {formatCurrency(amount)}
+                          </Text>
+                        </InlineStack>
+                      </InlineStack>
+                      <ProgressBar
+                        progress={pct}
+                        tone={pct >= 40 ? 'critical' : 'primary'}
+                        size="small"
+                      />
+                    </BlockStack>
+                  );
+                })}
+              </BlockStack>
             </BlockStack>
           </Card>
         )}
 
-        {/* Filters + Actions */}
+        {/* ═══ CHAPTER 3: REGISTRO DE TRANSACCIONES ═══ */}
         <Card>
-          <BlockStack gap="300">
-            <SectionHeader
-              title="Registro de Gastos"
-              primaryAction={{
-                content: 'Nuevo Gasto',
-                icon: PlusIcon,
-                onAction: () => {
-                  setAddOpen(true);
-                  setComprobanteFile(null);
-                  setUploadedComprobanteUrl(null);
-                  resetAddForm();
-                },
-              }}
-              secondaryActions={[{ content: 'Exportar', icon: ExportIcon, onAction: () => setIsExportOpen(true) }]}
-            />
-
-            <InlineStack gap="200" align="start" blockAlign="end">
-              <Box minWidth="200px">
+          <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center">
+              <BlockStack gap="100">
+                <Text as="h3" variant="headingMd" fontWeight="bold">
+                  Registro de Gastos
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Detalle individual de cada egreso operativo
+                </Text>
+              </BlockStack>
+              <InlineStack gap="200">
+                <Button icon={ExportIcon} onClick={() => setIsExportOpen(true)} variant="secondary">
+                  Exportar
+                </Button>
+                <Button
+                  icon={PlusIcon}
+                  variant="primary"
+                  onClick={() => {
+                    setAddOpen(true);
+                    setComprobanteFile(null);
+                    setUploadedComprobanteUrl(null);
+                    resetAddForm();
+                  }}
+                >
+                  Nuevo Gasto
+                </Button>
+              </InlineStack>
+            </InlineStack>
+            <Divider />
+            <InlineStack gap="300" align="start" blockAlign="end">
+              <Box minWidth="220px">
                 <Select
                   label="Categoría"
                   options={categoriaOptions as { label: string; value: string }[]}
@@ -404,7 +473,7 @@ export function GastosManager() {
                   onChange={setFilterCategoria}
                 />
               </Box>
-              <Box minWidth="200px">
+              <Box minWidth="220px">
                 <Select label="Mes" options={monthOptions} value={filterMonth} onChange={setFilterMonth} />
               </Box>
             </InlineStack>
@@ -499,7 +568,7 @@ export function GastosManager() {
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        title="Registrar Gasto"
+        title="Registrar Nuevo Gasto"
         primaryAction={{
           content: 'Guardar Gasto',
           onAction: () => {
@@ -511,83 +580,167 @@ export function GastosManager() {
           { content: 'Cancelar', onAction: () => setAddOpen(false), disabled: isUploading || isAnalyzing },
         ]}
       >
+        {/* ── SECTION 1: AI Receipt Upload (fastest path) ── */}
         <Modal.Section>
-          <FormLayout>
+          <BlockStack gap="300">
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingSm" fontWeight="bold">
+                Escaneo Inteligente
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Sube un ticket o factura y la IA rellenará los campos automáticamente
+              </Text>
+            </BlockStack>
+            <DropZone
+              accept="image/*,application/pdf"
+              type="file"
+              allowMultiple={false}
+              onDrop={handleAddDropZoneDrop}
+            >
+              <DropZone.FileUpload
+                actionHint={
+                  isAnalyzing
+                    ? 'Analizando con IA...'
+                    : comprobanteFile
+                      ? comprobanteFile.name
+                      : 'Arrastra o selecciona: JPG, PNG, PDF'
+                }
+              />
+            </DropZone>
+            {isAnalyzing && (
+              <Banner tone="info">Analizando el ticket con IA — los campos se llenarán automáticamente...</Banner>
+            )}
+            {comprobanteFile && !isAnalyzing && (
+              <InlineStack gap="200" blockAlign="center">
+                <Badge tone="success">Archivo adjuntado</Badge>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {comprobanteFile.name}
+                </Text>
+              </InlineStack>
+            )}
+          </BlockStack>
+        </Modal.Section>
+
+        {/* ── SECTION 2: Core expense data ── */}
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="h3" variant="headingSm" fontWeight="bold">
+              Datos del Gasto
+            </Text>
             <TextField
               label="Concepto"
+              placeholder="Ej: Pago de renta mensual"
               value={addFields.concepto.value}
               onChange={addFields.concepto.onChange}
               error={addFields.concepto.error}
               autoComplete="off"
             />
-            <Select
-              label="Categoría"
-              options={
-                [{ label: 'Seleccionar...', value: '' }, ...categoriaFormOptions] as { label: string; value: string }[]
+            <Popover
+              active={addCategoryOpen}
+              activator={
+                <TextField
+                  label="Categoría"
+                  value={
+                    addFields.categoria.value
+                      ? (categoriaFormOptions.find((o) => o.value === addFields.categoria.value)?.label ?? '')
+                      : ''
+                  }
+                  onFocus={() => setAddCategoryOpen(true)}
+                  onChange={() => {}}
+                  placeholder="Seleccionar categoría..."
+                  autoComplete="off"
+                  error={addFields.categoria.error}
+                  readOnly
+                />
               }
-              value={addFields.categoria.value}
-              onChange={(v) => addFields.categoria.onChange(v as GastoCategoria)}
-              error={addFields.categoria.error}
-            />
+              onClose={() => setAddCategoryOpen(false)}
+              fullWidth
+              preferredAlignment="left"
+            >
+              <OptionList
+                onChange={(selected) => {
+                  addFields.categoria.onChange(selected[0] as GastoCategoria);
+                  setAddCategoryOpen(false);
+                }}
+                options={categoriaFormOptions.map((o) => ({ value: o.value as string, label: o.label }))}
+                selected={addFields.categoria.value ? [addFields.categoria.value] : []}
+              />
+            </Popover>
+            <InlineGrid columns={2} gap="300">
+              <TextField
+                label="Monto"
+                type="number"
+                value={addFields.monto.value}
+                onChange={addFields.monto.onChange}
+                error={addFields.monto.error}
+                autoComplete="off"
+                prefix="$"
+                suffix="MXN"
+              />
+              <Popover
+                active={addDatePickerOpen}
+                activator={
+                  <TextField
+                    label="Fecha"
+                    value={
+                      addFields.fecha.value
+                        ? new Date(addFields.fecha.value + 'T12:00:00').toLocaleDateString('es-MX')
+                        : ''
+                    }
+                    onFocus={() => setAddDatePickerOpen(true)}
+                    onChange={() => {}}
+                    placeholder="Seleccionar fecha"
+                    autoComplete="off"
+                    prefix={<Icon source={CalendarIcon} />}
+                    readOnly
+                  />
+                }
+                onClose={() => setAddDatePickerOpen(false)}
+                preferredAlignment="left"
+              >
+                <div style={{ padding: '8px', width: '260px' }}>
+                  <DatePicker
+                    month={addMonthYear.month}
+                    year={addMonthYear.year}
+                    selected={
+                      addFields.fecha.value
+                        ? { start: new Date(addFields.fecha.value + 'T12:00:00'), end: new Date(addFields.fecha.value + 'T12:00:00') }
+                        : undefined
+                    }
+                    onMonthChange={(m, y) => setAddMonthYear({ month: m, year: y })}
+                    onChange={({ start }) => {
+                      const d = start as Date;
+                      addFields.fecha.onChange(d.toISOString().split('T')[0]);
+                      setAddDatePickerOpen(false);
+                    }}
+                  />
+                </div>
+              </Popover>
+            </InlineGrid>
+          </BlockStack>
+        </Modal.Section>
+
+        {/* ── SECTION 3: Additional context ── */}
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text as="h3" variant="headingSm" fontWeight="bold">
+              Información Adicional
+            </Text>
             <TextField
-              label="Monto (MXN)"
-              type="number"
-              value={addFields.monto.value}
-              onChange={addFields.monto.onChange}
-              error={addFields.monto.error}
-              autoComplete="off"
-              prefix="$"
-            />
-            <TextField
-              label="Fecha"
-              type="date"
-              value={addFields.fecha.value}
-              onChange={addFields.fecha.onChange}
-              autoComplete="off"
-            />
-            <TextField
-              label="Notas (opcional)"
+              label="Notas"
+              placeholder="Detalles o referencias adicionales..."
               value={addFields.notas.value}
               onChange={addFields.notas.onChange}
               autoComplete="off"
               multiline={2}
             />
             <Checkbox
-              label="¿Tiene comprobante/factura?"
+              label="Registrar comprobante/factura adjunta"
+              helpText="Marca si ya subiste un archivo arriba o si cuentas con comprobante digital"
               checked={addFields.comprobante.value}
               onChange={addFields.comprobante.onChange}
             />
-            {addFields.comprobante.value && (
-              <Box paddingBlockStart="200">
-                <Text as="p" variant="bodyMd" fontWeight="semibold">
-                  Subir archivo (Ticket/Factura)
-                </Text>
-                <Box paddingBlockStart="100">
-                  <DropZone
-                    accept="image/*,application/pdf"
-                    type="file"
-                    allowMultiple={false}
-                    onDrop={handleAddDropZoneDrop}
-                  >
-                    <DropZone.FileUpload
-                      actionHint={
-                        isAnalyzing
-                          ? 'Analizando con IA...'
-                          : comprobanteFile
-                            ? comprobanteFile.name
-                            : 'Archivos permitidos: JPG, PNG, PDF'
-                      }
-                    />
-                  </DropZone>
-                  {isAnalyzing && (
-                    <Box paddingBlockStart="200">
-                      <Banner tone="info">Analizando el ticket con IA, espere un momento para el autollenado...</Banner>
-                    </Box>
-                  )}
-                </Box>
-              </Box>
-            )}
-          </FormLayout>
+          </BlockStack>
         </Modal.Section>
       </Modal>
 
@@ -607,8 +760,55 @@ export function GastosManager() {
           { content: 'Cancelar', onAction: () => setEditOpen(false), disabled: isUploading || isAnalyzing },
         ]}
       >
+        {/* ── SECTION 1: Receipt / AI Upload ── */}
         <Modal.Section>
-          <FormLayout>
+          <BlockStack gap="300">
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingSm" fontWeight="bold">
+                Comprobante
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                {editOriginalUrl
+                  ? 'Ya tiene un archivo adjunto. Sube otro para reemplazar y re-escanear con IA.'
+                  : 'Sube un ticket o factura para extraer datos automáticamente'}
+              </Text>
+            </BlockStack>
+            <DropZone
+              accept="image/*,application/pdf"
+              type="file"
+              allowMultiple={false}
+              onDrop={handleEditDropZoneDrop}
+            >
+              <DropZone.FileUpload
+                actionHint={
+                  isAnalyzing
+                    ? 'Analizando con IA...'
+                    : comprobanteFile
+                      ? comprobanteFile.name
+                      : 'Arrastra o selecciona: JPG, PNG, PDF'
+                }
+              />
+            </DropZone>
+            {isAnalyzing && (
+              <Banner tone="info">Analizando el ticket con IA — los campos se actualizarán automáticamente...</Banner>
+            )}
+            {(comprobanteFile || editOriginalUrl) && !isAnalyzing && (
+              <InlineStack gap="200" blockAlign="center">
+                <Badge tone="success">{comprobanteFile ? 'Nuevo archivo' : 'Archivo existente'}</Badge>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {comprobanteFile ? comprobanteFile.name : 'Comprobante original'}
+                </Text>
+              </InlineStack>
+            )}
+          </BlockStack>
+        </Modal.Section>
+
+        {/* ── SECTION 2: Core expense data ── */}
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="h3" variant="headingSm" fontWeight="bold">
+              Datos del Gasto
+            </Text>
             <TextField
               label="Concepto"
               value={editFields.concepto.value}
@@ -616,76 +816,112 @@ export function GastosManager() {
               error={editFields.concepto.error}
               autoComplete="off"
             />
-            <Select
-              label="Categoría"
-              options={
-                [{ label: 'Seleccionar...', value: '' }, ...categoriaFormOptions] as { label: string; value: string }[]
+            <Popover
+              active={editCategoryOpen}
+              activator={
+                <TextField
+                  label="Categoría"
+                  value={
+                    editFields.categoria.value
+                      ? (categoriaFormOptions.find((o) => o.value === editFields.categoria.value)?.label ?? '')
+                      : ''
+                  }
+                  onFocus={() => setEditCategoryOpen(true)}
+                  onChange={() => {}}
+                  placeholder="Seleccionar categoría..."
+                  autoComplete="off"
+                  error={editFields.categoria.error}
+                  readOnly
+                />
               }
-              value={editFields.categoria.value}
-              onChange={(v) => editFields.categoria.onChange(v as GastoCategoria)}
-              error={editFields.categoria.error}
-            />
+              onClose={() => setEditCategoryOpen(false)}
+              fullWidth
+              preferredAlignment="left"
+            >
+              <OptionList
+                onChange={(selected) => {
+                  editFields.categoria.onChange(selected[0] as GastoCategoria);
+                  setEditCategoryOpen(false);
+                }}
+                options={categoriaFormOptions.map((o) => ({ value: o.value as string, label: o.label }))}
+                selected={editFields.categoria.value ? [editFields.categoria.value] : []}
+              />
+            </Popover>
+            <InlineGrid columns={2} gap="300">
+              <TextField
+                label="Monto"
+                type="number"
+                value={editFields.monto.value}
+                onChange={editFields.monto.onChange}
+                error={editFields.monto.error}
+                autoComplete="off"
+                prefix="$"
+                suffix="MXN"
+              />
+              <Popover
+                active={editDatePickerOpen}
+                activator={
+                  <TextField
+                    label="Fecha"
+                    value={
+                      editFields.fecha.value
+                        ? new Date(editFields.fecha.value + 'T12:00:00').toLocaleDateString('es-MX')
+                        : ''
+                    }
+                    onFocus={() => setEditDatePickerOpen(true)}
+                    onChange={() => {}}
+                    placeholder="Seleccionar fecha"
+                    autoComplete="off"
+                    prefix={<Icon source={CalendarIcon} />}
+                    readOnly
+                  />
+                }
+                onClose={() => setEditDatePickerOpen(false)}
+                preferredAlignment="left"
+              >
+                <div style={{ padding: '8px', width: '260px' }}>
+                  <DatePicker
+                    month={editMonthYear.month}
+                    year={editMonthYear.year}
+                    selected={
+                      editFields.fecha.value
+                        ? { start: new Date(editFields.fecha.value + 'T12:00:00'), end: new Date(editFields.fecha.value + 'T12:00:00') }
+                        : undefined
+                    }
+                    onMonthChange={(m, y) => setEditMonthYear({ month: m, year: y })}
+                    onChange={({ start }) => {
+                      const d = start as Date;
+                      editFields.fecha.onChange(d.toISOString().split('T')[0]);
+                      setEditDatePickerOpen(false);
+                    }}
+                  />
+                </div>
+              </Popover>
+            </InlineGrid>
+          </BlockStack>
+        </Modal.Section>
+
+        {/* ── SECTION 3: Additional context ── */}
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text as="h3" variant="headingSm" fontWeight="bold">
+              Información Adicional
+            </Text>
             <TextField
-              label="Monto (MXN)"
-              type="number"
-              value={editFields.monto.value}
-              onChange={editFields.monto.onChange}
-              error={editFields.monto.error}
-              autoComplete="off"
-              prefix="$"
-            />
-            <TextField
-              label="Fecha"
-              type="date"
-              value={editFields.fecha.value}
-              onChange={editFields.fecha.onChange}
-              autoComplete="off"
-            />
-            <TextField
-              label="Notas (opcional)"
+              label="Notas"
+              placeholder="Detalles o referencias adicionales..."
               value={editFields.notas.value}
               onChange={editFields.notas.onChange}
               autoComplete="off"
               multiline={2}
             />
             <Checkbox
-              label="¿Tiene comprobante/factura?"
+              label="Registrar comprobante/factura adjunta"
+              helpText="Marca si ya subiste un archivo arriba o si cuentas con comprobante digital"
               checked={editFields.comprobante.value}
               onChange={editFields.comprobante.onChange}
             />
-            {editFields.comprobante.value && (
-              <Box paddingBlockStart="200">
-                <Text as="p" variant="bodyMd" fontWeight="semibold">
-                  Subir archivo nuevo (Opcional)
-                </Text>
-                <Box paddingBlockStart="100">
-                  <DropZone
-                    accept="image/*,application/pdf"
-                    type="file"
-                    allowMultiple={false}
-                    onDrop={handleEditDropZoneDrop}
-                  >
-                    <DropZone.FileUpload
-                      actionHint={
-                        isAnalyzing
-                          ? 'Analizando con IA...'
-                          : comprobanteFile
-                            ? comprobanteFile.name
-                            : editOriginalUrl
-                              ? 'Ya tiene archivo. Sube otro para reemplazar y re-escanear.'
-                              : 'Archivos permitidos: JPG, PNG, PDF'
-                      }
-                    />
-                  </DropZone>
-                  {isAnalyzing && (
-                    <Box paddingBlockStart="200">
-                      <Banner tone="info">Analizando el ticket con IA, espere un momento para el autollenado...</Banner>
-                    </Box>
-                  )}
-                </Box>
-              </Box>
-            )}
-          </FormLayout>
+          </BlockStack>
         </Modal.Section>
       </Modal>
 

@@ -35,9 +35,14 @@ export function CashFlowCard({ flujoMensual }: CashFlowCardProps) {
     <Card>
       <BlockStack gap="400">
         <InlineStack align="space-between" blockAlign="center">
-          <Text as="h3" variant="headingMd" fontWeight="bold">
-            Flujo de Efectivo — Últimos 6 Meses
-          </Text>
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingMd" fontWeight="bold">
+              Flujo de Efectivo — Últimos 6 Meses
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Tendencia de ingresos vs egresos para evaluar liquidez
+            </Text>
+          </BlockStack>
           <Badge tone={totals.neto >= 0 ? 'success' : 'critical'}>
             {`Neto: ${formatCurrency(totals.neto)}`}
           </Badge>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Card,
   IndexTable,
@@ -13,10 +13,14 @@ import {
   Select,
   BlockStack,
   InlineStack,
+  InlineGrid,
   EmptyState,
+  Box,
+  Divider,
+  ProgressBar,
   useIndexResourceState,
 } from '@shopify/polaris';
-import { ExportIcon } from '@shopify/polaris-icons';
+import { PlusIcon, ExportIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { GenericExportModal } from '@/components/inventory/ShopifyModals';
@@ -25,6 +29,7 @@ import { generatePDF } from '@/components/export/generatePDF';
 
 export function ProveedoresManager() {
   const proveedores = useDashboardStore((s) => s.proveedores);
+  const pedidos = useDashboardStore((s) => s.pedidos);
   const addProveedor = useDashboardStore((s) => s.addProveedor);
   const deleteProveedor = useDashboardStore((s) => s.deleteProveedor);
   const { showSuccess, showError } = useToast();
@@ -39,13 +44,50 @@ export function ProveedoresManager() {
   const [notas, setNotas] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const resourceName = {
     singular: 'proveedor',
     plural: 'proveedores',
   };
 
-  const proveedorItems = proveedores.map((p) => ({ ...p }));
+  // ── KPI computations ──
+  const stats = useMemo(() => {
+    const total = proveedores.length;
+    const activos = proveedores.filter((p) => p.activo).length;
+    const inactivos = total - activos;
+    const conPedidos = proveedores.filter((p) => p.ultimoPedido).length;
+    const sinPedidos = total - conPedidos;
+    const pedidosPendientes = pedidos.filter((p) => p.estado === 'pendiente').length;
+    return { total, activos, inactivos, conPedidos, sinPedidos, pedidosPendientes };
+  }, [proveedores, pedidos]);
+
+  // ── Category distribution ──
+  const categoryDistribution = useMemo(() => {
+    const map: Record<string, number> = {};
+    proveedores.forEach((p) => {
+      p.categorias.forEach((c) => {
+        map[c] = (map[c] || 0) + 1;
+      });
+    });
+    return Object.entries(map)
+      .map(([cat, count]) => ({ cat, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [proveedores]);
+
+  // ── Filtered proveedores ──
+  const filteredProveedores = useMemo(() => {
+    if (!searchQuery.trim()) return proveedores;
+    const q = searchQuery.toLowerCase();
+    return proveedores.filter(
+      (p) =>
+        p.nombre.toLowerCase().includes(q) ||
+        p.contacto.toLowerCase().includes(q) ||
+        p.categorias.some((c) => c.toLowerCase().includes(q)),
+    );
+  }, [proveedores, searchQuery]);
+
+  const proveedorItems = filteredProveedores.map((p) => ({ ...p }));
   const { selectedResources, allResourcesSelected, handleSelectionChange } = useIndexResourceState(proveedorItems);
 
   const resetForm = useCallback(() => {
@@ -101,7 +143,29 @@ export function ProveedoresManager() {
     { label: 'Varios', value: 'varios' },
   ];
 
-  const rowMarkup = proveedores.map((proveedor, index) => (
+  const categoryLabels: Record<string, string> = {
+    abarrotes: 'Abarrotes',
+    lacteos: 'Lácteos',
+    panaderia: 'Panadería',
+    carnes: 'Carnes y Embutidos',
+    frutas: 'Frutas y Verduras',
+    bebidas: 'Bebidas',
+    limpieza: 'Limpieza',
+    varios: 'Varios',
+  };
+
+  const categoryTones: Record<string, 'info' | 'success' | 'warning' | 'attention' | 'critical' | 'new'> = {
+    abarrotes: 'info',
+    lacteos: 'new',
+    panaderia: 'warning',
+    carnes: 'critical',
+    frutas: 'success',
+    bebidas: 'attention',
+    limpieza: 'info',
+    varios: 'new',
+  };
+
+  const rowMarkup = filteredProveedores.map((proveedor, index) => (
     <IndexTable.Row
       id={proveedor.id}
       key={proveedor.id}
@@ -109,18 +173,45 @@ export function ProveedoresManager() {
       position={index}
     >
       <IndexTable.Cell>
-        <Text variant="bodyMd" fontWeight="bold" as="span">
-          {proveedor.nombre}
-        </Text>
+        <BlockStack gap="050">
+          <Text variant="bodyMd" fontWeight="bold" as="span">
+            {proveedor.nombre}
+          </Text>
+          {proveedor.email && (
+            <Text variant="bodyXs" tone="subdued" as="span">
+              {proveedor.email}
+            </Text>
+          )}
+        </BlockStack>
       </IndexTable.Cell>
-      <IndexTable.Cell>{proveedor.contacto}</IndexTable.Cell>
-      <IndexTable.Cell>{proveedor.telefono}</IndexTable.Cell>
-      <IndexTable.Cell>{proveedor.categorias.join(', ')}</IndexTable.Cell>
+      <IndexTable.Cell>
+        <BlockStack gap="050">
+          <Text variant="bodySm" as="span">
+            {proveedor.contacto || '—'}
+          </Text>
+          {proveedor.telefono && (
+            <Text variant="bodyXs" tone="subdued" as="span">
+              {proveedor.telefono}
+            </Text>
+          )}
+        </BlockStack>
+      </IndexTable.Cell>
+      <IndexTable.Cell>
+        <InlineStack gap="100" wrap={false}>
+          {proveedor.categorias.map((c) => (
+            <Badge key={c} tone={categoryTones[c] || 'info'}>
+              {categoryLabels[c] || c}
+            </Badge>
+          ))}
+        </InlineStack>
+      </IndexTable.Cell>
       <IndexTable.Cell>
         <Badge tone={proveedor.activo ? 'success' : undefined}>{proveedor.activo ? 'Activo' : 'Inactivo'}</Badge>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        {proveedor.ultimoPedido ? new Date(proveedor.ultimoPedido).toLocaleDateString('es-MX') : 'Sin pedidos'}
+        <Text variant="bodySm" as="span" tone={proveedor.ultimoPedido ? undefined : 'subdued'}>
+          {proveedor.ultimoPedido ? new Date(proveedor.ultimoPedido).toLocaleDateString('es-MX') : 'Sin pedidos'}
+        </Text>
       </IndexTable.Cell>
       <IndexTable.Cell>
         {deleteConfirmId === proveedor.id ? (
@@ -147,33 +238,168 @@ export function ProveedoresManager() {
   ));
 
   return (
-    <BlockStack gap="400">
-      <InlineStack align="end" gap="200">
-        <Button icon={ExportIcon} onClick={() => setIsExportOpen(true)}>
-          Exportar
-        </Button>
-        <Button variant="primary" onClick={() => setModalOpen(true)}>
-          Agregar proveedor
-        </Button>
-      </InlineStack>
+    <BlockStack gap="600">
+      {/* ═══ CHAPTER 1: PANORAMA DE PROVEEDORES ═══ */}
+      <InlineGrid columns={{ xs: 2, md: 4 }} gap="400">
+        <Card>
+          <BlockStack gap="200">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Total Proveedores
+            </Text>
+            <Text as="p" variant="headingLg" fontWeight="bold">
+              {`${stats.total}`}
+            </Text>
+          </BlockStack>
+        </Card>
+        <Card>
+          <BlockStack gap="200">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Activos
+            </Text>
+            <InlineStack gap="200" blockAlign="center">
+              <Text as="p" variant="headingLg" fontWeight="bold" tone="success">
+                {`${stats.activos}`}
+              </Text>
+              {stats.total > 0 && (
+                <Badge tone="success">{`${Math.round((stats.activos / stats.total) * 100)}%`}</Badge>
+              )}
+            </InlineStack>
+          </BlockStack>
+        </Card>
+        <Card>
+          <BlockStack gap="200">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Con Pedidos Recientes
+            </Text>
+            <InlineStack gap="200" blockAlign="center">
+              <Text as="p" variant="headingLg" fontWeight="bold">
+                {`${stats.conPedidos}`}
+              </Text>
+              {stats.sinPedidos > 0 && (
+                <Badge tone="attention">{`${stats.sinPedidos} sin pedidos`}</Badge>
+              )}
+            </InlineStack>
+          </BlockStack>
+        </Card>
+        <Card>
+          <BlockStack gap="200">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Pedidos Pendientes
+            </Text>
+            <InlineStack gap="200" blockAlign="center">
+              <Text as="p" variant="headingLg" fontWeight="bold" tone={stats.pedidosPendientes > 0 ? 'caution' : 'success'}>
+                {`${stats.pedidosPendientes}`}
+              </Text>
+              <Badge tone={stats.pedidosPendientes > 0 ? 'warning' : 'success'}>
+                {stats.pedidosPendientes > 0 ? 'Por surtir' : 'Al día'}
+              </Badge>
+            </InlineStack>
+          </BlockStack>
+        </Card>
+      </InlineGrid>
 
-      {proveedores.length === 0 ? (
+      {/* ═══ CHAPTER 2: DISTRIBUCIÓN POR CATEGORÍA ═══ */}
+      {categoryDistribution.length > 0 && (
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center">
+              <BlockStack gap="100">
+                <Text as="h3" variant="headingMd" fontWeight="bold">
+                  Distribución por Categoría
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Cobertura de proveedores por línea de producto
+                </Text>
+              </BlockStack>
+              <Badge>{`${categoryDistribution.length} categorías`}</Badge>
+            </InlineStack>
+            <Divider />
+            <BlockStack gap="400">
+              {categoryDistribution.map(({ cat, count }) => {
+                const pct = stats.total > 0 ? (count / stats.total) * 100 : 0;
+                return (
+                  <BlockStack key={cat} gap="150">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Badge tone={categoryTones[cat] || 'info'}>{categoryLabels[cat] || cat}</Badge>
+                      <InlineStack gap="300" blockAlign="center">
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          {pct.toFixed(0)}%
+                        </Text>
+                        <Text as="span" variant="bodySm" fontWeight="bold">
+                          {`${count} proveedor${count !== 1 ? 'es' : ''}`}
+                        </Text>
+                      </InlineStack>
+                    </InlineStack>
+                    <ProgressBar progress={pct} tone="primary" size="small" />
+                  </BlockStack>
+                );
+              })}
+            </BlockStack>
+          </BlockStack>
+        </Card>
+      )}
+
+      {/* ═══ CHAPTER 3: DIRECTORIO DE PROVEEDORES ═══ */}
+      <Card>
+        <BlockStack gap="400">
+          <InlineStack align="space-between" blockAlign="center">
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingMd" fontWeight="bold">
+                Directorio de Proveedores
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Detalle de contacto y estado de cada proveedor
+              </Text>
+            </BlockStack>
+            <InlineStack gap="200">
+              <Button icon={ExportIcon} onClick={() => setIsExportOpen(true)} variant="secondary">
+                Exportar
+              </Button>
+              <Button icon={PlusIcon} variant="primary" onClick={() => setModalOpen(true)}>
+                Agregar proveedor
+              </Button>
+            </InlineStack>
+          </InlineStack>
+          <Divider />
+          <Box maxWidth="400px">
+            <TextField
+              label="Buscar"
+              labelHidden
+              placeholder="Buscar por nombre, contacto o categoría..."
+              value={searchQuery}
+              onChange={setSearchQuery}
+              autoComplete="off"
+              clearButton
+              onClearButtonClick={() => setSearchQuery('')}
+            />
+          </Box>
+        </BlockStack>
+      </Card>
+
+      {filteredProveedores.length === 0 && proveedores.length === 0 ? (
         <Card>
           <EmptyState heading="Administra tus proveedores" image="">
             <p>Agrega proveedores para llevar un mejor control de tus pedidos y costos.</p>
           </EmptyState>
         </Card>
+      ) : filteredProveedores.length === 0 ? (
+        <Card>
+          <Box padding="800">
+            <Text as="p" tone="subdued" alignment="center">
+              Sin resultados para &ldquo;{searchQuery}&rdquo;
+            </Text>
+          </Box>
+        </Card>
       ) : (
         <Card padding="0">
           <IndexTable
             resourceName={resourceName}
-            itemCount={proveedores.length}
+            itemCount={filteredProveedores.length}
             selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
             onSelectionChange={handleSelectionChange}
             headings={[
-              { title: 'Nombre' },
+              { title: 'Proveedor' },
               { title: 'Contacto' },
-              { title: 'Teléfono' },
               { title: 'Categoría' },
               { title: 'Estado' },
               { title: 'Último pedido' },

@@ -21,10 +21,15 @@ interface IncomeStatementCardProps {
 export function IncomeStatementCard({ estadoResultados }: IncomeStatementCardProps) {
   return (
     <Card>
-      <BlockStack gap="300">
-        <Text variant="headingMd" as="h3">
-          Estado de Resultados
-        </Text>
+      <BlockStack gap="400">
+        <BlockStack gap="100">
+          <Text variant="headingMd" as="h3" fontWeight="bold">
+            Estado de Resultados
+          </Text>
+          <Text variant="bodySm" as="p" tone="subdued">
+            Desglose de ingresos, costos y utilidad del período
+          </Text>
+        </BlockStack>
         <Divider />
 
         {/* Ingresos */}
@@ -101,19 +106,21 @@ export function IncomeStatementCard({ estadoResultados }: IncomeStatementCardPro
         <Divider />
 
         {/* Utilidad Neta */}
-        <InlineStack align="space-between">
-          <Text variant="headingSm" as="p">
-            UTILIDAD NETA
-          </Text>
-          <InlineStack gap="200" blockAlign="center">
-            <Badge tone={estadoResultados.utilidadNeta >= 0 ? 'success' : 'critical'}>
-              {`${estadoResultados.margenNeto.toFixed(1)}%`}
-            </Badge>
-            <Text variant="headingSm" as="p" tone={estadoResultados.utilidadNeta >= 0 ? 'success' : 'critical'}>
-              {formatCurrency(estadoResultados.utilidadNeta)}
+        <Box padding="300" background={estadoResultados.utilidadNeta >= 0 ? 'bg-fill-success-secondary' : 'bg-fill-critical-secondary'} borderRadius="200">
+          <InlineStack align="space-between">
+            <Text variant="headingSm" as="p">
+              UTILIDAD NETA
             </Text>
+            <InlineStack gap="200" blockAlign="center">
+              <Badge tone={estadoResultados.utilidadNeta >= 0 ? 'success' : 'critical'}>
+                {`${estadoResultados.margenNeto.toFixed(1)}%`}
+              </Badge>
+              <Text variant="headingSm" as="p" tone={estadoResultados.utilidadNeta >= 0 ? 'success' : 'critical'}>
+                {formatCurrency(estadoResultados.utilidadNeta)}
+              </Text>
+            </InlineStack>
           </InlineStack>
-        </InlineStack>
+        </Box>
       </BlockStack>
     </Card>
   );

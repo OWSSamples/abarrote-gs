@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Card,
   Text,
@@ -14,6 +13,7 @@ import {
   Select,
   Icon,
   Popover,
+  ActionList,
   DatePicker,
 } from '@shopify/polaris';
 import { ArrowLeftIcon, DeleteIcon, SearchIcon, CalendarIcon } from '@shopify/polaris-icons';
@@ -51,8 +51,6 @@ export function CrearOrdenDeCompra({ onBack }: { onBack: () => void }) {
   // Product search
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [productDropdownRect, setProductDropdownRect] = useState<DOMRect | null>(null);
-  const productSearchRef = useRef<HTMLDivElement>(null);
   const [explorarOpen, setExplorarOpen] = useState(false);
   const [explorarSearch, setExplorarSearch] = useState('');
 
@@ -180,55 +178,6 @@ export function CrearOrdenDeCompra({ onBack }: { onBack: () => void }) {
     showError,
     onBack,
   ]);
-
-  const productDropdown =
-    showProductDropdown && filteredProducts.length > 0 && productDropdownRect ? (
-      <>
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setShowProductDropdown(false)} />
-        <div
-          style={{
-            position: 'fixed',
-            top: productDropdownRect.bottom + 4,
-            left: productDropdownRect.left,
-            width: productDropdownRect.width,
-            zIndex: 9999,
-            background: 'white',
-            borderRadius: '10px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-            border: '1px solid #e1e3e5',
-            maxHeight: '280px',
-            overflowY: 'auto',
-          }}
-        >
-          {filteredProducts.map((p: Product) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => addProduct(p)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                width: '100%',
-                padding: '10px 16px',
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.background = '#f6f6f7')}
-              onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '13px', color: '#303030' }}>{p.name}</div>
-                <div style={{ fontSize: '12px', color: '#6d7175' }}>SKU: {p.sku}</div>
-              </div>
-              <div style={{ fontSize: '13px', color: '#303030', fontWeight: 500 }}>${p.costPrice.toFixed(2)}</div>
-            </button>
-          ))}
-        </div>
-      </>
-    ) : null;
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
@@ -411,26 +360,36 @@ export function CrearOrdenDeCompra({ onBack }: { onBack: () => void }) {
               Agregar productos
             </Text>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-              <div ref={productSearchRef} style={{ flex: 1 }}>
-                <TextField
-                  label=""
-                  labelHidden
-                  value={productSearch}
-                  onChange={(v) => {
-                    setProductSearch(v);
-                    if (productSearchRef.current)
-                      setProductDropdownRect(productSearchRef.current.getBoundingClientRect());
-                    setShowProductDropdown(true);
-                  }}
-                  onFocus={() => {
-                    if (productSearchRef.current)
-                      setProductDropdownRect(productSearchRef.current.getBoundingClientRect());
-                    setShowProductDropdown(true);
-                  }}
-                  placeholder="Buscar productos"
-                  prefix={<Icon source={SearchIcon} />}
-                  autoComplete="off"
-                />
+              <div style={{ flex: 1 }}>
+                <Popover
+                  active={showProductDropdown && filteredProducts.length > 0}
+                  activator={
+                    <TextField
+                      label=""
+                      labelHidden
+                      value={productSearch}
+                      onChange={(v) => {
+                        setProductSearch(v);
+                        setShowProductDropdown(true);
+                      }}
+                      onFocus={() => setShowProductDropdown(true)}
+                      placeholder="Buscar productos"
+                      prefix={<Icon source={SearchIcon} />}
+                      autoComplete="off"
+                    />
+                  }
+                  onClose={() => setShowProductDropdown(false)}
+                  fullWidth
+                  preferredAlignment="left"
+                >
+                  <ActionList
+                    items={filteredProducts.map((p: Product) => ({
+                      content: p.name,
+                      helpText: `SKU: ${p.sku}  ·  $${p.costPrice.toFixed(2)}`,
+                      onAction: () => addProduct(p),
+                    }))}
+                  />
+                </Popover>
               </div>
               <Button
                 onClick={() => {
@@ -441,9 +400,6 @@ export function CrearOrdenDeCompra({ onBack }: { onBack: () => void }) {
                 Explorar
               </Button>
             </div>
-
-            {/* Product dropdown via portal — escapes Card overflow:hidden */}
-            {typeof document !== 'undefined' && createPortal(productDropdown, document.body)}
 
             {/* Line items table */}
             {lineItems.length > 0 && (

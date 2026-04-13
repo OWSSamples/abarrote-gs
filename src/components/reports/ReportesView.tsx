@@ -7,13 +7,13 @@ import {
   BlockStack,
   InlineStack,
   DataTable,
-  Layout,
   Badge,
   Button,
   Box,
   Select,
   Divider,
   InlineGrid,
+  ProgressBar,
 } from '@shopify/polaris';
 import { ExportIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -140,112 +140,179 @@ export function ReportesView() {
   };
 
   return (
-    <BlockStack gap="500">
-      {/* ═══ TOOLBAR ═══ */}
-      <Card padding="300">
-        <InlineStack align="space-between" blockAlign="center">
-          <InlineStack gap="300" blockAlign="center">
-            <Badge tone="info">{periodoLabels[periodo]}</Badge>
-            <Text as="span" variant="bodySm" tone="subdued">
-              {filteredSales.length} transacciones
-            </Text>
-          </InlineStack>
-          <InlineStack gap="200" blockAlign="center">
-            <Box minWidth="160px">
-              <Select
-                label="Período"
-                labelHidden
-                options={periodoOptions}
-                value={periodo}
-                onChange={(v) => setPeriodo(v as ReportePeriodo)}
-              />
-            </Box>
-            <Button icon={ExportIcon} onClick={handleExportPDF}>
-              PDF
-            </Button>
-            <Button icon={ExportIcon} onClick={handleExportCSV} variant="secondary">
-              CSV
-            </Button>
-          </InlineStack>
-        </InlineStack>
-      </Card>
-
-      {/* ═══ ESTADO DE RESULTADOS + INDICADORES OPERATIVOS ═══ */}
-      <Layout>
-        <Layout.Section>
-          <IncomeStatementCard estadoResultados={estadoResultados} />
-        </Layout.Section>
-        <Layout.Section variant="oneThird">
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h3" variant="headingMd" fontWeight="bold">
-                Indicadores Operativos
-              </Text>
-              <Divider />
-              <BlockStack gap="300">
-                <Box padding="300" background="bg-surface-secondary" borderRadius="200">
-                  <BlockStack gap="050">
-                    <Text as="p" variant="bodyXs" tone="subdued">
-                      Transacciones
-                    </Text>
-                    <Text as="p" variant="headingSm" fontWeight="bold">
-                      {filteredSales.length.toLocaleString('es-MX')}
-                    </Text>
-                  </BlockStack>
-                </Box>
-                <Box padding="300" background="bg-surface-secondary" borderRadius="200">
-                  <BlockStack gap="050">
-                    <Text as="p" variant="bodyXs" tone="subdued">
-                      Ticket Promedio
-                    </Text>
-                    <Text as="p" variant="headingSm" fontWeight="bold">
-                      {formatCurrency(ticketPromedio)}
-                    </Text>
-                  </BlockStack>
-                </Box>
-                <Box padding="300" background="bg-surface-secondary" borderRadius="200">
-                  <BlockStack gap="050">
-                    <Text as="p" variant="bodyXs" tone="subdued">
-                      Costo Promedio / Transacción
-                    </Text>
-                    <Text as="p" variant="headingSm" fontWeight="bold">
-                      {formatCurrency(costoPromedioTx)}
-                    </Text>
-                  </BlockStack>
-                </Box>
-                <Box padding="300" background="bg-surface-secondary" borderRadius="200">
-                  <BlockStack gap="050">
-                    <Text as="p" variant="bodyXs" tone="subdued">
-                      Ratio Gastos / Ingresos
-                    </Text>
-                    <InlineStack gap="200" blockAlign="center">
-                      <Text as="p" variant="headingSm" fontWeight="bold">
-                        {ratioGastos.toFixed(1)}%
-                      </Text>
-                      <Badge tone={ratioGastos <= 30 ? 'success' : ratioGastos <= 50 ? 'warning' : 'critical'}>
-                        {ratioGastos <= 30 ? 'Eficiente' : ratioGastos <= 50 ? 'Moderado' : 'Alto'}
-                      </Badge>
-                    </InlineStack>
-                  </BlockStack>
-                </Box>
-              </BlockStack>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
-
-      {/* ═══ FLUJO DE EFECTIVO (6 MESES) ═══ */}
-      <CashFlowCard flujoMensual={flujoMensual} />
-
-      {/* ═══ MÁRGENES POR CATEGORÍA ═══ */}
+    <BlockStack gap="600">
+      {/* ═══ HERO: RESUMEN EJECUTIVO ═══ */}
       <Card>
         <BlockStack gap="400">
           <InlineStack align="space-between" blockAlign="center">
-            <Text as="h3" variant="headingMd" fontWeight="bold">
-              Márgenes por Categoría de Producto
-            </Text>
+            <BlockStack gap="100">
+              <Text as="h2" variant="headingLg" fontWeight="bold">
+                Resumen Ejecutivo
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Visión general de rentabilidad y salud financiera
+              </Text>
+            </BlockStack>
+            <InlineStack gap="200" blockAlign="center">
+              <Badge tone="info">{periodoLabels[periodo]}</Badge>
+              <Box minWidth="160px">
+                <Select
+                  label="Período"
+                  labelHidden
+                  options={periodoOptions}
+                  value={periodo}
+                  onChange={(v) => setPeriodo(v as ReportePeriodo)}
+                />
+              </Box>
+              <Button icon={ExportIcon} onClick={handleExportPDF}>
+                PDF
+              </Button>
+              <Button icon={ExportIcon} onClick={handleExportCSV} variant="secondary">
+                CSV
+              </Button>
+            </InlineStack>
+          </InlineStack>
+          <Divider />
+          <InlineGrid columns={{ xs: 2, md: 4 }} gap="400">
+            <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+              <BlockStack gap="050">
+                <Text as="p" variant="bodyXs" tone="subdued">
+                  Ingresos
+                </Text>
+                <Text as="p" variant="headingMd" fontWeight="bold">
+                  {formatCurrency(estadoResultados.ingresos)}
+                </Text>
+              </BlockStack>
+            </Box>
+            <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+              <BlockStack gap="050">
+                <Text as="p" variant="bodyXs" tone="subdued">
+                  Utilidad Neta
+                </Text>
+                <Text as="p" variant="headingMd" fontWeight="bold" tone={estadoResultados.utilidadNeta >= 0 ? 'success' : 'critical'}>
+                  {formatCurrency(estadoResultados.utilidadNeta)}
+                </Text>
+              </BlockStack>
+            </Box>
+            <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+              <BlockStack gap="050">
+                <Text as="p" variant="bodyXs" tone="subdued">
+                  Margen Neto
+                </Text>
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="p" variant="headingMd" fontWeight="bold">
+                    {estadoResultados.margenNeto.toFixed(1)}%
+                  </Text>
+                  <Badge tone={estadoResultados.margenNeto >= 15 ? 'success' : estadoResultados.margenNeto >= 5 ? 'warning' : 'critical'}>
+                    {estadoResultados.margenNeto >= 15 ? 'Saludable' : estadoResultados.margenNeto >= 5 ? 'Ajustado' : 'Riesgo'}
+                  </Badge>
+                </InlineStack>
+              </BlockStack>
+            </Box>
+            <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+              <BlockStack gap="050">
+                <Text as="p" variant="bodyXs" tone="subdued">
+                  Transacciones
+                </Text>
+                <Text as="p" variant="headingMd" fontWeight="bold">
+                  {filteredSales.length.toLocaleString('es-MX')}
+                </Text>
+              </BlockStack>
+            </Box>
+          </InlineGrid>
+        </BlockStack>
+      </Card>
+
+      {/* ═══ CHAPTER 1: ESTADO DE RESULTADOS + INDICADORES ═══ */}
+      <InlineGrid columns={{ xs: 1, md: '2fr 1fr' }} gap="400">
+        <IncomeStatementCard estadoResultados={estadoResultados} />
+        <Card>
+          <BlockStack gap="400">
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingMd" fontWeight="bold">
+                Indicadores Operativos
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Métricas de eficiencia del negocio
+              </Text>
+            </BlockStack>
+            <Divider />
+            <BlockStack gap="300">
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodyXs" tone="subdued">
+                    Ticket Promedio
+                  </Text>
+                  <Text as="p" variant="headingSm" fontWeight="bold">
+                    {formatCurrency(ticketPromedio)}
+                  </Text>
+                </BlockStack>
+              </Box>
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodyXs" tone="subdued">
+                    Costo Promedio / Transacción
+                  </Text>
+                  <Text as="p" variant="headingSm" fontWeight="bold">
+                    {formatCurrency(costoPromedioTx)}
+                  </Text>
+                </BlockStack>
+              </Box>
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodyXs" tone="subdued">
+                    Ratio Gastos / Ingresos
+                  </Text>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text as="p" variant="headingSm" fontWeight="bold">
+                      {ratioGastos.toFixed(1)}%
+                    </Text>
+                    <Badge tone={ratioGastos <= 30 ? 'success' : ratioGastos <= 50 ? 'warning' : 'critical'}>
+                      {ratioGastos <= 30 ? 'Eficiente' : ratioGastos <= 50 ? 'Moderado' : 'Alto'}
+                    </Badge>
+                  </InlineStack>
+                </BlockStack>
+              </Box>
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="100">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text as="p" variant="bodyXs" tone="subdued">
+                      Margen Bruto
+                    </Text>
+                    <Text as="p" variant="bodySm" fontWeight="bold">
+                      {estadoResultados.margenBruto.toFixed(1)}%
+                    </Text>
+                  </InlineStack>
+                  <ProgressBar
+                    progress={Math.min(estadoResultados.margenBruto, 100)}
+                    tone={estadoResultados.margenBruto >= 20 ? 'success' : 'critical'}
+                    size="small"
+                  />
+                </BlockStack>
+              </Box>
+            </BlockStack>
+          </BlockStack>
+        </Card>
+      </InlineGrid>
+
+      {/* ═══ CHAPTER 2: FLUJO DE EFECTIVO (6 MESES) ═══ */}
+      <CashFlowCard flujoMensual={flujoMensual} />
+
+      {/* ═══ CHAPTER 3: MÁRGENES POR CATEGORÍA ═══ */}
+      <Card>
+        <BlockStack gap="400">
+          <InlineStack align="space-between" blockAlign="center">
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingMd" fontWeight="bold">
+                Márgenes por Categoría
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Rentabilidad desglosada por línea de producto
+              </Text>
+            </BlockStack>
             <Badge>{`${margenesPorCategoria.length} categorías`}</Badge>
           </InlineStack>
+          <Divider />
           {margenesPorCategoria.length > 0 ? (
             <DataTable
               columnContentTypes={['text', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric']}
@@ -276,17 +343,23 @@ export function ReportesView() {
         </BlockStack>
       </Card>
 
-      {/* ═══ COMPOSICIÓN DE INGRESOS + CARTERA DE CRÉDITO ═══ */}
+      {/* ═══ CHAPTER 4: COMPOSICIÓN + CARTERA ═══ */}
       <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
         {/* Ventas por método de pago */}
         <Card>
-          <BlockStack gap="300">
+          <BlockStack gap="400">
             <InlineStack align="space-between" blockAlign="center">
-              <Text as="h3" variant="headingMd">
-                Composición de Ingresos
-              </Text>
+              <BlockStack gap="100">
+                <Text as="h3" variant="headingMd" fontWeight="bold">
+                  Composición de Ingresos
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Distribución por método de pago
+                </Text>
+              </BlockStack>
               <Badge tone="info">{`${filteredSales.length} ventas`}</Badge>
             </InlineStack>
+            <Divider />
             {ventasPorMetodoDisplay.length === 0 ? (
               <Box padding="600">
                 <Text as="p" tone="subdued" alignment="center">
@@ -294,9 +367,9 @@ export function ReportesView() {
                 </Text>
               </Box>
             ) : (
-              <BlockStack gap="300">
+              <BlockStack gap="400">
                 {ventasPorMetodoDisplay.map((m) => (
-                  <div key={m.label}>
+                  <BlockStack key={m.label} gap="150">
                     <InlineStack align="space-between" blockAlign="center">
                       <InlineStack gap="200" blockAlign="center">
                         <div
@@ -335,7 +408,6 @@ export function ReportesView() {
                     </InlineStack>
                     <div
                       style={{
-                        marginTop: 6,
                         height: 5,
                         background: '#f1f5f9',
                         borderRadius: 3,
@@ -352,7 +424,7 @@ export function ReportesView() {
                         }}
                       />
                     </div>
-                  </div>
+                  </BlockStack>
                 ))}
               </BlockStack>
             )}
@@ -361,15 +433,21 @@ export function ReportesView() {
 
         {/* Cartera de crédito */}
         <Card>
-          <BlockStack gap="300">
+          <BlockStack gap="400">
             <InlineStack align="space-between" blockAlign="center">
-              <Text as="h3" variant="headingMd">
-                Cartera de Crédito
-              </Text>
+              <BlockStack gap="100">
+                <Text as="h3" variant="headingMd" fontWeight="bold">
+                  Cartera de Crédito
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Estado de cuentas por cobrar
+                </Text>
+              </BlockStack>
               <Badge tone={clienteStats.conDeuda > 0 ? 'attention' : 'success'}>
                 {clienteStats.conDeuda > 0 ? `${clienteStats.conDeuda} con deuda` : 'Sin deuda'}
               </Badge>
             </InlineStack>
+            <Divider />
             <InlineGrid columns={2} gap="300">
               <Box padding="300" background="bg-surface-secondary" borderRadius="200">
                 <BlockStack gap="050">

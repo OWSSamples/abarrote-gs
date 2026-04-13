@@ -47,8 +47,8 @@ function getBadgeTone(index: number) {
   return BADGE_TONES[index % BADGE_TONES.length];
 }
 
-// Avatar initials component
-function UserAvatar({ name, status }: { name: string; status: string }) {
+// Avatar component — shows real profile image when available, initials as fallback
+function UserAvatar({ name, status, avatarUrl }: { name: string; status: string; avatarUrl?: string }) {
   const initials = name
     .split(' ')
     .map((w) => w[0])
@@ -56,11 +56,46 @@ function UserAvatar({ name, status }: { name: string; status: string }) {
     .toUpperCase()
     .slice(0, 2);
   const isBaja = status === 'baja';
+  const size = 36;
+
+  if (avatarUrl) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          minWidth: size,
+          minHeight: size,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          flexShrink: 0,
+          border: `2px solid ${isBaja ? 'var(--p-color-border-disabled)' : 'var(--p-color-border-info)'}`,
+          opacity: isBaja ? 0.5 : 1,
+        }}
+      >
+        <img
+          src={avatarUrl}
+          alt={name}
+          width={size}
+          height={size}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
-        width: 36,
-        height: 36,
+        width: size,
+        height: size,
+        minWidth: size,
+        minHeight: size,
         borderRadius: '50%',
         background: isBaja ? 'var(--p-color-bg-fill-disabled)' : 'var(--p-color-bg-fill-info)',
         display: 'flex',
@@ -480,7 +515,7 @@ export function RolesManager() {
       <IndexTable.Row id={record.id} key={record.id} position={index} tone={isBaja ? 'subdued' : undefined}>
         <IndexTable.Cell>
           <InlineStack gap="300" blockAlign="center" wrap={false}>
-            <UserAvatar name={record.displayName || record.email} status={record.status} />
+            <UserAvatar name={record.displayName || record.email} status={record.status} avatarUrl={record.avatarUrl || undefined} />
             <BlockStack gap="050">
               <InlineStack gap="200" blockAlign="center">
                 <Text variant="bodyMd" fontWeight="semibold" as="span" tone={isBaja ? 'subdued' : undefined}>
@@ -747,7 +782,7 @@ export function RolesManager() {
                   <InlineStack align="space-between" blockAlign="center">
                     <InlineStack gap="100">
                       {usersInRole.slice(0, 3).map((u) => (
-                        <UserAvatar key={u.id} name={u.displayName || u.email} status={u.status} />
+                        <UserAvatar key={u.id} name={u.displayName || u.email} status={u.status} avatarUrl={u.avatarUrl || undefined} />
                       ))}
                       {usersInRole.length > 3 && (
                         <Text as="span" variant="bodyXs" tone="subdued">+{usersInRole.length - 3}</Text>

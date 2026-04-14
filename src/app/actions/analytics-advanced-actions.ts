@@ -13,10 +13,13 @@ import {
   pedidoItems,
   cfdiRecords,
   auditLogs,
+  gastos,
+  devoluciones,
 } from '@/db/schema';
 import { eq, desc, sql, gte, and } from 'drizzle-orm';
 import { numVal } from './_helpers';
 import { sendNotification, escapeHTML } from './_notifications';
+import { weeklyReportEvent } from './_notification-events';
 import { fetchStoreConfig } from './store-config-actions';
 import type {
   ABCAnalysis,
@@ -341,6 +344,107 @@ ${lowStockList || '  ✅ Todo en orden'}`;
 
   await sendNotification(message);
   return { sent: true, message: 'Reporte enviado' };
+}
+
+// ==================== 3b. WEEKLY TELEGRAM REPORT ====================
+
+async function _sendWeeklyTelegramReport(): Promise<{ sent: boolean; message: string }> {
+  await requirePermission('reports.view');
+
+  const config = await fetchStoreConfig();
+  if (!config.enableNotifications || !config.telegramToken || !config.telegramChatId) {
+    return { sent: false, message: 'Notificaciones no configuradas' };
+  }
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - 7);
+  const weekEnd = new Date(now);
+
+  const weekStartStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(weekStart);
+  const weekEndStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(weekEnd);
+
+  // Previous week for comparison
+  const prevWeekStart = new Date(weekStart);
+  prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+  const prevWeekStartStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(prevWeekStart);
+
+  const [weekSales, prevWeekSales, topProducts, weekGastos, weekDevoluciones, lowStock] = await Promise.all([
+    db
+      .select({
+        total: sql<string>`coalesce(sum(total::numeric), 0)`,
+        count: sql<string>`count(*)`,
+      })
+      .from(saleRecords)
+      .where(sql`date::date >= ${weekStartStr} and date::date < ${weekEndStr}`),
+
+    db
+      .select({
+        total: sql<string>`coalesce(sum(total::numeric), 0)`,
+      })
+      .from(saleRecords)
+      .where(sql`date::date >= ${prevWeekStartStr} and date::date < ${weekStartStr}`),
+
+    db
+      .select({
+        productName: saleItems.productName,
+        qty: sql<string>`sum(${saleItems.quantity})`,
+        revenue: sql<string>`sum(${saleItems.subtotal}::numeric)`,
+      })
+      .from(saleItems)
+      .innerJoin(saleRecords, eq(saleRecords.id, saleItems.saleId))
+      .where(sql`${saleRecords.date}::date >= ${weekStartStr} and ${saleRecords.date}::date < ${weekEndStr}`)
+      .groupBy(saleItems.productName)
+      .orderBy(desc(sql`sum(${saleItems.subtotal}::numeric)`))
+      .limit(5),
+
+    db
+      .select({
+        total: sql<string>`coalesce(sum(monto::numeric), 0)`,
+      })
+      .from(gastos)
+      .where(sql`fecha::date >= ${weekStartStr} and fecha::date < ${weekEndStr}`),
+
+    db
+      .select({
+        total: sql<string>`coalesce(sum(monto_devuelto::numeric), 0)`,
+        count: sql<string>`count(*)`,
+      })
+      .from(devoluciones)
+      .where(sql`fecha::date >= ${weekStartStr} and fecha::date < ${weekEndStr}`),
+
+    db
+      .select()
+      .from(products)
+      .where(and(isNotDeleted(products), sql`${products.currentStock}::numeric <= ${products.minStock}::numeric`)),
+  ]);
+
+  const totalVentas = numVal(weekSales[0].total);
+  const totalPrev = numVal(prevWeekSales[0].total);
+  const diffPct = totalPrev > 0 ? ((totalVentas - totalPrev) / totalPrev) * 100 : 0;
+
+  const weekRange = `${weekStartStr} — ${weekEndStr}`;
+
+  const message = weeklyReportEvent({
+    storeName: config.storeName,
+    weekRange,
+    totalVentas,
+    totalTransacciones: numVal(weekSales[0].count),
+    ventasVsSemanaAnterior: diffPct,
+    topProducts: topProducts.map((p) => ({
+      name: p.productName,
+      qty: numVal(p.qty),
+      revenue: numVal(p.revenue),
+    })),
+    totalGastos: numVal(weekGastos[0].total),
+    totalDevoluciones: numVal(weekDevoluciones[0].total),
+    devolucionCount: numVal(weekDevoluciones[0].count),
+    lowStockCount: lowStock.length,
+    lowStockItems: lowStock.slice(0, 5).map((p) => ({ name: p.name, stock: Number(p.currentStock) })),
+  });
+
+  await sendNotification(message);
+  return { sent: true, message: 'Reporte semanal enviado' };
 }
 
 // ==================== 4. CFDI / FACTURACIÓN ELECTRÓNICA ====================
@@ -1083,6 +1187,7 @@ export const fetchABCAnalysis = withLogging('analytics.fetchABCAnalysis', _fetch
 export const fetchReorderSuggestions = withLogging('analytics.fetchReorderSuggestions', _fetchReorderSuggestions);
 export const createAutoReorderPedido = withLogging('analytics.createAutoReorderPedido', _createAutoReorderPedido);
 export const sendDailyTelegramReport = withLogging('analytics.sendDailyTelegramReport', _sendDailyTelegramReport);
+export const sendWeeklyTelegramReport = withLogging('analytics.sendWeeklyTelegramReport', _sendWeeklyTelegramReport);
 export const generateCFDI = withLogging('analytics.generateCFDI', _generateCFDI);
 export const fetchCFDIRecords = withLogging('analytics.fetchCFDIRecords', _fetchCFDIRecords);
 export const cancelCFDI = withLogging('analytics.cancelCFDI', _cancelCFDI);

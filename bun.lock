@@ -40,6 +40,7 @@
         "csv-parse": "6.1.0",
         "dotenv": "^17.4.1",
         "drizzle-orm": "^0.45.1",
+        "facturapi": "^4.14.2",
         "firebase": "^12.10.0",
         "firebase-admin": "^13.7.0",
         "html5-qrcode": "^2.3.8",
@@ -1924,6 +1925,8 @@
     "exsolve": ["exsolve@1.0.8", "", {}, "sha512-LmDxfWXwcTArk8fUEnOfSZpHOJ6zOMUJKOtFLFqJLoKJetuQG874Uc7/Kki7zFLzYybmZhp1M7+98pfMqeX8yA=="],
 
     "extend": ["extend@3.0.2", "", {}, "sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g=="],
+
+    "facturapi": ["facturapi@4.14.2", "", {}, "sha512-qZaaywNdTafm5cs8JpQ5NbKMRHAVS9RrD+3yZkljFI/QMKAids/BDZA+iqwTcnz2FhgA5yDDeWwhRZtH6ssOFw=="],
 
     "farmhash-modern": ["farmhash-modern@1.1.0", "", {}, "sha512-6ypT4XfgqJk/F3Yuv4SX26I3doUjt0GTG4a+JgWxXQpxXzTBq8fPUeGHfcYMMDPHJHm3yPOSjaeBwBGAHWXCdA=="],
 

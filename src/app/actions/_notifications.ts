@@ -1,15 +1,19 @@
 // Internal notification helper — not a server action, just a utility
-// used by domain action modules that need to send Telegram alerts.
+// used by domain action modules that need to send Telegram + Email alerts.
 //
 // When QStash is available, notifications are offloaded to a background
 // job so the caller (e.g. createSale) returns immediately without
 // waiting for the Telegram API. Falls back to inline sending otherwise.
+//
+// Email notifications run in parallel alongside Telegram (fire-and-forget).
 
 import { fetchStoreConfig } from './store-config-actions';
 import { logger } from '@/lib/logger';
 import { publishJob } from '@/infrastructure/qstash';
 import { telegramBreaker } from '@/infrastructure/circuit-breaker';
 import { isFeatureEnabled } from '@/infrastructure/feature-flags';
+import { sendEmail } from '@/lib/email';
+import { alertEmailTemplate, type AlertEmailData } from '@/lib/email-templates';
 
 /**
  * Escapes characters that would break Telegram HTML parse mode.
@@ -80,4 +84,52 @@ async function sendNotificationInline(message: string): Promise<void> {
       throw new Error(`Telegram API ${response.status}: ${response.statusText}`);
     }
   });
+}
+
+// ══════════════════════════════════════════════════════════════
+// EMAIL CHANNEL
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Sends an email notification to all configured recipients.
+ * Uses store config for from, recipients, and branding.
+ * Fire-and-forget — errors are logged but never thrown.
+ */
+export async function sendEmailAlert(alertData: Omit<AlertEmailData, 'storeName' | 'logoUrl' | 'accentColor'>): Promise<void> {
+  try {
+    const config = await fetchStoreConfig();
+
+    if (!config.emailEnabled || !config.emailFrom || !config.emailRecipients) return;
+
+    const recipients = config.emailRecipients
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (recipients.length === 0) return;
+
+    const template = alertEmailTemplate({
+      ...alertData,
+      storeName: config.storeName,
+      logoUrl: config.logoUrl,
+      accentColor: config.emailAccentColor,
+    });
+
+    const fromName = config.emailFromName || config.storeName;
+
+    await Promise.allSettled(
+      recipients.map((to) =>
+        sendEmail(
+          { to, subject: template.subject, html: template.html, text: template.text, replyTo: config.emailReplyTo },
+          config.emailFrom!,
+          fromName,
+        ),
+      ),
+    );
+  } catch (error) {
+    logger.error('Email alert dispatch failed', {
+      action: 'email_alert_error',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

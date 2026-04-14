@@ -4,6 +4,9 @@ import { requireOwner } from '@/lib/auth/guard';
 import { withLogging } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { withRateLimit } from '@/infrastructure/redis';
+import { logAudit } from '@/lib/audit';
+import { sendNotification } from './_notifications';
+import { providerConnectionEvent } from './_notification-events';
 import {
   connectConekta,
   disconnectConekta,
@@ -199,18 +202,43 @@ async function _connectClipAction(params: {
   serialNumber?: string;
   environment: 'sandbox' | 'production';
 }): Promise<{ success: boolean; message: string }> {
-  await requireOwner();
+  const user = await requireOwner();
   validateSchema(connectClipSchema, params, 'connectClip');
 
   logger.info('Clip connection initiated', { action: 'clip_connect_init' });
 
-  return connectClip(params);
+  const result = await connectClip(params);
+
+  if (result.success) {
+    await logAudit({
+      userId: user.uid,
+      userEmail: user.email,
+      action: 'create',
+      entity: 'payment_provider',
+      entityId: 'clip',
+      changes: { after: { provider: 'clip', environment: params.environment, action: 'connect' } },
+    });
+    sendNotification(providerConnectionEvent({ provider: 'Clip', action: 'connect', userEmail: user.email ?? '', environment: params.environment })).catch(() => {});
+  }
+
+  return result;
 }
 
 async function _disconnectClipAction(): Promise<void> {
-  await requireOwner();
+  const user = await requireOwner();
   logger.info('Clip disconnection', { action: 'clip_disconnect' });
-  return disconnectClip();
+
+  await disconnectClip();
+
+  await logAudit({
+    userId: user.uid,
+    userEmail: user.email,
+    action: 'delete',
+    entity: 'payment_provider',
+    entityId: 'clip',
+    changes: { after: { provider: 'clip', action: 'disconnect' } },
+  });
+  sendNotification(providerConnectionEvent({ provider: 'Clip', action: 'disconnect', userEmail: user.email ?? '' })).catch(() => {});
 }
 
 async function _getClipStatusAction(): Promise<{

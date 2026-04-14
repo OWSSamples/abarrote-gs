@@ -569,6 +569,15 @@ export function CustomerDisplaySectionV4() {
 
   return (
     <BlockStack gap="400">
+      {/* Beta notice */}
+      <Banner tone="warning" title="Sección en Beta">
+        <p>
+          La <strong>Pantalla del Cliente</strong> está en fase Beta.
+          Las animaciones 3D, temas y configuraciones pueden presentar
+          comportamientos inesperados o cambios en futuras actualizaciones.
+        </p>
+      </Banner>
+
       {/* Banners */}
       {errorMsg && (
         <Banner tone="critical" onDismiss={() => setErrorMsg(null)}>

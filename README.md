@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/icon/OWS-Dash.png" alt="Kiosko" width="120" height="120" />
+  <img src="public/icon/OWS-Dash.png" alt="Kiosko" width="200" height="200" />
 </p>
 
 <h1 align="center">Kiosko</h1>s

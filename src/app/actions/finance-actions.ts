@@ -18,6 +18,8 @@ import { numVal } from './_helpers';
 import { withLogging } from '@/lib/errors';
 import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
 import { withRateLimit } from '@/infrastructure/redis';
+import { sendNotification } from './_notifications';
+import { gastoEvent } from './_notification-events';
 
 // ==================== GASTOS ====================
 
@@ -51,6 +53,16 @@ async function _createGasto(data: Omit<Gasto, 'id'>): Promise<Gasto> {
     comprobante: data.comprobante,
     comprobanteUrl: data.comprobanteUrl,
   });
+
+  // Telegram notification (fire-and-forget)
+  sendNotification(
+    gastoEvent({
+      concepto: data.concepto,
+      categoria: data.categoria,
+      monto: data.monto,
+      notas: data.notas || undefined,
+    }),
+  );
 
   return { ...data, id };
 }

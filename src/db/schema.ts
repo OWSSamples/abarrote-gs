@@ -29,6 +29,13 @@ export const storeConfig = pgTable('store_config', {
   enableNotifications: boolean('enable_notifications').notNull().default(false),
   telegramToken: text('telegram_token'),
   telegramChatId: text('telegram_chat_id'),
+  // Email (AWS SES)
+  emailEnabled: boolean('email_enabled').notNull().default(false),
+  emailFrom: text('email_from'),
+  emailFromName: text('email_from_name'),
+  emailReplyTo: text('email_reply_to'),
+  emailRecipients: text('email_recipients'),
+  emailAccentColor: text('email_accent_color'),
   printerIp: text('printer_ip'),
   cashDrawerPort: text('cash_drawer_port'),
   scalePort: text('scale_port'),
@@ -45,6 +52,7 @@ export const storeConfig = pgTable('store_config', {
   // Métodos de pago adicionales
   clabeNumber: text('clabe_number'),
   paypalUsername: text('paypal_username'),
+  paypalQrUrl: text('paypal_qr_url'),
   cobrarQrUrl: text('cobrar_qr_url'),
   // MercadoPago terminal config (persisted; replaces localStorage)
   mpDeviceId: text('mp_device_id'),

@@ -37,93 +37,107 @@ export function SaleTotalsCard({
   const { hasPermission } = usePermissions();
   return (
     <Card>
-      <BlockStack gap="200">
+      <BlockStack gap="300">
+        {/* ── Desglose ── */}
+        <Text as="h3" variant="headingSm">
+          Desglose
+        </Text>
+
         <InlineStack align="space-between">
-          <Text as="span">Subtotal:</Text>
-          <Text as="span">{formatCurrency(subtotal)}</Text>
+          <Text as="span" variant="bodySm">Subtotal</Text>
+          <Text as="span" variant="bodySm">{formatCurrency(subtotal)}</Text>
         </InlineStack>
 
-        {/* Discount section */}
-        <Divider />
-        <Text as="h3" variant="headingSm">
-          Descuento
-        </Text>
-        <InlineStack gap="200" blockAlign="end">
-          <Box minWidth="80px">
-            <FormSelect
-              label="Tipo"
-              options={[
-                { label: '$', value: 'amount' },
-                { label: '%', value: 'percent' },
-              ]}
-              value={discountType}
-              onChange={(v) => onDiscountTypeChange(v as 'amount' | 'percent')}
-            />
-          </Box>
-          <Box minWidth="160px">
-            <TextField
-              label="Monto de descuento"
-              labelHidden
-              type="number"
-              value={discount}
-              onChange={onDiscountChange}
-              autoComplete="off"
-              prefix={discountType === 'amount' ? '$' : undefined}
-              suffix={discountType === 'percent' ? '%' : undefined}
-              placeholder={discountType === 'amount' ? '0.00' : '0'}
-              min={0}
-              max={discountType === 'percent' ? 100 : undefined}
-            />
-          </Box>
-          <Button variant="secondary" onClick={onApplyDiscount} disabled={!discount || parseFloat(discount) <= 0}>
-            {hasPermission('sales.discount') ? 'Aplicar' : 'Solicitar'}
-          </Button>
-          {discountAmount > 0 && (
-            <Button variant="plain" tone="critical" onClick={onRemoveDiscount}>
-              Quitar
-            </Button>
-          )}
-        </InlineStack>
-        {discountPending && (
-          <Banner tone="warning">
-            <p>Se requiere autorización de un supervisor para aplicar descuentos.</p>
-          </Banner>
-        )}
-        {discountAmount > 0 && !discountPending && (
+        {/* Discount */}
+        {discountAmount > 0 && !discountPending ? (
           <InlineStack align="space-between">
-            <Text as="span" tone="success">
-              Descuento aplicado ({discountType === 'percent' ? `${discount}%` : formatCurrency(discountAmount)}):
-            </Text>
-            <Text as="span" tone="success">
-              - {formatCurrency(discountAmount)}
+            <InlineStack gap="100" blockAlign="center">
+              <Text as="span" variant="bodySm" tone="success">
+                Descuento ({discountType === 'percent' ? `${discount}%` : formatCurrency(discountAmount)})
+              </Text>
+              <Button variant="plain" tone="critical" size="micro" onClick={onRemoveDiscount}>
+                Quitar
+              </Button>
+            </InlineStack>
+            <Text as="span" variant="bodySm" tone="success">
+              − {formatCurrency(discountAmount)}
             </Text>
           </InlineStack>
+        ) : (
+          <BlockStack gap="200">
+            <InlineStack gap="200" blockAlign="end">
+              <Box minWidth="70px">
+                <FormSelect
+                  label="Tipo"
+                  options={[
+                    { label: '$', value: 'amount' },
+                    { label: '%', value: 'percent' },
+                  ]}
+                  value={discountType}
+                  onChange={(v) => onDiscountTypeChange(v as 'amount' | 'percent')}
+                />
+              </Box>
+              <Box minWidth="100px">
+                <TextField
+                  label="Descuento"
+                  labelHidden
+                  type="number"
+                  value={discount}
+                  onChange={onDiscountChange}
+                  autoComplete="off"
+                  prefix={discountType === 'amount' ? '$' : undefined}
+                  suffix={discountType === 'percent' ? '%' : undefined}
+                  placeholder="0"
+                  min={0}
+                  max={discountType === 'percent' ? 100 : undefined}
+                  size="slim"
+                />
+              </Box>
+              <Button size="slim" onClick={onApplyDiscount} disabled={!discount || parseFloat(discount) <= 0}>
+                {hasPermission('sales.discount') ? 'Aplicar' : 'Solicitar'}
+              </Button>
+            </InlineStack>
+            {discountPending && (
+              <Banner tone="warning">
+                <p>Requiere autorización de supervisor.</p>
+              </Banner>
+            )}
+          </BlockStack>
         )}
-        <Divider />
 
         <InlineStack align="space-between">
-          <Text as="span">IVA (16%):</Text>
-          <Text as="span">{formatCurrency(iva)}</Text>
+          <Text as="span" variant="bodySm">IVA (16%)</Text>
+          <Text as="span" variant="bodySm">{formatCurrency(iva)}</Text>
         </InlineStack>
+
         {cardSurcharge > 0 && (
           <InlineStack align="space-between">
-            <Text as="span" tone="caution">
-              Comisión tarjeta (2.5% + IVA):
+            <Text as="span" variant="bodySm" tone="caution">
+              Comisión tarjeta (2.5% + IVA)
             </Text>
-            <Text as="span" tone="caution">
+            <Text as="span" variant="bodySm" tone="caution">
               {formatCurrency(cardSurcharge)}
             </Text>
           </InlineStack>
         )}
+
         <Divider />
-        <InlineStack align="space-between">
-          <Text as="span" variant="headingMd" fontWeight="bold">
-            TOTAL:
-          </Text>
-          <Text as="span" variant="headingMd" fontWeight="bold">
-            {formatCurrency(total)}
-          </Text>
-        </InlineStack>
+
+        {/* ── Total destacado ── */}
+        <Box
+          background="bg-surface-active"
+          padding="300"
+          borderRadius="200"
+        >
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="span" variant="headingLg" fontWeight="bold">
+              TOTAL
+            </Text>
+            <Text as="span" variant="headingLg" fontWeight="bold">
+              {formatCurrency(total)}
+            </Text>
+          </InlineStack>
+        </Box>
       </BlockStack>
     </Card>
   );

@@ -4,6 +4,8 @@ import { requireOwner } from '@/lib/auth/guard';
 import { withLogging } from '@/lib/errors';
 import { generateMPAuthorizationUrl, disconnectProvider, getProviderConnectionStatus } from '@/lib/oauth-providers';
 import { logAudit } from '@/lib/audit';
+import { sendNotification } from './_notifications';
+import { providerConnectionEvent } from './_notification-events';
 
 /**
  * Initiates MercadoPago OAuth flow.
@@ -22,6 +24,8 @@ async function _initiateMPOAuth(): Promise<{ url: string }> {
     entityId: state,
     changes: { after: { provider: 'mercadopago', action: 'initiate_oauth' } },
   });
+
+  sendNotification(providerConnectionEvent({ provider: 'MercadoPago', action: 'connect', userEmail: user.email ?? '' })).catch(() => {});
 
   return { url };
 }
@@ -43,6 +47,7 @@ async function _disconnectMPOAuth(): Promise<void> {
     entityId: 'mercadopago',
     changes: { after: { provider: 'mercadopago', action: 'disconnect' } },
   });
+  sendNotification(providerConnectionEvent({ provider: 'MercadoPago', action: 'disconnect', userEmail: user.email ?? '' })).catch(() => {});
 }
 
 /**

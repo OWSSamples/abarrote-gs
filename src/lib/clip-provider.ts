@@ -2,7 +2,7 @@
 
 import crypto from 'crypto';
 import { db } from '@/db';
-import { paymentProviderConnections, paymentCharges } from '@/db/schema';
+import { paymentProviderConnections, paymentCharges, storeConfig as storeConfigTable } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
@@ -434,10 +434,16 @@ export async function connectClip(params: {
 
   logger.info('Clip connected', { action: 'clip_connect', environment, hasSerialNumber: !!serialNumber });
 
+  // Update storeConfig flag + invalidate cache
+  await db.update(storeConfigTable).set({ clipEnabled: true, updatedAt: new Date() }).where(eq(storeConfigTable.id, 'main'));
+  const { cache } = await import('@/infrastructure/redis');
+  await cache.invalidatePattern('config:');
+
   return { success: true, message: `Clip conectado en modo ${environment}` };
 }
 
 export async function disconnectClip(): Promise<void> {
+  const now = new Date();
   await db
     .update(paymentProviderConnections)
     .set({
@@ -445,10 +451,15 @@ export async function disconnectClip(): Promise<void> {
       accessTokenEnc: null,
       publicKey: null,
       providerMetadata: {},
-      disconnectedAt: new Date(),
-      updatedAt: new Date(),
+      disconnectedAt: now,
+      updatedAt: now,
     })
     .where(and(eq(paymentProviderConnections.provider, 'clip'), eq(paymentProviderConnections.storeId, 'main')));
+
+  // Clear storeConfig flag + invalidate cache
+  await db.update(storeConfigTable).set({ clipEnabled: false, updatedAt: now }).where(eq(storeConfigTable.id, 'main'));
+  const { cache } = await import('@/infrastructure/redis');
+  await cache.invalidatePattern('config:');
 
   logger.info('Clip disconnected', { action: 'clip_disconnect' });
 }

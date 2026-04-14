@@ -127,6 +127,13 @@
       "when": 1775847169575,
       "tag": "0017_certain_doctor_faustus",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1776189731146,
+      "tag": "0018_paypal_qr_url",
+      "breakpoints": true
     }
   ]
 }

@@ -1,8 +1,9 @@
 'use client';
 
-import { Card, BlockStack, InlineStack, Text, Box, Button, TextField, Icon } from '@shopify/polaris';
+import { BlockStack, InlineStack, Text, Button, TextField, Icon } from '@shopify/polaris';
 import { BarcodeIcon } from '@shopify/polaris-icons';
 import { CameraScanner } from '@/components/scanner/CameraScanner';
+import { useState } from 'react';
 
 export interface BarcodeScannerCardProps {
   barcodeInput: string;
@@ -17,51 +18,56 @@ export function BarcodeScannerCard({
   barcodeError,
   onScan,
 }: BarcodeScannerCardProps) {
+  const [cameraOpen, setCameraOpen] = useState(false);
+
   return (
-    <Card>
-      <BlockStack gap="300">
-        <InlineStack gap="200" blockAlign="center">
-          <Icon source={BarcodeIcon} />
-          <Text as="h3" variant="headingSm">
-            Escanear código de barras
+    <BlockStack gap="200">
+      {/* Primary input — always visible, compact */}
+      <div
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (e.repeat || !barcodeInput.trim()) return;
+            const code = barcodeInput;
+            onBarcodeInputChange('');
+            onScan(code);
+          }
+        }}
+      >
+        <TextField
+          label="Escanear"
+          labelHidden
+          value={barcodeInput}
+          onChange={onBarcodeInputChange}
+          autoComplete="off"
+          placeholder="Escanea o escribe código de barras / SKU..."
+          prefix={<Icon source={BarcodeIcon} tone="subdued" />}
+          error={barcodeError || undefined}
+          connectedRight={
+            <InlineStack gap="100">
+              <Button onClick={() => onScan(barcodeInput)} disabled={!barcodeInput.trim()}>
+                Buscar
+              </Button>
+              <Button
+                variant={cameraOpen ? 'primary' : 'secondary'}
+                onClick={() => setCameraOpen(!cameraOpen)}
+              >
+                {cameraOpen ? 'Cerrar cámara' : 'Cámara'}
+              </Button>
+            </InlineStack>
+          }
+        />
+      </div>
+
+      {/* Camera — collapsible, only when user needs it */}
+      {cameraOpen && (
+        <BlockStack gap="100">
+          <CameraScanner onScan={onScan} continuous buttonLabel="Escanear con cámara" />
+          <Text as="p" variant="bodySm" tone="subdued">
+            Apunta al código de barras. Se detecta automáticamente.
           </Text>
-        </InlineStack>
-
-        <CameraScanner onScan={onScan} continuous buttonLabel="Escanear productos con camara" />
-
-        <InlineStack gap="200" align="end" blockAlign="end">
-          <Box minWidth="350px">
-            <div
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  if (e.repeat || !barcodeInput.trim()) return;
-                  const code = barcodeInput;
-                  onBarcodeInputChange('');
-                  onScan(code);
-                }
-              }}
-            >
-              <TextField
-                label="Código de barras"
-                value={barcodeInput}
-                onChange={(val) => {
-                  onBarcodeInputChange(val);
-                }}
-                autoComplete="off"
-                placeholder="Escanea o escribe el código de barras..."
-                helpText="El escáner escribe el código y presiona Enter automáticamente"
-                connectedRight={
-                  <Button variant="primary" onClick={() => onScan(barcodeInput)} disabled={!barcodeInput.trim()}>
-                    Buscar
-                  </Button>
-                }
-                error={barcodeError || undefined}
-              />
-            </div>
-          </Box>
-        </InlineStack>
-      </BlockStack>
-    </Card>
+        </BlockStack>
+      )}
+    </BlockStack>
   );
 }

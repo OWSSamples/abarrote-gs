@@ -305,6 +305,13 @@ export interface StoreConfig {
   enableNotifications: boolean;
   telegramToken?: string;
   telegramChatId?: string;
+  // Email (AWS SES)
+  emailEnabled: boolean;
+  emailFrom?: string;
+  emailFromName?: string;
+  emailReplyTo?: string;
+  emailRecipients?: string;
+  emailAccentColor?: string;
   // Hardware
   printerIp?: string;
   cashDrawerPort?: string;
@@ -330,6 +337,7 @@ export interface StoreConfig {
   // Métodos de pago adicionales
   clabeNumber?: string;
   paypalUsername?: string;
+  paypalQrUrl?: string;
   cobrarQrUrl?: string;
   // MercadoPago terminal config
   mpDeviceId?: string;
@@ -403,6 +411,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   storeNumber: '001',
   ticketBarcodeFormat: 'CODE128',
   enableNotifications: false,
+  emailEnabled: false,
   loyaltyEnabled: false,
   pointsPerPeso: 100, // $100 spent = 1 point
   pointsValue: 1, // 1 point = $1 discount

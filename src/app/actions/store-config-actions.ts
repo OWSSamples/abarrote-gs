@@ -229,6 +229,13 @@ function mapStoreConfigRow(row: any): StoreConfig {
       showUnitDetail: false,
     }),
     ticketDesignProveedor: parseTicketDesign(row.ticketDesignProveedor, DEFAULT_TICKET_DESIGN_PROVEEDOR),
+    // Email (AWS SES)
+    emailEnabled: row.emailEnabled ?? DEFAULT_STORE_CONFIG.emailEnabled,
+    emailFrom: row.emailFrom ?? undefined,
+    emailFromName: row.emailFromName ?? undefined,
+    emailReplyTo: row.emailReplyTo ?? undefined,
+    emailRecipients: row.emailRecipients ?? undefined,
+    emailAccentColor: row.emailAccentColor ?? undefined,
   };
 }
 

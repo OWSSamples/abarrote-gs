@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/loyalty-expire",
       "schedule": "0 3 * * 1"
+    },
+    {
+      "path": "/api/cron/weekly-report",
+      "schedule": "0 7 * * 1"
     }
   ],
   "functions": {
@@ -27,6 +31,9 @@
       "maxDuration": 30
     },
     "src/app/api/cron/daily-report/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/cron/weekly-report/route.ts": {
       "maxDuration": 60
     },
     "src/app/actions/analytics-advanced-actions.ts": {

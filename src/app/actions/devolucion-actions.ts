@@ -9,6 +9,8 @@ import { numVal } from './_helpers';
 import { adjustStock } from './_stock';
 import { validateSchema, createDevolucionSchema } from '@/lib/validation/schemas';
 import { withLogging } from '@/lib/errors';
+import { sendNotification } from './_notifications';
+import { devolucionEvent } from './_notification-events';
 
 function mapDevolucion(row: typeof devoluciones.$inferSelect, items: DevolucionItem[]): Devolucion {
   return {
@@ -138,6 +140,20 @@ async function _createDevolucion(data: {
     },
     timestamp: now,
   });
+
+  // Telegram notification (fire-and-forget)
+  sendNotification(
+    devolucionEvent({
+      saleFolio: data.saleFolio,
+      tipo: data.tipo,
+      motivo: data.motivo,
+      montoDevuelto: data.montoDevuelto,
+      metodoDev: data.metodoDev,
+      cajero: data.cajero,
+      itemCount: data.items.length,
+      notas: data.notas || undefined,
+    }),
+  );
 
   const [row] = await db.select().from(devoluciones).where(eq(devoluciones.id, id)).limit(1);
   return mapDevolucion(row, savedItems);

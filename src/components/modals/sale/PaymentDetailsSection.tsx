@@ -99,7 +99,7 @@ const ALL_PAYMENT_METHOD_OPTIONS: ReadonlyArray<{
     | 'stripeEnabled'
     | 'clipEnabled'
     | 'clabeNumber'
-    | 'paypalUsername'
+    | 'paypalConfigured'
     | 'cobrarQrUrl';
 }> = [
   { label: 'Efectivo', value: 'efectivo' },
@@ -114,7 +114,7 @@ const ALL_PAYMENT_METHOD_OPTIONS: ReadonlyArray<{
   { label: 'OXXO (Stripe)', value: 'oxxo_stripe', requires: 'stripeEnabled' },
   { label: 'Clip Checkout (link de pago)', value: 'tarjeta_clip', requires: 'clipEnabled' },
   { label: 'Clip Terminal (PinPad)', value: 'clip_terminal', requires: 'clipEnabled' },
-  { label: 'PayPal', value: 'paypal', requires: 'paypalUsername' },
+  { label: 'PayPal', value: 'paypal', requires: 'paypalConfigured' },
   { label: 'QR de Cobro (CoDi / Banco)', value: 'qr_cobro', requires: 'cobrarQrUrl' },
   { label: 'Fiado (crédito a cliente)', value: 'fiado' },
   { label: 'Puntos de Lealtad (Monedero)', value: 'puntos' },
@@ -163,6 +163,7 @@ export interface PaymentDetailsSectionProps {
   // Datos de métodos de pago adicionales
   clabeNumber?: string;
   paypalUsername?: string;
+  paypalQrUrl?: string;
   cobrarQrUrl?: string;
 }
 
@@ -396,6 +397,7 @@ export function PaymentDetailsSection({
   showError,
   clabeNumber,
   paypalUsername,
+  paypalQrUrl,
   cobrarQrUrl,
 }: PaymentDetailsSectionProps) {
   const storeConfig = useDashboardStore((s) => s.storeConfig);
@@ -407,13 +409,18 @@ export function PaymentDetailsSection({
       stripeEnabled: storeConfig.stripeEnabled,
       clipEnabled: storeConfig.clipEnabled,
       clabeNumber: Boolean(clabeNumber),
-      paypalUsername: Boolean(paypalUsername),
+      paypalConfigured: Boolean(paypalQrUrl || paypalUsername),
       cobrarQrUrl: Boolean(cobrarQrUrl),
     };
 
-    return ALL_PAYMENT_METHOD_OPTIONS.filter((opt) => !opt.requires || flagMap[opt.requires]).map(
-      ({ label, value }) => ({ label, value }),
-    );
+    return ALL_PAYMENT_METHOD_OPTIONS.map(({ label, value, requires }) => {
+      const available = !requires || flagMap[requires];
+      return {
+        label: available ? label : `${label} — No disponible`,
+        value,
+        disabled: !available,
+      };
+    });
   }, [
     storeConfig.mpEnabled,
     storeConfig.conektaEnabled,
@@ -421,6 +428,7 @@ export function PaymentDetailsSection({
     storeConfig.clipEnabled,
     clabeNumber,
     paypalUsername,
+    paypalQrUrl,
     cobrarQrUrl,
   ]);
 
@@ -764,35 +772,59 @@ export function PaymentDetailsSection({
         <BlockStack gap="400">
           <Banner tone="info">
             <p>
-              El cliente puede pagar con <strong>PayPal</strong> escaneando el enlace o accediendo desde su móvil.
+              El cliente puede pagar con <strong>PayPal</strong> escaneando el código QR o usando el enlace.
               Confirma el pago antes de cerrar la venta.
             </p>
           </Banner>
-          {paypalUsername ? (
+          {(paypalQrUrl || paypalUsername) ? (
             <Card>
               <BlockStack gap="400">
-                <Box padding="400" borderRadius="200" background="bg-surface-secondary">
-                  <BlockStack gap="100">
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Enlace de pago PayPal
-                    </Text>
-                    <InlineStack gap="300" blockAlign="center" align="space-between">
-                      <Text as="p" variant="headingSm" fontWeight="bold" breakWord>
-                        paypal.me/{paypalUsername}/{total.toFixed(2)}
+                {paypalQrUrl && (
+                  <Box padding="400" borderRadius="200" background="bg-surface-secondary">
+                    <BlockStack gap="300" inlineAlign="center">
+                      <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                        Muestra este QR al cliente para que pague con PayPal
                       </Text>
-                      <Button
-                        size="slim"
-                        variant={copiedField === 'paypal' ? 'primary' : 'secondary'}
-                        icon={<Icon source={ClipboardIcon} />}
-                        onClick={() =>
-                          copyToClipboard(`https://paypal.me/${paypalUsername}/${total.toFixed(2)}`, 'paypal')
-                        }
-                      >
-                        {copiedField === 'paypal' ? '¡Copiado!' : 'Copiar'}
-                      </Button>
-                    </InlineStack>
-                  </BlockStack>
-                </Box>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={paypalQrUrl}
+                        alt="QR PayPal"
+                        style={{
+                          width: 200,
+                          height: 200,
+                          objectFit: 'contain',
+                          borderRadius: 8,
+                          border: '1px solid #e1e3e5',
+                        }}
+                      />
+                    </BlockStack>
+                  </Box>
+                )}
+
+                {paypalUsername && (
+                  <Box padding="400" borderRadius="200" background="bg-surface-secondary">
+                    <BlockStack gap="100">
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Enlace de pago PayPal
+                      </Text>
+                      <InlineStack gap="300" blockAlign="center" align="space-between">
+                        <Text as="p" variant="headingSm" fontWeight="bold" breakWord>
+                          paypal.me/{paypalUsername}/{total.toFixed(2)}
+                        </Text>
+                        <Button
+                          size="slim"
+                          variant={copiedField === 'paypal' ? 'primary' : 'secondary'}
+                          icon={<Icon source={ClipboardIcon} />}
+                          onClick={() =>
+                            copyToClipboard(`https://paypal.me/${paypalUsername}/${total.toFixed(2)}`, 'paypal')
+                          }
+                        >
+                          {copiedField === 'paypal' ? '¡Copiado!' : 'Copiar'}
+                        </Button>
+                      </InlineStack>
+                    </BlockStack>
+                  </Box>
+                )}
 
                 <Divider />
 
@@ -809,7 +841,7 @@ export function PaymentDetailsSection({
           ) : (
             <Banner tone="warning">
               <p>
-                No hay usuario PayPal configurado. Ve a <strong>Configuración &gt; Pagos</strong> para ingresarlo.
+                No hay QR ni usuario PayPal configurado. Ve a <strong>Configuración &gt; Pagos</strong> para agregarlo.
               </p>
             </Banner>
           )}

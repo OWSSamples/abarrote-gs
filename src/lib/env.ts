@@ -54,11 +54,12 @@ const envSchema = z.object({
   MP_ACCESS_TOKEN: z.string().min(1).optional(),
   MP_WEBHOOK_SECRET: z.string().min(1).optional(),
 
-  // ── AWS (file uploads) ──
+  // ── AWS (file uploads + SES email) ──
   AWS_REGION: z.string().min(1).optional(),
   AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
   AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   AWS_S3_BUCKET: z.string().min(1).optional(),
+  SES_FROM_EMAIL: z.string().email().optional(),
 
   // ── Telegram ──
   TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),

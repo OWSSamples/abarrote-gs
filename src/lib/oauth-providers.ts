@@ -222,6 +222,10 @@ export async function exchangeMPAuthorizationCode(
       })
       .where(eq(storeConfigTable.id, 'main'));
 
+    // Invalidate Redis cache so POS dropdown picks up mpEnabled: true
+    const { cache } = await import('@/infrastructure/redis');
+    await cache.invalidatePattern('config:');
+
     // Cleanup used state
     await db.delete(oauthStates).where(eq(oauthStates.id, oauthState.id));
 
@@ -376,6 +380,8 @@ export async function disconnectProvider(provider: ProviderType): Promise<void> 
   if (provider === 'mercadopago') {
     const { storeConfig: storeConfigTable } = await import('@/db/schema');
     await db.update(storeConfigTable).set({ mpEnabled: false, updatedAt: now }).where(eq(storeConfigTable.id, 'main'));
+    const { cache } = await import('@/infrastructure/redis');
+    await cache.invalidatePattern('config:');
   }
 
   logger.info(`${provider} disconnected`);

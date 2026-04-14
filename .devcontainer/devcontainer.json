@@ -28,7 +28,8 @@
       },
       "extensions": [
         "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode"
+        "esbenp.prettier-vscode",
+        "MS-CEINTL.vscode-language-pack-es"
       ]
     },
     "codespaces": {

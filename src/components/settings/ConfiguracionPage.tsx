@@ -44,7 +44,9 @@ import { NotificationsSection } from './sections/NotificationsSection';
 import { PaymentsSection } from './sections/PaymentsSection';
 import { CustomerDisplaySectionV4 } from './sections/CustomerDisplaySectionV4';
 import { ServiciosSection } from './sections/ServiciosSection';
+import { EmailSection } from './sections/EmailSection';
 import { parseError } from '@/lib/errors';
+import { sendTestEmailAction } from '@/app/actions/email-actions';
 
 const SETTINGS_CATEGORIES = [
   {
@@ -91,16 +93,24 @@ const SETTINGS_CATEGORIES = [
     icon: ChatIcon,
   },
   {
+    id: 'email',
+    title: 'Correo Electrónico',
+    description: 'Envía tickets digitales, reportes y alertas por correo (AWS SES).',
+    icon: NoteIcon,
+  },
+  {
     id: 'payments',
     title: 'Pagos Integrados',
     description: 'Vincula tu terminal Point de Mercado Pago para cobros físicos.',
     icon: CreditCardIcon,
+    beta: true,
   },
   {
     id: 'customer-display',
     title: 'Pantalla del Cliente',
     description: 'Muestra al cliente sus productos y totales en un segundo monitor o tablet.',
     icon: ViewIcon,
+    beta: true,
   },
   {
     id: 'servicios',
@@ -166,6 +176,7 @@ export function ConfiguracionPage() {
       defaultStartingFund: useField(storeConfig.defaultStartingFund ?? 500),
       clabeNumber: useField(storeConfig.clabeNumber || ''),
       paypalUsername: useField(storeConfig.paypalUsername || ''),
+      paypalQrUrl: useField(storeConfig.paypalQrUrl || ''),
       cobrarQrUrl: useField(storeConfig.cobrarQrUrl || ''),
       mpEnabled: useField(storeConfig.mpEnabled ?? false),
       mpPublicKey: useField(storeConfig.mpPublicKey || ''),
@@ -177,13 +188,24 @@ export function ConfiguracionPage() {
       clipEnabled: useField(storeConfig.clipEnabled ?? false),
       clipApiKey: useField(storeConfig.clipApiKey || ''),
       clipSerialNumber: useField(storeConfig.clipSerialNumber || ''),
+      // Email (AWS SES)
+      emailEnabled: useField(storeConfig.emailEnabled ?? false),
+      emailFrom: useField(storeConfig.emailFrom || ''),
+      emailFromName: useField(storeConfig.emailFromName || ''),
+      emailReplyTo: useField(storeConfig.emailReplyTo || ''),
+      emailRecipients: useField(storeConfig.emailRecipients || ''),
+      emailAccentColor: useField(storeConfig.emailAccentColor || '#2563eb'),
       // NOTE: customerDisplay* fields are NOT in this form.
       // CustomerDisplaySectionV2 is self-sufficient and manages its own state
       // directly via Zustand store to avoid state sync conflicts.
     },
     onSubmit: async (f) => {
       try {
-        await saveStoreConfig(f as Partial<StoreConfig>);
+        // Exclude provider-enabled flags — they're managed by their own
+        // connect/disconnect handlers (OAuth, API keys) and must NOT be
+        // overwritten by the settings form.
+        const { mpEnabled, conektaEnabled, stripeEnabled, clipEnabled, ...safeFields } = f;
+        await saveStoreConfig(safeFields as Partial<StoreConfig>);
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
         return { status: 'success' };
@@ -212,6 +234,11 @@ export function ConfiguracionPage() {
       storeConfig.telegramToken &&
       storeConfig.telegramChatId
     );
+    const emailConfigured = !!(
+      storeConfig.emailEnabled &&
+      storeConfig.emailFrom &&
+      storeConfig.emailRecipients
+    );
     const mpLinked = storeConfig.mpEnabled;
     const hardwareConfigured = !!storeConfig.printerIp;
     const loyaltyConfigured = storeConfig.loyaltyEnabled;
@@ -228,6 +255,10 @@ export function ConfiguracionPage() {
         configured: notificationsConfigured,
         label: notificationsConfigured ? 'Conectado' : 'Sin conectar',
       },
+      email: {
+        configured: emailConfigured,
+        label: emailConfigured ? 'Activo' : 'Sin configurar',
+      },
       payments: { configured: mpLinked, label: mpLinked ? 'Vinculado' : 'Sin vincular' },
       'customer-display': { configured: displayEnabled, label: displayEnabled ? 'Activo' : 'Inactivo' },
       servicios: {
@@ -237,10 +268,14 @@ export function ConfiguracionPage() {
     } as Record<string, { configured: boolean; label: string }>;
   }, [storeConfig]);
 
-  // Sync with store when it changes externally
+  // Sync with store when it changes externally — but only if the user
+  // is NOT actively editing (isDirty). Otherwise a background SyncEngine
+  // poll would wipe out whatever they're typing.
   useEffect(() => {
-    resetConfig();
-  }, [storeConfig, resetConfig]);
+    if (!isDirty) {
+      resetConfig();
+    }
+  }, [storeConfig, resetConfig, isDirty]);
 
   // === PROTECCIÓN DE DATOS (leaveConfirmation) ===
   useEffect(() => {
@@ -308,6 +343,10 @@ export function ConfiguracionPage() {
   // Telegram config
   const [tgTesting, setTgTesting] = useState(false);
   const [tgTestResult, setTgTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Email config
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Logo upload
   const [logoUploading, setLogoUploading] = useState(false);
@@ -395,6 +434,31 @@ export function ConfiguracionPage() {
     setTgTesting(false);
   }, [fields.telegramToken.value, fields.telegramChatId.value]);
 
+  const handleEmailTest = useCallback(async () => {
+    const from = fields.emailFrom.value;
+    const recipients = fields.emailRecipients.value;
+    if (!from || !recipients) {
+      setEmailTestResult({ success: false, message: 'Configura el correo remitente y los destinatarios primero' });
+      return;
+    }
+    const firstRecipient = recipients.split(',')[0].trim();
+    setEmailTesting(true);
+    setEmailTestResult(null);
+    try {
+      const result = await sendTestEmailAction({
+        to: firstRecipient,
+        fromEmail: from,
+        fromName: fields.emailFromName.value || config.storeName,
+        storeName: config.storeName,
+        logoUrl: config.logoUrl,
+      });
+      setEmailTestResult(result);
+    } catch (err) {
+      setEmailTestResult({ success: false, message: err instanceof Error ? err.message : 'Error al enviar correo de prueba' });
+    }
+    setEmailTesting(false);
+  }, [fields.emailFrom.value, fields.emailRecipients.value, fields.emailFromName.value, config.storeName, config.logoUrl]);
+
   // ================= MAIN RENDER ================= //
 
   const getActiveView = () => {
@@ -431,6 +495,16 @@ export function ConfiguracionPage() {
             handleTGTest={handleTGTest}
           />
         );
+      case 'email':
+        return (
+          <EmailSection
+            config={config}
+            updateField={updateField}
+            emailTesting={emailTesting}
+            emailTestResult={emailTestResult}
+            handleEmailTest={handleEmailTest}
+          />
+        );
       case 'payments':
         return (
           <PaymentsSection
@@ -442,6 +516,7 @@ export function ConfiguracionPage() {
             handleMPTest={handleMPTest}
             clabeNumberField={fields.clabeNumber}
             paypalUsernameField={fields.paypalUsername}
+            paypalQrUrlField={fields.paypalQrUrl}
             cobrarQrUrlField={fields.cobrarQrUrl}
           />
         );
@@ -517,7 +592,7 @@ export function ConfiguracionPage() {
     {
       title: 'Integraciones',
       description: 'Servicios externos y canales de comunicación.',
-      items: SETTINGS_CATEGORIES.filter((c) => ['notifications', 'payments'].includes(c.id)),
+      items: SETTINGS_CATEGORIES.filter((c) => ['notifications', 'email', 'payments'].includes(c.id)),
     },
   ];
 

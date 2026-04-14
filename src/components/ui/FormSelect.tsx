@@ -7,6 +7,7 @@ import { SelectIcon } from '@shopify/polaris-icons';
 interface Option {
   label: string;
   value: string;
+  disabled?: boolean;
 }
 
 interface FormSelectProps {
@@ -65,6 +66,7 @@ export function FormSelect({
           items={options.map((opt) => ({
             content: opt.label,
             active: opt.value === value,
+            disabled: opt.disabled,
             onAction: () => handleSelect(opt.value),
           }))}
         />

@@ -2,7 +2,17 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useForm, useField } from '@shopify/react-form';
-import { Modal, BlockStack, InlineStack, Text, Box, Button, Card, TextField, Spinner } from '@shopify/polaris';
+import {
+  Modal,
+  BlockStack,
+  InlineStack,
+  Text,
+  Box,
+  Button,
+  Card,
+  TextField,
+  Spinner,
+} from '@shopify/polaris';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
@@ -279,6 +289,21 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     [hasPermission],
   );
 
+  const handleUpdateQuantity = useCallback(
+    (productId: string, delta: number) => {
+      setItems((prev) =>
+        prev.map((item) => {
+          if (item.productId !== productId) return item;
+          const product = allProducts.find((p) => p.id === productId);
+          const newQty = item.quantity + delta;
+          if (newQty < 1 || (product && newQty > product.currentStock)) return item;
+          return { ...item, quantity: newQty, subtotal: newQty * item.unitPrice };
+        }),
+      );
+    },
+    [allProducts],
+  );
+
   const handleApplyDiscount = useCallback(() => {
     if (!fields.discount.value || parseFloat(fields.discount.value) <= 0) return;
     if (hasPermission('sales.discount')) {
@@ -525,13 +550,16 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                     Procesando Venta...
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-                    {navigator.onLine ? 'Sincronizando con la nube de prueba' : 'Guardando en modo resiliencia offline'}
+                    {typeof navigator !== 'undefined' && navigator.onLine
+                      ? 'Sincronizando con la nube'
+                      : 'Guardando en modo offline'}
                   </Text>
                 </BlockStack>
               </BlockStack>
             </Box>
           ) : (
             <BlockStack gap="400">
+              {/* ── Escáner de código de barras ── */}
               <BarcodeScannerCard
                 barcodeInput={fields.barcodeInput.value}
                 onBarcodeInputChange={(val) => {
@@ -542,7 +570,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 onScan={handleBarcodeScan}
               />
 
-              {/* Add product manually */}
+              {/* ── Agregar producto manual ── */}
               <Card>
                 <BlockStack gap="300">
                   <Text as="h3" variant="headingSm">
@@ -578,8 +606,29 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 </BlockStack>
               </Card>
 
-              <SaleItemsTable items={items} allProducts={allProducts} onRemove={handleRemoveClick} />
+              {/* ── Carrito ── */}
+              {items.length > 0 ? (
+                <Card>
+                  <SaleItemsTable
+                    items={items}
+                    allProducts={allProducts}
+                    onRemove={handleRemoveClick}
+                    onUpdateQuantity={handleUpdateQuantity}
+                  />
+                </Card>
+              ) : (
+                <Card>
+                  <Box padding="600">
+                    <BlockStack gap="200" align="center" inlineAlign="center">
+                      <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                        Escanea un código de barras o selecciona un producto para comenzar.
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                </Card>
+              )}
 
+              {/* ── Totales ── */}
               {items.length > 0 && (
                 <SaleTotalsCard
                   subtotal={subtotal}
@@ -606,6 +655,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 />
               )}
 
+              {/* ── Método de pago ── */}
               <PaymentDetailsSection
                 currentUserRole={currentUserRole}
                 paymentMethodField={fields.paymentMethod}
@@ -629,6 +679,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 showError={showError}
                 clabeNumber={storeConfig.clabeNumber}
                 paypalUsername={storeConfig.paypalUsername}
+                paypalQrUrl={storeConfig.paypalQrUrl}
                 cobrarQrUrl={storeConfig.cobrarQrUrl}
               />
             </BlockStack>

@@ -217,7 +217,7 @@ export default function DashboardOverviewPage() {
           </InlineGrid>
 
           {/* ═══ ROW 2: SECONDARY KPIs (compact cards) ═══ */}
-          <InlineGrid columns={{ xs: 2, md: 5 }} gap="300">
+          <InlineGrid columns={{ xs: 2, sm: 3, md: 5 }} gap="300">
             <Card>
               <BlockStack gap="100">
                 <Text as="p" variant="bodyXs" tone="subdued">

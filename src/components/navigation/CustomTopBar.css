@@ -306,6 +306,41 @@
   width: 400px;
 }
 
+/* ── Mobile responsive overrides ── */
+@media (max-width: 768px) {
+  .ctb-notif-panel {
+    width: calc(100vw - 24px) !important;
+    max-width: 400px;
+  }
+
+  .ctb-search-wrap {
+    position: relative;
+    left: 0;
+    top: 0;
+    transform: none;
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .ctb-kbd {
+    display: none;
+  }
+
+  .ctb-root {
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .ctb-actions {
+    gap: 2px;
+  }
+
+  .ctb-sep-v {
+    display: none;
+  }
+}
+
 /* Encabezado del panel */
 .ctb-notif-header {
   padding: 14px 16px 10px;

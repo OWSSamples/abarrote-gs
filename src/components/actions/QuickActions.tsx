@@ -273,20 +273,21 @@ export function QuickActions() {
             </Text>
           </BlockStack>
 
-          <InlineGrid columns={{ xs: 2, sm: 3, md: 6 }} gap="300">
+          <InlineGrid columns={{ xs: 3, sm: 3, md: 6 }} gap="300">
             {actions.map((action) => (
               <div
                 key={action.label}
                 onClick={action.disabled ? undefined : action.onClick}
                 style={{
                   cursor: action.disabled ? 'default' : 'pointer',
-                  padding: '16px 12px',
+                  padding: '14px 8px',
                   borderRadius: '12px',
                   border: '1px solid #e3e5e7',
                   backgroundColor: '#fff',
                   textAlign: 'center',
                   transition: 'all 0.15s ease',
                   opacity: action.disabled ? 0.5 : 1,
+                  WebkitTapHighlightColor: 'transparent',
                 }}
                 onMouseEnter={(e) => {
                   if (!action.disabled) {

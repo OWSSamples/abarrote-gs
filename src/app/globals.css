@@ -142,6 +142,66 @@ body,
 /* Padding for mobile bottom nav */
 @media screen and (max-width: 768px) {
   .Polaris-Frame__Main {
-    padding-bottom: 70px !important;
+    padding-bottom: 68px !important;
+  }
+
+  /* Reduce page horizontal padding on mobile */
+  .Polaris-Page {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Page header: stack title + actions vertically */
+  .Polaris-Page-Header--hasActionMenu .Polaris-Page-Header__Row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* More breathable card spacing */
+  .Polaris-Card {
+    border-radius: 12px !important;
+  }
+
+  /* IndexTable horizontal scroll hint */
+  .Polaris-IndexTable-ScrollContainer {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Bigger touch targets for checkboxes */
+  .Polaris-Checkbox__Input + .Polaris-Checkbox__Backdrop {
+    min-width: 20px;
+    min-height: 20px;
+  }
+
+  /* Layout annotated sections: full width on mobile */
+  .Polaris-Layout__AnnotatedSection {
+    flex-direction: column !important;
+  }
+  .Polaris-Layout__AnnotationWrapper {
+    flex-direction: column !important;
+  }
+  .Polaris-Layout__AnnotationContent {
+    max-width: 100% !important;
+    padding-left: 0 !important;
+  }
+  .Polaris-Layout__Annotation {
+    max-width: 100% !important;
+    padding-right: 0 !important;
+    padding-bottom: 8px !important;
+  }
+
+  /* Modal: almost full screen on mobile */
+  .Polaris-Modal-Dialog__Modal {
+    max-height: 92vh !important;
+    margin: 16px !important;
+    border-radius: 16px !important;
+  }
+}
+
+/* Tablet: medium spacing adjustments */
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+  .Polaris-Page {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
   }
 }

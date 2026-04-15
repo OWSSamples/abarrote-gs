@@ -1,7 +1,6 @@
 'use client';
 
 import { Page } from '@shopify/polaris';
-import { ExportIcon, CashDollarIcon } from '@shopify/polaris-icons';
 import { useState } from 'react';
 import { SalesHistory } from '@/components/sales/SalesHistory';
 import { GenericExportModal } from '@/components/inventory/ShopifyModals';
@@ -23,12 +22,10 @@ export default function SalesPage() {
         secondaryActions={[
           {
             content: 'Exportar',
-            icon: ExportIcon,
             onAction: () => setIsExportOpen(true),
           },
           {
             content: 'Corte de Caja',
-            icon: CashDollarIcon,
             onAction: () => router.push('/dashboard/sales/corte'),
           },
         ]}

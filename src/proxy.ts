@@ -145,7 +145,7 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(self), payment=(), interest-cohort=()',
+    'camera=(self), microphone=(), geolocation=(self), payment=(), interest-cohort=()',
   );
   // Disable legacy XSS auditor (can be exploited in old browsers)
   response.headers.set('X-XSS-Protection', '0');

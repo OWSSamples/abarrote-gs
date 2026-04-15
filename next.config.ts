@@ -28,7 +28,7 @@ const SECURITY_HEADERS = [
   },
   {
     key: 'Permissions-Policy',
-    value: 'camera=(), microphone=(), geolocation=(self), payment=()',
+    value: 'camera=(self), microphone=(), geolocation=(self), payment=()',
   },
   {
     key: 'X-Robots-Tag',

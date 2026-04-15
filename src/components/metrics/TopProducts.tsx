@@ -1,6 +1,5 @@
 'use client';
 
-import type { CSSProperties } from 'react';
 import { Card, Text, InlineStack } from '@shopify/polaris';
 import { formatCurrency } from '@/lib/utils';
 
@@ -28,21 +27,11 @@ const defaultTopProducts: TopProduct[] = [
   { id: '5', name: 'Sabritas Original', sku: 'BOT-001', unitsSold: 128, revenue: 2560, margin: 35, trend: 'down' },
 ];
 
-const trendMap = {
-  up: { symbol: '↑', color: 'var(--p-color-text-success)' },
-  down: { symbol: '↓', color: 'var(--p-color-text-critical)' },
-  stable: { symbol: '–', color: 'var(--p-color-text-subdued)' },
+const trendConfig = {
+  up: { label: '↑', color: '#1a7f37' },
+  down: { label: '↓', color: '#cf222e' },
+  stable: { label: '–', color: '#656d76' },
 } as const;
-
-const thBase: CSSProperties = {
-  padding: '6px 16px',
-  fontSize: 11,
-  fontWeight: 510,
-  color: 'var(--p-color-text-subdued)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.4px',
-  lineHeight: 1.6,
-};
 
 export function TopProducts({
   products = defaultTopProducts,
@@ -51,222 +40,184 @@ export function TopProducts({
 }: TopProductsProps) {
   const totalRevenue = products.reduce((s, p) => s + p.revenue, 0);
   const totalUnits = products.reduce((s, p) => s + p.unitsSold, 0);
+  const maxRevenue = Math.max(...products.map((p) => p.revenue));
 
   return (
     <Card padding="0">
       {/* Header */}
-      <div style={{ padding: '16px 16px 12px' }}>
+      <div style={{ padding: '16px 16px 14px' }}>
         <InlineStack align="space-between" blockAlign="center">
           <Text as="h3" variant="headingSm" fontWeight="semibold">
             {title}
           </Text>
-          <Text as="span" variant="bodySm" tone="subdued">
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: 'var(--p-color-text-subdued)',
+              background: 'var(--p-color-bg-surface-secondary)',
+              padding: '2px 8px',
+              borderRadius: 4,
+            }}
+          >
             {period}
-          </Text>
+          </span>
         </InlineStack>
       </div>
 
-      {/* Table */}
-      <table
+      {/* Product List */}
+      <div>
+        {products.map((product, i) => {
+          const trend = trendConfig[product.trend];
+          const barPct = maxRevenue > 0 ? (product.revenue / maxRevenue) * 100 : 0;
+          const share = totalRevenue > 0 ? ((product.revenue / totalRevenue) * 100).toFixed(0) : '0';
+          const isFirst = i === 0;
+
+          return (
+            <div
+              key={product.id}
+              style={{
+                borderTop: '1px solid var(--p-color-border-secondary)',
+                padding: '12px 16px',
+                position: 'relative',
+                overflow: 'hidden',
+                cursor: 'default',
+              }}
+            >
+              {/* Revenue proportion bar — very subtle */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: `${barPct}%`,
+                  background: isFirst
+                    ? 'linear-gradient(90deg, rgba(26, 127, 55, 0.06), rgba(26, 127, 55, 0.02))'
+                    : 'linear-gradient(90deg, rgba(0, 0, 0, 0.025), transparent)',
+                  pointerEvents: 'none',
+                }}
+              />
+
+              {/* Content */}
+              <div style={{ position: 'relative' }}>
+                {/* Row 1: Rank + Name ... Revenue */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                  }}
+                >
+                  {/* Rank */}
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 22,
+                      height: 22,
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      flexShrink: 0,
+                      marginTop: 1,
+                      background: isFirst
+                        ? '#1a7f37'
+                        : 'var(--p-color-bg-surface-secondary)',
+                      color: isFirst ? '#fff' : 'var(--p-color-text-subdued)',
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+
+                  {/* Name + meta */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: isFirst ? 600 : 500,
+                        color: 'var(--p-color-text)',
+                        lineHeight: 1.35,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {product.name}
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginTop: 3,
+                        fontSize: 11,
+                        color: 'var(--p-color-text-subdued)',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      <span>{product.unitsSold} uds</span>
+                      <span style={{ opacity: 0.4 }}>·</span>
+                      <span>{share}% del total</span>
+                      <span style={{ opacity: 0.4 }}>·</span>
+                      <span style={{ color: trend.color, fontWeight: 600 }}>
+                        {trend.label}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Revenue */}
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 650,
+                      color: 'var(--p-color-text)',
+                      fontVariantNumeric: 'tabular-nums',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                      marginTop: 1,
+                    }}
+                  >
+                    {formatCurrency(product.revenue)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer */}
+      <div
         style={{
-          width: '100%',
-          borderCollapse: 'collapse',
+          borderTop: '1px solid var(--p-color-border)',
+          padding: '12px 16px',
+          background: 'var(--p-color-bg-surface-secondary)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           fontVariantNumeric: 'tabular-nums',
         }}
       >
-        <thead>
-          <tr
-            style={{
-              borderTop: '1px solid var(--p-color-border-secondary)',
-              borderBottom: '1px solid var(--p-color-border-secondary)',
-            }}
-          >
-            <th style={{ ...thBase, textAlign: 'left' }}>Producto</th>
-            <th style={{ ...thBase, textAlign: 'right', width: 48 }}>Uds</th>
-            <th style={{ ...thBase, textAlign: 'right' }}>Ingreso</th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((product, i) => {
-            const share =
-              totalRevenue > 0
-                ? ((product.revenue / totalRevenue) * 100).toFixed(0)
-                : '0';
-            const trend = trendMap[product.trend];
-
-            return (
-              <tr
-                key={product.id}
-                style={{
-                  borderBottom:
-                    i < products.length - 1
-                      ? '1px solid var(--p-color-border-secondary)'
-                      : 'none',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background =
-                    'var(--p-color-bg-surface-hover)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                {/* Product */}
-                <td style={{ padding: '10px 16px' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: 24,
-                        height: 24,
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 650,
-                        flexShrink: 0,
-                        ...(i === 0
-                          ? {
-                              background:
-                                'var(--p-color-bg-fill-success-secondary)',
-                              color: 'var(--p-color-text-success)',
-                            }
-                          : {
-                              color: 'var(--p-color-text-subdued)',
-                            }),
-                      }}
-                    >
-                      {i + 1}
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 550,
-                          color: 'var(--p-color-text)',
-                          lineHeight: 1.4,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {product.name}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: 'var(--p-color-text-subdued)',
-                          lineHeight: 1.3,
-                        }}
-                      >
-                        {product.sku} · {share}%
-                      </div>
-                    </div>
-                  </div>
-                </td>
-
-                {/* Units */}
-                <td
-                  style={{
-                    padding: '10px 16px',
-                    textAlign: 'right',
-                    fontSize: 13,
-                    color: 'var(--p-color-text-subdued)',
-                    verticalAlign: 'middle',
-                  }}
-                >
-                  {product.unitsSold}
-                </td>
-
-                {/* Revenue + trend */}
-                <td
-                  style={{
-                    padding: '10px 16px',
-                    textAlign: 'right',
-                    verticalAlign: 'middle',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      gap: 3,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: 'var(--p-color-text)',
-                      }}
-                    >
-                      {formatCurrency(product.revenue)}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: trend.color,
-                      }}
-                    >
-                      {trend.symbol}
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-        <tfoot>
-          <tr
-            style={{
-              borderTop: '1px solid var(--p-color-border)',
-              background: 'var(--p-color-bg-surface-secondary)',
-            }}
-          >
-            <td
-              style={{
-                padding: '10px 16px',
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--p-color-text-subdued)',
-              }}
-            >
-              Total
-            </td>
-            <td
-              style={{
-                padding: '10px 16px',
-                textAlign: 'right',
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--p-color-text-subdued)',
-              }}
-            >
-              {totalUnits}
-            </td>
-            <td
-              style={{
-                padding: '10px 16px',
-                textAlign: 'right',
-                fontSize: 13,
-                fontWeight: 650,
-                color: 'var(--p-color-text)',
-              }}
-            >
-              {formatCurrency(totalRevenue)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 500,
+            color: 'var(--p-color-text-subdued)',
+          }}
+        >
+          {totalUnits} unidades
+        </span>
+        <span
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: 'var(--p-color-text)',
+          }}
+        >
+          {formatCurrency(totalRevenue)}
+        </span>
+      </div>
     </Card>
   );
 }

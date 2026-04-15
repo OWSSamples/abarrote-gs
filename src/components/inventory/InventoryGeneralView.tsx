@@ -7,13 +7,16 @@ import {
   Card,
   IndexTable,
   InlineStack,
-  Tabs,
   Text,
   TextField,
   useIndexResourceState,
+  IndexFilters,
+  useSetIndexFiltersMode,
+  IndexFiltersMode,
+  Badge,
+  EmptySearchResult,
 } from '@shopify/polaris';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
-import { LayoutColumns3Icon, SearchIcon, SortIcon } from '@shopify/polaris-icons';
 import { Product } from '@/types';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -30,25 +33,14 @@ import {
   serializeInventoryGeneralColumns,
 } from './InventoryTypes';
 import { InventoryBulkEdit } from './InventoryBulkEdit';
+import { formatCurrency } from '@/lib/utils';
 
-// --- Columnas fijas del screenshot de Shopify ---
-const _INVENTORY_HEADINGS: { title: string }[] = [
-  { title: 'Producto' },
-  { title: 'SKU' },
-  { title: 'No disponible' },
-  { title: 'Comprometido' },
-  { title: 'Disponible' },
-  { title: 'En existencia' },
-  { title: 'Nombre del contenedor' },
-];
-
-const INVENTORY_TABS = [
-  {
-    id: 'all-items',
-    content: 'Todo',
-    accessibilityLabel: 'Todos los productos',
-    panelID: 'all-items-content',
-  },
+// --- Columnas fijas de inventario ---
+const INVENTORY_SORT_OPTIONS = [
+  { label: 'Producto', value: 'product asc' as const, directionLabel: 'A-Z' },
+  { label: 'Producto', value: 'product desc' as const, directionLabel: 'Z-A' },
+  { label: 'Stock', value: 'stock asc' as const, directionLabel: 'Menor a mayor' },
+  { label: 'Stock', value: 'stock desc' as const, directionLabel: 'Mayor a menor' },
 ];
 
 interface InventoryGeneralViewProps {
@@ -72,9 +64,10 @@ export function InventoryGeneralView({
 }: InventoryGeneralViewProps) {
   const [selectedTab, setSelectedTab] = useState(0);
   const [queryValue, setQueryValue] = useState('');
-  const [sortAscending, setSortAscending] = useState(true);
+  const [sortSelected, setSortSelected] = useState(['product asc']);
   const [isColumnsPopoverOpen, setIsColumnsPopoverOpen] = useState(false);
   const [columnQuery, setColumnQuery] = useState('');
+  const { mode, setMode } = useSetIndexFiltersMode(IndexFiltersMode.Filtering);
 
   // --- Edicion masiva ---
   const [isBulkEditing, setIsBulkEditing] = useState(false);
@@ -116,20 +109,49 @@ export function InventoryGeneralView({
     }
   }, [isBulkEditing, storeConfig.inventoryGeneralColumns]);
 
+  // --- Tabs with counts ---
+  const tabCounts = useMemo(() => {
+    const lowStock = products.filter((p) => p.currentStock > 0 && p.currentStock <= p.minStock).length;
+    const outOfStock = products.filter((p) => p.currentStock === 0).length;
+    return { lowStock, outOfStock };
+  }, [products]);
+
+  const inventoryTabs = useMemo(
+    () => [
+      { id: 'all', content: 'Todo', isLocked: true, index: 0, onAction: () => {} },
+      { id: 'low', content: `Stock bajo (${tabCounts.lowStock})`, index: 1, onAction: () => {} },
+      { id: 'out', content: `Agotados (${tabCounts.outOfStock})`, index: 2, onAction: () => {} },
+    ],
+    [tabCounts],
+  );
+
   // --- Filtro ---
   const filteredProducts = useMemo(() => {
+    let result = products;
+
+    // Tab filter
+    if (selectedTab === 1) result = result.filter((p) => p.currentStock > 0 && p.currentStock <= p.minStock);
+    else if (selectedTab === 2) result = result.filter((p) => p.currentStock === 0);
+
     const query = queryValue.trim().toLowerCase();
     const filtered = query
-      ? products.filter(
+      ? result.filter(
           (p) =>
             p.name.toLowerCase().includes(query) ||
             p.sku.toLowerCase().includes(query) ||
             p.barcode.toLowerCase().includes(query),
         )
-      : [...products];
-    filtered.sort((a, b) => (sortAscending ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)));
+      : [...result];
+
+    const [sortKey, sortDir] = sortSelected[0].split(' ');
+    filtered.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === 'product') cmp = a.name.localeCompare(b.name);
+      else if (sortKey === 'stock') cmp = a.currentStock - b.currentStock;
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
     return filtered;
-  }, [products, queryValue, sortAscending]);
+  }, [products, selectedTab, queryValue, sortSelected]);
 
   // --- Resource selection ---
   const { selectedResources, allResourcesSelected, handleSelectionChange } = useIndexResourceState(
@@ -378,25 +400,31 @@ export function InventoryGeneralView({
             case 'unitPrice':
               return (
                 <IndexTable.Cell key={col.key}>
-                  <Text as="span" variant="bodyMd">
-                    ${product.unitPrice.toFixed(2)}
-                  </Text>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <Text as="span" variant="bodyMd">
+                      {formatCurrency(product.unitPrice)}
+                    </Text>
+                  </span>
                 </IndexTable.Cell>
               );
             case 'costPrice':
               return (
                 <IndexTable.Cell key={col.key}>
-                  <Text as="span" variant="bodyMd">
-                    ${product.costPrice.toFixed(2)}
-                  </Text>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <Text as="span" variant="bodyMd" tone="subdued">
+                      {formatCurrency(product.costPrice)}
+                    </Text>
+                  </span>
                 </IndexTable.Cell>
               );
             case 'minStock':
               return (
                 <IndexTable.Cell key={col.key}>
-                  <Text as="span" variant="bodyMd">
-                    {product.minStock}
-                  </Text>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <Text as="span" variant="bodyMd">
+                      {product.minStock}
+                    </Text>
+                  </span>
                 </IndexTable.Cell>
               );
             case 'expirationDate':
@@ -407,11 +435,13 @@ export function InventoryGeneralView({
                   </Text>
                 </IndexTable.Cell>
               );
-            case 'available':
+            case 'available': {
+              const stockTone =
+                available === 0 ? 'critical' : available <= product.minStock ? 'attention' : undefined;
               return (
                 <IndexTable.Cell key={col.key}>
-                  <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '140px' }}>
-                    <InlineStack gap="100" wrap={false} align="start" blockAlign="center">
+                  <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '160px' }}>
+                    <InlineStack gap="200" wrap={false} blockAlign="center">
                       <div style={{ flexGrow: 1 }}>
                         <TextField
                           label="Disponible"
@@ -422,20 +452,25 @@ export function InventoryGeneralView({
                           onChange={(v) => handleInlineChange(product.id, 'available', v)}
                         />
                       </div>
-                      {edited?.available !== undefined && (
-                        <Button size="micro" variant="primary" onClick={() => handleInlineSave(product)}>
+                      {edited?.available !== undefined ? (
+                        <Button size="slim" variant="primary" onClick={() => handleInlineSave(product)}>
                           Guardar
                         </Button>
+                      ) : (
+                        stockTone && <Badge tone={stockTone}>{available === 0 ? 'Agotado' : 'Bajo'}</Badge>
                       )}
                     </InlineStack>
                   </div>
                 </IndexTable.Cell>
               );
-            case 'onHand':
+            }
+            case 'onHand': {
+              const onHandTone =
+                onHand === 0 ? 'critical' : onHand <= product.minStock ? 'attention' : undefined;
               return (
                 <IndexTable.Cell key={col.key}>
-                  <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '140px' }}>
-                    <InlineStack gap="100" wrap={false} align="start" blockAlign="center">
+                  <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '160px' }}>
+                    <InlineStack gap="200" wrap={false} blockAlign="center">
                       <div style={{ flexGrow: 1 }}>
                         <TextField
                           label="En existencia"
@@ -446,15 +481,18 @@ export function InventoryGeneralView({
                           onChange={(v) => handleInlineChange(product.id, 'onHand', v)}
                         />
                       </div>
-                      {edited?.onHand !== undefined && (
-                        <Button size="micro" variant="primary" onClick={() => handleInlineSave(product)}>
+                      {edited?.onHand !== undefined ? (
+                        <Button size="slim" variant="primary" onClick={() => handleInlineSave(product)}>
                           Guardar
                         </Button>
+                      ) : (
+                        onHandTone && <Badge tone={onHandTone}>{onHand === 0 ? 'Agotado' : 'Bajo'}</Badge>
                       )}
                     </InlineStack>
                   </div>
                 </IndexTable.Cell>
               );
+            }
             default:
               return <IndexTable.Cell key={col.key}>-</IndexTable.Cell>;
           }
@@ -488,67 +526,44 @@ export function InventoryGeneralView({
   return (
     <BlockStack gap="400">
       <Card padding="0">
-        {/* Toolbar: Tabs a la izquierda, iconos a la derecha */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid var(--p-color-border-subdued, #e1e3e5)',
-          }}
-        >
-          {/* Izquierda: Tabs */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <Tabs tabs={INVENTORY_TABS} selected={selectedTab} onSelect={setSelectedTab} fitted={false} />
-          </div>
+        <IndexFilters
+          sortOptions={INVENTORY_SORT_OPTIONS}
+          sortSelected={sortSelected}
+          queryValue={queryValue}
+          queryPlaceholder="Buscar por nombre, SKU o código de barras..."
+          onQueryChange={setQueryValue}
+          onQueryClear={() => setQueryValue('')}
+          onSort={setSortSelected}
+          cancelAction={{ onAction: () => {}, disabled: false, loading: false }}
+          tabs={inventoryTabs}
+          selected={selectedTab}
+          onSelect={setSelectedTab}
+          mode={mode}
+          setMode={setMode}
+          filters={[]}
+          appliedFilters={[]}
+          onClearAll={() => {}}
+        />
 
-          {/* Derecha: Buscador fijo y botones */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              paddingRight: '16px',
-              paddingBottom: '6px',
-              paddingTop: '6px',
-            }}
-          >
-            <div style={{ width: '280px' }}>
-              <TextField
-                label="Buscar"
-                labelHidden
-                autoComplete="off"
-                value={queryValue}
-                onChange={setQueryValue}
-                placeholder="Buscar productos, sku..."
-                prefix={<SearchIcon />}
-                clearButton
-                onClearButtonClick={() => setQueryValue('')}
-              />
-            </div>
-
-            <InventoryColumnsPopover
-              active={isColumnsPopoverOpen}
-              activator={
-                <Button
-                  icon={LayoutColumns3Icon}
-                  onClick={() => setIsColumnsPopoverOpen((c) => !c)}
-                  accessibilityLabel="Administrar columnas"
-                />
-              }
-              onClose={() => setIsColumnsPopoverOpen(false)}
-              columnQuery={columnQuery}
-              onColumnQueryChange={setColumnQuery}
-              selectedColumns={appliedVisibleColumns}
-              onColumnChange={handleAppliedColumnChange}
-            />
-
-            <Button
-              icon={SortIcon}
-              onClick={() => setSortAscending((prev) => !prev)}
-              accessibilityLabel={sortAscending ? 'Ordenar Z-A' : 'Ordenar A-Z'}
-            />
-          </div>
+        {/* Column config (floating) */}
+        <div style={{ position: 'absolute', right: '16px', top: '8px', zIndex: 1 }}>
+          <InventoryColumnsPopover
+            active={isColumnsPopoverOpen}
+            activator={
+              <Button
+                size="slim"
+                onClick={() => setIsColumnsPopoverOpen((c) => !c)}
+                accessibilityLabel="Administrar columnas"
+              >
+                Columnas
+              </Button>
+            }
+            onClose={() => setIsColumnsPopoverOpen(false)}
+            columnQuery={columnQuery}
+            onColumnQueryChange={setColumnQuery}
+            selectedColumns={appliedVisibleColumns}
+            onColumnChange={handleAppliedColumnChange}
+          />
         </div>
 
         {/* Tabla con encabezados dinámicos */}
@@ -560,6 +575,13 @@ export function InventoryGeneralView({
           headings={dynamicHeadings as [{ title: string }, ...{ title: string }[]]}
           promotedBulkActions={promotedBulkActions}
           sortable={[true, false, false, false, false, false, false]}
+          emptyState={
+            <EmptySearchResult
+              title="No se encontraron productos"
+              description="Intenta con otro término de búsqueda."
+              withIllustration
+            />
+          }
         >
           {rowMarkup}
         </IndexTable>

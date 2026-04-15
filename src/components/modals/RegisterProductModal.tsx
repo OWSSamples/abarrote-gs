@@ -13,10 +13,10 @@ import {
   Box,
   DropZone,
   Thumbnail,
-  Divider,
   Popover,
   DatePicker,
   Icon,
+  Badge,
 } from '@shopify/polaris';
 import { CalendarIcon } from '@shopify/polaris-icons';
 import { FormSelect } from '@/components/ui/FormSelect';
@@ -222,32 +222,33 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
       }}
       secondaryActions={[{ content: 'Cancelar', onAction: handleClose, disabled: submitting }]}
     >
+      {/* ── Imagen ── */}
       <Modal.Section>
-        <BlockStack gap="400">
-          <Text as="h3" variant="headingMd">
-            Imagen del producto
+        <BlockStack gap="300">
+          <Text as="h3" variant="headingSm" fontWeight="semibold">
+            Imagen
           </Text>
-          <Box padding="200" borderStyle="dashed" borderWidth="025" borderColor="border" borderRadius="200">
-            <DropZone
-              onDrop={handleDropZoneDrop}
-              variableHeight
-              label="Foto del producto"
-              labelHidden
-              accept="image/*"
-              type="image"
-              disabled={submitting}
-            >
-              {uploadedFileMarkup}
-              {fileUploadMarkup}
-            </DropZone>
-          </Box>
+          <DropZone
+            onDrop={handleDropZoneDrop}
+            variableHeight
+            label="Foto del producto"
+            labelHidden
+            accept="image/*"
+            type="image"
+            disabled={submitting}
+          >
+            {uploadedFileMarkup}
+            {fileUploadMarkup}
+          </DropZone>
+        </BlockStack>
+      </Modal.Section>
 
-          <Divider />
-
-          <Text as="h3" variant="headingMd">
-            Información básica
+      {/* ── Identificación ── */}
+      <Modal.Section>
+        <BlockStack gap="300">
+          <Text as="h3" variant="headingSm" fontWeight="semibold">
+            Identificación
           </Text>
-
           <FormLayout>
             <FormLayout.Group>
               <TextField
@@ -260,33 +261,46 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
                 label="SKU"
                 autoComplete="off"
                 placeholder="Ej: LAC-001"
-                helpText="Código interno del producto"
+                helpText="Código interno único"
                 {...fields.sku}
               />
             </FormLayout.Group>
-
             <TextField
               label="Código de barras"
               autoComplete="off"
               placeholder="Escanea o escribe el código de barras"
-              helpText="Escanea con el lector o escribe el código manualmente"
               {...fields.barcode}
             />
-
             <CameraScanner
               onScan={(code) => {
                 fields.barcode.onChange(code);
                 fields.barcode.setError(undefined);
               }}
-              buttonLabel="Escanear codigo con camara"
+              buttonLabel="Escanear código con cámara"
               compact
             />
-
             <FormSelect label="Categoría" options={categoryOptions} {...fields.category} />
+          </FormLayout>
+        </BlockStack>
+      </Modal.Section>
 
+      {/* ── Precios ── */}
+      <Modal.Section>
+        <BlockStack gap="300">
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="h3" variant="headingSm" fontWeight="semibold">
+              Precios y unidad
+            </Text>
+            {margin && (
+              <Badge tone={parseFloat(margin) >= 20 ? 'success' : parseFloat(margin) >= 10 ? 'attention' : 'critical'}>
+                {`${margin}% margen`}
+              </Badge>
+            )}
+          </InlineStack>
+          <FormLayout>
             <FormLayout.Group>
               <TextField
-                label="Precio de costo (MXN)"
+                label="Precio de costo"
                 type="number"
                 autoComplete="off"
                 prefix="$"
@@ -295,32 +309,44 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
                 {...fields.costPrice}
               />
               <TextField
-                label="Precio al público (MXN)"
+                label="Precio al público"
                 type="number"
                 autoComplete="off"
                 prefix="$"
                 placeholder="0.00"
-                helpText={margin ? `Margen: ${margin}%` : 'Para venta'}
+                helpText="Precio de venta"
                 {...fields.unitPrice}
               />
+            </FormLayout.Group>
+            <FormLayout.Group>
               <FormSelect label="Se vende por" options={unitOptions} {...fields.unit} />
               <TextField
                 label="Cantidad por venta"
                 type="number"
                 autoComplete="off"
                 min={1}
-                helpText={`Ej: Se venden ${fields.unitMultiple.value || 1} pz por $${fields.unitPrice.value || '0.00'}`}
+                helpText={`${fields.unitMultiple.value || 1} unidad(es) por transacción`}
                 {...fields.unitMultiple}
               />
             </FormLayout.Group>
+          </FormLayout>
+        </BlockStack>
+      </Modal.Section>
 
+      {/* ── Inventario ── */}
+      <Modal.Section>
+        <BlockStack gap="300">
+          <Text as="h3" variant="headingSm" fontWeight="semibold">
+            Inventario
+          </Text>
+          <FormLayout>
             <FormLayout.Group>
               <TextField
                 label="Stock actual"
                 type="number"
                 autoComplete="off"
                 placeholder="0"
-                helpText="Cantidad actual en inventario"
+                helpText="Cantidad actual en tienda"
                 {...fields.currentStock}
               />
               <TextField
@@ -332,61 +358,45 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
                 {...fields.minStock}
               />
             </FormLayout.Group>
-
             <Checkbox
-              label="¿Es producto perecedero?"
+              label="Producto perecedero"
               checked={fields.isPerishable.value}
               onChange={fields.isPerishable.onChange}
-              helpText="Marca si el producto tiene fecha de vencimiento"
+              helpText="Activa para productos con fecha de vencimiento"
             />
-
             {fields.isPerishable.value && (
-              <Box paddingBlockStart="200" paddingBlockEnd="200">
-                <Box paddingBlockEnd="200">
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    La fecha de vencimiento es obligatoria para perecederos.
-                  </Text>
+              <Popover
+                active={isDatePickerOpen}
+                activator={
+                  <TextField
+                    label="Fecha de vencimiento"
+                    value={fields.expirationDate.value}
+                    placeholder="Selecciona una fecha"
+                    autoComplete="off"
+                    suffix={<Icon source={CalendarIcon} tone="subdued" />}
+                    onFocus={() => setIsDatePickerOpen(true)}
+                    error={fields.expirationDate.error}
+                  />
+                }
+                onClose={() => setIsDatePickerOpen(false)}
+              >
+                <Box padding="400">
+                  <DatePicker
+                    month={month}
+                    year={year}
+                    onChange={(range) => {
+                      const date = range.start;
+                      const formattedDate = date.toISOString().split('T')[0];
+                      fields.expirationDate.onChange(formattedDate);
+                      setIsDatePickerOpen(false);
+                    }}
+                    onMonthChange={(m, y) => setDate({ month: m, year: y })}
+                    selected={fields.expirationDate.value ? new Date(fields.expirationDate.value) : new Date()}
+                  />
                 </Box>
-                <Popover
-                  active={isDatePickerOpen}
-                  activator={
-                    <TextField
-                      label="Fecha de vencimiento"
-                      value={fields.expirationDate.value}
-                      placeholder="YYYY-MM-DD"
-                      autoComplete="off"
-                      suffix={<Icon source={CalendarIcon} tone="subdued" />}
-                      onFocus={() => setIsDatePickerOpen(true)}
-                    />
-                  }
-                  onClose={() => setIsDatePickerOpen(false)}
-                >
-                  <Box padding="400">
-                    <DatePicker
-                      month={month}
-                      year={year}
-                      onChange={(range) => {
-                        const date = range.start;
-                        const formattedDate = date.toISOString().split('T')[0];
-                        fields.expirationDate.onChange(formattedDate);
-                        setIsDatePickerOpen(false);
-                      }}
-                      onMonthChange={(month, year) => setDate({ month, year })}
-                      selected={fields.expirationDate.value ? new Date(fields.expirationDate.value) : new Date()}
-                    />
-                  </Box>
-                </Popover>
-              </Box>
+              </Popover>
             )}
           </FormLayout>
-
-          <Box paddingBlockStart="200">
-            <InlineStack align="space-between">
-              <Text as="span" variant="bodySm" tone="subdued">
-                El producto aparecerá automáticamente en el inventario.
-              </Text>
-            </InlineStack>
-          </Box>
         </BlockStack>
       </Modal.Section>
     </Modal>

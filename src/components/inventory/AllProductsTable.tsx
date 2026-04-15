@@ -8,7 +8,6 @@ import {
   Badge,
   BlockStack,
   InlineStack,
-  Button,
   IndexFilters,
   useSetIndexFiltersMode,
   IndexFiltersMode,
@@ -18,12 +17,12 @@ import {
   ResourceItem,
   Thumbnail,
   Box,
-  Divider,
+  EmptySearchResult,
 } from '@shopify/polaris';
 import { ImageIcon } from '@shopify/polaris-icons';
 import { Product } from '@/types';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
-import { formatDate, formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { ProductExportModal, ProductImportModal } from './ShopifyModals';
 import { generateCSV, downloadFile, generateXLSX } from '@/components/export/ExportModal';
 import { generatePDF } from '@/components/export/generatePDF';
@@ -54,26 +53,10 @@ function getStatusBadge(status: ProductStatus) {
     case 'active':
       return <Badge tone="success">Activo</Badge>;
     case 'draft':
-      return <Badge>Borrador</Badge>;
+      return <Badge tone="attention">Incompleto</Badge>;
     case 'agotado':
-      return <Badge tone="warning">Agotado / Próx.</Badge>;
+      return <Badge tone="critical">Agotado</Badge>;
   }
-}
-
-function getInventoryText(product: Product) {
-  if (product.currentStock === 0) {
-    return (
-      <Text as="span" variant="bodyMd" tone="caution">
-        0 en stock (Próx.)
-      </Text>
-    );
-  }
-
-  return (
-    <Text as="span" variant="bodyMd">
-      {product.currentStock} en stock
-    </Text>
-  );
 }
 
 export function AllProductsTable({
@@ -89,21 +72,31 @@ export function AllProductsTable({
 }: AllProductsTableProps) {
   // --- Tabs ---
   const [selected, setSelected] = useState(0);
-  const tabLabels = ['Todos', 'Activos', 'Borradores', 'Agotados / Próx.'];
 
-  const tabs: TabProps[] = tabLabels.map((label, index) => ({
-    content: label,
-    index,
-    onAction: () => {},
-    id: `${label}-${index}`,
-    isLocked: index === 0,
-  }));
+  const statusCounts = useMemo(() => {
+    const active = products.filter((p) => getProductStatus(p) === 'active').length;
+    const draft = products.filter((p) => getProductStatus(p) === 'draft').length;
+    const agotado = products.filter((p) => getProductStatus(p) === 'agotado').length;
+    return { active, draft, agotado };
+  }, [products]);
+
+  const tabs: TabProps[] = useMemo(
+    () => [
+      { content: 'Todos', index: 0, onAction: () => {}, id: 'all-0', isLocked: true },
+      { content: `Activos (${statusCounts.active})`, index: 1, onAction: () => {}, id: 'active-1' },
+      { content: `Incompletos (${statusCounts.draft})`, index: 2, onAction: () => {}, id: 'draft-2' },
+      { content: `Agotados (${statusCounts.agotado})`, index: 3, onAction: () => {}, id: 'agotado-3' },
+    ],
+    [statusCounts],
+  );
 
   // --- Sorting ---
   const [sortSelected, setSortSelected] = useState(['product asc']);
   const sortOptions = [
     { label: 'Producto', value: 'product asc' as const, directionLabel: 'A-Z' },
     { label: 'Producto', value: 'product desc' as const, directionLabel: 'Z-A' },
+    { label: 'Precio', value: 'price asc' as const, directionLabel: 'Menor a mayor' },
+    { label: 'Precio', value: 'price desc' as const, directionLabel: 'Mayor a menor' },
     { label: 'Inventario', value: 'inventory asc' as const, directionLabel: 'Menor a mayor' },
     { label: 'Inventario', value: 'inventory desc' as const, directionLabel: 'Mayor a menor' },
     { label: 'Categoría', value: 'category asc' as const, directionLabel: 'A-Z' },
@@ -118,12 +111,10 @@ export function AllProductsTable({
   const filteredProducts = useMemo(() => {
     let result = products;
 
-    // Tab filter
     if (selected === 1) result = result.filter((p) => getProductStatus(p) === 'active');
     else if (selected === 2) result = result.filter((p) => getProductStatus(p) === 'draft');
     else if (selected === 3) result = result.filter((p) => getProductStatus(p) === 'agotado');
 
-    // Search filter
     if (queryValue) {
       const q = queryValue.toLowerCase();
       result = result.filter(
@@ -135,11 +126,11 @@ export function AllProductsTable({
       );
     }
 
-    // Sort
     const [sortKey, sortDir] = sortSelected[0].split(' ');
     result = [...result].sort((a, b) => {
       let cmp = 0;
       if (sortKey === 'product') cmp = a.name.localeCompare(b.name);
+      else if (sortKey === 'price') cmp = a.unitPrice - b.unitPrice;
       else if (sortKey === 'inventory') cmp = a.currentStock - b.currentStock;
       else if (sortKey === 'category') cmp = a.category.localeCompare(b.category);
       return sortDir === 'desc' ? -cmp : cmp;
@@ -154,16 +145,13 @@ export function AllProductsTable({
     filteredProducts as { id: string }[],
   );
 
-  // --- Promoted bulk actions ---
   const selectedProducts = filteredProducts.filter((p) => selectedResources.includes(p.id));
 
   const promotedBulkActions = [
     {
-      content: 'Editar seleccionados',
+      content: 'Editar',
       onAction: () => {
-        if (selectedProducts.length === 1) {
-          onUpdateProduct?.(selectedProducts[0]);
-        }
+        if (selectedProducts.length === 1) onUpdateProduct?.(selectedProducts[0]);
       },
       disabled: selectedProducts.length !== 1,
     },
@@ -173,9 +161,7 @@ export function AllProductsTable({
       content: `Eliminar ${selectedProducts.length} producto${selectedProducts.length === 1 ? '' : 's'}`,
       destructive: true,
       onAction: () => {
-        if (selectedProducts.length > 0) {
-          onDeleteProducts?.(selectedProducts);
-        }
+        if (selectedProducts.length > 0) onDeleteProducts?.(selectedProducts);
       },
     },
   ];
@@ -183,26 +169,21 @@ export function AllProductsTable({
   // --- Export handler ---
   const handleExport = useCallback(
     (format: string) => {
-      // Exportamos la lista COMPLETA de productos, no solo la filtrada
       const exportData = products.map((p) => ({
-        'Nombre del Producto': p.name,
+        Nombre: p.name,
         SKU: p.sku || 'N/A',
         'Código de Barras': p.barcode || 'N/A',
         Categoría: p.category || 'N/A',
-        'Costo Unitario ($)': p.costPrice,
-        'Precio Público ($)': p.unitPrice,
-        'Unidad de Venta': p.unit || 'N/A',
-        'Múltiplo de Unidad': p.unitMultiple || 1,
-        'Es Perecedero': p.isPerishable ? 'Sí' : 'No',
-        'Inventario Actual (En Existencia)': p.currentStock,
-        'Inventario Mínimo': p.minStock,
-        'Fecha de Vencimiento': p.expirationDate ? formatDate(p.expirationDate) : 'N/A',
+        'Costo ($)': p.costPrice,
+        'Precio ($)': p.unitPrice,
+        Unidad: p.unit || 'N/A',
+        Stock: p.currentStock,
+        'Stock Mínimo': p.minStock,
+        Perecedero: p.isPerishable ? 'Sí' : 'No',
       }));
-
-      const filename = `Todos_Los_Productos_${new Date().toISOString().split('T')[0]}`;
-
+      const filename = `Productos_${new Date().toISOString().split('T')[0]}`;
       if (format === 'pdf') {
-        generatePDF('Catálogo Completo de Productos', exportData as Record<string, unknown>[], `${filename}.pdf`);
+        generatePDF('Catálogo de Productos', exportData as Record<string, unknown>[], `${filename}.pdf`);
       } else if (format === 'excel') {
         generateXLSX(exportData as Record<string, unknown>[], 'Productos').then((blob) => {
           downloadFile(blob, `${filename}.xlsx`);
@@ -215,12 +196,18 @@ export function AllProductsTable({
     [products],
   );
 
-  // --- Responsive flag ---
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  // --- Row markup (desktop) ---
+  // --- Desktop row ---
   const rowMarkup = filteredProducts.map((product, index) => {
     const status = getProductStatus(product);
+    const margin =
+      product.costPrice > 0
+        ? (((product.unitPrice - product.costPrice) / product.costPrice) * 100).toFixed(0)
+        : null;
+    const stockTone =
+      product.currentStock === 0 ? 'critical' : product.currentStock <= product.minStock ? 'caution' : undefined;
+
     return (
       <IndexTable.Row
         id={product.id}
@@ -229,33 +216,58 @@ export function AllProductsTable({
         selected={selectedResources.includes(product.id)}
         onClick={() => onProductClick?.(product)}
       >
-        {/* Producto */}
         <IndexTable.Cell>
-          <InlineStack gap="300" blockAlign="center">
+          <InlineStack gap="300" blockAlign="center" wrap={false}>
             <OptimizedImage source={product.imageUrl} alt={product.name} size="small" />
-            <Text as="p" variant="bodyMd" fontWeight="semibold">
-              {product.name}
-            </Text>
+            <BlockStack gap="050">
+              <Text as="span" variant="bodyMd" fontWeight="semibold">
+                {product.name}
+              </Text>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {product.sku || '—'}
+              </Text>
+            </BlockStack>
           </InlineStack>
         </IndexTable.Cell>
 
-        {/* Estado */}
         <IndexTable.Cell>{getStatusBadge(status)}</IndexTable.Cell>
 
-        {/* Inventario */}
-        <IndexTable.Cell>{getInventoryText(product)}</IndexTable.Cell>
-
-        {/* Categoría */}
         <IndexTable.Cell>
-          <Text as="p" variant="bodyMd">
-            {product.category}
+          <Text as="span" variant="bodyMd" tone={stockTone} fontWeight={product.currentStock === 0 ? 'semibold' : undefined}>
+            {product.currentStock}
+          </Text>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {' '}/ {product.minStock} mín.
+          </Text>
+        </IndexTable.Cell>
+
+        <IndexTable.Cell>
+          <BlockStack gap="050">
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <Text as="span" variant="bodyMd" fontWeight="semibold">
+                {formatCurrency(product.unitPrice)}
+              </Text>
+            </span>
+            {margin && (
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {margin}% margen
+                </Text>
+              </span>
+            )}
+          </BlockStack>
+        </IndexTable.Cell>
+
+        <IndexTable.Cell>
+          <Text as="span" variant="bodyMd">
+            {product.category || '—'}
           </Text>
         </IndexTable.Cell>
       </IndexTable.Row>
     );
   });
 
-  // --- Mobile ResourceItem renderer ---
+  // --- Mobile item ---
   const renderMobileItem = useCallback(
     (product: Product) => {
       const status = getProductStatus(product);
@@ -286,12 +298,20 @@ export function AllProductsTable({
               </InlineStack>
             </BlockStack>
             <BlockStack gap="050" inlineAlign="end">
-              <Text as="p" variant="bodyMd" fontWeight="semibold">
-                {formatCurrency(product.unitPrice)}
-              </Text>
-              <Text as="span" variant="bodySm" tone={product.currentStock === 0 ? 'caution' : 'subdued'}>
-                {product.currentStock} uds
-              </Text>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <Text as="p" variant="bodyMd" fontWeight="semibold">
+                  {formatCurrency(product.unitPrice)}
+                </Text>
+              </span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <Text
+                  as="span"
+                  variant="bodySm"
+                  tone={product.currentStock === 0 ? 'critical' : 'subdued'}
+                >
+                  {product.currentStock} uds
+                </Text>
+              </span>
             </BlockStack>
           </InlineStack>
         </ResourceItem>
@@ -300,22 +320,26 @@ export function AllProductsTable({
     [onProductClick],
   );
 
+  const emptyState = (
+    <EmptySearchResult
+      title="No se encontraron productos"
+      description="Intenta con otro término de búsqueda o cambia los filtros."
+      withIllustration
+    />
+  );
+
   return (
-    <BlockStack gap="500">
+    <BlockStack gap="400">
       <Card padding="0">
         <IndexFilters
           sortOptions={sortOptions}
           sortSelected={sortSelected}
           queryValue={queryValue}
-          queryPlaceholder="Buscar productos..."
+          queryPlaceholder="Buscar por nombre, SKU, código o categoría..."
           onQueryChange={setQueryValue}
           onQueryClear={() => setQueryValue('')}
           onSort={setSortSelected}
-          cancelAction={{
-            onAction: () => {},
-            disabled: false,
-            loading: false,
-          }}
+          cancelAction={{ onAction: () => {}, disabled: false, loading: false }}
           tabs={tabs}
           selected={selected}
           onSelect={setSelected}
@@ -327,54 +351,44 @@ export function AllProductsTable({
         />
 
         {isMobile ? (
-          /* ── Mobile: ResourceList with Thumbnail + stacked metadata ── */
-          <>
-            {filteredProducts.length === 0 ? (
-              <Box padding="600">
-                <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-                  No se encontraron productos.
-                </Text>
-              </Box>
-            ) : (
-              <ResourceList
-                resourceName={resourceName}
-                items={filteredProducts}
-                renderItem={renderMobileItem}
-                totalItemsCount={filteredProducts.length}
-                selectable
-                selectedItems={selectedResources}
-                onSelectionChange={(ids) => handleSelectionChange('single' as never, false, ids as never)}
-                promotedBulkActions={promotedBulkActions}
-                bulkActions={bulkActions}
-              />
-            )}
-          </>
+          filteredProducts.length === 0 ? (
+            <Box padding="600">{emptyState}</Box>
+          ) : (
+            <ResourceList
+              resourceName={resourceName}
+              items={filteredProducts}
+              renderItem={renderMobileItem}
+              totalItemsCount={filteredProducts.length}
+              selectable
+              selectedItems={selectedResources}
+              onSelectionChange={(ids) => handleSelectionChange('single' as never, false, ids as never)}
+              promotedBulkActions={promotedBulkActions}
+              bulkActions={bulkActions}
+            />
+          )
         ) : (
-          /* ── Desktop: IndexTable with full columns ── */
           <IndexTable
             resourceName={resourceName}
             itemCount={filteredProducts.length}
             selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
             onSelectionChange={handleSelectionChange}
-            headings={[{ title: 'Producto' }, { title: 'Estado' }, { title: 'Inventario' }, { title: 'Categoría' }]}
+            headings={[
+              { title: 'Producto' },
+              { title: 'Estado' },
+              { title: 'Inventario', alignment: 'start' },
+              { title: 'Precio', alignment: 'start' },
+              { title: 'Categoría' },
+            ]}
             promotedBulkActions={promotedBulkActions}
             bulkActions={bulkActions}
+            emptyState={emptyState}
           >
             {rowMarkup}
           </IndexTable>
         )}
       </Card>
 
-      {!isMobile && (
-        <InlineStack align="center">
-          <Button variant="monochromePlain">Más información sobre productos</Button>
-        </InlineStack>
-      )}
-
-      {/* Export modal — controlled from parent */}
       <ProductExportModal open={exportOpen} onClose={onExportClose} onExport={handleExport} />
-
-      {/* Import modal — controlled from parent */}
       <ProductImportModal open={importOpen} onClose={onImportClose} onImportSuccess={onImportSuccess} />
     </BlockStack>
   );

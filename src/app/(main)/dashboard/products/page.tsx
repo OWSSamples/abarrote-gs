@@ -2,15 +2,6 @@
 
 import { useCallback, useState } from 'react';
 import { Page, Badge } from '@shopify/polaris';
-import {
-  PlusIcon,
-  ExportIcon,
-  ImportIcon,
-  ViewIcon,
-  EmailIcon,
-  SettingsIcon,
-  CollectionIcon,
-} from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { AllProductsTable } from '@/components/inventory/AllProductsTable';
 import { RegisterProductModal } from '@/components/modals/RegisterProductModal';
@@ -63,38 +54,24 @@ export default function ProductsPage() {
         fullWidth
         backAction={{ content: 'Dashboard', url: '/dashboard' }}
         title="Productos"
-        titleMetadata={<Badge tone="info">{`${products.length} artículos`}</Badge>}
-        subtitle="Listado general y control de inventario de toda la tienda."
+        titleMetadata={<Badge tone="info">{`${products.length}`}</Badge>}
+        subtitle="Catálogo completo de productos, precios y control de stock."
         primaryAction={{
           content: 'Agregar producto',
-          icon: PlusIcon,
           onAction: () => setRegisterProductOpen(true),
         }}
         secondaryActions={[
           {
             content: 'Exportar',
-            icon: ExportIcon,
             onAction: () => setExportOpen(true),
           },
           {
             content: 'Importar',
-            icon: ImportIcon,
             onAction: () => setImportOpen(true),
           },
           {
             content: 'Categorías',
-            icon: CollectionIcon,
             onAction: () => setCategoryManagerOpen(true),
-          },
-        ]}
-        actionGroups={[
-          {
-            title: 'Más herramientas',
-            icon: SettingsIcon,
-            actions: [
-              { content: 'Análisis de ventas', icon: ViewIcon, onAction: () => {} },
-              { content: 'Marketing masivo', icon: EmailIcon, onAction: () => {} },
-            ],
           },
         ]}
       >

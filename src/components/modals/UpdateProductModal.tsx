@@ -7,14 +7,12 @@ import {
   FormLayout,
   TextField,
   Checkbox,
-  Banner,
+  Badge,
   BlockStack,
   InlineStack,
   Text,
-  Box,
   DropZone,
   Thumbnail,
-  Divider,
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
@@ -219,49 +217,45 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
 
   return (
     <Modal
-      // Forcing remount when the target product changes ensures form fields are
-      // properly populated with the current product data on edit
       key={product?.id ?? 'new'}
       open={open}
       onClose={handleClose}
-      title={product ? `Editando: ${product.name}` : 'Editar Producto'}
+      title={product ? `${product.name}` : 'Editar Producto'}
       primaryAction={{
         content: 'Listo',
         onAction: onClose,
       }}
     >
+      {/* ── Imagen ── */}
       <Modal.Section>
-        <BlockStack gap="400">
-          <Banner tone="info">
-            <p>
-              Los cambios se guardan <b>automáticamente</b> mientras editas.
-            </p>
-          </Banner>
-
-          <Text as="h3" variant="headingMd">
-            Imagen del producto
+        <BlockStack gap="300">
+          <Text as="h3" variant="headingSm" fontWeight="semibold">
+            Imagen
           </Text>
-          <Box padding="200" borderStyle="dashed" borderWidth="025" borderColor="border" borderRadius="200">
-            <DropZone
-              onDrop={handleDropZoneDrop}
-              variableHeight
-              label="Foto del producto"
-              labelHidden
-              accept="image/*"
-              type="image"
-              disabled={isUploadingImage}
-            >
-              {uploadedFileMarkup}
-              {fileUploadMarkup}
-            </DropZone>
-          </Box>
-
-          <Divider />
-
-          <Text as="h3" variant="headingMd">
-            Información del producto
+          <DropZone
+            onDrop={handleDropZoneDrop}
+            variableHeight
+            label="Foto del producto"
+            labelHidden
+            accept="image/*"
+            type="image"
+            disabled={isUploadingImage}
+          >
+            {uploadedFileMarkup}
+            {fileUploadMarkup}
+          </DropZone>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Los cambios se guardan automáticamente al salir de cada campo.
           </Text>
+        </BlockStack>
+      </Modal.Section>
 
+      {/* ── Identificación ── */}
+      <Modal.Section>
+        <BlockStack gap="300">
+          <Text as="h3" variant="headingSm" fontWeight="semibold">
+            Identificación
+          </Text>
           <FormLayout>
             <FormLayout.Group>
               <TextField
@@ -281,26 +275,24 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
                 onBlur={() => autoSave('sku', fields.sku.value)}
               />
             </FormLayout.Group>
-
-            <FormLayout.Group>
-              <TextField
-                label="Código de barras"
-                autoComplete="off"
-                value={fields.barcode.value}
-                onChange={fields.barcode.onChange}
-                error={fields.barcode.error}
-                onBlur={() => autoSave('barcode', fields.barcode.value)}
-              />
-              <CameraScanner
-                onScan={(code) => {
-                  fields.barcode.onChange(code);
-                  autoSave('barcode', code);
-                }}
-                buttonLabel="Escanear"
-                compact
-              />
-            </FormLayout.Group>
-
+            <TextField
+              label="Código de barras"
+              autoComplete="off"
+              value={fields.barcode.value}
+              onChange={fields.barcode.onChange}
+              error={fields.barcode.error}
+              onBlur={() => autoSave('barcode', fields.barcode.value)}
+              connectedRight={
+                <CameraScanner
+                  onScan={(code) => {
+                    fields.barcode.onChange(code);
+                    autoSave('barcode', code);
+                  }}
+                  buttonLabel="Escanear"
+                  compact
+                />
+              }
+            />
             <FormSelect
               label="Categoría"
               options={categoryOptions}
@@ -311,7 +303,24 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
               }}
               error={fields.category.error}
             />
+          </FormLayout>
+        </BlockStack>
+      </Modal.Section>
 
+      {/* ── Precios ── */}
+      <Modal.Section>
+        <BlockStack gap="300">
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="h3" variant="headingSm" fontWeight="semibold">
+              Precios
+            </Text>
+            {margin && (
+              <Badge tone={parseFloat(margin) >= 20 ? 'success' : parseFloat(margin) >= 10 ? 'attention' : 'critical'}>
+                {`${margin}% margen`}
+              </Badge>
+            )}
+          </InlineStack>
+          <FormLayout>
             <FormLayout.Group>
               <TextField
                 label="Costo"
@@ -328,7 +337,6 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
                 type="number"
                 autoComplete="off"
                 prefix="$"
-                helpText={margin ? `Margen: ${margin}%` : ''}
                 value={fields.unitPrice.value}
                 onChange={fields.unitPrice.onChange}
                 error={fields.unitPrice.error}
@@ -344,7 +352,17 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
                 }}
               />
             </FormLayout.Group>
+          </FormLayout>
+        </BlockStack>
+      </Modal.Section>
 
+      {/* ── Inventario ── */}
+      <Modal.Section>
+        <BlockStack gap="300">
+          <Text as="h3" variant="headingSm" fontWeight="semibold">
+            Inventario
+          </Text>
+          <FormLayout>
             <FormLayout.Group>
               <TextField
                 label="Stock actual"
@@ -365,7 +383,6 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
                 onBlur={() => autoSave('minStock', parseInt(fields.minStock.value, 10))}
               />
             </FormLayout.Group>
-
             <Checkbox
               label="Producto perecedero"
               checked={fields.isPerishable.value}
@@ -376,7 +393,7 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
             />
             {fields.isPerishable.value && (
               <TextField
-                label="Vencimiento"
+                label="Fecha de vencimiento"
                 type="date"
                 autoComplete="off"
                 value={fields.expirationDate.value}

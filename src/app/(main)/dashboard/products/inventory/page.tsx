@@ -1,8 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { Page } from '@shopify/polaris';
-import { InventoryIcon } from '@shopify/polaris-icons';
+import { Page, Badge } from '@shopify/polaris';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { InventoryGeneralView } from '@/components/inventory/InventoryGeneralView';
 import { UpdateProductModal } from '@/components/modals/UpdateProductModal';
@@ -22,11 +21,22 @@ export default function InventoryPage() {
     setUpdateProductOpen(true);
   }, []);
 
+  const lowStockCount = products.filter((p) => p.currentStock <= p.minStock && p.currentStock > 0).length;
+  const outOfStockCount = products.filter((p) => p.currentStock === 0).length;
+
   return (
     <Page
       fullWidth
+      backAction={{ content: 'Productos', url: '/dashboard/products' }}
       title="Inventario"
-      titleMetadata={<InventoryIcon />}
+      titleMetadata={
+        outOfStockCount > 0 ? (
+          <Badge tone="critical">{`${outOfStockCount} agotados`}</Badge>
+        ) : lowStockCount > 0 ? (
+          <Badge tone="warning">{`${lowStockCount} stock bajo`}</Badge>
+        ) : undefined
+      }
+      subtitle="Control de existencias, edición en línea y edición masiva de inventario."
       secondaryActions={[
         { content: 'Exportar', onAction: () => setExportOpen(true) },
         { content: 'Importar', onAction: () => setImportOpen(true) },

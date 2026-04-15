@@ -84,7 +84,7 @@ export function InventoryTable({ alerts, onProductClick }: InventoryTableProps) 
               </Text>
               {daysUntil !== null && (
                 <Text as="span" variant="bodySm" tone={daysUntil <= 2 ? 'critical' : 'subdued'}>
-                  {daysUntil <= 0 ? '⚠️ Expired' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`}
+                  {daysUntil <= 0 ? 'Vencido' : daysUntil === 1 ? 'Mañana' : `En ${daysUntil} días`}
                 </Text>
               )}
             </BlockStack>

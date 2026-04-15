@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, Text, BlockStack, InlineStack, Badge, ProgressBar, Box } from '@shopify/polaris';
+import { Card, Text, BlockStack, InlineStack, Box, Divider } from '@shopify/polaris';
 import { formatCurrency } from '@/lib/utils';
 
 interface TopProduct {
@@ -28,70 +28,107 @@ const defaultTopProducts: TopProduct[] = [
 ];
 
 export function TopProducts({ products = defaultTopProducts, title = 'Top Productos', period = 'Hoy' }: TopProductsProps) {
-  const maxUnits = Math.max(...products.map((p) => p.unitsSold));
   const totalRevenue = products.reduce((s, p) => s + p.revenue, 0);
+  const maxRevenue = Math.max(...products.map((p) => p.revenue));
 
   return (
     <Card>
-      <BlockStack gap="300">
+      <BlockStack gap="400">
         <InlineStack align="space-between" blockAlign="center">
           <Text as="h3" variant="headingSm" fontWeight="semibold">
             {title}
           </Text>
-          <Badge tone="info">{period}</Badge>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {period}
+          </Text>
         </InlineStack>
 
-        <BlockStack gap="300">
+        {/* Column headers */}
+        <Box paddingInlineStart="200" paddingInlineEnd="200">
+          <InlineStack align="space-between">
+            <Text as="span" variant="bodyXs" tone="subdued">Producto</Text>
+            <InlineStack gap="600">
+              <Text as="span" variant="bodyXs" tone="subdued">Uds</Text>
+              <Box minWidth="80px">
+                <Text as="span" variant="bodyXs" tone="subdued" alignment="end">Ingreso</Text>
+              </Box>
+            </InlineStack>
+          </InlineStack>
+        </Box>
+
+        <Divider />
+
+        <BlockStack gap="0">
           {products.map((product, i) => {
-            const pct = maxUnits > 0 ? (product.unitsSold / maxUnits) * 100 : 0;
+            const barWidth = maxRevenue > 0 ? (product.revenue / maxRevenue) * 100 : 0;
             return (
-              <div key={product.id}>
-                <InlineStack align="space-between" blockAlign="start">
-                  <InlineStack gap="200" blockAlign="center">
-                    <Box
-                      padding="100"
-                      background={i === 0 ? 'bg-fill-success-secondary' : 'bg-surface-secondary'}
-                      borderRadius="200"
-                      minWidth="28px"
-                    >
+              <div
+                key={product.id}
+                style={{
+                  padding: '10px 8px',
+                  borderRadius: 8,
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Revenue bar background */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: `${barWidth}%`,
+                    background: i === 0 ? 'rgba(5, 150, 105, 0.06)' : 'rgba(0, 0, 0, 0.02)',
+                    borderRadius: 8,
+                    transition: 'width 0.3s ease',
+                  }}
+                />
+                <div style={{ position: 'relative' }}>
+                  <InlineStack align="space-between" blockAlign="center">
+                    <InlineStack gap="300" blockAlign="center">
                       <Text
                         as="span"
                         variant="bodySm"
                         fontWeight="bold"
-                        alignment="center"
                         tone={i === 0 ? 'success' : 'subdued'}
                       >
-                        {`#${i + 1}`}
+                        {i + 1}
                       </Text>
-                    </Box>
-                    <BlockStack gap="050">
-                      <Text as="p" variant="bodySm" fontWeight="semibold">
-                        {product.name}
+                      <BlockStack gap="0">
+                        <Text as="p" variant="bodySm" fontWeight="semibold">
+                          {product.name}
+                        </Text>
+                        <Text as="p" variant="bodyXs" tone="subdued">
+                          {product.sku}
+                        </Text>
+                      </BlockStack>
+                    </InlineStack>
+                    <InlineStack gap="600" blockAlign="center">
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {product.unitsSold}
                       </Text>
-                      <Text as="p" variant="bodyXs" tone="subdued">
-                        {product.unitsSold} uds · {formatCurrency(product.revenue)}
-                      </Text>
-                    </BlockStack>
+                      <Box minWidth="80px">
+                        <Text as="span" variant="bodySm" fontWeight="semibold" alignment="end">
+                          {formatCurrency(product.revenue)}
+                        </Text>
+                      </Box>
+                    </InlineStack>
                   </InlineStack>
-                </InlineStack>
-                <Box paddingBlockStart="100">
-                  <ProgressBar
-                    progress={pct}
-                    size="small"
-                    tone={i === 0 ? 'highlight' : 'primary'}
-                  />
-                </Box>
+                </div>
               </div>
             );
           })}
         </BlockStack>
 
-        <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-          <InlineStack align="space-between">
-            <Text as="p" variant="bodyXs" tone="subdued">
-              Total Top 5
+        <Divider />
+
+        <Box paddingInlineStart="200" paddingInlineEnd="200">
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="span" variant="bodySm" tone="subdued">
+              Total Top {products.length}
             </Text>
-            <Text as="p" variant="bodyXs" fontWeight="bold">
+            <Text as="span" variant="bodySm" fontWeight="bold">
               {formatCurrency(totalRevenue)}
             </Text>
           </InlineStack>

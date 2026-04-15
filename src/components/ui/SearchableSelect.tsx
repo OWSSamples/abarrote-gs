@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { Autocomplete, Icon } from '@shopify/polaris';
+import { Autocomplete, Icon, Listbox, EmptySearchResult } from '@shopify/polaris';
 import { SearchIcon } from '@shopify/polaris-icons';
 
 interface Option {
@@ -18,7 +18,12 @@ interface SearchableSelectProps {
   error?: string;
   helpText?: string;
   labelHidden?: boolean;
+  /** Max visible options in the dropdown (default: unlimited — shows all) */
+  maxVisible?: number;
 }
+
+/** Default batch size when no text is entered: show first N, then all on search */
+const DEFAULT_IDLE_LIMIT = 50;
 
 export function SearchableSelect({
   label,
@@ -29,6 +34,7 @@ export function SearchableSelect({
   error,
   helpText,
   labelHidden,
+  maxVisible,
 }: SearchableSelectProps) {
   const [inputValue, setInputValue] = useState('');
 
@@ -48,10 +54,28 @@ export function SearchableSelect({
 
   // Derive filtered options from props + input — always up to date
   const filteredOptions = useMemo(() => {
-    if (inputValue === '') return options;
+    const limit = maxVisible;
+
+    if (inputValue === '') {
+      // When idle, show up to DEFAULT_IDLE_LIMIT unless overridden
+      const cap = limit ?? DEFAULT_IDLE_LIMIT;
+      return options.slice(0, cap);
+    }
+
     const filterRegex = new RegExp(inputValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    return options.filter((option) => option.label.match(filterRegex));
+    const matches = options.filter((option) => option.label.match(filterRegex));
+    // When searching, show ALL matches (or capped if maxVisible set)
+    return limit ? matches.slice(0, limit) : matches;
+  }, [options, inputValue, maxVisible]);
+
+  // Count how many were hidden
+  const totalMatches = useMemo(() => {
+    if (inputValue === '') return options.length;
+    const filterRegex = new RegExp(inputValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    return options.filter((option) => option.label.match(filterRegex)).length;
   }, [options, inputValue]);
+
+  const hiddenCount = totalMatches - filteredOptions.length;
 
   const updateText = useCallback((value: string) => {
     setInputValue(value);
@@ -82,7 +106,16 @@ export function SearchableSelect({
       prefix={<Icon source={SearchIcon} tone="subdued" />}
       autoComplete="off"
       error={error}
-      helpText={helpText}
+      helpText={
+        helpText || (hiddenCount > 0 ? `Escribe para buscar entre ${totalMatches} opciones` : undefined)
+      }
+    />
+  );
+
+  const emptyState = (
+    <EmptySearchResult
+      title="No se encontraron resultados"
+      description={`No hay coincidencias para "${inputValue}"`}
     />
   );
 
@@ -92,6 +125,13 @@ export function SearchableSelect({
       selected={selected ? [selected] : []}
       onSelect={updateSelection}
       textField={textField}
+      emptyState={emptyState}
+      willLoadMoreResults={hiddenCount > 0}
+      listTitle={
+        hiddenCount > 0
+          ? `Mostrando ${filteredOptions.length} de ${totalMatches} — escribe para filtrar`
+          : undefined
+      }
     />
   );
 }

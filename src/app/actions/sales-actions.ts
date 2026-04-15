@@ -12,7 +12,7 @@ import {
   loyaltyTransactions,
   devoluciones,
 } from '@/db/schema';
-import { eq, desc, sql, inArray } from 'drizzle-orm';
+import { eq, desc, sql, inArray, gte } from 'drizzle-orm';
 import type { SaleRecord, SaleItem, SalesData, CorteCaja, HourlySalesData } from '@/types';
 import { numVal } from './_helpers';
 import { adjustStock } from './_stock';
@@ -782,10 +782,13 @@ async function _createAutoCorteCaja(): Promise<void> {
     .reduce((sum, s) => sum + parseFloat(String(s.total)), 0);
   const totalVentas = ventasEfectivo + ventasTarjeta + ventasTransferencia + ventasFiado;
 
-  const allGastos = await db.select().from(gastos);
-  const todayGastos = allGastos
-    .filter((g) => g.fecha.toISOString().startsWith(today))
-    .reduce((sum, g) => sum + parseFloat(String(g.monto)), 0);
+  // Query only today's gastos at DB level (not full table scan)
+  const todayStart = new Date(today + 'T00:00:00.000Z');
+  const todayGastosRows = await db
+    .select({ monto: gastos.monto })
+    .from(gastos)
+    .where(gte(gastos.fecha, todayStart));
+  const todayGastos = todayGastosRows.reduce((sum, g) => sum + parseFloat(String(g.monto)), 0);
 
   const fondoInicial = 500;
   const efectivoEsperado = fondoInicial + ventasEfectivo - todayGastos;

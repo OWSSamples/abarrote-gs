@@ -10,6 +10,7 @@ import {
   Badge,
   Button,
   Modal,
+  Box,
   useIndexResourceState,
 } from '@shopify/polaris';
 import { DeleteIcon } from '@shopify/polaris-icons';
@@ -58,19 +59,16 @@ export function CortesHistory() {
     <>
       <Card padding="0">
         <BlockStack gap="0">
-          {/* Header */}
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--p-color-border)' }}>
-            <InlineStack align="space-between" blockAlign="center">
-              <Text as="h2" variant="headingMd">
-                Historial de Cortes
-              </Text>
-              {selectedCount > 0 && (
-                <Button icon={DeleteIcon} tone="critical" onClick={() => setDeleteModalOpen(true)}>
-                  {`Eliminar (${selectedCount})`}
+          {/* Header with bulk actions */}
+          {selectedCount > 0 && (
+            <Box padding="300" borderBlockEndWidth="025" borderColor="border">
+              <InlineStack align="end">
+                <Button icon={DeleteIcon} tone="critical" size="slim" onClick={() => setDeleteModalOpen(true)}>
+                  {`Eliminar ${selectedCount} seleccionado${selectedCount !== 1 ? 's' : ''}`}
                 </Button>
-              )}
-            </InlineStack>
-          </div>
+              </InlineStack>
+            </Box>
+          )}
 
           <IndexTable
             resourceName={{ singular: 'corte', plural: 'cortes' }}
@@ -80,35 +78,59 @@ export function CortesHistory() {
             headings={[
               { title: 'Fecha' },
               { title: 'Cajero' },
-              { title: 'Total Ventas' },
-              { title: 'Esperado' },
-              { title: 'Contado' },
-              { title: 'Diferencia' },
+              { title: 'Total Ventas', alignment: 'end' },
+              { title: 'Esperado', alignment: 'end' },
+              { title: 'Contado', alignment: 'end' },
+              { title: 'Diferencia', alignment: 'end' },
             ]}
           >
             {sorted.map((c, idx) => (
               <IndexTable.Row id={c.id} key={c.id} position={idx} selected={selectedIds.includes(c.id)}>
                 <IndexTable.Cell>
-                  <Text as="span" variant="bodySm">
-                    {new Date(c.fecha).toLocaleDateString('es-MX')}
-                  </Text>
+                  <BlockStack gap="050">
+                    <Text as="span" variant="bodySm" fontWeight="semibold">
+                      {new Date(c.fecha).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {new Date(c.fecha).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </BlockStack>
                 </IndexTable.Cell>
-                <IndexTable.Cell>{c.cajero}</IndexTable.Cell>
                 <IndexTable.Cell>
-                  <Text as="span" fontWeight="semibold">
+                  <Text as="span" variant="bodySm">{c.cajero}</Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                  <Text as="span" variant="bodyMd" fontWeight="bold" alignment="end">
                     {formatCurrency(c.totalVentas)}
                   </Text>
                 </IndexTable.Cell>
-                <IndexTable.Cell>{formatCurrency(c.efectivoEsperado)}</IndexTable.Cell>
-                <IndexTable.Cell>{formatCurrency(c.efectivoContado)}</IndexTable.Cell>
                 <IndexTable.Cell>
-                  <Badge tone={Math.abs(c.diferencia) <= 10 ? 'success' : 'critical'}>
-                    {`${c.diferencia >= 0 ? '+' : ''}${formatCurrency(c.diferencia)}`}
-                  </Badge>
+                  <Text as="span" variant="bodySm" alignment="end">
+                    {formatCurrency(c.efectivoEsperado)}
+                  </Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                  <Text as="span" variant="bodySm" alignment="end">
+                    {formatCurrency(c.efectivoContado)}
+                  </Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                  <InlineStack align="end">
+                    <Badge tone={Math.abs(c.diferencia) <= 10 ? 'success' : 'critical'} size="small">
+                      {`${c.diferencia >= 0 ? '+' : ''}${formatCurrency(c.diferencia)}`}
+                    </Badge>
+                  </InlineStack>
                 </IndexTable.Cell>
               </IndexTable.Row>
             ))}
           </IndexTable>
+
+          {/* Footer */}
+          <Box padding="300" borderBlockStartWidth="025" borderColor="border">
+            <Text as="span" variant="bodySm" tone="subdued">
+              {sorted.length} corte{sorted.length !== 1 ? 's' : ''} registrado{sorted.length !== 1 ? 's' : ''}
+            </Text>
+          </Box>
         </BlockStack>
       </Card>
 

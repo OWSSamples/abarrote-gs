@@ -14,8 +14,6 @@ import {
   IndexFilters,
   useSetIndexFiltersMode,
   ChoiceList,
-  ButtonGroup,
-  InlineGrid,
 } from '@shopify/polaris';
 import { ReceiptIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -273,23 +271,9 @@ export function SalesHistory() {
   return (
     <BlockStack gap="500">
       <Card padding="0">
-        <Box padding="400" borderBlockEndWidth="025" borderColor="border">
-          <InlineGrid columns="1fr auto">
-            <Text as="h2" variant="headingMd">
-              Historial de ventas
-            </Text>
-            <InlineStack gap="200">
-              <Button onClick={() => window.location.reload()}>Actualizar</Button>
-              <Button variant="primary" onClick={() => setIsExportOpen(true)}>
-                Exportar
-              </Button>
-            </InlineStack>
-          </InlineGrid>
-        </Box>
-
         <IndexFilters
           queryValue={searchFolio}
-          queryPlaceholder="Filtrar ventas..."
+          queryPlaceholder="Buscar por folio, cajero..."
           onQueryChange={setSearchFolio}
           onQueryClear={() => setSearchFolio('')}
           cancelAction={{
@@ -318,11 +302,13 @@ export function SalesHistory() {
 
         <Box>
           {filteredSales.length === 0 ? (
-            <Box paddingBlockStart="800" paddingBlockEnd="800">
+            <Box paddingBlockStart="1200" paddingBlockEnd="1200">
               <BlockStack gap="300" inlineAlign="center">
-                <Icon source={ReceiptIcon} tone="subdued" />
+                <div style={{ opacity: 0.4 }}>
+                  <Icon source={ReceiptIcon} />
+                </div>
                 <BlockStack gap="100" inlineAlign="center">
-                  <Text as="p" variant="bodyMd" fontWeight="semibold">
+                  <Text as="p" variant="headingSm">
                     Sin ventas registradas
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
@@ -332,79 +318,102 @@ export function SalesHistory() {
               </BlockStack>
             </Box>
           ) : (
-            <div style={{ height: 'calc(100vh - 290px)', overflowY: 'auto' }}>
-              <IndexTable
-                resourceName={{ singular: 'venta', plural: 'ventas' }}
-                itemCount={filteredSales.length}
-                headings={[
-                  { title: 'Folio' },
-                  { title: 'Fecha / Hora' },
-                  { title: 'Cajero' },
-                  { title: 'Items' },
-                  { title: 'Total' },
-                  { title: 'Método' },
-                  { title: 'Estado' },
-                  { title: 'Acciones' },
-                ]}
-                selectable={false}
-              >
-                {filteredSales.map((sale, idx) => {
-                  const d = new Date(sale.date);
-                  return (
-                    <IndexTable.Row id={sale.id} key={sale.id} position={idx}>
-                      <IndexTable.Cell>
-                        <Badge tone="info" size="small">
-                          {'#' + sale.folio}
-                        </Badge>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <BlockStack gap="050">
-                          <Text as="span" variant="bodySm">
-                            {d.toLocaleDateString('es-MX')}
-                          </Text>
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                          </Text>
-                        </BlockStack>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>{sale.cajero}</IndexTable.Cell>
-                      <IndexTable.Cell>{sale.items.length} prod.</IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Text as="span" fontWeight="bold" variant="bodyMd">
-                          {formatCurrency(sale.total)}
+            <IndexTable
+              resourceName={{ singular: 'venta', plural: 'ventas' }}
+              itemCount={filteredSales.length}
+              headings={[
+                { title: 'Folio' },
+                { title: 'Fecha' },
+                { title: 'Cajero' },
+                { title: 'Artículos' },
+                { title: 'Total', alignment: 'end' },
+                { title: 'Método' },
+                { title: 'Estado' },
+                { title: '' },
+              ]}
+              selectable={false}
+            >
+              {filteredSales.map((sale, idx) => {
+                const d = new Date(sale.date);
+                const hasReturn = devolucionesStore.some((dev: { saleId?: string }) => dev.saleId === sale.id);
+                return (
+                  <IndexTable.Row id={sale.id} key={sale.id} position={idx}>
+                    <IndexTable.Cell>
+                      <Text as="span" variant="bodyMd" fontWeight="semibold" tone="magic">
+                        {sale.folio}
+                      </Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <BlockStack gap="050">
+                        <Text as="span" variant="bodySm">
+                          {d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>{paymentBadge(sale.paymentMethod)}</IndexTable.Cell>
-                      <IndexTable.Cell>
-                        {devolucionesStore.some((d: { saleId?: string }) => d.saleId === sale.id) ? (
-                          <Badge tone="warning">Devuelto</Badge>
-                        ) : (
-                          <Badge tone="success">Pagado</Badge>
-                        )}
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <ButtonGroup variant="segmented">
-                          <Button size="slim" onClick={() => handleViewSale(sale)}>
-                            Ver
-                          </Button>
-                          <Button
-                            size="slim"
-                            onClick={() => {
-                              setSelectedSale(sale);
-                              setTimeout(() => handlePrint(), 0);
-                            }}
-                          >
-                            Imprimir
-                          </Button>
-                        </ButtonGroup>
-                      </IndexTable.Cell>
-                    </IndexTable.Row>
-                  );
-                })}
-              </IndexTable>
-            </div>
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          {d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </BlockStack>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" variant="bodySm">
+                        {sale.cajero}
+                      </Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {sale.items.length} {sale.items.length === 1 ? 'producto' : 'productos'}
+                      </Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" variant="bodyMd" fontWeight="bold" alignment="end">
+                        {formatCurrency(sale.total)}
+                      </Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>{paymentBadge(sale.paymentMethod)}</IndexTable.Cell>
+                    <IndexTable.Cell>
+                      {hasReturn ? (
+                        <Badge tone="warning" size="small">Devuelto</Badge>
+                      ) : (
+                        <Badge tone="success" size="small">Pagado</Badge>
+                      )}
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <InlineStack gap="100">
+                        <Button size="micro" variant="plain" onClick={() => handleViewSale(sale)}>
+                          Ver
+                        </Button>
+                        <Button
+                          size="micro"
+                          variant="plain"
+                          onClick={() => {
+                            setSelectedSale(sale);
+                            setTimeout(() => handlePrint(), 0);
+                          }}
+                        >
+                          Imprimir
+                        </Button>
+                      </InlineStack>
+                    </IndexTable.Cell>
+                  </IndexTable.Row>
+                );
+              })}
+            </IndexTable>
           )}
         </Box>
+
+        {/* Footer: count + export */}
+        {filteredSales.length > 0 && (
+          <Box padding="300" borderBlockStartWidth="025" borderColor="border">
+            <InlineStack align="space-between" blockAlign="center">
+              <Text as="span" variant="bodySm" tone="subdued">
+                {filteredSales.length} venta{filteredSales.length !== 1 ? 's' : ''}
+                {activeDateRange ? ` · ${activeDateRange.title}` : ''}
+              </Text>
+              <Button size="slim" onClick={() => setIsExportOpen(true)}>
+                Exportar
+              </Button>
+            </InlineStack>
+          </Box>
+        )}
       </Card>
 
       {selectedSale && (

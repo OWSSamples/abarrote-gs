@@ -1,6 +1,7 @@
 'use client';
 
-import { Card, Text, BlockStack, InlineStack, Box, Divider } from '@shopify/polaris';
+import type { CSSProperties } from 'react';
+import { Card, Text, InlineStack } from '@shopify/polaris';
 import { formatCurrency } from '@/lib/utils';
 
 interface TopProduct {
@@ -27,13 +28,34 @@ const defaultTopProducts: TopProduct[] = [
   { id: '5', name: 'Sabritas Original', sku: 'BOT-001', unitsSold: 128, revenue: 2560, margin: 35, trend: 'down' },
 ];
 
-export function TopProducts({ products = defaultTopProducts, title = 'Top Productos', period = 'Hoy' }: TopProductsProps) {
+const trendMap = {
+  up: { symbol: '↑', color: 'var(--p-color-text-success)' },
+  down: { symbol: '↓', color: 'var(--p-color-text-critical)' },
+  stable: { symbol: '–', color: 'var(--p-color-text-subdued)' },
+} as const;
+
+const thBase: CSSProperties = {
+  padding: '6px 16px',
+  fontSize: 11,
+  fontWeight: 510,
+  color: 'var(--p-color-text-subdued)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.4px',
+  lineHeight: 1.6,
+};
+
+export function TopProducts({
+  products = defaultTopProducts,
+  title = 'Top Productos',
+  period = 'Hoy',
+}: TopProductsProps) {
   const totalRevenue = products.reduce((s, p) => s + p.revenue, 0);
-  const maxRevenue = Math.max(...products.map((p) => p.revenue));
+  const totalUnits = products.reduce((s, p) => s + p.unitsSold, 0);
 
   return (
-    <Card>
-      <BlockStack gap="400">
+    <Card padding="0">
+      {/* Header */}
+      <div style={{ padding: '16px 16px 12px' }}>
         <InlineStack align="space-between" blockAlign="center">
           <Text as="h3" variant="headingSm" fontWeight="semibold">
             {title}
@@ -42,98 +64,209 @@ export function TopProducts({ products = defaultTopProducts, title = 'Top Produc
             {period}
           </Text>
         </InlineStack>
+      </div>
 
-        {/* Column headers */}
-        <Box paddingInlineStart="200" paddingInlineEnd="200">
-          <InlineStack align="space-between">
-            <Text as="span" variant="bodyXs" tone="subdued">Producto</Text>
-            <InlineStack gap="600">
-              <Text as="span" variant="bodyXs" tone="subdued">Uds</Text>
-              <Box minWidth="80px">
-                <Text as="span" variant="bodyXs" tone="subdued" alignment="end">Ingreso</Text>
-              </Box>
-            </InlineStack>
-          </InlineStack>
-        </Box>
-
-        <Divider />
-
-        <BlockStack gap="0">
+      {/* Table */}
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        <thead>
+          <tr
+            style={{
+              borderTop: '1px solid var(--p-color-border-secondary)',
+              borderBottom: '1px solid var(--p-color-border-secondary)',
+            }}
+          >
+            <th style={{ ...thBase, textAlign: 'left' }}>Producto</th>
+            <th style={{ ...thBase, textAlign: 'right', width: 48 }}>Uds</th>
+            <th style={{ ...thBase, textAlign: 'right' }}>Ingreso</th>
+          </tr>
+        </thead>
+        <tbody>
           {products.map((product, i) => {
-            const barWidth = maxRevenue > 0 ? (product.revenue / maxRevenue) * 100 : 0;
+            const share =
+              totalRevenue > 0
+                ? ((product.revenue / totalRevenue) * 100).toFixed(0)
+                : '0';
+            const trend = trendMap[product.trend];
+
             return (
-              <div
+              <tr
                 key={product.id}
                 style={{
-                  padding: '10px 8px',
-                  borderRadius: 8,
-                  position: 'relative',
-                  overflow: 'hidden',
+                  borderBottom:
+                    i < products.length - 1
+                      ? '1px solid var(--p-color-border-secondary)'
+                      : 'none',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background =
+                    'var(--p-color-bg-surface-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
                 }}
               >
-                {/* Revenue bar background */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: `${barWidth}%`,
-                    background: i === 0 ? 'rgba(5, 150, 105, 0.06)' : 'rgba(0, 0, 0, 0.02)',
-                    borderRadius: 8,
-                    transition: 'width 0.3s ease',
-                  }}
-                />
-                <div style={{ position: 'relative' }}>
-                  <InlineStack align="space-between" blockAlign="center">
-                    <InlineStack gap="300" blockAlign="center">
-                      <Text
-                        as="span"
-                        variant="bodySm"
-                        fontWeight="bold"
-                        tone={i === 0 ? 'success' : 'subdued'}
+                {/* Product */}
+                <td style={{ padding: '10px 16px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 24,
+                        height: 24,
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 650,
+                        flexShrink: 0,
+                        ...(i === 0
+                          ? {
+                              background:
+                                'var(--p-color-bg-fill-success-secondary)',
+                              color: 'var(--p-color-text-success)',
+                            }
+                          : {
+                              color: 'var(--p-color-text-subdued)',
+                            }),
+                      }}
+                    >
+                      {i + 1}
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 550,
+                          color: 'var(--p-color-text)',
+                          lineHeight: 1.4,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
                       >
-                        {i + 1}
-                      </Text>
-                      <BlockStack gap="0">
-                        <Text as="p" variant="bodySm" fontWeight="semibold">
-                          {product.name}
-                        </Text>
-                        <Text as="p" variant="bodyXs" tone="subdued">
-                          {product.sku}
-                        </Text>
-                      </BlockStack>
-                    </InlineStack>
-                    <InlineStack gap="600" blockAlign="center">
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        {product.unitsSold}
-                      </Text>
-                      <Box minWidth="80px">
-                        <Text as="span" variant="bodySm" fontWeight="semibold" alignment="end">
-                          {formatCurrency(product.revenue)}
-                        </Text>
-                      </Box>
-                    </InlineStack>
-                  </InlineStack>
-                </div>
-              </div>
+                        {product.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--p-color-text-subdued)',
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {product.sku} · {share}%
+                      </div>
+                    </div>
+                  </div>
+                </td>
+
+                {/* Units */}
+                <td
+                  style={{
+                    padding: '10px 16px',
+                    textAlign: 'right',
+                    fontSize: 13,
+                    color: 'var(--p-color-text-subdued)',
+                    verticalAlign: 'middle',
+                  }}
+                >
+                  {product.unitsSold}
+                </td>
+
+                {/* Revenue + trend */}
+                <td
+                  style={{
+                    padding: '10px 16px',
+                    textAlign: 'right',
+                    verticalAlign: 'middle',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      gap: 3,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: 'var(--p-color-text)',
+                      }}
+                    >
+                      {formatCurrency(product.revenue)}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: trend.color,
+                      }}
+                    >
+                      {trend.symbol}
+                    </span>
+                  </div>
+                </td>
+              </tr>
             );
           })}
-        </BlockStack>
-
-        <Divider />
-
-        <Box paddingInlineStart="200" paddingInlineEnd="200">
-          <InlineStack align="space-between" blockAlign="center">
-            <Text as="span" variant="bodySm" tone="subdued">
-              Total Top {products.length}
-            </Text>
-            <Text as="span" variant="bodySm" fontWeight="bold">
+        </tbody>
+        <tfoot>
+          <tr
+            style={{
+              borderTop: '1px solid var(--p-color-border)',
+              background: 'var(--p-color-bg-surface-secondary)',
+            }}
+          >
+            <td
+              style={{
+                padding: '10px 16px',
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--p-color-text-subdued)',
+              }}
+            >
+              Total
+            </td>
+            <td
+              style={{
+                padding: '10px 16px',
+                textAlign: 'right',
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--p-color-text-subdued)',
+              }}
+            >
+              {totalUnits}
+            </td>
+            <td
+              style={{
+                padding: '10px 16px',
+                textAlign: 'right',
+                fontSize: 13,
+                fontWeight: 650,
+                color: 'var(--p-color-text)',
+              }}
+            >
               {formatCurrency(totalRevenue)}
-            </Text>
-          </InlineStack>
-        </Box>
-      </BlockStack>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </Card>
   );
 }

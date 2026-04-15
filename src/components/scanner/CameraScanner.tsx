@@ -24,6 +24,76 @@ function isSecureContext(): boolean {
   return protocol === 'https:' || hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
+/** Classify a camera error into a user-friendly Spanish message + whether it's a permission issue. */
+function classifyCameraError(err: unknown): { message: string; isDenied: boolean } {
+  const raw = err instanceof Error ? err.name : '';
+  const msg = err instanceof Error ? err.message : String(err);
+
+  // Explicit permission denial
+  if (raw === 'NotAllowedError' || raw === 'PermissionDeniedError' ||
+      msg.includes('NotAllowedError') || msg.includes('Permission')) {
+    return {
+      isDenied: true,
+      message:
+        'Permiso de cámara denegado. Para habilitarlo:\n' +
+        '1. Toca el ícono 🔒 junto a la URL\n' +
+        '2. Busca "Cámara" y cambia a "Permitir"\n' +
+        '3. Recarga la página',
+    };
+  }
+
+  // No camera found
+  if (raw === 'NotFoundError' || msg.includes('NotFoundError') || msg.includes('device')) {
+    return { isDenied: false, message: 'No se encontró una cámara en este dispositivo.' };
+  }
+
+  // Camera busy or hardware error
+  if (raw === 'NotReadableError' || msg.includes('NotReadableError') || msg.includes('Could not start')) {
+    return {
+      isDenied: false,
+      message:
+        'No se pudo acceder a la cámara. Posibles causas:\n' +
+        '• Otra aplicación está usando la cámara\n' +
+        '• Error de hardware del dispositivo\n' +
+        'Cierra otras apps con cámara e intenta de nuevo.',
+    };
+  }
+
+  // Constraints can't be satisfied (e.g. facingMode)
+  if (raw === 'OverconstrainedError' || msg.includes('Overconstrained')) {
+    return {
+      isDenied: false,
+      message: 'La cámara de este dispositivo no cumple los requisitos. Intenta con otro dispositivo.',
+    };
+  }
+
+  // Insecure context
+  if (raw === 'SecurityError' || msg.includes('SecurityError')) {
+    return {
+      isDenied: false,
+      message:
+        'La cámara requiere una conexión segura (HTTPS).\n' +
+        'Accede desde https:// o localhost.',
+    };
+  }
+
+  // Aborted
+  if (raw === 'AbortError' || msg.includes('AbortError')) {
+    return { isDenied: false, message: 'La solicitud de cámara fue cancelada. Intenta de nuevo.' };
+  }
+
+  // Unknown — always mention permissions as a possible cause
+  return {
+    isDenied: false,
+    message:
+      `Error al acceder a la cámara: ${msg || 'Error desconocido'}\n\n` +
+      'Verifica que:\n' +
+      '• El navegador tiene permiso de cámara (ícono 🔒 junto a la URL)\n' +
+      '• No hay otra app usando la cámara\n' +
+      '• Estás en HTTPS o localhost',
+  };
+}
+
 /** Pre-request camera permission so the browser shows its native prompt. */
 async function requestCameraPermission(): Promise<'granted' | 'denied' | 'prompt'> {
   // 1) Try Permissions API first (non-blocking query)
@@ -119,13 +189,13 @@ export function CameraScanner({
         return;
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('NotFoundError') || msg.includes('device')) {
-        setError('No se encontró una cámara en este dispositivo.');
+      const classified = classifyCameraError(err);
+      if (classified.isDenied) {
+        setPermissionState('denied');
       } else {
-        setError(`Error al acceder a la cámara: ${msg}`);
+        setPermissionState('idle');
       }
-      setPermissionState('idle');
+      setError(classified.message);
       return;
     }
 
@@ -185,20 +255,11 @@ export function CameraScanner({
         );
       } catch (err: unknown) {
         if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+        const classified = classifyCameraError(err);
+        if (classified.isDenied) {
           setPermissionState('denied');
-          setError(
-            'Permiso de cámara denegado. Para habilitarlo:\n' +
-              '1. Toca el ícono 🔒 junto a la URL\n' +
-              '2. Busca "Cámara" y cambia a "Permitir"\n' +
-              '3. Recarga la página',
-          );
-        } else if (msg.includes('NotFoundError') || msg.includes('device')) {
-          setError('No se encontró una cámara en este dispositivo.');
-        } else {
-          setError(`Error al iniciar la cámara: ${msg}`);
         }
+        setError(classified.message);
         setIsOpen(false);
       }
     };

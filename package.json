@@ -31,7 +31,6 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@mercadopago/sdk-react": "^0.0.19",
-    "@neondatabase/neon-js": "^0.2.0-beta.1",
     "@neondatabase/serverless": "^1.0.2",
     "@react-three/fiber": "^9.5.0",
     "@react-three/postprocessing": "^3.0.4",

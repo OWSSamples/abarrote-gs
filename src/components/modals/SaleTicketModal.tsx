@@ -34,6 +34,7 @@ import { SaleTotalsCard } from './sale/SaleTotalsCard';
 import { PaymentDetailsSection } from './sale/PaymentDetailsSection';
 import { PinPadModal } from './PinPadModal';
 import { posEngine } from '@/lib/pos/pos-engine';
+import { sendTicketEmailAction } from '@/app/actions/email-actions';
 
 interface SaleTicketModalProps {
   open: boolean;
@@ -116,6 +117,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const [quantity, setQuantity] = useState('1');
   const [completedSale, setCompletedSale] = useState<SaleRecord | null>(null);
   const [barcodeError, setBarcodeError] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [discountPending, setDiscountPending] = useState(false);
   const [pinPadOpen, setPinPadOpen] = useState(false);
   const [pinPadAction, setPinPadAction] = useState<{ type: string; payload: string } | null>(null);
@@ -187,6 +189,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     resetCheckoutForm();
     setCompletedSale(null);
     setBarcodeError('');
+    setCustomerEmail('');
     setDiscountPending(false);
     resetMpState();
   }, [resetCheckoutForm, resetMpState]);
@@ -388,6 +391,37 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         } as SaleRecord;
 
         setCompletedSale(sale);
+
+        // Fire-and-forget: send ticket email if customer provided email
+        if (customerEmail.trim()) {
+          const fechaFormatted = new Date(sale.date).toLocaleDateString('es-MX', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          sendTicketEmailAction({
+            to: customerEmail.trim(),
+            folio: sale.folio,
+            fecha: fechaFormatted,
+            cajero: sale.cajero,
+            items: sale.items.map((i) => ({
+              name: i.productName,
+              qty: i.quantity,
+              price: i.unitPrice,
+              subtotal: i.subtotal,
+            })),
+            subtotal: sale.subtotal,
+            iva: sale.iva ?? 0,
+            total: sale.total,
+            paymentMethod: sale.paymentMethod,
+          }).then((res) => {
+            if (res.success) showSuccess(`Ticket enviado a ${customerEmail.trim()}`);
+          }).catch(() => {
+            // Email send failure should not block the sale flow
+          });
+        }
       } catch (error: unknown) {
         console.error('Sale Registration Error (Modal):', error);
         showError(
@@ -413,6 +447,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       discountAmount,
       registerFiado,
       clientes,
+      customerEmail,
       showSuccess,
       showError,
     ],
@@ -521,6 +556,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         storeConfig={storeConfig}
         clienteId={fields.clienteId.value}
         clientes={clientes}
+        customerEmail={customerEmail}
         onPrint={() => printTicket(completedSale)}
         onNewSale={resetForm}
         onClose={handleClose}
@@ -690,6 +726,26 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 paypalQrUrl={storeConfig.paypalQrUrl}
                 cobrarQrUrl={storeConfig.cobrarQrUrl}
               />
+
+              {/* ── Email del cliente (ticket digital) ── */}
+              {items.length > 0 && storeConfig.emailEnabled && storeConfig.emailTicketEnabled && (
+                <Card>
+                  <BlockStack gap="200">
+                    <Text as="h3" variant="headingSm">
+                      Ticket digital
+                    </Text>
+                    <TextField
+                      label="Correo del cliente"
+                      type="email"
+                      value={customerEmail}
+                      onChange={setCustomerEmail}
+                      autoComplete="email"
+                      placeholder="cliente@ejemplo.com"
+                      helpText="Se enviará el ticket de compra por correo electrónico"
+                    />
+                  </BlockStack>
+                </Card>
+              )}
 
               {/* Spacer so content doesn't hide behind fixed Cobrar bar on mobile */}
               {isMobile && items.length > 0 && <Box minHeight="72px" />}

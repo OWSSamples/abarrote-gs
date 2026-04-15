@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
-import { Modal, Text, Box, BlockStack, InlineStack, Icon } from '@shopify/polaris';
+import { useRef, useEffect, useState, useCallback } from 'react';
+import { Modal, Text, Box, BlockStack, InlineStack, Icon, TextField, Banner, Button } from '@shopify/polaris';
 import { PrintIcon, CheckCircleIcon, ExportIcon } from '@shopify/polaris-icons';
 import JsBarcode from 'jsbarcode';
 import type { SaleRecord, Cliente, StoreConfig } from '@/types';
 import { formatCurrency } from '@/lib/utils';
+import { sendTicketEmailAction } from '@/app/actions/email-actions';
 
 export interface TicketPreviewProps {
   open: boolean;
@@ -13,6 +14,7 @@ export interface TicketPreviewProps {
   storeConfig: StoreConfig;
   clienteId: string;
   clientes: Cliente[];
+  customerEmail?: string;
   onPrint: () => void;
   onNewSale: () => void;
   onClose: () => void;
@@ -24,6 +26,7 @@ export function TicketPreview({
   storeConfig,
   clienteId,
   clientes,
+  customerEmail: initialEmail,
   onPrint,
   onNewSale,
   onClose,
@@ -33,6 +36,48 @@ export function TicketPreview({
 
   const isOffline = completedSale.folio.startsWith('OFF-');
   const cliente = clientes.find((c) => c.id === clienteId);
+
+  // Email sharing state
+  const [shareEmail, setShareEmail] = useState(initialEmail || '');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailResult, setEmailResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showEmailField, setShowEmailField] = useState(false);
+
+  const handleSendEmail = useCallback(async () => {
+    if (!shareEmail.trim()) return;
+    setEmailSending(true);
+    setEmailResult(null);
+    try {
+      const fechaFormatted = new Date(completedSale.date).toLocaleDateString('es-MX', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const result = await sendTicketEmailAction({
+        to: shareEmail.trim(),
+        folio: completedSale.folio,
+        fecha: fechaFormatted,
+        cajero: completedSale.cajero,
+        items: completedSale.items.map((i) => ({
+          name: i.productName,
+          qty: i.quantity,
+          price: i.unitPrice,
+          subtotal: i.subtotal,
+        })),
+        subtotal: completedSale.subtotal,
+        iva: completedSale.iva ?? 0,
+        total: completedSale.total,
+        paymentMethod: completedSale.paymentMethod,
+      });
+      setEmailResult(result);
+    } catch {
+      setEmailResult({ success: false, message: 'Error de conexión al enviar correo' });
+    } finally {
+      setEmailSending(false);
+    }
+  }, [shareEmail, completedSale]);
 
   useEffect(() => {
     if (barcodeRef.current && completedSale.folio) {
@@ -70,7 +115,12 @@ export function TicketPreview({
       }}
       secondaryActions={[
         { content: 'Nueva Venta', onAction: onNewSale },
-        { content: 'Compartir', icon: ExportIcon, onAction: () => {} },
+        {
+          content: 'Enviar por correo',
+          icon: ExportIcon,
+          onAction: () => setShowEmailField((v) => !v),
+          disabled: !sc.emailEnabled || !sc.emailTicketEnabled,
+        },
       ]}
     >
       <Modal.Section>
@@ -398,6 +448,46 @@ export function TicketPreview({
           }
         `}</style>
       </Modal.Section>
+
+      {/* ── Email sharing section ── */}
+      {showEmailField && (
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text as="h3" variant="headingSm">
+              Enviar ticket por correo
+            </Text>
+            {emailResult && (
+              <Banner
+                tone={emailResult.success ? 'success' : 'critical'}
+                onDismiss={() => setEmailResult(null)}
+              >
+                {emailResult.message}
+              </Banner>
+            )}
+            <InlineStack gap="200" blockAlign="end">
+              <Box minWidth="0" width="100%">
+                <TextField
+                  label="Correo del cliente"
+                  type="email"
+                  value={shareEmail}
+                  onChange={setShareEmail}
+                  autoComplete="email"
+                  placeholder="cliente@ejemplo.com"
+                  disabled={emailSending}
+                />
+              </Box>
+              <Button
+                variant="primary"
+                onClick={handleSendEmail}
+                loading={emailSending}
+                disabled={!shareEmail.trim() || emailSending}
+              >
+                Enviar
+              </Button>
+            </InlineStack>
+          </BlockStack>
+        </Modal.Section>
+      )}
     </Modal>
   );
 }

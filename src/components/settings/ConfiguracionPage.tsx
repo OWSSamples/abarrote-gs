@@ -195,6 +195,19 @@ export function ConfiguracionPage() {
       emailReplyTo: useField(storeConfig.emailReplyTo || ''),
       emailRecipients: useField(storeConfig.emailRecipients || ''),
       emailAccentColor: useField(storeConfig.emailAccentColor || '#2563eb'),
+      // Email — per-type toggles
+      emailTicketEnabled: useField(storeConfig.emailTicketEnabled ?? true),
+      emailDailyReportEnabled: useField(storeConfig.emailDailyReportEnabled ?? true),
+      emailWeeklyReportEnabled: useField(storeConfig.emailWeeklyReportEnabled ?? true),
+      emailStockAlertEnabled: useField(storeConfig.emailStockAlertEnabled ?? true),
+      emailRefundAlertEnabled: useField(storeConfig.emailRefundAlertEnabled ?? true),
+      emailExpenseAlertEnabled: useField(storeConfig.emailExpenseAlertEnabled ?? true),
+      emailSecurityAlertEnabled: useField(storeConfig.emailSecurityAlertEnabled ?? true),
+      // Email — schedule & customization
+      emailDailyReportTime: useField(storeConfig.emailDailyReportTime || '08:00'),
+      emailWeeklyReportDay: useField(storeConfig.emailWeeklyReportDay || 'monday'),
+      emailFooterText: useField(storeConfig.emailFooterText || ''),
+      emailSignature: useField(storeConfig.emailSignature || ''),
       // NOTE: customerDisplay* fields are NOT in this form.
       // CustomerDisplaySectionV2 is self-sufficient and manages its own state
       // directly via Zustand store to avoid state sync conflicts.

@@ -236,6 +236,19 @@ function mapStoreConfigRow(row: any): StoreConfig {
     emailReplyTo: row.emailReplyTo ?? undefined,
     emailRecipients: row.emailRecipients ?? undefined,
     emailAccentColor: row.emailAccentColor ?? undefined,
+    // Email — per-type toggles
+    emailTicketEnabled: row.emailTicketEnabled ?? DEFAULT_STORE_CONFIG.emailTicketEnabled,
+    emailDailyReportEnabled: row.emailDailyReportEnabled ?? DEFAULT_STORE_CONFIG.emailDailyReportEnabled,
+    emailWeeklyReportEnabled: row.emailWeeklyReportEnabled ?? DEFAULT_STORE_CONFIG.emailWeeklyReportEnabled,
+    emailStockAlertEnabled: row.emailStockAlertEnabled ?? DEFAULT_STORE_CONFIG.emailStockAlertEnabled,
+    emailRefundAlertEnabled: row.emailRefundAlertEnabled ?? DEFAULT_STORE_CONFIG.emailRefundAlertEnabled,
+    emailExpenseAlertEnabled: row.emailExpenseAlertEnabled ?? DEFAULT_STORE_CONFIG.emailExpenseAlertEnabled,
+    emailSecurityAlertEnabled: row.emailSecurityAlertEnabled ?? DEFAULT_STORE_CONFIG.emailSecurityAlertEnabled,
+    // Email — schedule & customization
+    emailDailyReportTime: row.emailDailyReportTime ?? DEFAULT_STORE_CONFIG.emailDailyReportTime,
+    emailWeeklyReportDay: row.emailWeeklyReportDay ?? DEFAULT_STORE_CONFIG.emailWeeklyReportDay,
+    emailFooterText: row.emailFooterText ?? undefined,
+    emailSignature: row.emailSignature ?? undefined,
   };
 }
 

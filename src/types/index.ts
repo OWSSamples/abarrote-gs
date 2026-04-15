@@ -312,6 +312,19 @@ export interface StoreConfig {
   emailReplyTo?: string;
   emailRecipients?: string;
   emailAccentColor?: string;
+  // Email — per-type toggles
+  emailTicketEnabled: boolean;
+  emailDailyReportEnabled: boolean;
+  emailWeeklyReportEnabled: boolean;
+  emailStockAlertEnabled: boolean;
+  emailRefundAlertEnabled: boolean;
+  emailExpenseAlertEnabled: boolean;
+  emailSecurityAlertEnabled: boolean;
+  // Email — schedule & customization
+  emailDailyReportTime: string;
+  emailWeeklyReportDay: string;
+  emailFooterText?: string;
+  emailSignature?: string;
   // Hardware
   printerIp?: string;
   cashDrawerPort?: string;
@@ -412,6 +425,15 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   ticketBarcodeFormat: 'CODE128',
   enableNotifications: false,
   emailEnabled: false,
+  emailTicketEnabled: true,
+  emailDailyReportEnabled: true,
+  emailWeeklyReportEnabled: true,
+  emailStockAlertEnabled: true,
+  emailRefundAlertEnabled: true,
+  emailExpenseAlertEnabled: true,
+  emailSecurityAlertEnabled: true,
+  emailDailyReportTime: '08:00',
+  emailWeeklyReportDay: 'monday',
   loyaltyEnabled: false,
   pointsPerPeso: 100, // $100 spent = 1 point
   pointsValue: 1, // 1 point = $1 discount

@@ -96,12 +96,13 @@ function classifyCameraError(err: unknown): { message: string; isDenied: boolean
 
 /** Pre-request camera permission so the browser shows its native prompt. */
 async function requestCameraPermission(): Promise<'granted' | 'denied' | 'prompt'> {
-  // 1) Try Permissions API first (non-blocking query)
+  // 1) Quick check via Permissions API — only skip getUserMedia if already granted
   if (navigator.permissions) {
     try {
       const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
       if (status.state === 'granted') return 'granted';
-      if (status.state === 'denied') return 'denied';
+      // 'denied' or 'prompt' → always fall through to getUserMedia
+      // so the browser can show its native permission dialog
     } catch {
       // Permissions API may not support 'camera' — fall through
     }
@@ -116,8 +117,8 @@ async function requestCameraPermission(): Promise<'granted' | 'denied' | 'prompt
     stream.getTracks().forEach((t) => t.stop());
     return 'granted';
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.name : String(err);
-    if (msg === 'NotAllowedError' || msg === 'PermissionDeniedError') return 'denied';
+    const name = err instanceof Error ? err.name : String(err);
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') return 'denied';
     // NotFoundError, OverconstrainedError, etc. — device issue, not permission
     throw err;
   }

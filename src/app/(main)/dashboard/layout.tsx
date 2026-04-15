@@ -174,8 +174,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
         {isLoading && <Loading />}
         {error ? (
-          <Page title="Error" fullWidth>
-            <Banner tone="critical" title="Error">
+          <Page title={storeConfig.storeName || 'Mi Tienda'} fullWidth>
+            <Banner tone="critical" title="Hubo un problema al cargar los datos">
               <p>{error}</p>
               <Button onClick={fetchDashboardData}>Reintentar</Button>
             </Banner>

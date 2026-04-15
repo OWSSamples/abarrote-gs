@@ -12,7 +12,6 @@ import {
   Box,
   Icon,
   IndexFilters,
-  IndexFiltersMode,
   useSetIndexFiltersMode,
   useIndexResourceState,
   ChoiceList,
@@ -336,7 +335,7 @@ export function SalesHistory() {
     return tmp;
   }, [filterMethod, activeDateRange]);
 
-  const { mode, setMode } = useSetIndexFiltersMode(IndexFiltersMode.Filtering);
+  const { mode, setMode } = useSetIndexFiltersMode();
 
   // ── Summary for footer ──
   const totalAmount = useMemo(

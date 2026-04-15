@@ -364,6 +364,7 @@ export function SalesHistory() {
           disabled: !searchFolio && !filterMethod && !activeDateRange,
           loading: false,
         }}
+        canCreateNewView={false}
         tabs={tabs}
         selected={selectedTab}
         onSelect={(idx) => {
@@ -379,7 +380,6 @@ export function SalesHistory() {
         }}
         mode={mode}
         setMode={setMode}
-        loading={false}
       />
 
       {filteredSales.length === 0 ? (

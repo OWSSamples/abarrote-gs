@@ -192,9 +192,28 @@ body,
 
   /* Modal: almost full screen on mobile */
   .Polaris-Modal-Dialog__Modal {
-    max-height: 92vh !important;
-    margin: 16px !important;
-    border-radius: 16px !important;
+    max-height: 95vh !important;
+    margin: 8px !important;
+    border-radius: 12px !important;
+    width: calc(100vw - 16px) !important;
+    max-width: 100% !important;
+  }
+
+  /* Modal section: reduce internal padding on mobile */
+  .Polaris-Modal-Section {
+    padding: 12px !important;
+  }
+
+  /* Polaris Card: less padding on mobile */
+  .Polaris-LegacyCard,
+  .Polaris-Card {
+    border-radius: 10px !important;
+  }
+
+  /* Polaris Button fullWidth helpers */
+  .Polaris-Button--sizeMicro {
+    min-height: 32px !important;
+    min-width: 32px !important;
   }
 }
 
@@ -203,5 +222,52 @@ body,
   .Polaris-Page {
     padding-left: 20px !important;
     padding-right: 20px !important;
+  }
+}
+
+/* ── Fixed bottom Cobrar bar inside sale modal (mobile) ── */
+.sale-modal-fixed-cobrar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: #ffffff;
+  border-top: 1px solid var(--border, #e1e3e5);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.sale-modal-fixed-cobrar .Polaris-Button {
+  min-height: 48px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ── Mobile ResourceList polish ── */
+@media screen and (max-width: 768px) {
+  /* ResourceList items: tighter vertical rhythm */
+  .Polaris-ResourceItem__Container {
+    padding: 10px 12px !important;
+  }
+
+  /* ResourceList bulk actions bar */
+  .Polaris-BulkActions__Group {
+    padding: 8px 12px !important;
+  }
+
+  /* Hide desktop modal footer when fixed Cobrar bar is active */
+  .Polaris-Modal-Dialog__Modal:has(.sale-modal-fixed-cobrar) .Polaris-Modal-Footer {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+  }
+
+  /* Products page: Page actions compact on mobile */
+  .Polaris-Page-Header__PrimaryActionWrapper {
+    width: 100%;
+  }
+  .Polaris-Page-Header__PrimaryActionWrapper .Polaris-Button {
+    width: 100%;
   }
 }

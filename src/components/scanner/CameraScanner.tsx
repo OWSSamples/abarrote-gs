@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Button, Banner, BlockStack, Text } from '@shopify/polaris';
+import { Button, Banner, BlockStack, Text, InlineStack } from '@shopify/polaris';
 import { CameraIcon } from '@shopify/polaris-icons';
 
 interface CameraScannerProps {
@@ -15,6 +15,44 @@ interface CameraScannerProps {
   compact?: boolean;
 }
 
+/** Check if the current page is a secure context (HTTPS or localhost). */
+function isSecureContext(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (window.isSecureContext) return true;
+  // Fallback for older browsers
+  const { protocol, hostname } = window.location;
+  return protocol === 'https:' || hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+/** Pre-request camera permission so the browser shows its native prompt. */
+async function requestCameraPermission(): Promise<'granted' | 'denied' | 'prompt'> {
+  // 1) Try Permissions API first (non-blocking query)
+  if (navigator.permissions) {
+    try {
+      const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
+      if (status.state === 'granted') return 'granted';
+      if (status.state === 'denied') return 'denied';
+    } catch {
+      // Permissions API may not support 'camera' — fall through
+    }
+  }
+
+  // 2) Actually request via getUserMedia to trigger the browser prompt
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+    });
+    // Got permission — stop the stream immediately (html5-qrcode will open its own)
+    stream.getTracks().forEach((t) => t.stop());
+    return 'granted';
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.name : String(err);
+    if (msg === 'NotAllowedError' || msg === 'PermissionDeniedError') return 'denied';
+    // NotFoundError, OverconstrainedError, etc. — device issue, not permission
+    throw err;
+  }
+}
+
 export function CameraScanner({
   onScan,
   continuous = false,
@@ -24,6 +62,7 @@ export function CameraScanner({
   const [isOpen, setIsOpen] = useState(false);
   const [error, setError] = useState('');
   const [_lastScanned, setLastScanned] = useState('');
+  const [permissionState, setPermissionState] = useState<'idle' | 'requesting' | 'denied'>('idle');
   const scannerRef = useRef<HTMLDivElement>(null);
   const html5QrCodeRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
   const containerId = useRef(`camera-scanner-${Math.random().toString(36).slice(2, 9)}`);
@@ -48,6 +87,49 @@ export function CameraScanner({
   const startScanner = useCallback(async () => {
     setError('');
     setLastScanned('');
+
+    // 1) Secure context check
+    if (!isSecureContext()) {
+      setError(
+        'La cámara requiere conexión HTTPS. ' +
+          'Si estás en red local, accede a tu app con https:// o usa localhost. ' +
+          'En producción (Vercel) esto funciona automáticamente.',
+      );
+      return;
+    }
+
+    // 2) Check for camera API support
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Tu navegador no soporta acceso a la cámara. Usa Chrome, Safari o Firefox actualizados.');
+      return;
+    }
+
+    // 3) Request permission proactively
+    setPermissionState('requesting');
+    try {
+      const perm = await requestCameraPermission();
+      if (perm === 'denied') {
+        setPermissionState('denied');
+        setError(
+          'Permiso de cámara denegado. Para habilitarlo:\n' +
+            '1. Toca el ícono 🔒 junto a la URL\n' +
+            '2. Busca "Cámara" y cambia a "Permitir"\n' +
+            '3. Recarga la página',
+        );
+        return;
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('NotFoundError') || msg.includes('device')) {
+        setError('No se encontró una cámara en este dispositivo.');
+      } else {
+        setError(`Error al acceder a la cámara: ${msg}`);
+      }
+      setPermissionState('idle');
+      return;
+    }
+
+    setPermissionState('idle');
     setIsOpen(true);
   }, []);
 
@@ -105,11 +187,17 @@ export function CameraScanner({
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
-          setError('Permiso de camara denegado. Habilitalo en la configuracion de tu navegador.');
+          setPermissionState('denied');
+          setError(
+            'Permiso de cámara denegado. Para habilitarlo:\n' +
+              '1. Toca el ícono 🔒 junto a la URL\n' +
+              '2. Busca "Cámara" y cambia a "Permitir"\n' +
+              '3. Recarga la página',
+          );
         } else if (msg.includes('NotFoundError') || msg.includes('device')) {
-          setError('No se encontro una camara en este dispositivo.');
+          setError('No se encontró una cámara en este dispositivo.');
         } else {
-          setError(`Error al iniciar la camara: ${msg}`);
+          setError(`Error al iniciar la cámara: ${msg}`);
         }
         setIsOpen(false);
       }
@@ -119,7 +207,6 @@ export function CameraScanner({
 
     return () => {
       cancelled = true;
-      // Stop the scanner dynamically to prevent runaway zombie scanner instances
       if (html5QrCodeRef.current) {
         try {
           const state = html5QrCodeRef.current.getState();
@@ -161,12 +248,22 @@ export function CameraScanner({
       {!isOpen && (
         <div>
           {compact ? (
-            <Button size="slim" icon={CameraIcon} onClick={startScanner}>
-              {buttonLabel}
+            <Button
+              size="slim"
+              icon={CameraIcon}
+              onClick={startScanner}
+              loading={permissionState === 'requesting'}
+            >
+              {permissionState === 'requesting' ? 'Solicitando permiso...' : buttonLabel}
             </Button>
           ) : (
-            <Button icon={CameraIcon} onClick={startScanner} fullWidth>
-              {buttonLabel}
+            <Button
+              icon={CameraIcon}
+              onClick={startScanner}
+              fullWidth
+              loading={permissionState === 'requesting'}
+            >
+              {permissionState === 'requesting' ? 'Solicitando permiso de cámara...' : buttonLabel}
             </Button>
           )}
         </div>
@@ -197,7 +294,7 @@ export function CameraScanner({
               fontSize: '12px',
             }}
           >
-            Apunta al codigo de barras del producto
+            Apunta al código de barras del producto
           </div>
 
           <div id={containerId.current} ref={scannerRef} style={{ width: '100%', minHeight: '200px' }} />
@@ -222,8 +319,20 @@ export function CameraScanner({
       )}
 
       {error && (
-        <Banner tone="critical" onDismiss={() => setError('')}>
-          <p>{error}</p>
+        <Banner tone="critical" onDismiss={() => { setError(''); setPermissionState('idle'); }}>
+          <BlockStack gap="200">
+            <p style={{ whiteSpace: 'pre-line' }}>{error}</p>
+            {permissionState === 'denied' && (
+              <InlineStack gap="200">
+                <Button size="slim" onClick={() => window.location.reload()}>
+                  Recargar página
+                </Button>
+                <Button size="slim" variant="plain" onClick={() => { setError(''); setPermissionState('idle'); }}>
+                  Intentar de nuevo
+                </Button>
+              </InlineStack>
+            )}
+          </BlockStack>
         </Banner>
       )}
     </BlockStack>

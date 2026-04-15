@@ -17,6 +17,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { formatCurrency } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SaleItem, SaleRecord } from '@/types';
 
 // Extracted hooks
@@ -508,6 +509,9 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     onClose();
   }, [resetForm, onClose]);
 
+  // ── Responsive ──
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
   // ── Ticket preview (after sale completed) ──
   if (completedSale) {
     return (
@@ -531,12 +535,16 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         open={open}
         onClose={handleClose}
         title="Registrar Venta"
-        primaryAction={{
-          content: submitting ? 'Procesando...' : `Cobrar ${formatCurrency(total)}`,
-          onAction: handleSale,
-          loading: submitting,
-          disabled: items.length === 0 || submitting,
-        }}
+        primaryAction={
+          isMobile
+            ? undefined
+            : {
+                content: submitting ? 'Procesando...' : `Cobrar ${formatCurrency(total)}`,
+                onAction: handleSale,
+                loading: submitting,
+                disabled: items.length === 0 || submitting,
+              }
+        }
         secondaryActions={[{ content: 'Cancelar', onAction: handleClose }]}
         size="large"
       >
@@ -576,33 +584,33 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                   <Text as="h3" variant="headingSm">
                     Agregar producto
                   </Text>
-                  <InlineStack gap="200" align="end" blockAlign="end">
-                    <Box minWidth="300px">
-                      <SearchableSelect
-                        label="Producto"
-                        options={allProducts.map((p) => ({
-                          label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
-                          value: p.id,
-                        }))}
-                        selected={selectedProduct}
-                        onChange={setSelectedProduct}
-                      />
-                    </Box>
-                    <Box minWidth="80px">
-                      <TextField
-                        label="Cantidad"
-                        type="number"
-                        value={quantity}
-                        onChange={setQuantity}
-                        autoComplete="off"
-                        min={1}
-                        selectTextOnFocus
-                      />
-                    </Box>
-                    <Button variant="primary" onClick={addItem} disabled={!selectedProduct}>
-                      Agregar
-                    </Button>
-                  </InlineStack>
+                  <BlockStack gap="200">
+                    <SearchableSelect
+                      label="Producto"
+                      options={allProducts.map((p) => ({
+                        label: `${p.name} — Stock: ${p.currentStock} — ${formatCurrency(p.unitPrice)}`,
+                        value: p.id,
+                      }))}
+                      selected={selectedProduct}
+                      onChange={setSelectedProduct}
+                    />
+                    <InlineStack gap="200" blockAlign="end">
+                      <Box minWidth="80px" maxWidth="120px">
+                        <TextField
+                          label="Cantidad"
+                          type="number"
+                          value={quantity}
+                          onChange={setQuantity}
+                          autoComplete="off"
+                          min={1}
+                          selectTextOnFocus
+                        />
+                      </Box>
+                      <Button variant="primary" onClick={addItem} disabled={!selectedProduct} fullWidth>
+                        Agregar
+                      </Button>
+                    </InlineStack>
+                  </BlockStack>
                 </BlockStack>
               </Card>
 
@@ -682,9 +690,28 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 paypalQrUrl={storeConfig.paypalQrUrl}
                 cobrarQrUrl={storeConfig.cobrarQrUrl}
               />
+
+              {/* Spacer so content doesn't hide behind fixed Cobrar bar on mobile */}
+              {isMobile && items.length > 0 && <Box minHeight="72px" />}
             </BlockStack>
           )}
         </Modal.Section>
+
+        {/* ── Fixed bottom Cobrar bar (mobile only) ── */}
+        {isMobile && items.length > 0 && !submitting && (
+          <div className="sale-modal-fixed-cobrar">
+            <Button
+              variant="primary"
+              size="large"
+              onClick={handleSale}
+              loading={submitting}
+              disabled={items.length === 0 || submitting}
+              fullWidth
+            >
+              {`Cobrar ${formatCurrency(total)}`}
+            </Button>
+          </div>
+        )}
       </Modal>
 
       <PinPadModal

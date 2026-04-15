@@ -65,8 +65,8 @@ export function SaleTotalsCard({
           </InlineStack>
         ) : (
           <BlockStack gap="200">
-            <InlineStack gap="200" blockAlign="end">
-              <Box minWidth="70px">
+            <InlineStack gap="200" blockAlign="end" wrap>
+              <Box minWidth="60px" maxWidth="80px">
                 <FormSelect
                   label="Tipo"
                   options={[
@@ -77,7 +77,7 @@ export function SaleTotalsCard({
                   onChange={(v) => onDiscountTypeChange(v as 'amount' | 'percent')}
                 />
               </Box>
-              <Box minWidth="100px">
+              <Box minWidth="80px">
                 <TextField
                   label="Descuento"
                   labelHidden

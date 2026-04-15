@@ -14,13 +14,20 @@ import {
   IndexFiltersMode,
   TabProps,
   useIndexResourceState,
+  ResourceList,
+  ResourceItem,
+  Thumbnail,
+  Box,
+  Divider,
 } from '@shopify/polaris';
+import { ImageIcon } from '@shopify/polaris-icons';
 import { Product } from '@/types';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatCurrency } from '@/lib/utils';
 import { ProductExportModal, ProductImportModal } from './ShopifyModals';
 import { generateCSV, downloadFile, generateXLSX } from '@/components/export/ExportModal';
 import { generatePDF } from '@/components/export/generatePDF';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface AllProductsTableProps {
   products: Product[];
@@ -208,7 +215,10 @@ export function AllProductsTable({
     [products],
   );
 
-  // --- Row markup ---
+  // --- Responsive flag ---
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
+  // --- Row markup (desktop) ---
   const rowMarkup = filteredProducts.map((product, index) => {
     const status = getProductStatus(product);
     return (
@@ -245,6 +255,51 @@ export function AllProductsTable({
     );
   });
 
+  // --- Mobile ResourceItem renderer ---
+  const renderMobileItem = useCallback(
+    (product: Product) => {
+      const status = getProductStatus(product);
+      const media = product.imageUrl ? (
+        <Thumbnail source={product.imageUrl} alt={product.name} size="small" />
+      ) : (
+        <Thumbnail source={ImageIcon} alt={product.name} size="small" />
+      );
+
+      return (
+        <ResourceItem
+          id={product.id}
+          media={media}
+          onClick={() => onProductClick?.(product)}
+          accessibilityLabel={`Ver ${product.name}`}
+          verticalAlignment="center"
+        >
+          <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
+            <BlockStack gap="050">
+              <Text as="p" variant="bodyMd" fontWeight="semibold" truncate>
+                {product.name}
+              </Text>
+              <InlineStack gap="200" blockAlign="center">
+                {getStatusBadge(status)}
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {product.category}
+                </Text>
+              </InlineStack>
+            </BlockStack>
+            <BlockStack gap="050" inlineAlign="end">
+              <Text as="p" variant="bodyMd" fontWeight="semibold">
+                {formatCurrency(product.unitPrice)}
+              </Text>
+              <Text as="span" variant="bodySm" tone={product.currentStock === 0 ? 'caution' : 'subdued'}>
+                {product.currentStock} uds
+              </Text>
+            </BlockStack>
+          </InlineStack>
+        </ResourceItem>
+      );
+    },
+    [onProductClick],
+  );
+
   return (
     <BlockStack gap="500">
       <Card padding="0">
@@ -271,22 +326,50 @@ export function AllProductsTable({
           onClearAll={() => {}}
         />
 
-        <IndexTable
-          resourceName={resourceName}
-          itemCount={filteredProducts.length}
-          selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
-          onSelectionChange={handleSelectionChange}
-          headings={[{ title: 'Producto' }, { title: 'Estado' }, { title: 'Inventario' }, { title: 'Categoría' }]}
-          promotedBulkActions={promotedBulkActions}
-          bulkActions={bulkActions}
-        >
-          {rowMarkup}
-        </IndexTable>
+        {isMobile ? (
+          /* ── Mobile: ResourceList with Thumbnail + stacked metadata ── */
+          <>
+            {filteredProducts.length === 0 ? (
+              <Box padding="600">
+                <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                  No se encontraron productos.
+                </Text>
+              </Box>
+            ) : (
+              <ResourceList
+                resourceName={resourceName}
+                items={filteredProducts}
+                renderItem={renderMobileItem}
+                totalItemsCount={filteredProducts.length}
+                selectable
+                selectedItems={selectedResources}
+                onSelectionChange={(ids) => handleSelectionChange('single' as never, false, ids as never)}
+                promotedBulkActions={promotedBulkActions}
+                bulkActions={bulkActions}
+              />
+            )}
+          </>
+        ) : (
+          /* ── Desktop: IndexTable with full columns ── */
+          <IndexTable
+            resourceName={resourceName}
+            itemCount={filteredProducts.length}
+            selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
+            onSelectionChange={handleSelectionChange}
+            headings={[{ title: 'Producto' }, { title: 'Estado' }, { title: 'Inventario' }, { title: 'Categoría' }]}
+            promotedBulkActions={promotedBulkActions}
+            bulkActions={bulkActions}
+          >
+            {rowMarkup}
+          </IndexTable>
+        )}
       </Card>
 
-      <InlineStack align="center">
-        <Button variant="monochromePlain">Más información sobre productos</Button>
-      </InlineStack>
+      {!isMobile && (
+        <InlineStack align="center">
+          <Button variant="monochromePlain">Más información sobre productos</Button>
+        </InlineStack>
+      )}
 
       {/* Export modal — controlled from parent */}
       <ProductExportModal open={exportOpen} onClose={onExportClose} onExport={handleExport} />

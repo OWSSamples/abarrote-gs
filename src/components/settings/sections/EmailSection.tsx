@@ -346,18 +346,38 @@ export function EmailSection({
                   onChange={(v) => updateField('emailAccentColor', v)}
                   autoComplete="off"
                   placeholder="#2563eb"
-                  helpText="Color del encabezado de correos (formato HEX)."
+                  helpText="Color del encabezado de correos. Haz clic en el cuadro para elegir."
                   connectedRight={
-                    <div
+                    <label
                       style={{
+                        position: 'relative',
+                        display: 'inline-block',
                         width: 36,
                         height: 36,
                         borderRadius: 6,
                         backgroundColor: config.emailAccentColor || '#2563eb',
                         border: '1px solid var(--p-color-border)',
+                        cursor: 'pointer',
                         flexShrink: 0,
+                        overflow: 'hidden',
                       }}
-                    />
+                    >
+                      <input
+                        type="color"
+                        value={config.emailAccentColor || '#2563eb'}
+                        onChange={(e) => updateField('emailAccentColor', e.target.value)}
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          width: '100%',
+                          height: '100%',
+                          opacity: 0,
+                          cursor: 'pointer',
+                          border: 'none',
+                          padding: 0,
+                        }}
+                      />
+                    </label>
                   }
                 />
               </FormLayout>

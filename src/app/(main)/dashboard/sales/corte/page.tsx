@@ -1,18 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import {
-  Page,
-  BlockStack,
-  InlineStack,
-  InlineGrid,
-  Card,
-  Text,
-  Badge,
-  Box,
-  Divider,
-  Button,
-} from '@shopify/polaris';
+import { Page, BlockStack } from '@shopify/polaris';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
 import { CorteCajaModal } from '@/components/caja/CorteCajaModal';
@@ -22,10 +11,9 @@ export default function CortePage() {
   const [corteModalOpen, setCorteModalOpen] = useState(false);
   const cortesHistory = useDashboardStore((s) => s.cortesHistory);
 
-  // ── KPI calculations from history ──
   const kpis = useMemo(() => {
     if (cortesHistory.length === 0) {
-      return { lastCorte: null, totalCortes: 0, avgDiferencia: 0, cortesOk: 0, cortesAlert: 0 };
+      return { lastCorte: null, totalCortes: 0, avgDiferencia: 0, cortesOk: 0, cortesAlert: 0, precision: 0 };
     }
 
     const sorted = [...cortesHistory].sort(
@@ -37,8 +25,9 @@ export default function CortePage() {
       cortesHistory.reduce((sum, c) => sum + Math.abs(c.diferencia), 0) / totalCortes;
     const cortesOk = cortesHistory.filter((c) => Math.abs(c.diferencia) <= 10).length;
     const cortesAlert = totalCortes - cortesOk;
+    const precision = Math.round((cortesOk / totalCortes) * 100);
 
-    return { lastCorte, totalCortes, avgDiferencia, cortesOk, cortesAlert };
+    return { lastCorte, totalCortes, avgDiferencia, cortesOk, cortesAlert, precision };
   }, [cortesHistory]);
 
   return (
@@ -54,110 +43,71 @@ export default function CortePage() {
         backAction={{ content: 'Ventas', url: '/dashboard/sales' }}
       >
         <BlockStack gap="600">
-          {/* ═══════════════════════════════════════════════════════
-              NIVEL 1 — Vista Macro: Resumen rápido
-              Storytelling: "¿Cómo va la caja?"
-          ═══════════════════════════════════════════════════════ */}
-          <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
+          {/* ── KPI Cards ── */}
+          <div className="kpi-grid">
             {/* Último corte */}
-            <Card>
-              <BlockStack gap="200">
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Último corte
-                </Text>
-                {kpis.lastCorte ? (
-                  <>
-                    <Text as="p" variant="headingXl" fontWeight="bold">
-                      {formatCurrency(kpis.lastCorte.totalVentas)}
-                    </Text>
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      {new Date(kpis.lastCorte.fecha).toLocaleDateString('es-MX', {
-                        day: '2-digit',
-                        month: 'short',
-                      })}{' '}
-                      · {kpis.lastCorte.cajero}
-                    </Text>
-                  </>
-                ) : (
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    Sin cortes registrados
-                  </Text>
-                )}
-              </BlockStack>
-            </Card>
+            <div className="kpi-card kpi-card--emerald">
+              <div className="kpi-label">Último corte</div>
+              {kpis.lastCorte ? (
+                <>
+                  <div className="kpi-value">
+                    {formatCurrency(kpis.lastCorte.totalVentas)}
+                  </div>
+                  <div className="kpi-sub">
+                    {new Date(kpis.lastCorte.fecha).toLocaleDateString('es-MX', {
+                      day: '2-digit',
+                      month: 'short',
+                    })}{' '}
+                    · {kpis.lastCorte.cajero}
+                  </div>
+                </>
+              ) : (
+                <div className="kpi-sub">Sin cortes registrados</div>
+              )}
+            </div>
 
             {/* Total de cortes */}
-            <Card>
-              <BlockStack gap="200">
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Cortes realizados
-                </Text>
-                <Text as="p" variant="headingXl" fontWeight="bold">
-                  {kpis.totalCortes}
-                </Text>
-                <Text as="span" variant="bodySm" tone="subdued">
-                  en el historial
-                </Text>
-              </BlockStack>
-            </Card>
+            <div className="kpi-card kpi-card--blue">
+              <div className="kpi-label">Cortes realizados</div>
+              <div className="kpi-value">{kpis.totalCortes}</div>
+              <div className="kpi-sub">en el historial</div>
+            </div>
 
             {/* Precisión de caja */}
-            <Card>
-              <BlockStack gap="200">
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Precisión de caja
-                </Text>
-                <InlineStack gap="200" blockAlign="center">
-                  <Text as="p" variant="headingXl" fontWeight="bold">
-                    {kpis.totalCortes > 0
-                      ? `${((kpis.cortesOk / kpis.totalCortes) * 100).toFixed(0)}%`
-                      : '—'}
-                  </Text>
-                  {kpis.totalCortes > 0 && (
-                    <Badge
-                      tone={
-                        kpis.cortesOk / kpis.totalCortes >= 0.9
-                          ? 'success'
-                          : kpis.cortesOk / kpis.totalCortes >= 0.7
-                            ? 'attention'
-                            : 'critical'
-                      }
-                    >
-                      {`${kpis.cortesOk} ok / ${kpis.cortesAlert} alerta`}
-                    </Badge>
-                  )}
-                </InlineStack>
-                <Text as="span" variant="bodySm" tone="subdued">
-                  cortes dentro de tolerancia (±$10)
-                </Text>
-              </BlockStack>
-            </Card>
+            <div className="kpi-card kpi-card--teal">
+              <div className="kpi-label">Precisión de caja</div>
+              <div className="kpi-value">
+                {kpis.totalCortes > 0 ? `${kpis.precision}%` : '—'}
+              </div>
+              {kpis.totalCortes > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                  <span
+                    className={`kpi-badge ${
+                      kpis.precision >= 90
+                        ? 'kpi-badge--success'
+                        : kpis.precision >= 70
+                          ? 'kpi-badge--warning'
+                          : 'kpi-badge--critical'
+                    }`}
+                  >
+                    {kpis.cortesOk} ok · {kpis.cortesAlert} alerta
+                  </span>
+                </div>
+              )}
+              <div className="kpi-sub">tolerancia ±$10</div>
+            </div>
 
             {/* Diferencia promedio */}
-            <Card>
-              <BlockStack gap="200">
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Diferencia promedio
-                </Text>
-                <Text
-                  as="p"
-                  variant="headingXl"
-                  fontWeight="bold"
-                  tone={kpis.avgDiferencia <= 10 ? 'success' : 'critical'}
-                >
-                  {kpis.totalCortes > 0 ? formatCurrency(kpis.avgDiferencia) : '—'}
-                </Text>
-                <Text as="span" variant="bodySm" tone="subdued">
-                  valor absoluto por corte
-                </Text>
-              </BlockStack>
-            </Card>
-          </InlineGrid>
+            <div className={`kpi-card ${kpis.avgDiferencia <= 10 ? 'kpi-card--emerald' : 'kpi-card--rose'}`}>
+              <div className="kpi-label">Diferencia promedio</div>
+              <div className={`kpi-value ${kpis.avgDiferencia <= 10 ? 'kpi-value--emerald' : 'kpi-value--rose'}`}>
+                {kpis.totalCortes > 0 ? formatCurrency(kpis.avgDiferencia) : '—'}
+              </div>
+              <div className="kpi-sub">valor absoluto por corte</div>
+            </div>
+          </div>
 
-          {/* ═══════════════════════════════════════════════════════
-              NIVEL 2 — Vista Micro: Historial de cortes
-              Storytelling: "¿Qué pasó en cada cierre?"
-          ═══════════════════════════════════════════════════════ */}
+          {/* ── History Table ── */}
           <CortesHistory />
         </BlockStack>
       </Page>

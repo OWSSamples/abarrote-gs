@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Page, InlineGrid, Card, BlockStack, Text, Box, InlineStack, Badge, Divider } from '@shopify/polaris';
+import { Page, BlockStack } from '@shopify/polaris';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
 import { SalesHistory } from '@/components/sales/SalesHistory';
@@ -9,7 +9,6 @@ import { SalesHistory } from '@/components/sales/SalesHistory';
 export default function SalesPage() {
   const saleRecords = useDashboardStore((s) => s.saleRecords);
 
-  // ── KPI calculations ──
   const kpis = useMemo(() => {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -23,13 +22,11 @@ export default function SalesPage() {
     const todayCount = todaySales.length;
     const avgTicket = todayCount > 0 ? todayTotal / todayCount : 0;
 
-    // Payment breakdown (today)
     const byMethod: Record<string, number> = {};
     todaySales.forEach((s) => {
       byMethod[s.paymentMethod] = (byMethod[s.paymentMethod] || 0) + s.total;
     });
 
-    // Trend
     const delta = yesterdayTotal > 0 ? ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100 : 0;
 
     return { todayTotal, todayCount, avgTicket, byMethod, delta, yesterdayTotal };
@@ -48,104 +45,61 @@ export default function SalesPage() {
   };
 
   return (
-    <Page
-      fullWidth
-      title="Ventas"
-      subtitle="Panorama del día y registro histórico"
-    >
+    <Page fullWidth title="Ventas" subtitle="Panorama del día y registro histórico">
       <BlockStack gap="600">
-        {/* ═══════════════════════════════════════════════════════
-            NIVEL 1 — Vista Macro: KPIs del día
-            Storytelling: "¿Cómo vamos hoy?"
-        ═══════════════════════════════════════════════════════ */}
-        <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
-          {/* Venta del día */}
-          <Card>
-            <BlockStack gap="200">
-              <Text as="p" variant="bodySm" tone="subdued">
-                Venta del día
-              </Text>
-              <Text as="p" variant="headingXl" fontWeight="bold">
-                {formatCurrency(kpis.todayTotal)}
-              </Text>
-              {kpis.yesterdayTotal > 0 && (
-                <InlineStack gap="100" blockAlign="center">
-                  <Text as="span" variant="bodySm" tone={kpis.delta >= 0 ? 'success' : 'critical'}>
-                    {kpis.delta >= 0 ? '↑' : '↓'} {Math.abs(kpis.delta).toFixed(1)}%
-                  </Text>
-                  <Text as="span" variant="bodySm" tone="subdued">
-                    vs ayer
-                  </Text>
-                </InlineStack>
-              )}
-            </BlockStack>
-          </Card>
+        {/* ── KPI Cards ── */}
+        <div className="kpi-grid kpi-grid--hero-first">
+          {/* HERO — Venta del día */}
+          <div className="kpi-card kpi-card--hero kpi-card--emerald">
+            <div className="kpi-label">Venta del día</div>
+            <div className="kpi-value kpi-value--hero">
+              {formatCurrency(kpis.todayTotal)}
+            </div>
+            {kpis.yesterdayTotal > 0 ? (
+              <span className={`kpi-trend ${kpis.delta >= 0 ? 'kpi-trend--up' : 'kpi-trend--down'}`}>
+                {kpis.delta >= 0 ? '▲' : '▼'} {Math.abs(kpis.delta).toFixed(1)}% vs ayer
+              </span>
+            ) : (
+              <span className="kpi-trend kpi-trend--neutral">Sin datos ayer</span>
+            )}
+          </div>
 
           {/* Transacciones */}
-          <Card>
-            <BlockStack gap="200">
-              <Text as="p" variant="bodySm" tone="subdued">
-                Transacciones hoy
-              </Text>
-              <Text as="p" variant="headingXl" fontWeight="bold">
-                {kpis.todayCount}
-              </Text>
-              <Text as="span" variant="bodySm" tone="subdued">
-                operaciones registradas
-              </Text>
-            </BlockStack>
-          </Card>
+          <div className="kpi-card kpi-card--blue">
+            <div className="kpi-label">Transacciones hoy</div>
+            <div className="kpi-value">{kpis.todayCount}</div>
+            <div className="kpi-sub">operaciones registradas</div>
+          </div>
 
           {/* Ticket promedio */}
-          <Card>
-            <BlockStack gap="200">
-              <Text as="p" variant="bodySm" tone="subdued">
-                Ticket promedio
-              </Text>
-              <Text as="p" variant="headingXl" fontWeight="bold">
-                {formatCurrency(kpis.avgTicket)}
-              </Text>
-              <Text as="span" variant="bodySm" tone="subdued">
-                por transacción
-              </Text>
-            </BlockStack>
-          </Card>
+          <div className="kpi-card kpi-card--violet">
+            <div className="kpi-label">Ticket promedio</div>
+            <div className="kpi-value">{formatCurrency(kpis.avgTicket)}</div>
+            <div className="kpi-sub">por transacción</div>
+          </div>
 
           {/* Desglose por método */}
-          <Card>
-            <BlockStack gap="200">
-              <Text as="p" variant="bodySm" tone="subdued">
-                Desglose del día
-              </Text>
-              {Object.keys(kpis.byMethod).length === 0 ? (
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Sin ventas aún
-                </Text>
-              ) : (
-                <BlockStack gap="100">
-                  {Object.entries(kpis.byMethod)
-                    .sort(([, a], [, b]) => b - a)
-                    .slice(0, 3)
-                    .map(([method, amount]) => (
-                      <InlineStack key={method} align="space-between" blockAlign="center">
-                        <Text as="span" variant="bodySm">
-                          {methodLabels[method] || method}
-                        </Text>
-                        <Text as="span" variant="bodySm" fontWeight="semibold">
-                          {formatCurrency(amount)}
-                        </Text>
-                      </InlineStack>
-                    ))}
-                </BlockStack>
-              )}
-            </BlockStack>
-          </Card>
-        </InlineGrid>
+          <div className="kpi-card kpi-card--amber">
+            <div className="kpi-label">Desglose del día</div>
+            {Object.keys(kpis.byMethod).length === 0 ? (
+              <div className="kpi-sub">Sin ventas aún</div>
+            ) : (
+              <div className="kpi-breakdown">
+                {Object.entries(kpis.byMethod)
+                  .sort(([, a], [, b]) => b - a)
+                  .slice(0, 4)
+                  .map(([method, amount]) => (
+                    <div key={method} className="kpi-breakdown-row">
+                      <span>{methodLabels[method] || method}</span>
+                      <span>{formatCurrency(amount)}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
 
-        {/* ═══════════════════════════════════════════════════════
-            NIVEL 2 — Vista Micro: Historial completo
-            Storytelling: "¿Qué pasó exactamente?"
-        ═══════════════════════════════════════════════════════ */}
+        {/* ── History Table ── */}
         <SalesHistory />
       </BlockStack>
     </Page>

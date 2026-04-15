@@ -13,15 +13,15 @@ import {
   Icon,
   IndexFilters,
   useSetIndexFiltersMode,
+  useIndexResourceState,
   ChoiceList,
+  EmptySearchResult,
 } from '@shopify/polaris';
-import { ReceiptIcon } from '@shopify/polaris-icons';
+import { ReceiptIcon, XCircleIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { printWithIframe, posTicketCSS, applyTicketTemplate, generateTicketHtml } from '@/lib/printTicket';
-import { GenericExportModal } from '@/components/inventory/ShopifyModals';
-import { generateCSV, downloadFile, generatePDF } from '@/components/export/ExportModal';
 import { DevolucionModal } from '@/components/modals/DevolucionModal';
 import { SaleDetailModal } from '@/components/sales/SaleDetailModal';
 import { DateRangeFilter } from '@/components/sales/DateRangeFilter';
@@ -40,9 +40,11 @@ function paymentBadge(method: string) {
     transferencia: { tone: 'attention', label: 'Transfer' },
     fiado: { tone: 'warning', label: 'Fiado' },
     puntos: { tone: 'magic', label: 'Puntos' },
+    tarjeta_clip: { tone: 'info', label: 'Clip' },
+    clip_terminal: { tone: 'info', label: 'Clip Term.' },
   };
-  const s = styles[method] || { tone: 'subdued', label: method };
-  return <Badge tone={s.tone}>{s.label}</Badge>;
+  const s = styles[method] || { tone: undefined, label: method };
+  return <Badge tone={s.tone} size="small">{s.label}</Badge>;
 }
 
 export function SalesHistory() {
@@ -57,25 +59,91 @@ export function SalesHistory() {
   const [filterMethod, setFilterMethod] = useState('');
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [isExportOpen, setIsExportOpen] = useState(false);
   const [devolucionOpen, setDevolucionOpen] = useState(false);
-
+  const [selectedTab, setSelectedTab] = useState(0);
   const [activeDateRange, setActiveDateRange] = useState<RangeOption | null>(null);
 
+  // ── Tabs: Shopify Orders-style segmentation ──
+  const today = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+  }, []);
+  const weekAgo = useMemo(() => {
+    const d = new Date(today); d.setDate(d.getDate() - 6); return d;
+  }, [today]);
+
+  const tabs = useMemo(() => {
+    const todayStr = today.toISOString().split('T')[0];
+    const todayCount = saleRecords.filter((s) => s.date.startsWith(todayStr)).length;
+    const weekCount = saleRecords.filter((s) => new Date(s.date) >= weekAgo).length;
+    const efectivoCount = saleRecords.filter((s) => s.paymentMethod === 'efectivo').length;
+    const tarjetaCount = saleRecords.filter((s) =>
+      ['tarjeta', 'tarjeta_web', 'tarjeta_manual', 'tarjeta_clip', 'clip_terminal'].includes(s.paymentMethod),
+    ).length;
+    const fiadoCount = saleRecords.filter((s) => s.paymentMethod === 'fiado').length;
+
+    return [
+      { content: 'Todas', id: 'all', badge: String(saleRecords.length), accessibilityLabel: 'Todas las ventas' },
+      { content: 'Hoy', id: 'today', badge: String(todayCount), accessibilityLabel: 'Ventas de hoy' },
+      { content: 'Esta semana', id: 'week', badge: String(weekCount), accessibilityLabel: 'Ventas de esta semana' },
+      ...(efectivoCount > 0 ? [{ content: 'Efectivo', id: 'efectivo', badge: String(efectivoCount), accessibilityLabel: 'Pagos en efectivo' }] : []),
+      ...(tarjetaCount > 0 ? [{ content: 'Tarjeta', id: 'tarjeta', badge: String(tarjetaCount), accessibilityLabel: 'Pagos con tarjeta' }] : []),
+      ...(fiadoCount > 0 ? [{ content: 'Fiado', id: 'fiado', badge: String(fiadoCount), accessibilityLabel: 'Ventas a crédito' }] : []),
+    ];
+  }, [saleRecords, today, weekAgo]);
+
   const filteredSales = useMemo(() => {
+    const todayStr = today.toISOString().split('T')[0];
+    const tabId = tabs[selectedTab]?.id || 'all';
+
     return saleRecords
       .filter((sale) => {
-        if (searchFolio && !sale.folio.toLowerCase().includes(searchFolio.toLowerCase())) return false;
+        // Tab filter
+        if (tabId === 'today' && !sale.date.startsWith(todayStr)) return false;
+        if (tabId === 'week' && new Date(sale.date) < weekAgo) return false;
+        if (tabId === 'efectivo' && sale.paymentMethod !== 'efectivo') return false;
+        if (tabId === 'tarjeta' && !['tarjeta', 'tarjeta_web', 'tarjeta_manual', 'tarjeta_clip', 'clip_terminal'].includes(sale.paymentMethod)) return false;
+        if (tabId === 'fiado' && sale.paymentMethod !== 'fiado') return false;
+
+        // Search filter
+        if (searchFolio) {
+          const q = searchFolio.toLowerCase();
+          if (!sale.folio.toLowerCase().includes(q) && !sale.cajero.toLowerCase().includes(q)) return false;
+        }
+
+        // Method filter (from IndexFilters)
         if (filterMethod && sale.paymentMethod !== filterMethod) return false;
+
+        // Date range filter
         if (activeDateRange) {
-          const d = new Date(sale.date);
-          d.setHours(0, 0, 0, 0);
+          const d = new Date(sale.date); d.setHours(0, 0, 0, 0);
           if (d < activeDateRange.period.since || d > activeDateRange.period.until) return false;
         }
         return true;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [saleRecords, searchFolio, filterMethod, activeDateRange]);
+  }, [saleRecords, searchFolio, filterMethod, activeDateRange, selectedTab, tabs, today, weekAgo]);
+
+  // ── Selectable rows + bulk actions ──
+  const {
+    selectedResources: selectedIds,
+    allResourcesSelected,
+    handleSelectionChange,
+    clearSelection,
+  } = useIndexResourceState(filteredSales as { id: string }[]);
+
+  const handleBulkCancel = useCallback(async () => {
+    let cancelled = 0;
+    for (const id of selectedIds) {
+      try {
+        await cancelSale(id);
+        cancelled++;
+      } catch { /* skip */ }
+    }
+    if (cancelled > 0) {
+      showSuccess(`${cancelled} venta${cancelled !== 1 ? 's' : ''} cancelada${cancelled !== 1 ? 's' : ''}`);
+    }
+    clearSelection();
+  }, [selectedIds, cancelSale, showSuccess, clearSelection]);
 
   const handleViewSale = useCallback((sale: SaleRecord) => {
     setSelectedSale(sale);
@@ -224,6 +292,7 @@ export function SalesHistory() {
             { label: 'Efectivo', value: 'efectivo' },
             { label: 'Tarjeta', value: 'tarjeta' },
             { label: 'Transferencia', value: 'transferencia' },
+            { label: 'Fiado', value: 'fiado' },
           ]}
           selected={[filterMethod]}
           onChange={(val) => setFilterMethod(val[0])}
@@ -268,154 +337,162 @@ export function SalesHistory() {
 
   const { mode, setMode } = useSetIndexFiltersMode();
 
+  // ── Summary for footer ──
+  const totalAmount = useMemo(
+    () => filteredSales.reduce((sum, s) => sum + s.total, 0),
+    [filteredSales],
+  );
+
+  // ── Promoted bulk actions (Shopify pattern) ──
+  const promotedBulkActions = [
+    { content: 'Cancelar ventas', onAction: handleBulkCancel, icon: XCircleIcon },
+  ];
+
   return (
-    <BlockStack gap="500">
-      <Card padding="0">
-        <IndexFilters
-          queryValue={searchFolio}
-          queryPlaceholder="Buscar por folio, cajero..."
-          onQueryChange={setSearchFolio}
-          onQueryClear={() => setSearchFolio('')}
-          cancelAction={{
-            onAction: () => {
-              setSearchFolio('');
-              setFilterMethod('');
-              setActiveDateRange(null);
-            },
-            disabled: !searchFolio && !filterMethod && !activeDateRange,
-            loading: false,
-          }}
-          tabs={[]}
-          selected={0}
-          onSelect={() => {}}
-          filters={searchFilters}
-          appliedFilters={appliedFilters}
-          onClearAll={() => {
+    <Card padding="0">
+      <IndexFilters
+        queryValue={searchFolio}
+        queryPlaceholder="Buscar por folio, cajero..."
+        onQueryChange={setSearchFolio}
+        onQueryClear={() => setSearchFolio('')}
+        cancelAction={{
+          onAction: () => {
             setSearchFolio('');
             setFilterMethod('');
             setActiveDateRange(null);
-          }}
-          mode={mode}
-          setMode={setMode}
-          loading={false}
-        />
+          },
+          disabled: !searchFolio && !filterMethod && !activeDateRange,
+          loading: false,
+        }}
+        tabs={tabs}
+        selected={selectedTab}
+        onSelect={(idx) => {
+          setSelectedTab(idx);
+          clearSelection();
+        }}
+        filters={searchFilters}
+        appliedFilters={appliedFilters}
+        onClearAll={() => {
+          setSearchFolio('');
+          setFilterMethod('');
+          setActiveDateRange(null);
+        }}
+        mode={mode}
+        setMode={setMode}
+        loading={false}
+      />
 
-        <Box>
-          {filteredSales.length === 0 ? (
-            <Box paddingBlockStart="1200" paddingBlockEnd="1200">
-              <BlockStack gap="300" inlineAlign="center">
-                <div style={{ opacity: 0.4 }}>
-                  <Icon source={ReceiptIcon} />
-                </div>
-                <BlockStack gap="100" inlineAlign="center">
-                  <Text as="p" variant="headingSm">
-                    Sin ventas registradas
-                  </Text>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    Registra una venta para verla aquí.
-                  </Text>
-                </BlockStack>
-              </BlockStack>
-            </Box>
-          ) : (
-            <IndexTable
-              resourceName={{ singular: 'venta', plural: 'ventas' }}
-              itemCount={filteredSales.length}
-              headings={[
-                { title: 'Folio' },
-                { title: 'Fecha' },
-                { title: 'Cajero' },
-                { title: 'Artículos' },
-                { title: 'Total', alignment: 'end' },
-                { title: 'Método' },
-                { title: 'Estado' },
-                { title: '' },
-              ]}
-              selectable={false}
-            >
-              {filteredSales.map((sale, idx) => {
-                const d = new Date(sale.date);
-                const hasReturn = devolucionesStore.some((dev: { saleId?: string }) => dev.saleId === sale.id);
-                return (
-                  <IndexTable.Row id={sale.id} key={sale.id} position={idx}>
-                    <IndexTable.Cell>
-                      <Text as="span" variant="bodyMd" fontWeight="semibold" tone="magic">
-                        {sale.folio}
-                      </Text>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <BlockStack gap="050">
-                        <Text as="span" variant="bodySm">
-                          {d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </Text>
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          {d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                      </BlockStack>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <Text as="span" variant="bodySm">
-                        {sale.cajero}
-                      </Text>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        {sale.items.length} {sale.items.length === 1 ? 'producto' : 'productos'}
-                      </Text>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <Text as="span" variant="bodyMd" fontWeight="bold" alignment="end">
-                        {formatCurrency(sale.total)}
-                      </Text>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>{paymentBadge(sale.paymentMethod)}</IndexTable.Cell>
-                    <IndexTable.Cell>
-                      {hasReturn ? (
-                        <Badge tone="warning" size="small">Devuelto</Badge>
-                      ) : (
-                        <Badge tone="success" size="small">Pagado</Badge>
-                      )}
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <InlineStack gap="100">
-                        <Button size="micro" variant="plain" onClick={() => handleViewSale(sale)}>
-                          Ver
-                        </Button>
-                        <Button
-                          size="micro"
-                          variant="plain"
-                          onClick={() => {
-                            setSelectedSale(sale);
-                            setTimeout(() => handlePrint(), 0);
-                          }}
-                        >
-                          Imprimir
-                        </Button>
-                      </InlineStack>
-                    </IndexTable.Cell>
-                  </IndexTable.Row>
-                );
-              })}
-            </IndexTable>
-          )}
+      {filteredSales.length === 0 ? (
+        <Box paddingBlockStart="1600" paddingBlockEnd="1600">
+          <EmptySearchResult
+            title="No se encontraron ventas"
+            description="Intenta con otro término de búsqueda o cambia los filtros."
+            withIllustration
+          />
         </Box>
+      ) : (
+        <IndexTable
+          resourceName={{ singular: 'venta', plural: 'ventas' }}
+          itemCount={filteredSales.length}
+          selectedItemsCount={allResourcesSelected ? 'All' : selectedIds.length}
+          onSelectionChange={handleSelectionChange}
+          promotedBulkActions={promotedBulkActions}
+          headings={[
+            { title: 'Folio' },
+            { title: 'Fecha' },
+            { title: 'Cajero' },
+            { title: 'Artículos' },
+            { title: 'Total', alignment: 'end' },
+            { title: 'Método' },
+            { title: 'Estado' },
+            { title: '' },
+          ]}
+        >
+          {filteredSales.map((sale, idx) => {
+            const d = new Date(sale.date);
+            const hasReturn = devolucionesStore.some((dev: { saleId?: string }) => dev.saleId === sale.id);
+            return (
+              <IndexTable.Row
+                id={sale.id}
+                key={sale.id}
+                position={idx}
+                selected={selectedIds.includes(sale.id)}
+              >
+                <IndexTable.Cell>
+                  <Text as="span" variant="bodyMd" fontWeight="semibold" tone="magic">
+                    {sale.folio}
+                  </Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                  <BlockStack gap="050">
+                    <Text as="span" variant="bodySm">
+                      {d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
+                    </Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </BlockStack>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                  <Text as="span" variant="bodySm">{sale.cajero}</Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {sale.items.length} {sale.items.length === 1 ? 'producto' : 'productos'}
+                  </Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                  <Text as="span" variant="bodyMd" fontWeight="bold" alignment="end">
+                    {formatCurrency(sale.total)}
+                  </Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>{paymentBadge(sale.paymentMethod)}</IndexTable.Cell>
+                <IndexTable.Cell>
+                  {hasReturn ? (
+                    <Badge tone="warning" size="small">Devuelto</Badge>
+                  ) : (
+                    <Badge tone="success" size="small">Pagado</Badge>
+                  )}
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                  <InlineStack gap="100">
+                    <Button size="micro" variant="plain" onClick={() => handleViewSale(sale)}>
+                      Ver
+                    </Button>
+                    <Button
+                      size="micro"
+                      variant="plain"
+                      onClick={() => {
+                        setSelectedSale(sale);
+                        setTimeout(() => handlePrint(), 0);
+                      }}
+                    >
+                      Imprimir
+                    </Button>
+                  </InlineStack>
+                </IndexTable.Cell>
+              </IndexTable.Row>
+            );
+          })}
+        </IndexTable>
+      )}
 
-        {/* Footer: count + export */}
-        {filteredSales.length > 0 && (
-          <Box padding="300" borderBlockStartWidth="025" borderColor="border">
-            <InlineStack align="space-between" blockAlign="center">
-              <Text as="span" variant="bodySm" tone="subdued">
-                {filteredSales.length} venta{filteredSales.length !== 1 ? 's' : ''}
-                {activeDateRange ? ` · ${activeDateRange.title}` : ''}
-              </Text>
-              <Button size="slim" onClick={() => setIsExportOpen(true)}>
-                Exportar
-              </Button>
-            </InlineStack>
-          </Box>
-        )}
-      </Card>
+      {/* ── Footer: count + total ── */}
+      {filteredSales.length > 0 && (
+        <Box padding="300" borderBlockStartWidth="025" borderColor="border">
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="span" variant="bodySm" tone="subdued">
+              {filteredSales.length} venta{filteredSales.length !== 1 ? 's' : ''}
+              {activeDateRange ? ` · ${activeDateRange.title}` : ''}
+            </Text>
+            <Text as="span" variant="bodySm" fontWeight="semibold">
+              Total: {formatCurrency(totalAmount)}
+            </Text>
+          </InlineStack>
+        </Box>
+      )}
 
+      {/* ── Modals ── */}
       {selectedSale && (
         <SaleDetailModal
           open={detailOpen}
@@ -439,31 +516,6 @@ export function SalesHistory() {
           onSuccess={() => setDevolucionOpen(false)}
         />
       )}
-
-      <GenericExportModal
-        open={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        title="Exportar ventas"
-        exportName="ventas"
-        onExport={(format) => {
-          const exportData = filteredSales.map((s) => ({
-            Folio: s.folio,
-            Fecha: new Date(s.date).toLocaleDateString('es-MX'),
-            Hora: new Date(s.date).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-            Cajero: s.cajero,
-            'Total Artículos': s.items.length,
-            Total: s.total,
-            Método: s.paymentMethod,
-          }));
-          const filename = `Ventas_${new Date().toISOString().split('T')[0]}`;
-          if (format === 'pdf') {
-            generatePDF('Reporte de Ventas', exportData as Record<string, unknown>[], `${filename}.pdf`);
-          } else {
-            const csvContent = generateCSV(exportData as Record<string, unknown>[], true);
-            downloadFile(csvContent, `${filename}.csv`, 'text/csv;charset=utf-8;');
-          }
-        }}
-      />
-    </BlockStack>
+    </Card>
   );
 }

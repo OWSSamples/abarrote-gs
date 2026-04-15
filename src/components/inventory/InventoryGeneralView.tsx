@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BlockStack,
+  Box,
   Button,
   Card,
   IndexTable,
@@ -545,26 +546,28 @@ export function InventoryGeneralView({
           onClearAll={() => {}}
         />
 
-        {/* Column config (floating) */}
-        <div style={{ position: 'absolute', right: '16px', top: '8px', zIndex: 1 }}>
-          <InventoryColumnsPopover
-            active={isColumnsPopoverOpen}
-            activator={
-              <Button
-                size="slim"
-                onClick={() => setIsColumnsPopoverOpen((c) => !c)}
-                accessibilityLabel="Administrar columnas"
-              >
-                Columnas
-              </Button>
-            }
-            onClose={() => setIsColumnsPopoverOpen(false)}
-            columnQuery={columnQuery}
-            onColumnQueryChange={setColumnQuery}
-            selectedColumns={appliedVisibleColumns}
-            onColumnChange={handleAppliedColumnChange}
-          />
-        </div>
+        {/* Column config toolbar */}
+        <Box padding="300" paddingBlockStart="200" paddingBlockEnd="200" borderBlockEndWidth="025" borderColor="border">
+          <InlineStack align="end">
+            <InventoryColumnsPopover
+              active={isColumnsPopoverOpen}
+              activator={
+                <Button
+                  size="slim"
+                  onClick={() => setIsColumnsPopoverOpen((c) => !c)}
+                  accessibilityLabel="Administrar columnas"
+                >
+                  Columnas
+                </Button>
+              }
+              onClose={() => setIsColumnsPopoverOpen(false)}
+              columnQuery={columnQuery}
+              onColumnQueryChange={setColumnQuery}
+              selectedColumns={appliedVisibleColumns}
+              onColumnChange={handleAppliedColumnChange}
+            />
+          </InlineStack>
+        </Box>
 
         {/* Tabla con encabezados dinámicos */}
         <IndexTable

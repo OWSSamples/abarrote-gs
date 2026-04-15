@@ -17,7 +17,28 @@ import {
   Badge,
   Select,
   Collapsible,
+  Popover,
+  ColorPicker,
+  hsbToHex,
 } from '@shopify/polaris';
+import type { HSBAColor } from '@shopify/polaris';
+
+function hexToHsb(hex: string): HSBAColor {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16) / 255;
+  const g = parseInt(h.substring(2, 4), 16) / 255;
+  const b = parseInt(h.substring(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let hue = 0;
+  if (d !== 0) {
+    if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) hue = ((b - r) / d + 2) / 6;
+    else hue = ((r - g) / d + 4) / 6;
+  }
+  return { hue: hue * 360, saturation: max === 0 ? 0 : d / max, brightness: max, alpha: 1 };
+}
 import type { SettingsSectionProps } from './types';
 
 interface EmailSectionProps extends SettingsSectionProps {
@@ -119,6 +140,23 @@ export function EmailSection({
   const isConfigured = Boolean(config.emailEnabled && config.emailFrom && config.emailRecipients);
   const [previewOpen, setPreviewOpen] = useState(false);
   const togglePreview = useCallback(() => setPreviewOpen((o) => !o), []);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const toggleColorPicker = useCallback(() => setColorPickerOpen((o) => !o), []);
+
+  const currentHex = config.emailAccentColor || '#2563eb';
+  let currentHsb: HSBAColor;
+  try {
+    currentHsb = hexToHsb(currentHex);
+  } catch {
+    currentHsb = hexToHsb('#2563eb');
+  }
+
+  const handleColorChange = useCallback(
+    (hsb: HSBAColor) => {
+      updateField('emailAccentColor', hsbToHex(hsb));
+    },
+    [updateField],
+  );
 
   const enabledCount = EMAIL_TYPES.filter((t) => config[t.key] as boolean).length;
 
@@ -346,38 +384,41 @@ export function EmailSection({
                   onChange={(v) => updateField('emailAccentColor', v)}
                   autoComplete="off"
                   placeholder="#2563eb"
-                  helpText="Color del encabezado de correos. Haz clic en el cuadro para elegir."
+                  helpText="Haz clic en el cuadro de color para abrir el selector."
                   connectedRight={
-                    <label
-                      style={{
-                        position: 'relative',
-                        display: 'inline-block',
-                        width: 36,
-                        height: 36,
-                        borderRadius: 6,
-                        backgroundColor: config.emailAccentColor || '#2563eb',
-                        border: '1px solid var(--p-color-border)',
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                        overflow: 'hidden',
-                      }}
+                    <Popover
+                      active={colorPickerOpen}
+                      onClose={toggleColorPicker}
+                      activator={
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={toggleColorPicker}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleColorPicker(); }}
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 'var(--p-border-radius-200)',
+                            backgroundColor: currentHex,
+                            border: '1px solid var(--p-color-border)',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                          }}
+                        />
+                      }
                     >
-                      <input
-                        type="color"
-                        value={config.emailAccentColor || '#2563eb'}
-                        onChange={(e) => updateField('emailAccentColor', e.target.value)}
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          width: '100%',
-                          height: '100%',
-                          opacity: 0,
-                          cursor: 'pointer',
-                          border: 'none',
-                          padding: 0,
-                        }}
-                      />
-                    </label>
+                      <Box padding="300">
+                        <BlockStack gap="300">
+                          <ColorPicker
+                            onChange={handleColorChange}
+                            color={currentHsb}
+                          />
+                          <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                            {currentHex}
+                          </Text>
+                        </BlockStack>
+                      </Box>
+                    </Popover>
                   }
                 />
               </FormLayout>

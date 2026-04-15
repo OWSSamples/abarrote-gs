@@ -247,8 +247,22 @@ function mapStoreConfigRow(row: any): StoreConfig {
     // Email — schedule & customization
     emailDailyReportTime: row.emailDailyReportTime ?? DEFAULT_STORE_CONFIG.emailDailyReportTime,
     emailWeeklyReportDay: row.emailWeeklyReportDay ?? DEFAULT_STORE_CONFIG.emailWeeklyReportDay,
+    emailWeeklyReportTime: row.emailWeeklyReportTime ?? DEFAULT_STORE_CONFIG.emailWeeklyReportTime,
     emailFooterText: row.emailFooterText ?? undefined,
     emailSignature: row.emailSignature ?? undefined,
+    // Email — premium features
+    emailCcRecipients: row.emailCcRecipients ?? undefined,
+    emailBccRecipients: row.emailBccRecipients ?? undefined,
+    emailSubjectPrefix: row.emailSubjectPrefix ?? undefined,
+    emailDigestEnabled: row.emailDigestEnabled ?? DEFAULT_STORE_CONFIG.emailDigestEnabled,
+    emailDigestIntervalMinutes: row.emailDigestIntervalMinutes ?? DEFAULT_STORE_CONFIG.emailDigestIntervalMinutes,
+    emailMaxAlertsPerHour: row.emailMaxAlertsPerHour ?? DEFAULT_STORE_CONFIG.emailMaxAlertsPerHour,
+    emailAutoRetry: row.emailAutoRetry ?? DEFAULT_STORE_CONFIG.emailAutoRetry,
+    emailMaxRetries: row.emailMaxRetries ?? DEFAULT_STORE_CONFIG.emailMaxRetries,
+    emailAttachPdfTicket: row.emailAttachPdfTicket ?? DEFAULT_STORE_CONFIG.emailAttachPdfTicket,
+    emailAttachExcelReport: row.emailAttachExcelReport ?? DEFAULT_STORE_CONFIG.emailAttachExcelReport,
+    emailMonthlyReportEnabled: row.emailMonthlyReportEnabled ?? DEFAULT_STORE_CONFIG.emailMonthlyReportEnabled,
+    emailMonthlyReportDay: row.emailMonthlyReportDay ?? DEFAULT_STORE_CONFIG.emailMonthlyReportDay,
   };
 }
 

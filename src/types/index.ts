@@ -323,8 +323,22 @@ export interface StoreConfig {
   // Email — schedule & customization
   emailDailyReportTime: string;
   emailWeeklyReportDay: string;
+  emailWeeklyReportTime: string;
   emailFooterText?: string;
   emailSignature?: string;
+  // Email — premium features
+  emailCcRecipients?: string;
+  emailBccRecipients?: string;
+  emailSubjectPrefix?: string;
+  emailDigestEnabled: boolean;
+  emailDigestIntervalMinutes: number;
+  emailMaxAlertsPerHour: number;
+  emailAutoRetry: boolean;
+  emailMaxRetries: number;
+  emailAttachPdfTicket: boolean;
+  emailAttachExcelReport: boolean;
+  emailMonthlyReportEnabled: boolean;
+  emailMonthlyReportDay: number;
   // Hardware
   printerIp?: string;
   cashDrawerPort?: string;
@@ -434,6 +448,16 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   emailSecurityAlertEnabled: true,
   emailDailyReportTime: '08:00',
   emailWeeklyReportDay: 'monday',
+  emailWeeklyReportTime: '07:00',
+  emailDigestEnabled: false,
+  emailDigestIntervalMinutes: 60,
+  emailMaxAlertsPerHour: 20,
+  emailAutoRetry: true,
+  emailMaxRetries: 3,
+  emailAttachPdfTicket: false,
+  emailAttachExcelReport: false,
+  emailMonthlyReportEnabled: false,
+  emailMonthlyReportDay: 1,
   loyaltyEnabled: false,
   pointsPerPeso: 100, // $100 spent = 1 point
   pointsValue: 1, // 1 point = $1 discount

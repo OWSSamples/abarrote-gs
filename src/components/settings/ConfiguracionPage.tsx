@@ -206,8 +206,22 @@ export function ConfiguracionPage() {
       // Email — schedule & customization
       emailDailyReportTime: useField(storeConfig.emailDailyReportTime || '08:00'),
       emailWeeklyReportDay: useField(storeConfig.emailWeeklyReportDay || 'monday'),
+      emailWeeklyReportTime: useField(storeConfig.emailWeeklyReportTime || '07:00'),
       emailFooterText: useField(storeConfig.emailFooterText || ''),
       emailSignature: useField(storeConfig.emailSignature || ''),
+      // Email — premium features
+      emailCcRecipients: useField(storeConfig.emailCcRecipients || ''),
+      emailBccRecipients: useField(storeConfig.emailBccRecipients || ''),
+      emailSubjectPrefix: useField(storeConfig.emailSubjectPrefix || ''),
+      emailDigestEnabled: useField(storeConfig.emailDigestEnabled ?? false),
+      emailDigestIntervalMinutes: useField(storeConfig.emailDigestIntervalMinutes ?? 60),
+      emailMaxAlertsPerHour: useField(storeConfig.emailMaxAlertsPerHour ?? 20),
+      emailAutoRetry: useField(storeConfig.emailAutoRetry ?? true),
+      emailMaxRetries: useField(storeConfig.emailMaxRetries ?? 3),
+      emailAttachPdfTicket: useField(storeConfig.emailAttachPdfTicket ?? false),
+      emailAttachExcelReport: useField(storeConfig.emailAttachExcelReport ?? false),
+      emailMonthlyReportEnabled: useField(storeConfig.emailMonthlyReportEnabled ?? false),
+      emailMonthlyReportDay: useField(storeConfig.emailMonthlyReportDay ?? 1),
       // NOTE: customerDisplay* fields are NOT in this form.
       // CustomerDisplaySectionV2 is self-sufficient and manages its own state
       // directly via Zustand store to avoid state sync conflicts.

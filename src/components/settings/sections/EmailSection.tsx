@@ -20,6 +20,7 @@ import {
   Popover,
   ColorPicker,
   hsbToHex,
+  RangeSlider,
 } from '@shopify/polaris';
 import type { HSBAColor } from '@shopify/polaris';
 
@@ -51,6 +52,7 @@ type EmailTypeKey =
   | 'emailTicketEnabled'
   | 'emailDailyReportEnabled'
   | 'emailWeeklyReportEnabled'
+  | 'emailMonthlyReportEnabled'
   | 'emailStockAlertEnabled'
   | 'emailRefundAlertEnabled'
   | 'emailExpenseAlertEnabled'
@@ -80,6 +82,12 @@ const EMAIL_TYPES: EmailTypeConfig[] = [
     key: 'emailWeeklyReportEnabled',
     title: 'Reporte semanal',
     description: 'Resumen semanal con comparaciones y tendencias.',
+    category: 'Reporte',
+  },
+  {
+    key: 'emailMonthlyReportEnabled',
+    title: 'Reporte mensual',
+    description: 'Resumen mensual con métricas acumuladas y análisis de tendencia.',
     category: 'Reporte',
   },
   {
@@ -130,6 +138,21 @@ const TIME_OPTIONS = Array.from({ length: 24 }, (_, h) => {
   return { label: t, value: t };
 });
 
+const MONTHLY_DAY_OPTIONS = Array.from({ length: 28 }, (_, i) => ({
+  label: `Día ${i + 1}`,
+  value: String(i + 1),
+}));
+
+const DIGEST_INTERVAL_OPTIONS = [
+  { label: '15 minutos', value: '15' },
+  { label: '30 minutos', value: '30' },
+  { label: '1 hora', value: '60' },
+  { label: '2 horas', value: '120' },
+  { label: '4 horas', value: '240' },
+  { label: '8 horas', value: '480' },
+  { label: '24 horas (1 vez al día)', value: '1440' },
+];
+
 export function EmailSection({
   config,
   updateField,
@@ -162,7 +185,9 @@ export function EmailSection({
 
   return (
     <BlockStack gap="600">
-      {/* ── 1. Canal de Correo Electrónico ── */}
+      {/* ═══════════════════════════════════════════════════════════
+          1. CANAL DE CORREO — Activación + Identidad del remitente
+         ═══════════════════════════════════════════════════════════ */}
       <Layout.AnnotatedSection
         title="Canal de Correo"
         description="Activa el envío de correos transaccionales y alertas a través de AWS SES. ~$0.10 USD / 1,000 correos."
@@ -208,26 +233,26 @@ export function EmailSection({
                     </FormLayout>
 
                     <FormLayout>
-                      <FormLayout.Group>
-                        <TextField
-                          label="Reply-To (respuesta)"
-                          value={config.emailReplyTo || ''}
-                          onChange={(v) => updateField('emailReplyTo', v)}
-                          autoComplete="email"
-                          type="email"
-                          placeholder="soporte@tutienda.com"
-                          helpText="Opcional. Si vacío se usa el remitente."
-                        />
-                        <TextField
-                          label="Destinatarios de alertas"
-                          value={config.emailRecipients || ''}
-                          onChange={(v) => updateField('emailRecipients', v)}
-                          autoComplete="off"
-                          placeholder="owner@gmail.com, gerente@gmail.com"
-                          helpText="Separa con coma."
-                          multiline={2}
-                        />
-                      </FormLayout.Group>
+                      <TextField
+                        label="Reply-To (respuesta)"
+                        value={config.emailReplyTo || ''}
+                        onChange={(v) => updateField('emailReplyTo', v)}
+                        autoComplete="email"
+                        type="email"
+                        placeholder="soporte@tutienda.com"
+                        helpText="Opcional. Si vacío se usa el remitente."
+                      />
+                    </FormLayout>
+
+                    <FormLayout>
+                      <TextField
+                        label="Prefijo del asunto"
+                        value={config.emailSubjectPrefix || ''}
+                        onChange={(v) => updateField('emailSubjectPrefix', v)}
+                        autoComplete="off"
+                        placeholder={`[${config.storeName || 'Mi Tienda'}]`}
+                        helpText="Se agrega antes del asunto de cada correo. Ej: [Mi Tienda] Reporte Diario"
+                      />
                     </FormLayout>
                   </BlockStack>
                 </Box>
@@ -262,13 +287,60 @@ export function EmailSection({
         </Card>
       </Layout.AnnotatedSection>
 
-      {/* ── 2. Tipos de Correo ── */}
+      {/* ═══════════════════════════════════════════════════════════
+          2. DESTINATARIOS — Principales, CC, BCC
+         ═══════════════════════════════════════════════════════════ */}
+      {config.emailEnabled && (
+        <Layout.AnnotatedSection
+          title="Destinatarios"
+          description="Configura quién recibe los correos. Los destinatarios principales reciben reportes y alertas. CC/BCC para copias adicionales."
+        >
+          <Card>
+            <BlockStack gap="400">
+              <FormLayout>
+                <TextField
+                  label="Destinatarios principales"
+                  value={config.emailRecipients || ''}
+                  onChange={(v) => updateField('emailRecipients', v)}
+                  autoComplete="off"
+                  placeholder="owner@gmail.com, gerente@gmail.com"
+                  helpText="Correos que reciben reportes y alertas. Separa con coma."
+                  multiline={2}
+                />
+              </FormLayout>
+              <FormLayout>
+                <FormLayout.Group>
+                  <TextField
+                    label="CC (Copia)"
+                    value={config.emailCcRecipients || ''}
+                    onChange={(v) => updateField('emailCcRecipients', v)}
+                    autoComplete="off"
+                    placeholder="contador@gmail.com"
+                    helpText="Recibe copia visible de cada correo."
+                  />
+                  <TextField
+                    label="BCC (Copia oculta)"
+                    value={config.emailBccRecipients || ''}
+                    onChange={(v) => updateField('emailBccRecipients', v)}
+                    autoComplete="off"
+                    placeholder="auditoria@empresa.com"
+                    helpText="Recibe copia sin que los demás lo vean."
+                  />
+                </FormLayout.Group>
+              </FormLayout>
+            </BlockStack>
+          </Card>
+        </Layout.AnnotatedSection>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          3. TIPOS DE CORREO — Toggles individuales
+         ═══════════════════════════════════════════════════════════ */}
       <Layout.AnnotatedSection
         title="Tipos de Correo"
-        description="Activa o desactiva cada tipo de notificación por correo de forma individual."
+        description="Activa o desactiva cada tipo de notificación de forma individual."
       >
         <Card padding="0">
-          {/* Summary header */}
           <Box padding="400">
             <InlineStack align="space-between" blockAlign="center">
               <Text as="h3" variant="headingSm" fontWeight="semibold">
@@ -282,7 +354,6 @@ export function EmailSection({
 
           <Divider />
 
-          {/* Email type rows */}
           {EMAIL_TYPES.map((emailType, i) => {
             const enabled = (config[emailType.key] as boolean) ?? true;
             return (
@@ -303,10 +374,7 @@ export function EmailSection({
                           <Text as="span" variant="bodyMd" fontWeight="semibold">
                             {emailType.title}
                           </Text>
-                          <Badge
-                            tone={CATEGORY_TONE[emailType.category]}
-                            size="small"
-                          >
+                          <Badge tone={CATEGORY_TONE[emailType.category]} size="small">
                             {emailType.category}
                           </Badge>
                         </InlineStack>
@@ -328,9 +396,7 @@ export function EmailSection({
               <Divider />
               <Box padding="400">
                 <Banner tone="warning">
-                  <p>
-                    Configura el canal de correo arriba para activar las notificaciones individuales.
-                  </p>
+                  <p>Configura el canal de correo arriba para activar las notificaciones individuales.</p>
                 </Banner>
               </Box>
             </>
@@ -338,30 +404,67 @@ export function EmailSection({
         </Card>
       </Layout.AnnotatedSection>
 
-      {/* ── 3. Programación de Reportes ── */}
+      {/* ═══════════════════════════════════════════════════════════
+          4. PROGRAMACIÓN — Horarios de reportes
+         ═══════════════════════════════════════════════════════════ */}
       <Layout.AnnotatedSection
         title="Programación"
-        description="Configura cuándo se envían los reportes automáticos."
+        description="Define cuándo se envían los reportes automáticos. Todos los horarios en zona Ciudad de México."
       >
         <Card>
-          <BlockStack gap="400">
+          <BlockStack gap="500">
+            <Text as="h3" variant="headingSm" fontWeight="semibold">
+              Reporte Diario
+            </Text>
+            <FormLayout>
+              <Select
+                label="Hora de envío"
+                options={TIME_OPTIONS}
+                value={config.emailDailyReportTime || '08:00'}
+                onChange={(v) => updateField('emailDailyReportTime', v)}
+                helpText="Hora para el resumen diario."
+                disabled={!config.emailDailyReportEnabled}
+              />
+            </FormLayout>
+
+            <Divider />
+
+            <Text as="h3" variant="headingSm" fontWeight="semibold">
+              Reporte Semanal
+            </Text>
             <FormLayout>
               <FormLayout.Group>
                 <Select
-                  label="Hora del reporte diario"
-                  options={TIME_OPTIONS}
-                  value={config.emailDailyReportTime || '08:00'}
-                  onChange={(v) => updateField('emailDailyReportTime', v)}
-                  helpText="Hora (Ciudad de México) para el resumen diario."
-                  disabled={!config.emailDailyReportEnabled}
-                />
-                <Select
-                  label="Día del reporte semanal"
+                  label="Día de envío"
                   options={DAY_OPTIONS}
                   value={config.emailWeeklyReportDay || 'monday'}
                   onChange={(v) => updateField('emailWeeklyReportDay', v)}
-                  helpText="Se envía a las 7:00 AM del día seleccionado."
                   disabled={!config.emailWeeklyReportEnabled}
+                />
+                <Select
+                  label="Hora de envío"
+                  options={TIME_OPTIONS}
+                  value={config.emailWeeklyReportTime || '07:00'}
+                  onChange={(v) => updateField('emailWeeklyReportTime', v)}
+                  disabled={!config.emailWeeklyReportEnabled}
+                />
+              </FormLayout.Group>
+            </FormLayout>
+
+            <Divider />
+
+            <Text as="h3" variant="headingSm" fontWeight="semibold">
+              Reporte Mensual
+            </Text>
+            <FormLayout>
+              <FormLayout.Group>
+                <Select
+                  label="Día del mes"
+                  options={MONTHLY_DAY_OPTIONS}
+                  value={String(config.emailMonthlyReportDay || 1)}
+                  onChange={(v) => updateField('emailMonthlyReportDay', Number(v))}
+                  helpText="Se envía a las 8:00 AM del día seleccionado."
+                  disabled={!config.emailMonthlyReportEnabled}
                 />
               </FormLayout.Group>
             </FormLayout>
@@ -369,7 +472,113 @@ export function EmailSection({
         </Card>
       </Layout.AnnotatedSection>
 
-      {/* ── 4. Personalización ── */}
+      {/* ═══════════════════════════════════════════════════════════
+          5. ADJUNTOS — PDF tickets, Excel reportes
+         ═══════════════════════════════════════════════════════════ */}
+      <Layout.AnnotatedSection
+        title="Adjuntos"
+        description="Configura qué archivos se adjuntan automáticamente a los correos."
+      >
+        <Card padding="0">
+          <div style={{ padding: '12px 16px' }}>
+            <Checkbox
+              label="Adjuntar ticket en PDF"
+              helpText="Los correos de ticket de compra digital incluirán un archivo PDF descargable del ticket."
+              checked={config.emailAttachPdfTicket}
+              onChange={(v) => updateField('emailAttachPdfTicket', v)}
+            />
+          </div>
+          <Divider />
+          <div style={{ padding: '12px 16px' }}>
+            <Checkbox
+              label="Adjuntar reporte en Excel"
+              helpText="Los reportes diarios, semanales y mensuales incluirán un archivo XLSX con el detalle completo."
+              checked={config.emailAttachExcelReport}
+              onChange={(v) => updateField('emailAttachExcelReport', v)}
+            />
+          </div>
+        </Card>
+      </Layout.AnnotatedSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          6. CONTROL DE ALERTAS — Throttle + Digest
+         ═══════════════════════════════════════════════════════════ */}
+      <Layout.AnnotatedSection
+        title="Control de Alertas"
+        description="Evita spam de notificaciones. Agrupa alertas en un solo correo (digest) o limita la cantidad por hora."
+      >
+        <Card>
+          <BlockStack gap="500">
+            <RangeSlider
+              label={`Máximo de alertas por hora: ${config.emailMaxAlertsPerHour ?? 20}`}
+              value={config.emailMaxAlertsPerHour ?? 20}
+              onChange={(v) => updateField('emailMaxAlertsPerHour', v as number)}
+              min={1}
+              max={50}
+              step={1}
+              output
+              helpText="Si se supera este límite, las alertas adicionales se descartan hasta la siguiente hora."
+            />
+
+            <Divider />
+
+            <Checkbox
+              label="Activar modo digest"
+              helpText="En vez de enviar cada alerta al instante, agrupa varias en un solo correo resumen."
+              checked={config.emailDigestEnabled}
+              onChange={(v) => updateField('emailDigestEnabled', v)}
+            />
+
+            {config.emailDigestEnabled && (
+              <Box paddingInlineStart="800">
+                <Select
+                  label="Intervalo de agrupación"
+                  options={DIGEST_INTERVAL_OPTIONS}
+                  value={String(config.emailDigestIntervalMinutes || 60)}
+                  onChange={(v) => updateField('emailDigestIntervalMinutes', Number(v))}
+                  helpText="Las alertas se acumulan durante este periodo y se envían juntas."
+                />
+              </Box>
+            )}
+          </BlockStack>
+        </Card>
+      </Layout.AnnotatedSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          7. REINTENTOS — Auto-retry en caso de fallo
+         ═══════════════════════════════════════════════════════════ */}
+      <Layout.AnnotatedSection
+        title="Reintentos"
+        description="Configura el comportamiento cuando un correo no se puede enviar."
+      >
+        <Card>
+          <BlockStack gap="400">
+            <Checkbox
+              label="Reintentar automáticamente"
+              helpText="Si un correo falla (error de red, SES temporalmente no disponible), el sistema reintenta enviarlo."
+              checked={config.emailAutoRetry}
+              onChange={(v) => updateField('emailAutoRetry', v)}
+            />
+
+            {config.emailAutoRetry && (
+              <RangeSlider
+                label={`Máximo de reintentos: ${config.emailMaxRetries ?? 3}`}
+                value={config.emailMaxRetries ?? 3}
+                onChange={(v) => updateField('emailMaxRetries', v as number)}
+                min={1}
+                max={5}
+                step={1}
+                output
+                helpText="Cada reintento espera exponencialmente más tiempo (1s, 2s, 4s...)."
+              />
+            )}
+          </BlockStack>
+        </Card>
+      </Layout.AnnotatedSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          8. PERSONALIZACIÓN — Branding, firma, pie, preview
+         ═══════════════════════════════════════════════════════════ */}
       <Layout.AnnotatedSection
         title="Personalización"
         description="Ajusta la apariencia y contenido de los correos que envía tu tienda."
@@ -430,7 +639,7 @@ export function EmailSection({
                   onChange={(v) => updateField('emailFooterText', v)}
                   autoComplete="off"
                   placeholder="Gracias por tu preferencia. Visítanos en Av. Principal #123."
-                  helpText="Texto que aparece al final de cada correo. Dejar vacío para usar el texto predeterminado."
+                  helpText="Texto al final de cada correo. Dejar vacío para el texto predeterminado."
                   multiline={2}
                 />
               </FormLayout>
@@ -442,7 +651,7 @@ export function EmailSection({
                   onChange={(v) => updateField('emailSignature', v)}
                   autoComplete="off"
                   placeholder="Atentamente, El equipo de Mi Abarrotes"
-                  helpText="Se muestra antes del pie en correos transaccionales (tickets, alertas)."
+                  helpText="Se muestra antes del pie en correos transaccionales."
                   multiline={2}
                 />
               </FormLayout>
@@ -451,7 +660,6 @@ export function EmailSection({
 
           <Divider />
 
-          {/* Preview */}
           <Box padding="400">
             <BlockStack gap="300">
               <Button onClick={togglePreview} variant="plain">
@@ -459,7 +667,7 @@ export function EmailSection({
               </Button>
               <Collapsible open={previewOpen} id="email-preview">
                 <Box padding="300" borderRadius="200" background="bg-surface-secondary">
-                  {/* Email header preview */}
+                  {/* Header */}
                   <div
                     style={{
                       backgroundColor: config.emailAccentColor || '#2563eb',
@@ -472,39 +680,42 @@ export function EmailSection({
                       <img
                         src={config.logoUrl}
                         alt={config.storeName}
-                        style={{
-                          maxHeight: 40,
-                          maxWidth: '80%',
-                          marginBottom: 8,
-                          objectFit: 'contain',
-                        }}
+                        style={{ maxHeight: 40, maxWidth: '80%', marginBottom: 8, objectFit: 'contain' }}
                       />
                     )}
-                    <p
-                      style={{
-                        margin: 0,
-                        color: '#ffffff',
-                        fontSize: 16,
-                        fontWeight: 600,
-                      }}
-                    >
+                    <p style={{ margin: 0, color: '#ffffff', fontSize: 16, fontWeight: 600 }}>
                       {config.emailFromName || config.storeName || 'Mi Abarrotes'}
                     </p>
                   </div>
-                  {/* Email body preview */}
+                  {/* Subject preview */}
                   <div
                     style={{
                       backgroundColor: '#ffffff',
-                      padding: '20px',
-                      fontSize: 13,
-                      color: '#374151',
-                      lineHeight: 1.6,
+                      padding: '12px 20px',
+                      borderBottom: '1px solid #e5e7eb',
+                      fontSize: 12,
+                      color: '#6b7280',
                     }}
                   >
+                    <span style={{ fontWeight: 600, color: '#374151' }}>Asunto: </span>
+                    {config.emailSubjectPrefix ? `${config.emailSubjectPrefix} ` : ''}Reporte Diario — {config.storeName || 'Mi Tienda'}
+                  </div>
+                  {/* Body */}
+                  <div style={{ backgroundColor: '#ffffff', padding: '20px', fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
                     <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Contenido del correo</p>
                     <p style={{ margin: '0 0 16px', color: '#6b7280', fontSize: 12 }}>
-                      El cuerpo varía según el tipo de notificación.
+                      El cuerpo varía según el tipo de notificación (ticket, reporte, alerta).
                     </p>
+                    {config.emailAttachPdfTicket && (
+                      <p style={{ margin: '8px 0', fontSize: 11, color: '#6b7280' }}>
+                        📎 ticket-compra-0001.pdf
+                      </p>
+                    )}
+                    {config.emailAttachExcelReport && (
+                      <p style={{ margin: '8px 0', fontSize: 11, color: '#6b7280' }}>
+                        📎 reporte-diario-2026-04-15.xlsx
+                      </p>
+                    )}
                     {config.emailSignature && (
                       <p
                         style={{
@@ -521,7 +732,7 @@ export function EmailSection({
                       </p>
                     )}
                   </div>
-                  {/* Footer preview */}
+                  {/* Footer */}
                   <div
                     style={{
                       backgroundColor: '#f9fafb',

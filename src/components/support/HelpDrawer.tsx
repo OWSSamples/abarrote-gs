@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  Modal,
   BlockStack,
   InlineStack,
   Text,
@@ -12,25 +11,31 @@ import {
   Divider,
   Box,
   Badge,
-  Tabs,
-  Spinner,
   Banner,
   Collapsible,
+  Popover,
+  ActionList,
+  Icon,
 } from '@shopify/polaris';
 import {
+  ChatIcon,
   QuestionCircleIcon,
   EmailIcon,
-  ChatIcon,
   ExternalIcon,
-  SearchIcon,
   RefreshIcon,
   DeleteIcon,
   ArrowRightIcon,
-  CheckCircleIcon,
+  SearchIcon,
+  ChevronDownIcon,
+  XSmallIcon,
+  PlusIcon,
+  MaximizeIcon,
+  ViewIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────
+
 interface ChatMsg {
   id: string;
   role: 'user' | 'assistant';
@@ -38,7 +43,10 @@ interface ChatMsg {
   error?: boolean;
 }
 
+type PanelView = 'chat' | 'faq' | 'contact' | 'shortcuts';
+
 // ── FAQ data ───────────────────────────────────────────────────────────────
+
 const FAQ_CATEGORIES = [
   { id: 'all', label: 'Todas' },
   { id: 'pos', label: 'Ventas' },
@@ -93,16 +101,38 @@ const QUICK_PROMPTS = [
   '¿Cómo exporto mis reportes?',
 ];
 
-// ── Props ─────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Buenos días';
+  if (h < 18) return 'Buenas tardes';
+  return 'Buenas noches';
+}
+
+const NAV_LABELS: Record<PanelView, string> = {
+  chat: 'Iniciar conversación',
+  faq: 'Base de Conocimiento',
+  contact: 'Contacto',
+  shortcuts: 'Atajos',
+};
+
+// ── Props ──────────────────────────────────────────────────────────────────
+
 interface HelpDrawerProps {
   open: boolean;
   onClose: () => void;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────
+
 export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
   const aiEnabled = useDashboardStore((s) => s.storeConfig.aiEnabled);
-  const [selectedTab, setSelectedTab] = useState(0);
+
+  // Panel navigation
+  const [currentView, setCurrentView] = useState<PanelView>('chat');
+  const [navOpen, setNavOpen] = useState(false);
+  const [promptsOpen, setPromptsOpen] = useState(false);
 
   // AI Chat
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
@@ -123,13 +153,37 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
   const [contactSent, setContactSent] = useState(false);
   const [ticketNumber] = useState(() => Math.floor(100000 + Math.random() * 900000));
 
+  // ── Effects ────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatMessages, chatLoading]);
 
-  // ── Chat logic ────────────────────────────────────────────────────────
+  const handleClose = useCallback(() => {
+    setNavOpen(false);
+    setPromptsOpen(false);
+    setFaqSearch('');
+    setExpandedFaq(null);
+    setChatInput('');
+    setChatError(null);
+    setContactSent(false);
+    setContactSubject('');
+    setContactMessage('');
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, handleClose]);
+
+  // ── Chat logic ─────────────────────────────────────────────────────────
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -193,7 +247,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
     setChatError(null);
   }, []);
 
-  // ── FAQ logic ─────────────────────────────────────────────────────────
+  // ── FAQ logic ──────────────────────────────────────────────────────────
 
   const filteredFaq = FAQ_ITEMS.filter((item) => {
     const matchesCategory = faqCategory === 'all' || item.category === faqCategory;
@@ -205,7 +259,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
     return matchesCategory && matchesSearch;
   });
 
-  // ── Contact logic ─────────────────────────────────────────────────────
+  // ── Contact logic ──────────────────────────────────────────────────────
 
   const handleContact = useCallback(async () => {
     if (!contactSubject.trim() || !contactMessage.trim()) return;
@@ -215,31 +269,16 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
     setContactSending(false);
   }, [contactSubject, contactMessage]);
 
-  // ── Close / reset ─────────────────────────────────────────────────────
-
-  const handleClose = useCallback(() => {
-    setFaqSearch('');
-    setExpandedFaq(null);
-    setChatInput('');
-    setChatError(null);
-    setContactSent(false);
-    setContactSubject('');
-    setContactMessage('');
-    onClose();
-  }, [onClose]);
-
-  // ── Tabs ──────────────────────────────────────────────────────────────
-
-  const tabs = [
-    { id: 'ai-chat', content: 'Asistente IA', badge: aiEnabled ? undefined : '!', accessibilityLabel: 'Asistente de IA' },
-    { id: 'faq', content: 'Base de Conocimiento', accessibilityLabel: 'Preguntas frecuentes' },
-    { id: 'contact', content: 'Contacto', accessibilityLabel: 'Contactar soporte' },
-    { id: 'shortcuts', content: 'Atajos', accessibilityLabel: 'Atajos de teclado' },
-  ];
-
-  // ── Helpers ───────────────────────────────────────────────────────────
+  // ── Derived state ──────────────────────────────────────────────────────
 
   const shortcutSections = [...new Set(SHORTCUTS.map((s) => s.section))];
+
+  const headerLabel =
+    currentView === 'chat' && chatMessages.length > 0
+      ? 'Conversación'
+      : NAV_LABELS[currentView];
+
+  // ── Styles ─────────────────────────────────────────────────────────────
 
   const filterChipStyle = (active: boolean): React.CSSProperties => ({
     padding: '4px 12px',
@@ -270,20 +309,682 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
     whiteSpace: 'nowrap' as const,
   };
 
-  // ── AI Chat Tab ────────────────────────────────────────────────────────
-
-  const dotBaseStyle: React.CSSProperties = {
-    width: '6px',
-    height: '6px',
-    borderRadius: '50%',
-    backgroundColor: 'var(--p-color-icon-interactive)',
-    display: 'inline-block',
+  const headerIconBtnStyle: React.CSSProperties = {
+    all: 'unset',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
+    color: 'var(--p-color-icon)',
+    transition: 'background-color 100ms ease',
   };
 
-  const renderAITab = () => (
-    <BlockStack gap="300">
+  // ── Early return ───────────────────────────────────────────────────────
+
+  if (!open) return null;
+
+  // ── Chat view: empty state ─────────────────────────────────────────────
+
+  const renderChatEmpty = () => (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        padding: '48px 32px',
+        background: 'linear-gradient(180deg, #F5F0FF 0%, #FDF4FF 20%, transparent 55%)',
+      }}
+    >
+      {/* Mascot */}
+      <div style={{ marginBottom: '20px' }}>
+        <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+          <circle cx="28" cy="28" r="26" fill="#EDE9FE" />
+          <circle cx="28" cy="28" r="22" fill="#8B5CF6" />
+          <rect x="8" y="21" width="40" height="15" rx="7.5" fill="#4C1D95" opacity="0.9" />
+          <circle cx="20" cy="28.5" r="5.5" fill="white" />
+          <circle cx="36" cy="28.5" r="5.5" fill="white" />
+          <circle cx="21.5" cy="27.5" r="2.5" fill="#1E1B4B" />
+          <circle cx="37.5" cy="27.5" r="2.5" fill="#1E1B4B" />
+          <circle cx="20" cy="26" r="1.2" fill="white" opacity="0.7" />
+          <circle cx="36" cy="26" r="1.2" fill="white" opacity="0.7" />
+          <path d="M24 39 Q28 42 32 39" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        </svg>
+      </div>
+
+      <Text as="p" variant="bodyLg" tone="subdued">
+        {getGreeting()}
+      </Text>
+      <div style={{ marginTop: '4px', marginBottom: '28px' }}>
+        <Text as="h2" variant="headingLg" fontWeight="bold">
+          ¿Cómo puedo ayudarte?
+        </Text>
+      </div>
+
+      {/* Suggested prompts */}
+      <BlockStack gap="200">
+        {QUICK_PROMPTS.slice(0, 3).map((prompt) => (
+          <button
+            key={prompt}
+            type="button"
+            onClick={() => aiEnabled && void sendMessage(prompt)}
+            disabled={!aiEnabled || chatLoading}
+            style={{
+              all: 'unset',
+              cursor: aiEnabled ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '999px',
+              border: '1px solid var(--p-color-border)',
+              backgroundColor: 'var(--p-color-bg-surface)',
+              fontSize: '13px',
+              color: 'var(--p-color-text-secondary)',
+              opacity: aiEnabled ? 1 : 0.5,
+              transition: 'all 150ms ease',
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: '#00D4AA',
+                flexShrink: 0,
+              }}
+            />
+            {prompt}
+          </button>
+        ))}
+      </BlockStack>
+
+      {!aiEnabled && (
+        <div style={{ marginTop: '24px', maxWidth: '320px' }}>
+          <Banner
+            tone="warning"
+            title="Asistente no disponible"
+            action={{ content: 'Configurar IA', url: '/settings?section=ai' }}
+          >
+            Activa un proveedor de IA en Configuración.
+          </Banner>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Chat view: messages ────────────────────────────────────────────────
+
+  const renderChatMessages = () => (
+    <div
+      ref={chatContainerRef}
+      style={{
+        height: '100%',
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
+        padding: '12px 16px',
+      }}
+    >
+      {chatError && (
+        <div style={{ marginBottom: '8px' }}>
+          <Banner tone="critical" onDismiss={() => setChatError(null)}>
+            {chatError}
+          </Banner>
+        </div>
+      )}
+
+      {chatMessages.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <Button
+            variant="plain"
+            size="slim"
+            icon={DeleteIcon}
+            onClick={clearChat}
+            accessibilityLabel="Limpiar conversación"
+          >
+            Limpiar
+          </Button>
+        </div>
+      )}
+
+      {chatMessages.map((msg, idx) => {
+        const isUser = msg.role === 'user';
+        const isLast = idx === chatMessages.length - 1;
+        const prevRole = idx > 0 ? chatMessages[idx - 1].role : null;
+        const showLabel = !prevRole || prevRole !== msg.role;
+        return (
+          <div
+            key={msg.id}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: isUser ? 'flex-end' : 'flex-start',
+              marginTop: showLabel && idx > 0 ? '14px' : '2px',
+              animation: isLast ? 'gs-msg-in 200ms ease-out' : 'none',
+            }}
+          >
+            {showLabel && (
+              <div style={{ marginBottom: '4px', paddingInline: '4px' }}>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {isUser ? 'Tú' : 'Asistente'}
+                </Text>
+              </div>
+            )}
+            <div
+              style={{
+                maxWidth: '85%',
+                padding: '10px 14px',
+                borderRadius: isUser ? '14px 14px 3px 14px' : '3px 14px 14px 14px',
+                backgroundColor: isUser
+                  ? 'var(--p-color-bg-fill-brand)'
+                  : msg.error
+                    ? 'var(--p-color-bg-fill-caution-secondary)'
+                    : 'var(--p-color-bg-surface-secondary)',
+                border: isUser ? 'none' : '1px solid var(--p-color-border)',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '13px',
+                  lineHeight: '1.55',
+                  color: isUser
+                    ? 'var(--p-color-text-on-color)'
+                    : msg.error
+                      ? 'var(--p-color-text-caution)'
+                      : 'var(--p-color-text)',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  display: 'block',
+                }}
+              >
+                {msg.content}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Thinking indicator */}
+      {chatLoading && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            marginTop: chatMessages.length > 0 ? '14px' : '2px',
+            animation: 'gs-msg-in 200ms ease-out',
+          }}
+        >
+          <div style={{ marginBottom: '4px', paddingInline: '4px' }}>
+            <Text as="span" variant="bodySm" tone="subdued">
+              Asistente
+            </Text>
+          </div>
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: '3px 14px 14px 14px',
+              backgroundColor: 'var(--p-color-bg-surface-secondary)',
+              border: '1px solid var(--p-color-border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
+            <InlineStack gap="100" blockAlign="center">
+              {[0, 200, 400].map((delay) => (
+                <span
+                  key={delay}
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--p-color-icon-interactive)',
+                    display: 'inline-block',
+                    animation: `gs-dot-pulse 1.4s ease-in-out ${delay}ms infinite`,
+                  }}
+                />
+              ))}
+            </InlineStack>
+            <Text as="span" variant="bodySm" tone="subdued">
+              Analizando...
+            </Text>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Chat view wrapper ──────────────────────────────────────────────────
+
+  const renderChatView = () => {
+    if (chatMessages.length === 0 && !chatLoading) return renderChatEmpty();
+    return renderChatMessages();
+  };
+
+  // ── FAQ view ───────────────────────────────────────────────────────────
+
+  const renderFAQView = () => (
+    <Box padding="400">
+      <BlockStack gap="300">
+        <TextField
+          label="Buscar"
+          labelHidden
+          value={faqSearch}
+          onChange={setFaqSearch}
+          placeholder="Buscar en la base de conocimiento..."
+          autoComplete="off"
+          prefix={<Icon source={SearchIcon} tone="base" />}
+          clearButton
+          onClearButtonClick={() => setFaqSearch('')}
+        />
+
+        <div style={{ overflowX: 'auto', paddingBottom: '4px' }}>
+          <InlineStack gap="200">
+            {FAQ_CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => {
+                  setFaqCategory(cat.id);
+                  setExpandedFaq(null);
+                }}
+                style={filterChipStyle(faqCategory === cat.id)}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </InlineStack>
+        </div>
+
+        <InlineStack align="space-between" blockAlign="center">
+          <Text as="p" variant="bodySm" tone="subdued">
+            {filteredFaq.length} {filteredFaq.length === 1 ? 'resultado' : 'resultados'}
+          </Text>
+          {(faqSearch || faqCategory !== 'all') && (
+            <Button
+              variant="plain"
+              size="slim"
+              icon={RefreshIcon}
+              onClick={() => {
+                setFaqSearch('');
+                setFaqCategory('all');
+                setExpandedFaq(null);
+              }}
+            >
+              Limpiar filtros
+            </Button>
+          )}
+        </InlineStack>
+
+        {filteredFaq.length === 0 ? (
+          <Box padding="600">
+            <BlockStack gap="200">
+              <Text as="p" alignment="center" tone="subdued">
+                No se encontraron artículos para &ldquo;{faqSearch}&rdquo;
+              </Text>
+              <Text as="p" alignment="center" variant="bodySm" tone="subdued">
+                Prueba con otras palabras o usa el Asistente IA para una respuesta personalizada.
+              </Text>
+            </BlockStack>
+          </Box>
+        ) : (
+          <Card padding="0">
+            {filteredFaq.map((faq, idx) => {
+              const isExpanded = expandedFaq === idx;
+              const catLabel = FAQ_CATEGORIES.find((c) => c.id === faq.category)?.label;
+              return (
+                <Box
+                  key={idx}
+                  borderBlockStartWidth={idx > 0 ? '025' : '0'}
+                  borderColor="border"
+                  padding="300"
+                >
+                  <BlockStack gap="200">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedFaq(isExpanded ? null : idx)}
+                      style={{
+                        all: 'unset',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px',
+                        width: '100%',
+                      }}
+                    >
+                      <span
+                        style={{
+                          marginTop: '2px',
+                          fontSize: '14px',
+                          color: 'var(--p-color-icon)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {isExpanded ? '▾' : '▸'}
+                      </span>
+                      <BlockStack gap="100">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">
+                          {faq.question}
+                        </Text>
+                        {catLabel && (
+                          <span>
+                            <Badge tone="info" size="small">
+                              {catLabel}
+                            </Badge>
+                          </span>
+                        )}
+                      </BlockStack>
+                    </button>
+                    <Collapsible
+                      id={`faq-${idx}`}
+                      open={isExpanded}
+                      transition={{ duration: '150ms', timingFunction: 'ease' }}
+                    >
+                      <Box paddingBlockStart="100" paddingInlineStart="600">
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          <span style={{ whiteSpace: 'pre-line' }}>{faq.answer}</span>
+                        </Text>
+                      </Box>
+                    </Collapsible>
+                  </BlockStack>
+                </Box>
+              );
+            })}
+          </Card>
+        )}
+
+        <Divider />
+        <InlineStack gap="300" wrap>
+          <Button
+            url="https://github.com/OWSSamples/abarrote-gs/wiki"
+            external
+            icon={ExternalIcon}
+            size="slim"
+            variant="plain"
+          >
+            Documentación completa
+          </Button>
+          <Button
+            url="https://github.com/OWSSamples/abarrote-gs/issues/new"
+            external
+            icon={ExternalIcon}
+            size="slim"
+            variant="plain"
+          >
+            Reportar un problema
+          </Button>
+        </InlineStack>
+      </BlockStack>
+    </Box>
+  );
+
+  // ── Contact view ───────────────────────────────────────────────────────
+
+  const renderContactView = () => (
+    <Box padding="400">
+      <BlockStack gap="400">
+        {contactSent ? (
+          <Card>
+            <Box padding="600">
+              <BlockStack gap="300" inlineAlign="center">
+                <div
+                  style={{
+                    color: 'var(--p-color-icon-success)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <svg
+                    width="48"
+                    height="48"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                </div>
+                <Text as="h2" variant="headingMd" alignment="center">
+                  Solicitud registrada
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                  Folio <strong>#{ticketNumber}</strong>. Recibirás respuesta en las próximas{' '}
+                  <strong>24 horas hábiles</strong>.
+                </Text>
+                <InlineStack align="center">
+                  <Button
+                    onClick={() => {
+                      setContactSent(false);
+                      setContactSubject('');
+                      setContactMessage('');
+                    }}
+                  >
+                    Enviar otra solicitud
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Box>
+          </Card>
+        ) : (
+          <>
+            <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+              <InlineStack gap="400" wrap>
+                <BlockStack gap="050">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Tiempo de respuesta
+                  </Text>
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">
+                    24 horas hábiles
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="050">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Urgencias críticas
+                  </Text>
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">
+                    2–4 horas
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="050">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Estado del sistema
+                  </Text>
+                  <InlineStack gap="100" blockAlign="center">
+                    <span
+                      style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--p-color-icon-success)',
+                        display: 'inline-block',
+                      }}
+                    />
+                    <Text as="span" variant="bodyMd" fontWeight="semibold">
+                      Operativo
+                    </Text>
+                  </InlineStack>
+                </BlockStack>
+              </InlineStack>
+            </Box>
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Enviar solicitud de soporte
+                </Text>
+                <TextField
+                  label="Asunto"
+                  value={contactSubject}
+                  onChange={setContactSubject}
+                  placeholder="Ej: Error al imprimir tickets, Problema con MercadoPago…"
+                  autoComplete="off"
+                  helpText="Describe brevemente el problema."
+                />
+                <TextField
+                  label="Descripción detallada"
+                  value={contactMessage}
+                  onChange={setContactMessage}
+                  multiline={5}
+                  autoComplete="off"
+                  placeholder="Describe el problema con detalle: qué hiciste, qué esperabas que pasara y qué ocurrió realmente."
+                  helpText="A mayor detalle, más rápida la resolución."
+                />
+                <InlineStack align="end">
+                  <Button
+                    variant="primary"
+                    onClick={() => void handleContact()}
+                    loading={contactSending}
+                    disabled={!contactSubject.trim() || !contactMessage.trim()}
+                    icon={ChatIcon}
+                  >
+                    Enviar solicitud
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+
+            <Card padding="0">
+              <Box padding="300">
+                <Text as="h3" variant="headingMd">
+                  Canales de contacto directo
+                </Text>
+              </Box>
+              {[
+                {
+                  icon: EmailIcon,
+                  label: 'Correo electrónico',
+                  value: 'soporte@abarrote.gs',
+                  detail: 'Respuesta en 24 h hábiles',
+                },
+                {
+                  icon: ChatIcon,
+                  label: 'Chat en vivo',
+                  value: 'Lunes a Viernes 9:00–18:00',
+                  detail: 'Tiempo de espera ~2 min',
+                },
+                {
+                  icon: QuestionCircleIcon,
+                  label: 'Portal de soporte',
+                  value: 'help.abarrote.gs',
+                  detail: 'Documentación y tickets',
+                },
+              ].map(({ icon: ChannelIcon, label, value, detail }) => (
+                <Box key={label} borderBlockStartWidth="025" borderColor="border" padding="300">
+                  <InlineStack gap="300" blockAlign="center" wrap={false}>
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        backgroundColor: 'var(--p-color-bg-surface-secondary)',
+                        border: '1px solid var(--p-color-border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon source={ChannelIcon} tone="base" />
+                    </div>
+                    <BlockStack gap="050">
+                      <Text as="span" variant="bodyMd" fontWeight="semibold">
+                        {label}
+                      </Text>
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {value} · {detail}
+                      </Text>
+                    </BlockStack>
+                  </InlineStack>
+                </Box>
+              ))}
+            </Card>
+          </>
+        )}
+      </BlockStack>
+    </Box>
+  );
+
+  // ── Shortcuts view ─────────────────────────────────────────────────────
+
+  const renderShortcutsView = () => (
+    <Box padding="400">
+      <BlockStack gap="400">
+        {shortcutSections.map((section) => (
+          <Card key={section} padding="0">
+            <Box
+              padding="300"
+              background="bg-surface-secondary"
+              borderBlockEndWidth="025"
+              borderColor="border"
+            >
+              <Text as="h3" variant="headingSm">
+                {section}
+              </Text>
+            </Box>
+            {SHORTCUTS.filter((s) => s.section === section).map((shortcut, idx) => (
+              <Box
+                key={shortcut.action}
+                borderBlockStartWidth={idx > 0 ? '025' : '0'}
+                borderColor="border"
+                padding="300"
+              >
+                <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                  <Text as="span" variant="bodySm">
+                    {shortcut.action}
+                  </Text>
+                  <InlineStack gap="100" blockAlign="center">
+                    {shortcut.keys.map((key, ki) => (
+                      <span
+                        key={ki}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        {ki > 0 && (
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            +
+                          </Text>
+                        )}
+                        <kbd style={kbdStyle}>{key}</kbd>
+                      </span>
+                    ))}
+                  </InlineStack>
+                </InlineStack>
+              </Box>
+            ))}
+          </Card>
+        ))}
+
+        <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+          Presiona <span style={kbdStyle}>?</span> en cualquier pantalla para abrir este panel.
+        </Text>
+      </BlockStack>
+    </Box>
+  );
+
+  // ── Main render: Side panel ────────────────────────────────────────────
+
+  return (
+    <>
       {/* Keyframe animations */}
       <style>{`
+        @keyframes gs-panel-in {
+          from { transform: translateX(100%); }
+          to   { transform: translateX(0); }
+        }
+        @keyframes gs-backdrop-in {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
         @keyframes gs-dot-pulse {
           0%, 80%, 100% { opacity: 0.2; transform: scale(0.75); }
           40% { opacity: 1; transform: scale(1); }
@@ -294,613 +995,204 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         }
       `}</style>
 
-      {/* Status bar */}
-      <Box padding="300" background="bg-surface-secondary" borderRadius="200">
-        <InlineStack align="space-between" blockAlign="center">
-          <InlineStack gap="200" blockAlign="center">
-            <div style={{
-              width: '8px', height: '8px', borderRadius: '50%',
-              backgroundColor: aiEnabled
-                ? 'var(--p-color-bg-fill-success)'
-                : 'var(--p-color-bg-fill-caution)',
-              flexShrink: 0,
-            }} />
-            <BlockStack gap="050">
-              <Text as="span" variant="bodySm" fontWeight="semibold">
-                Asistente Abarrote GS
-              </Text>
-              <Text as="span" variant="bodySm" tone="subdued">
-                {chatLoading
-                  ? 'Procesando consulta...'
-                  : aiEnabled
-                    ? 'En línea'
-                    : 'Requiere configuración'}
-              </Text>
-            </BlockStack>
-          </InlineStack>
-          {chatMessages.length > 0 && (
-            <Button
-              variant="plain"
-              size="slim"
-              icon={DeleteIcon}
-              onClick={clearChat}
-              accessibilityLabel="Limpiar conversación"
-            >
-              Limpiar
-            </Button>
-          )}
-        </InlineStack>
-      </Box>
-
-      {!aiEnabled && (
-        <Banner
-          tone="warning"
-          title="Asistente no disponible"
-          action={{ content: 'Configurar IA', url: '/settings?section=ai' }}
-        >
-          Activa un proveedor de IA en Configuración para habilitar este asistente.
-        </Banner>
-      )}
-
-      {chatError && (
-        <Banner tone="critical" onDismiss={() => setChatError(null)}>
-          {chatError}
-        </Banner>
-      )}
-
-      {/* Chat messages area */}
+      {/* Backdrop */}
       <div
-        ref={chatContainerRef}
         style={{
-          height: '360px',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '4px',
-          padding: '16px 12px',
-          backgroundColor: 'var(--p-color-bg-surface)',
-          borderRadius: 'var(--p-border-radius-200)',
-          border: '1px solid var(--p-color-border)',
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.12)',
+          zIndex: 519,
+          animation: 'gs-backdrop-in 200ms ease-out',
         }}
-      >
-        {/* Empty state */}
-        {chatMessages.length === 0 && !chatLoading && (
-          <Box padding="600">
-            <BlockStack gap="300" inlineAlign="center">
-              <div style={{
-                width: '52px', height: '52px', borderRadius: '14px',
-                backgroundColor: 'var(--p-color-bg-surface-secondary)',
-                border: '1px solid var(--p-color-border)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                margin: '0 auto',
-              }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--p-color-icon-interactive)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                  <path d="M8 10h8M8 14h5"/>
-                </svg>
-              </div>
-              <Text as="p" variant="bodyMd" fontWeight="semibold" alignment="center">
-                ¿En qué te puedo ayudar?
-              </Text>
-              <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-                Pregunta sobre ventas, inventario, caja, clientes, configuración o cualquier función del sistema.
-              </Text>
-              <Divider />
-              <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-                Consultas sugeridas
-              </Text>
-            </BlockStack>
-          </Box>
-        )}
-
-        {/* Messages */}
-        {chatMessages.map((msg, idx) => {
-          const isUser = msg.role === 'user';
-          const isLast = idx === chatMessages.length - 1;
-          const prevRole = idx > 0 ? chatMessages[idx - 1].role : null;
-          const showLabel = !prevRole || prevRole !== msg.role;
-          return (
-            <div
-              key={msg.id}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: isUser ? 'flex-end' : 'flex-start',
-                marginTop: showLabel && idx > 0 ? '14px' : '2px',
-                animation: isLast ? 'gs-msg-in 200ms ease-out' : 'none',
-              }}
-            >
-              {showLabel && (
-                <div style={{ marginBottom: '4px', paddingInline: '4px' }}>
-                  <Text as="span" variant="bodySm" tone="subdued">
-                    {isUser ? 'Tú' : 'Asistente'}
-                  </Text>
-                </div>
-              )}
-              <div
-                style={{
-                  maxWidth: '85%',
-                  padding: '10px 14px',
-                  borderRadius: isUser
-                    ? '14px 14px 3px 14px'
-                    : '3px 14px 14px 14px',
-                  backgroundColor: isUser
-                    ? 'var(--p-color-bg-fill-brand)'
-                    : msg.error
-                      ? 'var(--p-color-bg-fill-caution-secondary)'
-                      : 'var(--p-color-bg-surface-secondary)',
-                  border: isUser
-                    ? 'none'
-                    : '1px solid var(--p-color-border)',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '13px',
-                    lineHeight: '1.55',
-                    color: isUser
-                      ? 'var(--p-color-text-on-color)'
-                      : msg.error
-                        ? 'var(--p-color-text-caution)'
-                        : 'var(--p-color-text)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    display: 'block',
-                  }}
-                >
-                  {msg.content}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Thinking indicator */}
-        {chatLoading && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              marginTop: chatMessages.length > 0 ? '14px' : '2px',
-              animation: 'gs-msg-in 200ms ease-out',
-            }}
-          >
-            <div style={{ marginBottom: '4px', paddingInline: '4px' }}>
-              <Text as="span" variant="bodySm" tone="subdued">
-                Asistente
-              </Text>
-            </div>
-            <div
-              style={{
-                padding: '12px 16px',
-                borderRadius: '3px 14px 14px 14px',
-                backgroundColor: 'var(--p-color-bg-surface-secondary)',
-                border: '1px solid var(--p-color-border)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-              }}
-            >
-              <InlineStack gap="100" blockAlign="center">
-                <span style={{ ...dotBaseStyle, animation: 'gs-dot-pulse 1.4s ease-in-out 0ms infinite' }} />
-                <span style={{ ...dotBaseStyle, animation: 'gs-dot-pulse 1.4s ease-in-out 200ms infinite' }} />
-                <span style={{ ...dotBaseStyle, animation: 'gs-dot-pulse 1.4s ease-in-out 400ms infinite' }} />
-              </InlineStack>
-              <Text as="span" variant="bodySm" tone="subdued">
-                Analizando tu consulta...
-              </Text>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Quick prompts */}
-      {chatMessages.length === 0 && (
-        <InlineStack gap="200" wrap>
-          {QUICK_PROMPTS.map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => aiEnabled && void sendMessage(prompt)}
-              disabled={!aiEnabled || chatLoading}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '999px',
-                border: '1px solid var(--p-color-border)',
-                backgroundColor: 'var(--p-color-bg-surface)',
-                cursor: aiEnabled ? 'pointer' : 'not-allowed',
-                fontSize: '12px',
-                color: 'var(--p-color-text-secondary)',
-                whiteSpace: 'nowrap',
-                opacity: aiEnabled ? 1 : 0.5,
-                transition: 'all 150ms ease',
-              }}
-            >
-              {prompt}
-            </button>
-          ))}
-        </InlineStack>
-      )}
-
-      {/* Input area */}
-      <div onKeyDown={handleChatKeyDown}>
-        <InlineStack gap="200" blockAlign="end">
-          <div style={{ flex: 1 }}>
-            <TextField
-              label="Mensaje"
-              labelHidden
-              value={chatInput}
-              onChange={setChatInput}
-              placeholder={aiEnabled ? 'Escribe tu consulta... (Enter para enviar)' : 'Configura un proveedor de IA primero'}
-              autoComplete="off"
-              multiline={2}
-              disabled={!aiEnabled || chatLoading}
-            />
-          </div>
-          <Button
-            variant="primary"
-            icon={ArrowRightIcon}
-            onClick={() => void sendMessage(chatInput)}
-            loading={chatLoading}
-            disabled={!aiEnabled || !chatInput.trim()}
-            accessibilityLabel="Enviar mensaje"
-          />
-        </InlineStack>
-      </div>
-
-      <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-        Las respuestas son generadas por IA y pueden contener inexactitudes.
-        Para incidencias críticas, contacta al equipo de soporte directamente.
-      </Text>
-    </BlockStack>
-  );
-
-  // ── FAQ Tab ────────────────────────────────────────────────────────────
-
-  const renderFAQTab = () => (
-    <BlockStack gap="300">
-      {/* Search */}
-      <TextField
-        label="Buscar"
-        labelHidden
-        value={faqSearch}
-        onChange={setFaqSearch}
-        placeholder="Buscar en la base de conocimiento..."
-        autoComplete="off"
-        prefix={<span style={{ color: 'var(--p-color-icon)' }} />}
-        clearButton
-        onClearButtonClick={() => setFaqSearch('')}
+        onClick={handleClose}
+        aria-hidden="true"
       />
 
-      {/* Category chips */}
-      <div style={{ overflowX: 'auto', paddingBottom: '4px' }}>
-        <InlineStack gap="200">
-          {FAQ_CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => {
-                setFaqCategory(cat.id);
-                setExpandedFaq(null);
-              }}
-              style={filterChipStyle(faqCategory === cat.id)}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </InlineStack>
-      </div>
+      {/* Side panel */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Centro de Ayuda"
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: '420px',
+          maxWidth: '100vw',
+          backgroundColor: 'var(--p-color-bg-surface)',
+          boxShadow: '-8px 0 32px rgba(0, 0, 0, 0.08), -2px 0 8px rgba(0, 0, 0, 0.04)',
+          zIndex: 520,
+          display: 'flex',
+          flexDirection: 'column',
+          animation: 'gs-panel-in 280ms cubic-bezier(0.32, 0.72, 0, 1)',
+        }}
+      >
+        {/* ── Header ─────────────────────────────────────── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 8px 0 16px',
+            height: '52px',
+            borderBottom: '1px solid var(--p-color-border)',
+            flexShrink: 0,
+          }}
+        >
+          {/* Navigation dropdown */}
+          <Popover
+            active={navOpen}
+            activator={
+              <button
+                type="button"
+                onClick={() => setNavOpen((v) => !v)}
+                style={{
+                  all: 'unset',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <Text as="span" variant="bodyMd" fontWeight="semibold">
+                  {headerLabel}
+                </Text>
+                <Icon source={ChevronDownIcon} tone="base" />
+              </button>
+            }
+            onClose={() => setNavOpen(false)}
+            preferredAlignment="left"
+          >
+            <ActionList
+              items={[
+                {
+                  content: 'Iniciar conversación',
+                  icon: ChatIcon,
+                  active: currentView === 'chat',
+                  onAction: () => setCurrentView('chat'),
+                },
+                {
+                  content: 'Base de Conocimiento',
+                  icon: QuestionCircleIcon,
+                  active: currentView === 'faq',
+                  onAction: () => setCurrentView('faq'),
+                },
+                {
+                  content: 'Contacto',
+                  icon: EmailIcon,
+                  active: currentView === 'contact',
+                  onAction: () => setCurrentView('contact'),
+                },
+                {
+                  content: 'Atajos de teclado',
+                  icon: ExternalIcon,
+                  active: currentView === 'shortcuts',
+                  onAction: () => setCurrentView('shortcuts'),
+                },
+              ]}
+              onActionAnyItem={() => setNavOpen(false)}
+            />
+          </Popover>
 
-      {/* Results count */}
-      <InlineStack align="space-between" blockAlign="center">
-        <Text as="p" variant="bodySm" tone="subdued">
-          {filteredFaq.length} {filteredFaq.length === 1 ? 'resultado' : 'resultados'}
-        </Text>
-        {(faqSearch || faqCategory !== 'all') && (
-          <Button
-            variant="plain"
-            size="slim"
-            icon={RefreshIcon}
-            onClick={() => {
-              setFaqSearch('');
-              setFaqCategory('all');
-              setExpandedFaq(null);
+          {/* Header action icons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            <button type="button" style={headerIconBtnStyle} aria-label="Vista previa">
+              <Icon source={ViewIcon} tone="subdued" />
+            </button>
+            <button type="button" style={headerIconBtnStyle} aria-label="Expandir">
+              <Icon source={MaximizeIcon} tone="subdued" />
+            </button>
+            <button
+              type="button"
+              style={headerIconBtnStyle}
+              aria-label="Cerrar"
+              onClick={handleClose}
+            >
+              <Icon source={XSmallIcon} tone="subdued" />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Content area ───────────────────────────────── */}
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          {currentView === 'chat' && renderChatView()}
+          {currentView === 'faq' && renderFAQView()}
+          {currentView === 'contact' && renderContactView()}
+          {currentView === 'shortcuts' && renderShortcutsView()}
+        </div>
+
+        {/* ── Bottom input bar (chat only) ───────────────── */}
+        {currentView === 'chat' && (
+          <div
+            style={{
+              borderTop: '1px solid var(--p-color-border)',
+              padding: '12px 16px',
+              flexShrink: 0,
+              backgroundColor: 'var(--p-color-bg-surface)',
             }}
           >
-            Limpiar filtros
-          </Button>
-        )}
-      </InlineStack>
-
-      {/* FAQ items */}
-      {filteredFaq.length === 0 ? (
-        <Box padding="600">
-          <BlockStack gap="200">
-            <Text as="p" alignment="center" tone="subdued">
-              No se encontraron artículos para &ldquo;{faqSearch}&rdquo;
-            </Text>
-            <Text as="p" alignment="center" variant="bodySm" tone="subdued">
-              Prueba con otras palabras o usa el Asistente IA para una respuesta personalizada.
-            </Text>
-          </BlockStack>
-        </Box>
-      ) : (
-        <Card padding="0">
-          {filteredFaq.map((faq, idx) => {
-            const isExpanded = expandedFaq === idx;
-            const catLabel = FAQ_CATEGORIES.find((c) => c.id === faq.category)?.label;
-            return (
-              <Box
-                key={idx}
-                borderBlockStartWidth={idx > 0 ? '025' : '0'}
-                borderColor="border"
-                padding="300"
-              >
-                <BlockStack gap="200">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedFaq(isExpanded ? null : idx)}
-                    style={{
-                      all: 'unset',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '10px',
-                      width: '100%',
-                    }}
-                  >
-                    <span
-                      style={{
-                        marginTop: '2px',
-                        fontSize: '14px',
-                        color: 'var(--p-color-icon)',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {isExpanded ? '▾' : '▸'}
-                    </span>
-                    <BlockStack gap="100">
-                      <Text as="span" variant="bodyMd" fontWeight="semibold">
-                        {faq.question}
-                      </Text>
-                      {catLabel && (
-                        <span>
-                          <Badge tone="info" size="small">{catLabel}</Badge>
-                        </span>
-                      )}
-                    </BlockStack>
-                  </button>
-                  <Collapsible
-                    id={`faq-${idx}`}
-                    open={isExpanded}
-                    transition={{ duration: '150ms', timingFunction: 'ease' }}
-                  >
-                    <Box paddingBlockStart="100" paddingInlineStart="600">
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        <span style={{ whiteSpace: 'pre-line' }}>{faq.answer}</span>
-                      </Text>
-                    </Box>
-                  </Collapsible>
-                </BlockStack>
-              </Box>
-            );
-          })}
-        </Card>
-      )}
-
-      <Divider />
-      <InlineStack gap="300" wrap>
-        <Button
-          url="https://github.com/OWSSamples/abarrote-gs/wiki"
-          external
-          icon={ExternalIcon}
-          size="slim"
-          variant="plain"
-        >
-          Documentación completa
-        </Button>
-        <Button
-          url="https://github.com/OWSSamples/abarrote-gs/issues/new"
-          external
-          icon={ExternalIcon}
-          size="slim"
-          variant="plain"
-        >
-          Reportar un problema
-        </Button>
-      </InlineStack>
-    </BlockStack>
-  );
-
-  // ── Contact Tab ────────────────────────────────────────────────────────
-
-  const renderContactTab = () => (
-    <BlockStack gap="400">
-      {contactSent ? (
-        <Card>
-          <Box padding="600">
-            <BlockStack gap="300" inlineAlign="center">
-              <div style={{
-                color: 'var(--p-color-icon-success)',
-                display: 'flex', justifyContent: 'center',
-              }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                  <polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-              </div>
-              <Text as="h2" variant="headingMd" alignment="center">
-                Solicitud registrada
-              </Text>
-              <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-                Folio <strong>#{ticketNumber}</strong>. Recibirás respuesta en las próximas <strong>24 horas hábiles</strong>.
-              </Text>
-              <InlineStack align="center">
-                <Button onClick={() => { setContactSent(false); setContactSubject(''); setContactMessage(''); }}>
-                  Enviar otra solicitud
-                </Button>
-              </InlineStack>
-            </BlockStack>
-          </Box>
-        </Card>
-      ) : (
-        <>
-          {/* SLA info */}
-          <Box padding="300" background="bg-surface-secondary" borderRadius="200">
-            <InlineStack gap="400" wrap>
-              <BlockStack gap="050">
-                <Text as="span" variant="bodySm" tone="subdued">Tiempo de respuesta</Text>
-                <Text as="span" variant="bodyMd" fontWeight="semibold">24 horas hábiles</Text>
-              </BlockStack>
-              <BlockStack gap="050">
-                <Text as="span" variant="bodySm" tone="subdued">Urgencias críticas</Text>
-                <Text as="span" variant="bodyMd" fontWeight="semibold">2–4 horas</Text>
-              </BlockStack>
-              <BlockStack gap="050">
-                <Text as="span" variant="bodySm" tone="subdued">Estado del sistema</Text>
-                <InlineStack gap="100" blockAlign="center">
-                  <div style={{
-                    width: '8px', height: '8px', borderRadius: '50%',
-                    backgroundColor: 'var(--p-color-icon-success)',
-                  }} />
-                  <Text as="span" variant="bodyMd" fontWeight="semibold">Operativo</Text>
-                </InlineStack>
-              </BlockStack>
-            </InlineStack>
-          </Box>
-
-          {/* Form */}
-          <Card>
-            <BlockStack gap="300">
-              <Text as="h2" variant="headingMd">
-                Enviar solicitud de soporte
-              </Text>
-              <TextField
-                label="Asunto"
-                value={contactSubject}
-                onChange={setContactSubject}
-                placeholder="Ej: Error al imprimir tickets, Problema con MercadoPago…"
-                autoComplete="off"
-                helpText="Describe brevemente el problema."
-              />
-              <TextField
-                label="Descripción detallada"
-                value={contactMessage}
-                onChange={setContactMessage}
-                multiline={5}
-                autoComplete="off"
-                placeholder="Describe el problema con detalle: qué hiciste, qué esperabas que pasara y qué ocurrió realmente. Adjunta cualquier mensaje de error que veas."
-                helpText="A mayor detalle, más rápida la resolución."
-              />
-              <InlineStack align="end">
+            <div onKeyDown={handleChatKeyDown}>
+              <InlineStack gap="200" blockAlign="center">
+                <div style={{ flex: 1 }}>
+                  <TextField
+                    label="Mensaje"
+                    labelHidden
+                    value={chatInput}
+                    onChange={setChatInput}
+                    placeholder="Pregunta lo que sea..."
+                    autoComplete="off"
+                    disabled={!aiEnabled || chatLoading}
+                  />
+                </div>
+                <Popover
+                  active={promptsOpen}
+                  activator={
+                    <Button
+                      variant="tertiary"
+                      icon={PlusIcon}
+                      onClick={() => setPromptsOpen((v) => !v)}
+                      accessibilityLabel="Sugerencias rápidas"
+                      disabled={!aiEnabled}
+                    />
+                  }
+                  onClose={() => setPromptsOpen(false)}
+                  preferredPosition="above"
+                  preferredAlignment="right"
+                >
+                  <ActionList
+                    items={QUICK_PROMPTS.map((prompt) => ({
+                      content: prompt,
+                      onAction: () => {
+                        setPromptsOpen(false);
+                        void sendMessage(prompt);
+                      },
+                    }))}
+                    onActionAnyItem={() => setPromptsOpen(false)}
+                  />
+                </Popover>
                 <Button
                   variant="primary"
-                  onClick={() => void handleContact()}
-                  loading={contactSending}
-                  disabled={!contactSubject.trim() || !contactMessage.trim()}
-                  icon={ChatIcon}
-                >
-                  Enviar solicitud
-                </Button>
+                  icon={ArrowRightIcon}
+                  onClick={() => void sendMessage(chatInput)}
+                  loading={chatLoading}
+                  disabled={!aiEnabled || !chatInput.trim()}
+                  accessibilityLabel="Enviar mensaje"
+                />
               </InlineStack>
-            </BlockStack>
-          </Card>
+            </div>
+          </div>
+        )}
 
-          {/* Contact channels */}
-          <Card padding="0">
-            <Box padding="300">
-              <Text as="h3" variant="headingMd">
-                Canales de contacto directo
-              </Text>
-            </Box>
-            {[
-              { icon: EmailIcon, label: 'Correo electrónico', value: 'soporte@abarrote.gs', detail: 'Respuesta en 24 h hábiles' },
-              { icon: ChatIcon, label: 'Chat en vivo', value: 'Lunes a Viernes 9:00–18:00', detail: 'Tiempo de espera ~2 min' },
-              { icon: QuestionCircleIcon, label: 'Portal de soporte', value: 'help.abarrote.gs', detail: 'Documentación y tickets' },
-            ].map(({ icon: Icon, label, value, detail }) => (
-              <Box
-                key={label}
-                borderBlockStartWidth="025"
-                borderColor="border"
-                padding="300"
-              >
-                <InlineStack gap="300" blockAlign="center" wrap={false}>
-                  <div style={{
-                    width: '36px', height: '36px', borderRadius: '8px',
-                    backgroundColor: 'var(--p-color-bg-surface-secondary)',
-                    border: '1px solid var(--p-color-border)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                  }}>
-                    <Icon width="18" height="18" />
-                  </div>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodyMd" fontWeight="semibold">{label}</Text>
-                    <Text as="span" variant="bodySm" tone="subdued">{value} · {detail}</Text>
-                  </BlockStack>
-                </InlineStack>
-              </Box>
-            ))}
-          </Card>
-        </>
-      )}
-    </BlockStack>
-  );
-
-  // ── Shortcuts Tab ──────────────────────────────────────────────────────
-
-  const renderShortcutsTab = () => (
-    <BlockStack gap="400">
-      {shortcutSections.map((section) => (
-        <Card key={section} padding="0">
-          <Box padding="300" background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border">
-            <Text as="h3" variant="headingSm">{section}</Text>
-          </Box>
-          {SHORTCUTS.filter((s) => s.section === section).map((shortcut, idx) => (
-            <Box
-              key={shortcut.action}
-              borderBlockStartWidth={idx > 0 ? '025' : '0'}
-              borderColor="border"
-              padding="300"
-            >
-              <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                <Text as="span" variant="bodySm">{shortcut.action}</Text>
-                <InlineStack gap="100" blockAlign="center">
-                  {shortcut.keys.map((key, ki) => (
-                    <span key={ki} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      {ki > 0 && (
-                        <Text as="span" variant="bodySm" tone="subdued">+</Text>
-                      )}
-                      <kbd style={kbdStyle}>{key}</kbd>
-                    </span>
-                  ))}
-                </InlineStack>
-              </InlineStack>
-            </Box>
-          ))}
-        </Card>
-      ))}
-
-      <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-        Presiona <span style={kbdStyle}>?</span> en cualquier pantalla para abrir este panel.
-      </Text>
-    </BlockStack>
-  );
-
-  // ── Main render ───────────────────────────────────────────────────────
-
-  return (
-    <Modal open={open} onClose={handleClose} title="Centro de Ayuda" size="large">
-      <Modal.Section flush>
-        <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab} />
-      </Modal.Section>
-      <Modal.Section>
-        {selectedTab === 0 && renderAITab()}
-        {selectedTab === 1 && renderFAQTab()}
-        {selectedTab === 2 && renderContactTab()}
-        {selectedTab === 3 && renderShortcutsTab()}
-      </Modal.Section>
-    </Modal>
+        {/* Accent line */}
+        <div
+          style={{
+            height: '2px',
+            flexShrink: 0,
+            background: 'linear-gradient(90deg, #00D4AA, #00B8D4, #00D4AA)',
+          }}
+        />
+      </div>
+    </>
   );
 }

@@ -122,9 +122,8 @@ const SETTINGS_CATEGORIES = [
   {
     id: 'ai',
     title: 'Inteligencia Artificial',
-    description: 'Conecta OpenRouter para describir productos, analizar recibos y soporte IA.',
+    description: 'Conecta proveedores de IA (OpenRouter, OpenAI, Google, Groq y más) para describir productos, analizar recibos y soporte.',
     icon: ChatIcon,
-    beta: true,
   },
 ];
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Text,
@@ -9,13 +9,14 @@ import {
   BlockStack,
   InlineStack,
   Button,
-  Select,
   Checkbox,
   Box,
   Banner,
   Badge,
   Divider,
   Link,
+  Popover,
+  OptionList,
 } from '@shopify/polaris';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { saveAIConfigAction, testAIConnectionAction } from '@/app/actions/ai-actions';
@@ -44,6 +45,9 @@ export function AISection() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [modelPopoverActive, setModelPopoverActive] = useState(false);
+
+  const toggleModelPopover = useCallback(() => setModelPopoverActive((v) => !v), []);
 
   useEffect(() => {
     setEnabled(storeConfig.aiEnabled ?? false);
@@ -150,13 +154,38 @@ export function AISection() {
                 autoComplete="off"
               />
 
-              <Select
-                label="Modelo de IA"
-                options={MODEL_OPTIONS}
-                value={model}
-                onChange={setModel}
-                helpText="Los modelos marcados como 'Gratis' no tienen costo en OpenRouter"
-              />
+              <BlockStack gap="100">
+                <Text as="span" variant="bodySm" fontWeight="medium">
+                  Modelo de IA
+                </Text>
+                <Popover
+                  active={modelPopoverActive}
+                  activator={
+                    <Button
+                      onClick={toggleModelPopover}
+                      disclosure
+                      fullWidth
+                      textAlign="start"
+                    >
+                      {MODEL_OPTIONS.find((o) => o.value === model)?.label || model}
+                    </Button>
+                  }
+                  onClose={toggleModelPopover}
+                  fullWidth
+                >
+                  <OptionList
+                    onChange={(selected) => {
+                      setModel(selected[0]);
+                      setModelPopoverActive(false);
+                    }}
+                    options={MODEL_OPTIONS}
+                    selected={[model]}
+                  />
+                </Popover>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Los modelos marcados como &apos;Gratis&apos; no tienen costo en OpenRouter
+                </Text>
+              </BlockStack>
             </FormLayout>
           )}
 

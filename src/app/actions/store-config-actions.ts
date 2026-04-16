@@ -346,6 +346,11 @@ async function _fetchStoreConfig(): Promise<StoreConfig> {
         customerDisplayAccentColor: storeConfig.customerDisplayAccentColor,
         customerDisplaySoundEnabled: storeConfig.customerDisplaySoundEnabled,
         customerDisplayOrientation: storeConfig.customerDisplayOrientation,
+        // AI — must be included in fallback to persist across reads
+        aiEnabled: storeConfig.aiEnabled,
+        aiProvider: storeConfig.aiProvider,
+        aiApiKeyEnc: storeConfig.aiApiKeyEnc,
+        aiModel: storeConfig.aiModel,
       })
       .from(storeConfig)
       .limit(1);

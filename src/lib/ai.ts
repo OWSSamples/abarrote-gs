@@ -18,7 +18,7 @@ export const PROVIDER_BASE_URLS: Record<string, string> = {
 };
 
 export const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
-  openrouter: 'nvidia/nemotron-3-super:free',
+  openrouter: 'nvidia/nemotron-3-super-120b-a12b:free',
   openai: 'gpt-4o-mini',
   google: 'gemini-2.0-flash',
   groq: 'llama-3.3-70b-versatile',

@@ -93,8 +93,8 @@ const AI_PROVIDERS = [
 // ── Model lists per provider ────────────────────────────────────────────────
 const PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
   openrouter: [
-    { label: 'NVIDIA: Nemotron 3 Super — Gratis', value: 'nvidia/nemotron-3-super:free' },
-    { label: 'OpenAI: GPT-OSS 120B — Gratis', value: 'openai/gpt-oss-120b:free' },
+    { label: 'NVIDIA: Nemotron 3 Super 120B — Gratis', value: 'nvidia/nemotron-3-super-120b-a12b:free' },
+    { label: 'Arcee AI: Trinity Large Preview — Gratis', value: 'arcee-ai/trinity-large-preview:free' },
     { label: 'Google: Gemma 4 31B — Gratis', value: 'google/gemma-4-31b-it:free' },
     { label: 'Google: Gemma 4 26B A4B — Gratis', value: 'google/gemma-4-26b-it:free' },
     { label: 'Meta: Llama 3.3 70B — Gratis', value: 'meta-llama/llama-3.3-70b-instruct:free' },
@@ -102,7 +102,7 @@ const PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
     { label: 'DeepSeek V3 — Gratis', value: 'deepseek/deepseek-chat-v3-0324:free' },
     { label: 'Qwen3 Coder 480B A35B — Gratis', value: 'qwen/qwen3-coder-480b-a35b-instruct:free' },
     { label: 'Z.ai: GLM 4.5 Air — Gratis', value: 'z-ai/glm-4.5-air:free' },
-    { label: 'Arcee AI: Trinity Large — Gratis', value: 'arceeai/arcee-trinity-large:free' },
+    { label: 'OpenAI: GPT-OSS 120B — Gratis', value: 'openai/gpt-oss-120b:free' },
     { label: 'Google: Gemini 2.5 Flash Preview', value: 'google/gemini-2.5-flash-preview' },
     { label: 'Anthropic: Claude 3.5 Haiku', value: 'anthropic/claude-3.5-haiku' },
     { label: 'OpenAI: GPT-4o Mini', value: 'openai/gpt-4o-mini' },

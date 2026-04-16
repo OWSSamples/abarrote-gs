@@ -97,6 +97,11 @@ const CORE_DB_COLUMNS = new Set([
   'serviciosApiKey',
   'serviciosApiSecret',
   'serviciosSandbox',
+  // AI — added in migration 0026
+  'aiEnabled',
+  'aiProvider',
+  'aiApiKeyEnc',
+  'aiModel',
 ]);
 
 function parseTicketDesign(

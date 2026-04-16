@@ -491,7 +491,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
                 padding: '10px 14px',
                 borderRadius: isUser ? '14px 14px 3px 14px' : '3px 14px 14px 14px',
                 backgroundColor: isUser
-                  ? 'var(--p-color-bg-fill-brand)'
+                  ? '#7126FF'
                   : msg.error
                     ? 'var(--p-color-bg-fill-caution-secondary)'
                     : 'var(--p-color-bg-surface-secondary)',
@@ -503,7 +503,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
                   fontSize: '13px',
                   lineHeight: '1.55',
                   color: isUser
-                    ? 'var(--p-color-text-on-color)'
+                    ? '#ffffff'
                     : msg.error
                       ? 'var(--p-color-text-caution)'
                       : 'var(--p-color-text)',

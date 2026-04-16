@@ -122,6 +122,11 @@ export const storeConfig = pgTable('store_config', {
   customerDisplaySoundEnabled: boolean('customer_display_sound_enabled').notNull().default(false),
   customerDisplayOrientation: text('customer_display_orientation').notNull().default('landscape'),
   customerDisplayMessageStyle: text('customer_display_message_style'),
+  // AI / OpenRouter
+  aiEnabled: boolean('ai_enabled').notNull().default(false),
+  aiProvider: text('ai_provider').notNull().default('openrouter'),
+  aiApiKeyEnc: text('ai_api_key_enc'),
+  aiModel: text('ai_model').notNull().default('google/gemini-2.0-flash-001'),
   inventoryGeneralColumns: text('inventory_general_columns').notNull().default('["title","sku","available","onHand"]'),
   defaultMargin: text('default_margin').notNull().default('30'),
   defaultStartingFund: numeric('default_starting_fund', { precision: 10, scale: 2 }).notNull().default('500'),

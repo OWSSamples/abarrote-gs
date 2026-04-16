@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server';
 import { generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/guard';
+import { getAIModel } from '@/lib/ai';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: Request) {
   try {
     await requireAuth();
+
+    const model = await getAIModel();
+    if (!model) {
+      return NextResponse.json(
+        { error: 'IA no configurada. Ve a Configuración → Inteligencia Artificial para activarla.' },
+        { status: 422 },
+      );
+    }
 
     const { url } = await req.json();
 
@@ -14,30 +23,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Falta la URL del comprobante' }, { status: 400 });
     }
 
-    // Attempt to download the file to process it locally
     const fileRes = await fetch(url);
     if (!fileRes.ok) {
       return NextResponse.json({ error: 'No se pudo descargar el archivo' }, { status: 400 });
     }
     const buffer = await fileRes.arrayBuffer();
 
-    // Determine mimeType manually for simple forms
     const isPdf = url.toLowerCase().endsWith('.pdf') || fileRes.headers.get('content-type')?.includes('pdf');
     const mimeType = isPdf ? 'application/pdf' : 'image/jpeg';
 
     const promptText = `
-      Eres un asistente experto en contabilidad. Analiza el siguiente ticket o factura comercial.
-      Extrae los siguientes datos con atención al detalle y genera única y exactamente el objeto JSON estructurado:
+      Eres un asistente experto en contabilidad para una tienda de abarrotes en México.
+      Analiza el siguiente ticket, factura o recibo comercial.
+      Extrae los siguientes datos con máxima precisión:
 
-      - concepto: un resumen general de lo que se compró (por ejemplo: "Insumos de limpieza", "Mercancía Sabritas", etc. muy corto y descriptivo).
-      - monto: el monto total final cobrado, en número decimal (por ejemplo: 1540.50). Si no encuentras un total, intenta sumar.
-      - fecha: la fecha de la compra en formato AAAA-MM-DD. Si no hay, usa "2024-01-01" pero trata de encontrarla.
-      - categoria: elige estrictamente una de las siguientes: "renta", "servicios", "proveedores", "salarios", "mantenimiento", "impuestos", "otro". Intenta inferir la mejor basada en la compra (ej. mercancía -> proveedores).
+      - concepto: un resumen corto y descriptivo de lo que se compró (ej: "Insumos de limpieza", "Mercancía Sabritas").
+      - monto: el monto total final cobrado, en número decimal (ej: 1540.50). Si no hay total, intenta sumar las líneas.
+      - fecha: la fecha de la compra en formato AAAA-MM-DD. Si no la encuentras, usa la fecha de hoy.
+      - categoria: elige estrictamente una de: "renta", "servicios", "proveedores", "salarios", "mantenimiento", "impuestos", "otro".
+        Infiere la mejor según el contenido (ej: mercancía -> proveedores, CFE/agua -> servicios).
+      - items: si puedes identificar líneas individuales del ticket, extrae cada una con nombre, cantidad y precio unitario.
+        Si no puedes distinguir las líneas, devuelve un array vacío.
     `;
 
-    // Extract information using Vercel AI SDK
     const { object } = await generateObject({
-      model: openai('gpt-4o-mini'),
+      model,
       schema: z.object({
         concepto: z.string().describe('El concepto de la compra resumido'),
         monto: z.number().describe('El costo total o pago total de la factura o ticket'),
@@ -45,6 +55,15 @@ export async function POST(req: Request) {
         categoria: z
           .enum(['renta', 'servicios', 'proveedores', 'salarios', 'mantenimiento', 'impuestos', 'otro'])
           .describe('Categoría calculada según la tienda o rubro de los productos'),
+        items: z
+          .array(
+            z.object({
+              nombre: z.string().describe('Nombre del producto o servicio'),
+              cantidad: z.number().describe('Cantidad comprada'),
+              precioUnitario: z.number().describe('Precio unitario'),
+            }),
+          )
+          .describe('Líneas individuales del ticket, si se pueden identificar'),
       }),
       messages: [
         {
@@ -57,9 +76,19 @@ export async function POST(req: Request) {
       ],
     });
 
+    logger.info('Receipt extracted via AI', {
+      action: 'ai_receipt_extracted',
+      concepto: object.concepto,
+      monto: object.monto,
+      itemCount: object.items.length,
+    });
+
     return NextResponse.json({ data: object });
   } catch (error: unknown) {
-    console.error('[API] /extract-receipt Error:', error);
+    logger.error('Receipt extraction failed', {
+      action: 'ai_receipt_error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     return NextResponse.json(
       { error: 'Error procesando el recibo', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 },

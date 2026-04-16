@@ -263,6 +263,11 @@ function mapStoreConfigRow(row: any): StoreConfig {
     emailAttachExcelReport: row.emailAttachExcelReport ?? DEFAULT_STORE_CONFIG.emailAttachExcelReport,
     emailMonthlyReportEnabled: row.emailMonthlyReportEnabled ?? DEFAULT_STORE_CONFIG.emailMonthlyReportEnabled,
     emailMonthlyReportDay: row.emailMonthlyReportDay ?? DEFAULT_STORE_CONFIG.emailMonthlyReportDay,
+    // AI / OpenRouter
+    aiEnabled: row.aiEnabled ?? DEFAULT_STORE_CONFIG.aiEnabled,
+    aiProvider: row.aiProvider ?? DEFAULT_STORE_CONFIG.aiProvider,
+    aiApiKeyEnc: row.aiApiKeyEnc ?? undefined,
+    aiModel: row.aiModel ?? DEFAULT_STORE_CONFIG.aiModel,
   };
 }
 

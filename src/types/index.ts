@@ -412,6 +412,11 @@ export interface StoreConfig {
   serviciosApiKey?: string;
   serviciosApiSecret?: string;
   serviciosSandbox: boolean;
+  // AI / OpenRouter
+  aiEnabled: boolean;
+  aiProvider: string;
+  aiApiKeyEnc?: string;
+  aiModel: string;
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -491,6 +496,9 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   customerDisplayMessageStyle: { ...DEFAULT_CUSTOMER_DISPLAY_MESSAGE_STYLE },
   serviciosProvider: 'local',
   serviciosSandbox: true,
+  aiEnabled: false,
+  aiProvider: 'openrouter',
+  aiModel: 'google/gemini-2.0-flash-001',
   ticketDesignVenta: { ...DEFAULT_TICKET_DESIGN },
   ticketDesignCorte: {
     ...DEFAULT_TICKET_DESIGN,

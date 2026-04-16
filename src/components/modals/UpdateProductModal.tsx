@@ -13,6 +13,7 @@ import {
   Text,
   DropZone,
   Thumbnail,
+  Button,
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
@@ -20,6 +21,7 @@ import { uploadFile, getProductImagePath } from '@/lib/storage';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { CameraScanner } from '@/components/scanner/CameraScanner';
+import { useAIDescription } from '@/hooks/useAIDescription';
 import { Product } from '@/types';
 
 interface UpdateProductModalProps {
@@ -48,6 +50,8 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
     ...categories.map((c) => ({ label: c.name, value: c.id })),
   ];
   const { showSuccess, showError } = useToast();
+  const { aiEnabled, generating, generateDescription } = useAIDescription();
+  const [aiDescription, setAiDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
@@ -303,6 +307,44 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
               }}
               error={fields.category.error}
             />
+            {aiEnabled && (
+              <BlockStack gap="200">
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="span" variant="bodySm" fontWeight="semibold">
+                    Descripción del producto
+                  </Text>
+                  <Button
+                    size="slim"
+                    onClick={async () => {
+                      const desc = await generateDescription({
+                        name: fields.name.value,
+                        category: fields.category.value,
+                        unitPrice: parseFloat(fields.unitPrice.value) || undefined,
+                        unit: fields.unit.value,
+                      });
+                      if (desc) {
+                        setAiDescription(desc);
+                        showSuccess('Descripción generada');
+                      }
+                    }}
+                    loading={generating}
+                    disabled={!fields.name.value.trim()}
+                  >
+                    Generar con IA
+                  </Button>
+                </InlineStack>
+                <TextField
+                  label="Descripción"
+                  labelHidden
+                  value={aiDescription}
+                  onChange={setAiDescription}
+                  multiline={3}
+                  autoComplete="off"
+                  placeholder="Haz clic en 'Generar con IA' para crear una descripción automática"
+                  helpText={generating ? 'Generando descripción...' : ''}
+                />
+              </BlockStack>
+            )}
           </FormLayout>
         </BlockStack>
       </Modal.Section>

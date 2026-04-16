@@ -44,6 +44,7 @@ import { NotificationsSection } from './sections/NotificationsSection';
 import { PaymentsSection } from './sections/PaymentsSection';
 import { CustomerDisplaySectionV4 } from './sections/CustomerDisplaySectionV4';
 import { ServiciosSection } from './sections/ServiciosSection';
+import { AISection } from './sections/AISection';
 import { EmailSection } from './sections/EmailSection';
 import { parseError } from '@/lib/errors';
 import { sendTestEmailAction } from '@/app/actions/email-actions';
@@ -117,6 +118,13 @@ const SETTINGS_CATEGORIES = [
     title: 'Servicios y Recargas',
     description: 'Configura el proveedor para recargas telefónicas y pagos de servicios.',
     icon: SettingsFilledIcon,
+  },
+  {
+    id: 'ai',
+    title: 'Inteligencia Artificial',
+    description: 'Conecta OpenRouter para describir productos, analizar recibos y soporte IA.',
+    icon: ChatIcon,
+    beta: true,
   },
 ];
 
@@ -291,6 +299,10 @@ export function ConfiguracionPage() {
       servicios: {
         configured: storeConfig.serviciosProvider !== 'local',
         label: storeConfig.serviciosProvider !== 'local' ? 'Vinculado' : 'Local',
+      },
+      ai: {
+        configured: storeConfig.aiEnabled,
+        label: storeConfig.aiEnabled ? 'Activo' : 'Inactivo',
       },
     } as Record<string, { configured: boolean; label: string }>;
   }, [storeConfig]);
@@ -553,6 +565,8 @@ export function ConfiguracionPage() {
         return <CustomerDisplaySectionV4 />;
       case 'servicios':
         return <ServiciosSection />;
+      case 'ai':
+        return <AISection />;
       default:
         return null;
     }
@@ -619,7 +633,7 @@ export function ConfiguracionPage() {
     {
       title: 'Integraciones',
       description: 'Servicios externos y canales de comunicación.',
-      items: SETTINGS_CATEGORIES.filter((c) => ['notifications', 'email', 'payments'].includes(c.id)),
+      items: SETTINGS_CATEGORIES.filter((c) => ['notifications', 'email', 'payments', 'ai'].includes(c.id)),
     },
   ];
 

@@ -78,6 +78,7 @@ export function GastosManager() {
   const [uploadedComprobanteUrl, setUploadedComprobanteUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [extractedItems, setExtractedItems] = useState<Array<{ nombre: string; cantidad: number; precioUnitario: number }>>([]);
 
   // ── DatePicker state (Add / Edit modals) ──
   const [addDatePickerOpen, setAddDatePickerOpen] = useState(false);
@@ -146,6 +147,7 @@ export function GastosManager() {
         resetAddForm();
         setComprobanteFile(null);
         setUploadedComprobanteUrl(null);
+        setExtractedItems([]);
         return { status: 'success' };
       } catch (_err) {
         showError('Error al guardar gasto o subir comprobante');
@@ -268,7 +270,7 @@ export function GastosManager() {
   // ── AI Extraction ──
   const analyzeReceipt = async (file: File, fields: typeof addFields) => {
     setIsAnalyzing(true);
-    showSuccess('Evaluando con IA (Beta)...');
+    setExtractedItems([]);
     try {
       const url = await uploadComprobante(file);
       setUploadedComprobanteUrl(url);
@@ -279,7 +281,10 @@ export function GastosManager() {
         body: JSON.stringify({ url }),
       });
 
-      if (!res.ok) throw new Error('falló ext');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Error al analizar');
+      }
       const { data } = await res.json();
 
       if (data) {
@@ -287,10 +292,18 @@ export function GastosManager() {
         if (data.monto) fields.monto.onChange(String(data.monto));
         if (data.fecha) fields.fecha.onChange(data.fecha);
         if (data.categoria) fields.categoria.onChange(data.categoria);
-        showSuccess('¡Datos extraídos con éxito!');
+        if (data.items && data.items.length > 0) {
+          setExtractedItems(data.items);
+        }
+        showSuccess(`Datos extraídos — ${data.items?.length || 0} líneas detectadas`);
       }
-    } catch (_err) {
-      showError('Ocurrió un error al analizar con la IA. Por favor, rellena los campos manual.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      if (message.includes('no configurada')) {
+        showError(message);
+      } else {
+        showError('Error al analizar con IA. Rellena los campos manualmente.');
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -608,6 +621,9 @@ export function GastosManager() {
               />
             </DropZone>
             {isAnalyzing && (
+              <ProgressBar size="small" tone="highlight" />
+            )}
+            {isAnalyzing && (
               <Banner tone="info">Analizando el ticket con IA — los campos se llenarán automáticamente...</Banner>
             )}
             {comprobanteFile && !isAnalyzing && (
@@ -617,6 +633,54 @@ export function GastosManager() {
                   {comprobanteFile.name}
                 </Text>
               </InlineStack>
+            )}
+            {extractedItems.length > 0 && !isAnalyzing && (
+              <Card padding="0">
+                <BlockStack gap="0">
+                  <Box padding="300" paddingBlockEnd="200">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="h4" variant="headingSm">
+                        Líneas detectadas
+                      </Text>
+                      <Badge tone="info">{`${extractedItems.length} artículos`}</Badge>
+                    </InlineStack>
+                  </Box>
+                  <IndexTable
+                    resourceName={{ singular: 'artículo', plural: 'artículos' }}
+                    itemCount={extractedItems.length}
+                    headings={[
+                      { title: 'Producto' },
+                      { title: 'Cant.', alignment: 'end' },
+                      { title: 'P. Unit.', alignment: 'end' },
+                      { title: 'Subtotal', alignment: 'end' },
+                    ]}
+                    selectable={false}
+                  >
+                    {extractedItems.map((item, idx) => (
+                      <IndexTable.Row id={`item-${idx}`} key={idx} position={idx}>
+                        <IndexTable.Cell>
+                          <Text as="span" variant="bodySm">{item.nombre}</Text>
+                        </IndexTable.Cell>
+                        <IndexTable.Cell>
+                          <Text as="span" variant="bodySm" alignment="end">
+                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{item.cantidad}</span>
+                          </Text>
+                        </IndexTable.Cell>
+                        <IndexTable.Cell>
+                          <Text as="span" variant="bodySm" alignment="end">
+                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(item.precioUnitario)}</span>
+                          </Text>
+                        </IndexTable.Cell>
+                        <IndexTable.Cell>
+                          <Text as="span" variant="bodySm" alignment="end">
+                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(item.cantidad * item.precioUnitario)}</span>
+                          </Text>
+                        </IndexTable.Cell>
+                      </IndexTable.Row>
+                    ))}
+                  </IndexTable>
+                </BlockStack>
+              </Card>
             )}
           </BlockStack>
         </Modal.Section>

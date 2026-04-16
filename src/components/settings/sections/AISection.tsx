@@ -23,14 +23,30 @@ import { saveAIConfigAction, testAIConnectionAction } from '@/app/actions/ai-act
 import { parseError } from '@/lib/errors';
 
 const MODEL_OPTIONS = [
-  { label: 'Google Gemini 2.0 Flash (Gratis)', value: 'google/gemini-2.0-flash-001' },
-  { label: 'Google Gemini 2.0 Flash Lite (Gratis)', value: 'google/gemini-2.0-flash-lite-001' },
-  { label: 'Meta Llama 4 Scout (Gratis)', value: 'meta-llama/llama-4-scout:free' },
-  { label: 'DeepSeek V3 (Gratis)', value: 'deepseek/deepseek-chat-v3-0324:free' },
-  { label: 'Qwen QwQ 32B (Gratis)', value: 'qwen/qwq-32b:free' },
-  { label: 'Google Gemini 2.5 Flash Preview', value: 'google/gemini-2.5-flash-preview' },
-  { label: 'Anthropic Claude 3.5 Haiku', value: 'anthropic/claude-3.5-haiku' },
-  { label: 'OpenAI GPT-4o Mini', value: 'openai/gpt-4o-mini' },
+  // ── Modelos gratuitos (ordenados por uso semanal) ──
+  { label: 'NVIDIA: Nemotron 3 Super — Gratis (656B tokens/sem)', value: 'nvidia/nemotron-3-super:free' },
+  { label: 'Arcee AI: Trinity Large Preview — Gratis (117B tokens/sem)', value: 'arceeai/arcee-trinity-large:free' },
+  { label: 'Z.ai: GLM 4.5 Air — Gratis (84B tokens/sem)', value: 'z-ai/glm-4.5-air:free' },
+  { label: 'OpenAI: GPT-OSS 120B — Gratis (64B tokens/sem)', value: 'openai/gpt-oss-120b:free' },
+  { label: 'NVIDIA: Nemotron 3 Nano 30B — Gratis (47B tokens/sem)', value: 'nvidia/nemotron-mini-30b-a3b:free' },
+  { label: 'MiniMax: M2.5 — Gratis (36B tokens/sem, 196k ctx)', value: 'minimax/minimax-m2.5:free' },
+  { label: 'Google: Gemma 4 31B — Gratis (18B tokens/sem)', value: 'google/gemma-4-31b-it:free' },
+  { label: 'Google: Gemma 4 26B A4B — Gratis (9B tokens/sem)', value: 'google/gemma-4-26b-it:free' },
+  { label: 'OpenAI: GPT-OSS 20B — Gratis (8B tokens/sem)', value: 'openai/gpt-oss-20b:free' },
+  { label: 'Qwen3: Coder 480B A35B — Gratis (262k ctx)', value: 'qwen/qwen3-coder-480b-a35b-instruct:free' },
+  { label: 'Meta: Llama 3.3 70B Instruct — Gratis', value: 'meta-llama/llama-3.3-70b-instruct:free' },
+  { label: 'Qwen3: Next 80B A3B Instruct — Gratis', value: 'qwen/qwq-80b:free' },
+  { label: 'Google: Gemma 3 27B — Gratis', value: 'google/gemma-3-27b-it:free' },
+  { label: 'Nous: Hermes 3 405B Instruct — Gratis', value: 'nousresearch/hermes-3-llama-3.1-405b:free' },
+  { label: 'Meta: Llama 3.2 3B Instruct — Gratis', value: 'meta-llama/llama-3.2-3b-instruct:free' },
+  { label: 'Google: Gemma 3 12B — Gratis', value: 'google/gemma-3-12b-it:free' },
+  { label: 'Google: Gemma 3 4B — Gratis', value: 'google/gemma-3-4b-it:free' },
+  { label: 'LiquidAI: LFM2.5-1.2B Thinking — Gratis', value: 'liquid/lfm-2.5-1.2b-thinking:free' },
+  // ── Modelos de pago ──
+  { label: 'Google: Gemini 2.5 Flash Preview', value: 'google/gemini-2.5-flash-preview' },
+  { label: 'Google: Gemini 2.0 Flash', value: 'google/gemini-2.0-flash-001' },
+  { label: 'Anthropic: Claude 3.5 Haiku', value: 'anthropic/claude-3.5-haiku' },
+  { label: 'OpenAI: GPT-4o Mini', value: 'openai/gpt-4o-mini' },
 ];
 
 export function AISection() {
@@ -39,7 +55,7 @@ export function AISection() {
 
   const [enabled, setEnabled] = useState(storeConfig.aiEnabled ?? false);
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState(storeConfig.aiModel || 'google/gemini-2.0-flash-001');
+  const [model, setModel] = useState(storeConfig.aiModel || 'nvidia/nemotron-3-super:free');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -51,7 +67,7 @@ export function AISection() {
 
   useEffect(() => {
     setEnabled(storeConfig.aiEnabled ?? false);
-    setModel(storeConfig.aiModel || 'google/gemini-2.0-flash-001');
+    setModel(storeConfig.aiModel || 'nvidia/nemotron-3-super:free');
   }, [storeConfig]);
 
   const hasExistingKey = !!storeConfig.aiApiKeyEnc;

@@ -5,8 +5,8 @@ import { eq } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 
-/** Default model — fast, free-tier eligible on OpenRouter */
-const DEFAULT_MODEL = 'google/gemini-2.0-flash-001';
+/** Default model — most popular free tier on OpenRouter */
+const DEFAULT_MODEL = 'nvidia/nemotron-3-super:free';
 
 export interface AIConfig {
   enabled: boolean;

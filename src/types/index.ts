@@ -498,7 +498,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   serviciosSandbox: true,
   aiEnabled: false,
   aiProvider: 'openrouter',
-  aiModel: 'google/gemini-2.0-flash-001',
+  aiModel: 'nvidia/nemotron-3-super:free',
   ticketDesignVenta: { ...DEFAULT_TICKET_DESIGN },
   ticketDesignCorte: {
     ...DEFAULT_TICKET_DESIGN,

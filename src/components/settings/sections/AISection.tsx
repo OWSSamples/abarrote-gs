@@ -127,9 +127,9 @@ const PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
     { label: 'Llama 4 Scout 17B', value: 'meta-llama/llama-4-scout-17b-16e-instruct' },
     { label: 'Llama 3.3 70B Versatile', value: 'llama-3.3-70b-versatile' },
     { label: 'Llama 3.1 8B Instant', value: 'llama-3.1-8b-instant' },
-    { label: 'DeepSeek R1 Distill Llama 70B', value: 'deepseek-r1-distill-llama-70b' },
-    { label: 'Mixtral 8x7B', value: 'mixtral-8x7b-32768' },
-    { label: 'Gemma 2 9B', value: 'gemma2-9b-it' },
+    { label: 'GPT-OSS 120B', value: 'openai/gpt-oss-120b' },
+    { label: 'GPT-OSS 20B', value: 'openai/gpt-oss-20b' },
+    { label: 'Qwen3 32B', value: 'qwen/qwen3-32b' },
   ],
   deepseek: [
     { label: 'DeepSeek V3 (Chat)', value: 'deepseek-chat' },

@@ -135,6 +135,15 @@ export const storeConfig = pgTable('store_config', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// ==================== AI PROVIDER CONFIGS ====================
+export const aiProviderConfigs = pgTable('ai_provider_configs', {
+  id: text('id').primaryKey(), // 'openrouter' | 'openai' | 'google' | 'groq' | 'deepseek' | 'qwen' | 'mistral'
+  apiKeyEnc: text('api_key_enc'),
+  enabled: boolean('enabled').notNull().default(false),
+  selectedModel: text('selected_model').notNull().default(''),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // ==================== OAUTH PROVIDER CONNECTIONS ====================
 export const paymentProviderConnections = pgTable(
   'payment_provider_connections',

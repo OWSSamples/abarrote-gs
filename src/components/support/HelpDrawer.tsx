@@ -999,7 +999,10 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
       <div
         style={{
           position: 'fixed',
-          inset: 0,
+          top: '52px',
+          right: 0,
+          bottom: 0,
+          left: 0,
           backgroundColor: 'rgba(0, 0, 0, 0.12)',
           zIndex: 519,
           animation: 'gs-backdrop-in 200ms ease-out',
@@ -1015,7 +1018,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         aria-label="Centro de Ayuda"
         style={{
           position: 'fixed',
-          top: 0,
+          top: '52px',
           right: 0,
           bottom: 0,
           width: '420px',

@@ -426,26 +426,26 @@ export function AISection() {
               >
                 <BlockStack gap="300">
                   {/* Summary row */}
-                  <InlineStack align="space-between" blockAlign="start">
-                    <BlockStack gap="100">
-                      <InlineStack gap="200" blockAlign="center">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                    <BlockStack gap="050">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
                         <Text as="span" variant="bodyMd" fontWeight="semibold">
                           {provider.name}
                         </Text>
                         <Badge tone={TIER_TONE[provider.tier] ?? 'new'}>{provider.tier}</Badge>
                         {isActive && <Badge tone="success">Activo</Badge>}
-                      </InlineStack>
+                      </div>
                       <Text as="p" variant="bodySm" tone="subdued">
                         {provider.description}
                       </Text>
                     </BlockStack>
-                    <InlineStack gap="200" blockAlign="center">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                       {state?.hasKey && <Badge tone="success">Conectado</Badge>}
                       <Button size="slim" onClick={() => handleToggleProvider(provider.id)}>
                         {isExpanded ? 'Cerrar' : state?.hasKey ? 'Editar' : 'Configurar'}
                       </Button>
-                    </InlineStack>
-                  </InlineStack>
+                    </div>
+                  </div>
 
                   {/* Expanded form */}
                   <Collapsible

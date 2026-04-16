@@ -13,7 +13,6 @@ import {
   Box,
   Badge,
   Tabs,
-  Spinner,
   Banner,
   Collapsible,
 } from '@shopify/polaris';
@@ -25,7 +24,6 @@ import {
   SearchIcon,
   RefreshIcon,
   DeleteIcon,
-  ArrowRightIcon,
   CheckCircleIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -372,23 +370,78 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
 
   // ── AI Chat Tab ────────────────────────────────────────────────────────
 
+  const thinkingDotsStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+  };
+
+  const dotBaseStyle: React.CSSProperties = {
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--p-color-text-secondary)',
+    animation: 'ai-thinking-pulse 1.4s ease-in-out infinite',
+  };
+
   const renderAITab = () => (
     <BlockStack gap="300">
-      {/* Status bar */}
-      <Box
-        padding="300"
-        background="bg-surface-secondary"
-        borderRadius="200"
+      {/* Inline keyframes via style tag */}
+      <style>{`
+        @keyframes ai-thinking-pulse {
+          0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+          40% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes ai-msg-enter {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .ai-chat-scroll::-webkit-scrollbar { width: 4px; }
+        .ai-chat-scroll::-webkit-scrollbar-thumb {
+          background: var(--p-color-border);
+          border-radius: 4px;
+        }
+        .ai-chat-scroll::-webkit-scrollbar-track { background: transparent; }
+      `}</style>
+
+      {/* Header bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 14px',
+          borderRadius: 'var(--p-border-radius-200)',
+          backgroundColor: 'var(--p-color-bg-surface-secondary)',
+          border: '1px solid var(--p-color-border)',
+        }}
       >
-        <InlineStack align="space-between" blockAlign="center">
-          <InlineStack gap="200" blockAlign="center">
-            <Badge tone={aiEnabled ? 'success' : 'attention'}>
-              {aiEnabled ? 'IA Activa' : 'IA Inactiva'}
-            </Badge>
-            <Text as="span" variant="bodySm" tone="subdued">
-              Asistente especializado en Abarrote GS
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Status indicator dot */}
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: aiEnabled
+                ? 'var(--p-color-bg-fill-success)'
+                : 'var(--p-color-bg-fill-caution)',
+              boxShadow: aiEnabled ? '0 0 0 3px var(--p-color-bg-fill-success-secondary)' : 'none',
+              flexShrink: 0,
+            }}
+          />
+          <div>
+            <Text as="span" variant="bodySm" fontWeight="semibold">
+              Asistente Abarrote GS
             </Text>
-          </InlineStack>
+            <div>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {chatLoading ? 'Procesando consulta...' : aiEnabled ? 'En línea' : 'Requiere configuración'}
+              </Text>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           {chatMessages.length > 0 && (
             <Button
               variant="plain"
@@ -400,16 +453,16 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
               Limpiar
             </Button>
           )}
-        </InlineStack>
-      </Box>
+        </div>
+      </div>
 
       {!aiEnabled && (
         <Banner
           tone="warning"
-          title="IA no configurada"
-          action={{ content: 'Ir a Configuración', url: '/settings?section=ai' }}
+          title="Asistente no disponible"
+          action={{ content: 'Configurar IA', url: '/settings?section=ai' }}
         >
-          Activa la IA en Configuración → Inteligencia Artificial para usar este asistente.
+          Activa un proveedor de IA en Configuración para habilitar este asistente.
         </Banner>
       )}
 
@@ -419,22 +472,24 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         </Banner>
       )}
 
-      {/* Chat messages */}
+      {/* Chat area */}
       <div
         ref={chatContainerRef}
+        className="ai-chat-scroll"
         style={{
-          height: '340px',
+          height: '360px',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: '12px',
-          padding: '12px',
-          backgroundColor: 'var(--p-color-bg-surface-secondary)',
+          gap: '2px',
+          padding: '16px 12px',
+          backgroundColor: 'var(--p-color-bg-surface)',
           borderRadius: 'var(--p-border-radius-200)',
           border: '1px solid var(--p-color-border)',
         }}
       >
-        {chatMessages.length === 0 && (
+        {/* Empty state */}
+        {chatMessages.length === 0 && !chatLoading && (
           <div
             style={{
               display: 'flex',
@@ -442,148 +497,224 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
               alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
-              gap: '8px',
+              gap: '12px',
+              padding: '24px',
             }}
           >
-            <div style={{ fontSize: '32px' }}>🤖</div>
+            {/* AI icon - clean SVG circle */}
+            <div
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '12px',
+                backgroundColor: 'var(--p-color-bg-surface-secondary)',
+                border: '1px solid var(--p-color-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--p-color-text-secondary)',
+              }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4Z" />
+                <path d="M6 10a2 2 0 0 0-2 2v1a2 2 0 0 0 2 2" />
+                <path d="M18 10a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2" />
+                <path d="M12 15v7" />
+                <path d="M8 18h8" />
+              </svg>
+            </div>
             <Text as="p" variant="bodyMd" fontWeight="semibold" alignment="center">
-              ¿En qué puedo ayudarte?
+              Asistente de soporte
             </Text>
             <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-              Pregúntame sobre ventas, inventario, caja, clientes o cualquier función del sistema.
+              Realiza consultas sobre ventas, inventario, caja, clientes, configuración o cualquier funcionalidad del sistema.
+            </Text>
+            <div style={{ width: '100%', maxWidth: '360px' }}>
+              <Divider />
+            </div>
+            <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+              Consultas sugeridas
             </Text>
           </div>
         )}
 
-        {chatMessages.map((msg) => (
-          <div
-            key={msg.id}
-            style={{
-              display: 'flex',
-              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-            }}
-          >
+        {/* Messages */}
+        {chatMessages.map((msg, idx) => {
+          const isUser = msg.role === 'user';
+          const isLast = idx === chatMessages.length - 1;
+          return (
             <div
+              key={msg.id}
               style={{
-                maxWidth: '82%',
-                padding: '10px 14px',
-                borderRadius:
-                  msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                backgroundColor:
-                  msg.role === 'user'
-                    ? 'var(--p-color-bg-fill-brand)'
-                    : msg.error
-                      ? 'var(--p-color-bg-fill-warning)'
-                      : 'var(--p-color-bg-surface)',
-                border:
-                  msg.role === 'assistant'
-                    ? '1px solid var(--p-color-border)'
-                    : 'none',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: isUser ? 'flex-end' : 'flex-start',
+                animation: isLast ? 'ai-msg-enter 200ms ease-out' : 'none',
+                marginTop: idx > 0 && chatMessages[idx - 1].role !== msg.role ? '12px' : '2px',
               }}
             >
-              <Text
-                as="p"
-                variant="bodySm"
-                tone={msg.role === 'user' ? undefined : msg.error ? 'caution' : undefined}
+              {/* Role label — only on first of consecutive */}
+              {(idx === 0 || chatMessages[idx - 1].role !== msg.role) && (
+                <div style={{ padding: '0 4px', marginBottom: '4px' }}>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {isUser ? 'Tú' : 'Asistente'}
+                  </Text>
+                </div>
+              )}
+              <div
+                style={{
+                  maxWidth: '85%',
+                  padding: '10px 14px',
+                  borderRadius: isUser
+                    ? '12px 12px 2px 12px'
+                    : '12px 12px 12px 2px',
+                  backgroundColor: isUser
+                    ? 'var(--p-color-bg-fill-brand)'
+                    : msg.error
+                      ? 'var(--p-color-bg-fill-caution-secondary)'
+                      : 'var(--p-color-bg-surface-secondary)',
+                  border: isUser ? 'none' : '1px solid var(--p-color-border)',
+                }}
               >
                 <span
                   style={{
-                    color:
-                      msg.role === 'user'
-                        ? 'var(--p-color-text-on-color)'
+                    fontSize: '13px',
+                    lineHeight: '1.5',
+                    color: isUser
+                      ? 'var(--p-color-text-on-color)'
+                      : msg.error
+                        ? 'var(--p-color-text-caution)'
                         : 'var(--p-color-text)',
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
+                    display: 'block',
                   }}
                 >
                   {msg.content}
                 </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Thinking indicator */}
+        {chatLoading && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              marginTop: chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'user' ? '12px' : '2px',
+              animation: 'ai-msg-enter 200ms ease-out',
+            }}
+          >
+            <div style={{ padding: '0 4px', marginBottom: '4px' }}>
+              <Text as="span" variant="bodySm" tone="subdued">
+                Asistente
               </Text>
             </div>
-          </div>
-        ))}
-
-        {chatLoading && (
-          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
             <div
               style={{
-                padding: '10px 14px',
-                borderRadius: '16px 16px 16px 4px',
-                backgroundColor: 'var(--p-color-bg-surface)',
+                padding: '12px 16px',
+                borderRadius: '12px 12px 12px 2px',
+                backgroundColor: 'var(--p-color-bg-surface-secondary)',
                 border: '1px solid var(--p-color-border)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '10px',
               }}
             >
-              <Spinner size="small" accessibilityLabel="Generando respuesta" />
+              <div style={thinkingDotsStyle}>
+                <span style={{ ...dotBaseStyle, animationDelay: '0ms' }} />
+                <span style={{ ...dotBaseStyle, animationDelay: '200ms' }} />
+                <span style={{ ...dotBaseStyle, animationDelay: '400ms' }} />
+              </div>
               <Text as="span" variant="bodySm" tone="subdued">
-                Generando respuesta…
+                Analizando tu consulta
               </Text>
             </div>
           </div>
         )}
       </div>
 
-      {/* Quick prompts — solo si no hay mensajes */}
+      {/* Quick prompts */}
       {chatMessages.length === 0 && (
-        <div style={{ overflowX: 'auto', paddingBottom: '4px' }}>
-          <div style={{ display: 'flex', gap: '8px', minWidth: 'max-content' }}>
-            {QUICK_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => aiEnabled && void sendMessage(prompt)}
-                disabled={!aiEnabled || chatLoading}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '999px',
-                  border: '1px solid var(--p-color-border)',
-                  backgroundColor: 'var(--p-color-bg-surface)',
-                  cursor: aiEnabled ? 'pointer' : 'not-allowed',
-                  fontSize: '12px',
-                  color: 'var(--p-color-text-secondary)',
-                  whiteSpace: 'nowrap',
-                  opacity: aiEnabled ? 1 : 0.5,
-                  transition: 'all 150ms ease',
-                }}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {QUICK_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => aiEnabled && void sendMessage(prompt)}
+              disabled={!aiEnabled || chatLoading}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '6px',
+                border: '1px solid var(--p-color-border)',
+                backgroundColor: 'var(--p-color-bg-surface)',
+                cursor: aiEnabled ? 'pointer' : 'not-allowed',
+                fontSize: '12px',
+                lineHeight: '1.4',
+                color: 'var(--p-color-text-secondary)',
+                opacity: aiEnabled ? 1 : 0.4,
+                transition: 'border-color 150ms ease, background-color 150ms ease',
+              }}
+            >
+              {prompt}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Input row */}
-      <div onKeyDown={handleChatKeyDown}>
-        <InlineStack gap="200" blockAlign="end">
-          <div style={{ flex: 1 }}>
-            <TextField
-              label="Mensaje"
-              labelHidden
-              value={chatInput}
-              onChange={setChatInput}
-              placeholder={aiEnabled ? 'Escribe tu pregunta… (Enter para enviar)' : 'Activa la IA para usar el chat'}
-              autoComplete="off"
-              multiline={2}
-              disabled={!aiEnabled || chatLoading}
-            />
-          </div>
+      {/* Input */}
+      <div
+        style={{
+          border: '1px solid var(--p-color-border)',
+          borderRadius: 'var(--p-border-radius-200)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{ padding: '8px 12px 4px' }}
+          onKeyDown={handleChatKeyDown}
+        >
+          <TextField
+            label="Mensaje"
+            labelHidden
+            value={chatInput}
+            onChange={setChatInput}
+            placeholder={aiEnabled ? 'Escribe tu consulta...' : 'Configura un proveedor de IA primero'}
+            autoComplete="off"
+            multiline={2}
+            disabled={!aiEnabled || chatLoading}
+          />
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '4px 8px 8px 12px',
+          }}
+        >
+          <Text as="span" variant="bodySm" tone="subdued">
+            {chatInput.length > 0 ? `${chatInput.length} / 2000` : 'Enter para enviar'}
+          </Text>
           <Button
             variant="primary"
-            icon={ArrowRightIcon}
+            size="slim"
             onClick={() => void sendMessage(chatInput)}
             loading={chatLoading}
             disabled={!aiEnabled || !chatInput.trim()}
-            accessibilityLabel="Enviar mensaje"
-          />
-        </InlineStack>
+          >
+            Enviar
+          </Button>
+        </div>
       </div>
 
+      {/* Disclaimer */}
       <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-        Las respuestas son generadas por IA y pueden no ser exactas. Para soporte técnico crítico contacta directamente al equipo.
+        Las respuestas son generadas por inteligencia artificial y pueden contener inexactitudes.
+        Para incidencias críticas, contacta al equipo de soporte directamente.
       </Text>
     </BlockStack>
   );

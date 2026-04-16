@@ -174,6 +174,14 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
     onClose();
   }, [onClose]);
 
+  // Lock body scroll when panel is open
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -341,18 +349,19 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
       }}
     >
       {/* Mascot */}
-      <div style={{ marginBottom: '20px' }}>
-        <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-          <circle cx="28" cy="28" r="26" fill="#EDE9FE" />
-          <circle cx="28" cy="28" r="22" fill="#8B5CF6" />
-          <rect x="8" y="21" width="40" height="15" rx="7.5" fill="#4C1D95" opacity="0.9" />
-          <circle cx="20" cy="28.5" r="5.5" fill="white" />
-          <circle cx="36" cy="28.5" r="5.5" fill="white" />
-          <circle cx="21.5" cy="27.5" r="2.5" fill="#1E1B4B" />
-          <circle cx="37.5" cy="27.5" r="2.5" fill="#1E1B4B" />
-          <circle cx="20" cy="26" r="1.2" fill="white" opacity="0.7" />
-          <circle cx="36" cy="26" r="1.2" fill="white" opacity="0.7" />
-          <path d="M24 39 Q28 42 32 39" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      <div style={{ marginBottom: '20px', animation: 'gs-mascot-float 3s ease-in-out infinite' }}>
+        <svg width="72" height="72" viewBox="0 0 300 300" fill="none">
+          <circle cx="151" cy="151" r="116" fill="#fff" />
+          <clipPath id="gs-mask-a"><path d="M0 0h300v300H0z" /></clipPath>
+          <g clipPath="url(#gs-mask-a)">
+            <path fill="#1C004F" d="M132.47 216.57s-4.69-1.24-3.45 4c5.25 8 13.11 12.84 22.36 12.84 9.38 0 18.5-6.62 21.25-14.5 0-2.75-1.24-4.13-4-2.75-1.24 1.38-6.62 6.62-17.25 6.62s-9.66-.96-18.9-6.2Z" />
+            <path fill="#1C004F" d="M32.15 184.42s-.83-74.1 6.62-94.11h-.13c2.62-10.5 9.24-11.87 10.62-11.87 0-4-1.38-13.25 10.77-17.25 7.86-2.62 11.86-6.63 13.24-10.63 5.25-3.86 7.87-6.62 17.12-5.24C175.53 3.64 236.1 69.05 236.1 69.05c12 0 18.5 8 22.64 17.25 0 0 8.14 17.4 9.1 26.64 3.04 24.97 2.76 75.34 2.76 75.34 0 56.86-48.99 71.63-64.86 75.5-16 5.37-84.87 5.37-105.98 1.37-19.32-2.9-67.62-18.63-67.62-80.73Zm169.6 62.24s50.37-8 50.37-59.62c0 0 2.07-44.7-2.76-51.75 0 0 0-5.24-5.24-8-5.25-2.48-12.28-29.12-15.87-31.74-8.83-5.93-83.9-.83-90.25 1.93-6.35 2.48-16.29 22.08-17.12 20.7-.69-1.52-3.86-6.62-6.62-16-14.63-1.25-29.12 26.49-29.12 26.49-2.62 0-8-13.25-8-31.74 0 0-16.01-.28-21.12 22.63-4.83 21.12-5.38 64.86-5.38 64.86 0 47.2 33.12 59.34 53.13 63.62 18.5 2.62 89.98 1.24 97.98-1.38" />
+            <path fill="#7126FF" d="M238.87 132.67c-17.25-1.24-31.46 3.73-43.74 12-27.88 18.77-50.92 28.02-87.5 0-11.72-9.1-26.5-13.24-43.74-13.24-53.39.57-40.39 88.07 4 87.35 28.02 7.73 55.62-19.87 55.62-19.87 23.32-25.8 43.05-13.1 52.99 0a75.9 75.9 0 0 0 58.23 19.87c42.92-3.59 57.41-82.94 4.14-86.1Z" />
+            <path fill="#fff" d="M236.36 195.15a26.5 26.5 0 1 1-37.48-37.46 26.5 26.5 0 0 1 37.48 37.46m-132.48 0A26.5 26.5 0 1 1 66.4 157.7a26.5 26.5 0 0 1 37.48 37.46Z" />
+            <path fill="#1C004F" d="M202.72 167.03c1.65-3.45 8.14-9.93 19.6-7.86-11.05 10.2 3.17 20 11.86 12 2.76 10.63-4.28 21.67-18.77 21.67-3.72 0-20.97-6.35-12.7-25.8Zm-133.17 0c1.65-3.45 8.14-9.93 19.6-7.86-11.05 10.2 3.17 20 11.86 12 2.76 10.63-4.28 21.67-18.77 21.67-3.72 0-20.97-6.35-12.7-25.8Z" />
+            <clipPath id="gs-mask-b"><path d="M285.82 122.5H16V144h269.82z" /></clipPath>
+            <g clipPath="url(#gs-mask-b)"><clipPath id="gs-mask-c"><path d="M0 0h300v300H0z" /></clipPath><g fill="#7126FF" clipPath="url(#gs-mask-c)"><path d="M83.4 143.56a33 33 0 1 1 0 66 33 33 0 0 1 0-66m136 0a33 33 0 1 1 0 66 33 33 0 0 1 0-66" /></g></g>
+          </g>
         </svg>
       </div>
 
@@ -993,6 +1002,10 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
+        @keyframes gs-mascot-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-8px); }
+        }
       `}</style>
 
       {/* Backdrop */}
@@ -1006,6 +1019,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
           backgroundColor: 'rgba(0, 0, 0, 0.12)',
           zIndex: 519,
           animation: 'gs-backdrop-in 200ms ease-out',
+          overscrollBehavior: 'contain',
         }}
         onClick={handleClose}
         aria-hidden="true"
@@ -1118,7 +1132,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         </div>
 
         {/* ── Content area ───────────────────────────────── */}
-        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0, overscrollBehavior: 'contain' }}>
           {currentView === 'chat' && renderChatView()}
           {currentView === 'faq' && renderFAQView()}
           {currentView === 'contact' && renderContactView()}

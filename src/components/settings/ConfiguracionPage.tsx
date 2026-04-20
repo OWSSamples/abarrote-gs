@@ -152,6 +152,13 @@ export function ConfiguracionPage() {
       rfc: useField(storeConfig.rfc || ''),
       regimenFiscal: useField(storeConfig.regimenFiscal || ''),
       regimenDescription: useField(storeConfig.regimenDescription || ''),
+      cfdiPacProvider: useField(storeConfig.cfdiPacProvider || 'none'),
+      cfdiPacEnvironment: useField(storeConfig.cfdiPacEnvironment || 'sandbox'),
+      cfdiPacAuthType: useField(storeConfig.cfdiPacAuthType || 'basic'),
+      cfdiPacApiUrl: useField(storeConfig.cfdiPacApiUrl || ''),
+      cfdiPacApiKey: useField(storeConfig.cfdiPacApiKey || ''),
+      cfdiPacApiSecret: useField(storeConfig.cfdiPacApiSecret || ''),
+      cfdiPacCancelPath: useField(storeConfig.cfdiPacCancelPath || '/cancel'),
       ivaRate: useField(storeConfig.ivaRate || '16'),
       pricesIncludeIva: useField(storeConfig.pricesIncludeIva ?? true),
       currency: useField(storeConfig.currency || 'MXN'),
@@ -262,7 +269,11 @@ export function ConfiguracionPage() {
   // ══════════════════════════════════════════════════════════════════════════
   const STATUS_MAP = useMemo(() => {
     const storeConfigured = !!(storeConfig.storeName && storeConfig.address);
-    const fiscalConfigured = !!(storeConfig.rfc && storeConfig.regimenFiscal);
+    const fiscalConfigured =
+      !!storeConfig.rfc &&
+      !!storeConfig.regimenFiscal &&
+      storeConfig.cfdiPacProvider !== 'none' &&
+      !!storeConfig.cfdiPacApiKey;
     const notificationsConfigured = !!(
       storeConfig.enableNotifications &&
       storeConfig.telegramToken &&

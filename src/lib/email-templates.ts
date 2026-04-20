@@ -6,7 +6,7 @@
  * for sendEmail().
  *
  * Design principles:
- * - Mobile-first (95%+ of abarrote owners read on phone)
+ * - Mobile-first (95%+ of small store owners read on phone)
  * - Inline CSS (email clients strip <style> tags)
  * - Branded with store name + logo
  * - Spanish language

@@ -42,7 +42,7 @@ export function createModelForProvider(providerId: string, apiKey: string, model
 
   const extraHeaders =
     providerId === 'openrouter'
-      ? { 'HTTP-Referer': 'https://abarrote.gs', 'X-Title': 'Abarrote GS' }
+      ? { 'HTTP-Referer': 'https://kiosko.app', 'X-Title': 'Kiosko POS' }
       : undefined;
 
   return createOpenAICompatible({

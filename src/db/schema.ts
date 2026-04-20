@@ -3,8 +3,8 @@ import { pgTable, text, integer, boolean, numeric, timestamp, date, index, jsonb
 // ==================== CONFIGURACION DE TIENDA ====================
 export const storeConfig = pgTable('store_config', {
   id: text('id').primaryKey().default('main'),
-  storeName: text('store_name').notNull().default('MI ABARROTES'),
-  legalName: text('legal_name').notNull().default('MI ABARROTES S DE RL DE CV'),
+  storeName: text('store_name').notNull().default('MI TIENDA'),
+  legalName: text('legal_name').notNull().default('MI TIENDA S DE RL DE CV'),
   address: text('address').notNull().default('AV. PRINCIPAL #123, COL. CENTRO'),
   city: text('city').notNull().default('MEXICO'),
   postalCode: text('postal_code').notNull().default('00000'),
@@ -12,6 +12,14 @@ export const storeConfig = pgTable('store_config', {
   rfc: text('rfc').notNull().default('XAXX010101000'),
   regimenFiscal: text('regimen_fiscal').notNull().default('612'),
   regimenDescription: text('regimen_description').notNull().default('REGIMEN SIMPLIFICADO DE CONFIANZA'),
+  // CFDI PAC (multi-provider)
+  cfdiPacProvider: text('cfdi_pac_provider').notNull().default('none'),
+  cfdiPacEnvironment: text('cfdi_pac_environment').notNull().default('sandbox'),
+  cfdiPacAuthType: text('cfdi_pac_auth_type').notNull().default('basic'),
+  cfdiPacApiUrl: text('cfdi_pac_api_url'),
+  cfdiPacApiKey: text('cfdi_pac_api_key'),
+  cfdiPacApiSecret: text('cfdi_pac_api_secret'),
+  cfdiPacCancelPath: text('cfdi_pac_cancel_path').notNull().default('/cancel'),
   ivaRate: text('iva_rate').notNull().default('16'),
   pricesIncludeIva: boolean('prices_include_iva').notNull().default(true),
   currency: text('currency').notNull().default('MXN'),

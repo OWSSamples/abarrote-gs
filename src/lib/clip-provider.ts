@@ -151,7 +151,7 @@ export async function createClipCheckoutCharge(params: {
       },
       metadata: {
         external_reference: saleReference,
-        customer_info: { source: 'abarrote-gs-pos' },
+        customer_info: { source: 'kiosko-pos' },
       },
       webhook_url: `${appBaseUrl}/api/webhooks/clip`,
     };

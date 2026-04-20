@@ -1,4 +1,4 @@
-// Tipos para el Dashboard de Abarrotes
+// Tipos para el Dashboard de Kiosko POS
 
 // === Enums / Constantes de Dominio ===
 
@@ -289,6 +289,14 @@ export interface StoreConfig {
   rfc: string;
   regimenFiscal: string;
   regimenDescription: string;
+  // CFDI PAC (timbrado SAT)
+  cfdiPacProvider: string;
+  cfdiPacEnvironment: string;
+  cfdiPacAuthType: string;
+  cfdiPacApiUrl?: string;
+  cfdiPacApiKey?: string;
+  cfdiPacApiSecret?: string;
+  cfdiPacCancelPath?: string;
   ivaRate: string;
   pricesIncludeIva: boolean;
   currency: string;
@@ -421,8 +429,8 @@ export interface StoreConfig {
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
   id: 'main',
-  storeName: 'MI ABARROTES',
-  legalName: 'MI ABARROTES S DE RL DE CV',
+  storeName: 'MI TIENDA',
+  legalName: 'MI TIENDA S DE RL DE CV',
   address: 'AV. PRINCIPAL #123, COL. CENTRO',
   city: 'MEXICO',
   postalCode: '00000',
@@ -430,6 +438,13 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   rfc: 'XAXX010101000',
   regimenFiscal: '612',
   regimenDescription: 'REGIMEN SIMPLIFICADO DE CONFIANZA',
+  cfdiPacProvider: 'none',
+  cfdiPacEnvironment: 'sandbox',
+  cfdiPacAuthType: 'basic',
+  cfdiPacApiUrl: '',
+  cfdiPacApiKey: '',
+  cfdiPacApiSecret: '',
+  cfdiPacCancelPath: '/cancel',
   ivaRate: '16',
   pricesIncludeIva: true,
   currency: 'MXN',
@@ -1288,7 +1303,121 @@ export interface ForecastProduct {
   historicalWeekly: number[]; // last 8 weeks of sales
 }
 
-// === CFDI / Facturación Electrónica (Próximamente — pendiente integración con PAC) ===
+// === CFDI / Facturación Electrónica ===
+
+/**
+ * PAC Autorizados por el SAT para timbrado de CFDI 4.0.
+ * Solo proveedores con autorización vigente del SAT y API disponible.
+ * Ref: https://www.sat.gob.mx/consultas/20585/conoce-los-proveedores-autorizados-de-certificacion-(pac)
+ */
+export const CFDI_PAC_PROVIDERS = [
+  {
+    id: 'none',
+    label: 'Sin PAC (solo local)',
+    description: 'Los CFDI se guardan localmente sin timbrado ante el SAT.',
+    website: '',
+    howToGetKey: '',
+    authDefault: 'basic' as const,
+    logoText: '',
+  },
+  {
+    id: 'facturama',
+    label: 'Facturama',
+    description: 'PAC autorizado #69420. API REST moderna con sandbox gratuito.',
+    website: 'https://facturama.mx',
+    howToGetKey: 'Regístrate en facturama.mx → Panel → Configuración API → Copia tu usuario y contraseña de API.',
+    authDefault: 'basic' as const,
+    logoText: 'Fm',
+  },
+  {
+    id: 'sw_sapien',
+    label: 'SW Sapien (SmartWeb)',
+    description: 'PAC autorizado #56487. Especializado en alto volumen de timbrado.',
+    website: 'https://sw.com.mx',
+    howToGetKey: 'Crea cuenta en sw.com.mx → Dashboard → Genera tu Token de autenticación en la sección API.',
+    authDefault: 'bearer' as const,
+    logoText: 'SW',
+  },
+  {
+    id: 'finkok',
+    label: 'Finkok',
+    description: 'PAC autorizado #55796. Ampliamente usado en integraciones con ERP.',
+    website: 'https://finkok.com',
+    howToGetKey: 'Regístrate en finkok.com → Mi Cuenta → Credenciales de Integración → Copia usuario y contraseña WSDL/REST.',
+    authDefault: 'basic' as const,
+    logoText: 'Fk',
+  },
+  {
+    id: 'solucion_factible',
+    label: 'Solución Factible',
+    description: 'PAC autorizado #55823. Interfaz SOAP y REST para timbrado.',
+    website: 'https://solucionfactible.com',
+    howToGetKey: 'Regístrate en solucionfactible.com → Soporte te envía credenciales por correo al activar tu cuenta.',
+    authDefault: 'basic' as const,
+    logoText: 'SF',
+  },
+  {
+    id: 'digicel',
+    label: 'Digicel (Edicom)',
+    description: 'PAC autorizado #49744. Respaldado por grupo Edicom internacional.',
+    website: 'https://www.edicomgroup.com/mx',
+    howToGetKey: 'Contacta a ventas en edicomgroup.com/mx → Te asignan credenciales API al contratar el servicio.',
+    authDefault: 'basic' as const,
+    logoText: 'Ed',
+  },
+  {
+    id: 'prodigia',
+    label: 'Prodigia (Factura.com)',
+    description: 'PAC autorizado #55734. API JSON sencilla con planes accesibles.',
+    website: 'https://factura.com',
+    howToGetKey: 'Regístrate en factura.com → Mi Cuenta → Desarrolladores → API Keys → Genera tu API Key.',
+    authDefault: 'api-key' as const,
+    logoText: 'Pg',
+  },
+  {
+    id: 'timbrado_fiscal',
+    label: 'Timbrado Fiscal Digital',
+    description: 'PAC autorizado #56026. API REST enfocada en micro y pequeña empresa.',
+    website: 'https://tfrfiscal.com',
+    howToGetKey: 'Regístrate en tfrfiscal.com → Panel de Control → Integración API → Genera Token.',
+    authDefault: 'bearer' as const,
+    logoText: 'TF',
+  },
+  {
+    id: 'folios_digitales',
+    label: 'Folios Digitales',
+    description: 'PAC autorizado #55102. Uno de los más antiguos y estables del mercado.',
+    website: 'https://foliosdigitales.com',
+    howToGetKey: 'Regístrate en foliosdigitales.com → Mi Cuenta → Configuración API → Copia tus credenciales.',
+    authDefault: 'basic' as const,
+    logoText: 'FD',
+  },
+  {
+    id: 'invoiceone',
+    label: 'InvoiceOne',
+    description: 'PAC autorizado #55827. Plataforma empresarial con API SOAP y REST.',
+    website: 'https://invoiceone.mx',
+    howToGetKey: 'Solicita acceso en invoiceone.mx → Tu ejecutivo envía credenciales al activar el contrato.',
+    authDefault: 'basic' as const,
+    logoText: 'IO',
+  },
+  {
+    id: 'custom',
+    label: 'Otro PAC (configuración manual)',
+    description: 'Ingresa la URL y credenciales de cualquier otro PAC autorizado.',
+    website: '',
+    howToGetKey: 'Consulta la documentación técnica de tu PAC para obtener las credenciales de API.',
+    authDefault: 'basic' as const,
+    logoText: '◇',
+  },
+] as const;
+
+export const CFDI_PAC_AUTH_TYPES = [
+  { id: 'basic', label: 'Basic Auth (usuario + contraseña)' },
+  { id: 'bearer', label: 'Bearer Token' },
+  { id: 'api-key', label: 'API Key (header X-API-Key)' },
+] as const;
+
 export const CFDI_USOS = [
   { clave: 'G01', descripcion: 'Adquisición de mercancías' },
   { clave: 'G03', descripcion: 'Gastos en general' },
@@ -1299,16 +1428,22 @@ export const CFDI_USOS = [
 export const CFDI_REGIMENES = [
   { clave: '601', descripcion: 'General de Ley Personas Morales' },
   { clave: '603', descripcion: 'Personas Morales con Fines no Lucrativos' },
-  { clave: '605', descripcion: 'Sueldos y Salarios' },
+  { clave: '605', descripcion: 'Sueldos y Salarios e Ingresos Asimilados a Salarios' },
   { clave: '606', descripcion: 'Arrendamiento' },
+  { clave: '607', descripcion: 'Régimen de Enajenación o Adquisición de Bienes' },
   { clave: '608', descripcion: 'Demás ingresos' },
+  { clave: '610', descripcion: 'Residentes en el Extranjero sin Establecimiento Permanente en México' },
+  { clave: '611', descripcion: 'Ingresos por Dividendos (socios y accionistas)' },
   { clave: '612', descripcion: 'Personas Físicas con Actividades Empresariales y Profesionales' },
+  { clave: '614', descripcion: 'Ingresos por intereses' },
+  { clave: '615', descripcion: 'Régimen de los ingresos por obtención de premios' },
   { clave: '616', descripcion: 'Sin obligaciones fiscales' },
+  { clave: '620', descripcion: 'Sociedades Cooperativas de Producción que optan por diferir sus ingresos' },
   { clave: '621', descripcion: 'Incorporación Fiscal' },
-  {
-    clave: '625',
-    descripcion: 'Régimen de las Actividades Empresariales con ingresos a través de Plataformas Tecnológicas',
-  },
+  { clave: '622', descripcion: 'Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras' },
+  { clave: '623', descripcion: 'Opcional para Grupos de Sociedades' },
+  { clave: '624', descripcion: 'Coordinados' },
+  { clave: '625', descripcion: 'Régimen de las Actividades Empresariales con ingresos a través de Plataformas Tecnológicas' },
   { clave: '626', descripcion: 'Régimen Simplificado de Confianza' },
 ] as const;
 

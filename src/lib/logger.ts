@@ -133,7 +133,7 @@ function log(level: LogLevel, message: string, ctx?: LogContext): void {
     ...ctx,
     // Environment info
     env: process.env.NODE_ENV,
-    service: 'abarrote-gs',
+    service: 'kiosko-pos',
     version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7),
   };
 

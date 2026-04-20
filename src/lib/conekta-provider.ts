@@ -112,7 +112,7 @@ export async function createConektaSPEICharge(params: {
       ],
       metadata: {
         sale_reference: saleReference,
-        source: 'abarrote-gs-pos',
+        source: 'kiosko-pos',
       },
     });
 
@@ -207,7 +207,7 @@ export async function createConektaOXXOCharge(params: {
       ],
       metadata: {
         sale_reference: saleReference,
-        source: 'abarrote-gs-pos',
+        source: 'kiosko-pos',
       },
     });
 

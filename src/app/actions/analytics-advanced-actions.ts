@@ -40,7 +40,26 @@ import type {
 } from '@/types';
 import { logger } from '@/lib/logger';
 import { isNotDeleted } from '@/infrastructure/soft-delete';
-import { env } from '@/lib/env';
+import {
+  createPacProvider,
+  isPacConfigured,
+  type CfdiPacAuthType,
+  type CfdiPacEnvironment,
+  type CfdiPacProviderId,
+  type PacRuntimeConfig,
+} from '@/infrastructure/cfdi/pac-provider';
+
+function buildPacRuntimeConfig(config: Awaited<ReturnType<typeof fetchStoreConfig>>): PacRuntimeConfig {
+  return {
+    provider: (config.cfdiPacProvider || 'none') as CfdiPacProviderId,
+    environment: (config.cfdiPacEnvironment || 'sandbox') as CfdiPacEnvironment,
+    authType: (config.cfdiPacAuthType || 'basic') as CfdiPacAuthType,
+    apiUrl: config.cfdiPacApiUrl,
+    apiKey: config.cfdiPacApiKey,
+    apiSecret: config.cfdiPacApiSecret,
+    cancelPath: config.cfdiPacCancelPath,
+  };
+}
 
 // ==================== 1. ABC INVENTORY CLASSIFICATION ====================
 
@@ -450,11 +469,10 @@ async function _sendWeeklyTelegramReport(): Promise<{ sent: boolean; message: st
 // ==================== 4. CFDI / FACTURACIÓN ELECTRÓNICA ====================
 
 /**
- * Generates a CFDI invoice by calling an external PAC API.
+ * Generates a CFDI invoice by calling the configured PAC API.
  *
- * This is a stub that implements the standard flow.
- * To connect to a real PAC (Facturama, SW Sapien, etc.),
- * set environment variables: CFDI_PAC_URL, CFDI_PAC_USER, CFDI_PAC_PASSWORD
+ * PAC credentials/provider are read from platform configuration (store_config),
+ * so timbrado can run without local env variables.
  */
 async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
   await requirePermission('reports.export');
@@ -478,13 +496,13 @@ async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
   // Fetch sale items
   const items = await db.select().from(saleItems).where(eq(saleItems.saleId, request.saleId));
 
-  // -- PAC Integration point --
-  const pacUrl = env.CFDI_PAC_URL;
-  const pacUser = env.CFDI_PAC_USER;
-  const pacPassword = env.CFDI_PAC_PASSWORD;
+  const pacConfig = buildPacRuntimeConfig(config);
+  const pacProvider = createPacProvider(pacConfig);
 
-  if (!pacUrl || !pacUser || !pacPassword) {
-    logger.warn('CFDI PAC not configured, generating local record only');
+  if (!isPacConfigured(pacConfig)) {
+    logger.warn('CFDI PAC not configured from platform settings, generating local record only', {
+      provider: pacConfig.provider,
+    });
 
     // Create a local record without timbrado — persist to DB
     const record: CFDIRecord = {
@@ -567,35 +585,20 @@ async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
   };
 
   try {
-    const response = await fetch(pacUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Basic ${Buffer.from(`${pacUser}:${pacPassword}`).toString('base64')}`,
-      },
-      body: JSON.stringify(cfdiPayload),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      logger.error('CFDI PAC error', { status: response.status, body: errorBody });
-      throw new Error(`Error del PAC: ${response.status}`);
-    }
-
-    const result = await response.json();
+    const result = await pacProvider.timbrar(cfdiPayload);
 
     const record: CFDIRecord = {
       id: `cfdi-${crypto.randomUUID()}`,
       saleId: request.saleId,
       folio: sale.folio,
-      uuid: result.uuid ?? result.UUID ?? '',
+      uuid: result.uuid,
       receptorRfc: request.receptorRfc.toUpperCase(),
       receptorNombre: request.receptorNombre,
       total: numVal(sale.total),
       status: 'timbrada',
-      xmlUrl: result.xmlUrl ?? result.xml ?? '',
-      pdfUrl: result.pdfUrl ?? result.pdf ?? '',
-      fechaTimbrado: result.fechaTimbrado ?? new Date().toISOString(),
+      xmlUrl: result.xmlUrl,
+      pdfUrl: result.pdfUrl,
+      fechaTimbrado: result.fechaTimbrado,
       createdAt: new Date().toISOString(),
     };
 
@@ -675,12 +678,12 @@ async function _cancelCFDI(
     throw new Error('Motivo 01 requiere el UUID del CFDI sustituto');
   }
 
-  const pacUrl = env.CFDI_PAC_URL;
-  const pacUser = env.CFDI_PAC_USER;
-  const pacPassword = env.CFDI_PAC_PASSWORD;
+  const config = await fetchStoreConfig();
+  const pacConfig = buildPacRuntimeConfig(config);
+  const pacProvider = createPacProvider(pacConfig);
   const now = new Date();
 
-  if (!pacUrl || !pacUser || !pacPassword) {
+  if (!isPacConfigured(pacConfig)) {
     // No PAC configured — mark as cancelled locally
     await db
       .update(cfdiRecords)
@@ -707,28 +710,7 @@ async function _cancelCFDI(
   }
 
   try {
-    const cancelPayload = {
-      uuid: record.uuid,
-      motivo: reason,
-      folioSustitucion: relatedUuid ?? undefined,
-    };
-
-    const response = await fetch(`${pacUrl}/cancel`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Basic ${Buffer.from(`${pacUser}:${pacPassword}`).toString('base64')}`,
-      },
-      body: JSON.stringify(cancelPayload),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      logger.error('CFDI cancel PAC error', { status: response.status, body: errorBody });
-      throw new Error(`Error del PAC al cancelar: ${response.status}`);
-    }
-
-    const result = await response.json();
+    const result = await pacProvider.cancelar(record.uuid, reason, relatedUuid);
 
     await db
       .update(cfdiRecords)
@@ -736,7 +718,7 @@ async function _cancelCFDI(
         status: 'cancelada',
         cancelReason: reason,
         cancelRelatedUuid: relatedUuid ?? null,
-        cancelAckUrl: result.acuseUrl ?? result.ackUrl ?? '',
+        cancelAckUrl: result.acuse ?? '',
         cancelledAt: now,
       })
       .where(eq(cfdiRecords.id, cfdiId));

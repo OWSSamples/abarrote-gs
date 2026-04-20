@@ -23,6 +23,16 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
+function buildSessionCookie(token: string): string {
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  return `__session=${token}; path=/; max-age=3600; SameSite=Strict${isHttps ? '; Secure' : ''}`;
+}
+
+function clearSessionCookie(): void {
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  document.cookie = `__session=; path=/; max-age=0; SameSite=Strict${isHttps ? '; Secure' : ''}`;
+}
+
 /**
  * Sets the __session cookie with the Firebase ID token.
  * This cookie is read by server-side code (Server Actions, API routes)
@@ -33,13 +43,11 @@ export function useAuth() {
  * This prevents race conditions where a new tab briefly reports user=null
  * before Firebase auth state is restored, which would clear the shared cookie.
  */
-async function syncSessionCookie(user: User | null) {
+async function syncSessionCookie(user: User | null, forceRefresh = false) {
   if (user) {
     try {
-      const token = await user.getIdToken();
-      // Set cookie via document.cookie (httpOnly=false so JS can set it,
-      // but server reads it). SameSite=Strict for CSRF protection.
-      document.cookie = `__session=${token}; path=/; max-age=3600; SameSite=Strict; Secure`;
+      const token = await user.getIdToken(forceRefresh);
+      document.cookie = buildSessionCookie(token);
     } catch (error) {
       console.error('Error setting session cookie:', error);
     }
@@ -55,9 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
+      if (user) {
+        // Force-refresh on first auth to guarantee a fresh token in the cookie.
+        // Cached tokens from previous sessions may have expired or been invalidated.
+        await syncSessionCookie(user, true);
+      }
+
       setUser(user);
       setLoading(false);
-      await syncSessionCookie(user);
 
       // Only manage login time when we POSITIVELY have a user.
       // We do NOT clear localStorage on user=null here because new tabs
@@ -88,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const handleSignOut = useCallback(async () => {
-    document.cookie = '__session=; path=/; max-age=0';
+    clearSessionCookie();
     localStorage.removeItem('kiosko_login_time');
     await firebaseSignOut(auth);
     router.push('/auth/login');
@@ -122,8 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user) return null;
       try {
         const token = await user.getIdToken(forceRefresh);
-        // Sincronizar cookie de inmediato para asegurar que el servidor la vea
-        document.cookie = `__session=${token}; path=/; max-age=3600; SameSite=Strict; Secure`;
+        document.cookie = buildSessionCookie(token);
         return token;
       } catch {
         return null;

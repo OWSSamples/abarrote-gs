@@ -544,6 +544,54 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     onClose();
   }, [resetForm, onClose]);
 
+  // Keyboard shortcut bridge from HelpDrawer (and global shortcuts)
+  useEffect(() => {
+    if (!open) return;
+
+    const onPosShortcut = (event: Event) => {
+      const customEvent = event as CustomEvent<{ action?: string }>;
+      const action = customEvent.detail?.action;
+      if (!action || submitting) return;
+
+      if (action === 'manual-search') {
+        const barcodeInputEl = document.getElementById('sale-barcode-input') as HTMLInputElement | null;
+        barcodeInputEl?.focus();
+        barcodeInputEl?.select();
+        return;
+      }
+
+      if (action === 'checkout') {
+        if (items.length > 0) {
+          void handleSale();
+        }
+        return;
+      }
+
+      if (items.length === 0) return;
+      const lastItem = items[items.length - 1];
+      if (!lastItem) return;
+
+      if (action === 'remove-item') {
+        handleRemoveClick(lastItem.productId);
+        return;
+      }
+
+      if (action === 'inc-qty') {
+        handleUpdateQuantity(lastItem.productId, 1);
+        return;
+      }
+
+      if (action === 'dec-qty') {
+        handleUpdateQuantity(lastItem.productId, -1);
+      }
+    };
+
+    window.addEventListener('gs-pos-shortcut', onPosShortcut as EventListener);
+    return () => {
+      window.removeEventListener('gs-pos-shortcut', onPosShortcut as EventListener);
+    };
+  }, [open, submitting, items, handleSale, handleRemoveClick, handleUpdateQuantity]);
+
   // ── Responsive ──
   const isMobile = useMediaQuery('(max-width: 768px)');
 
@@ -612,6 +660,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                 }}
                 barcodeError={barcodeError}
                 onScan={handleBarcodeScan}
+                inputId="sale-barcode-input"
               />
 
               {/* ── Agregar producto manual ── */}

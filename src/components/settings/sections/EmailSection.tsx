@@ -226,7 +226,7 @@ export function EmailSection({
                           value={config.emailFromName || ''}
                           onChange={(v) => updateField('emailFromName', v)}
                           autoComplete="off"
-                          placeholder={config.storeName || 'Mi Abarrotes'}
+                          placeholder={config.storeName || 'Mi Tienda'}
                           helpText="Nombre que aparece en la bandeja."
                         />
                       </FormLayout.Group>
@@ -650,7 +650,7 @@ export function EmailSection({
                   value={config.emailSignature || ''}
                   onChange={(v) => updateField('emailSignature', v)}
                   autoComplete="off"
-                  placeholder="Atentamente, El equipo de Mi Abarrotes"
+                  placeholder="Atentamente, El equipo de Mi Tienda"
                   helpText="Se muestra antes del pie en correos transaccionales."
                   multiline={2}
                 />
@@ -684,7 +684,7 @@ export function EmailSection({
                       />
                     )}
                     <p style={{ margin: 0, color: '#ffffff', fontSize: 16, fontWeight: 600 }}>
-                      {config.emailFromName || config.storeName || 'Mi Abarrotes'}
+                      {config.emailFromName || config.storeName || 'Mi Tienda'}
                     </p>
                   </div>
                   {/* Subject preview */}

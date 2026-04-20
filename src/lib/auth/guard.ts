@@ -57,7 +57,10 @@ async function extractToken(): Promise<string | null> {
  * If requireAuth() is called multiple times in one request, only one DB query runs.
  */
 const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
-  const decodedToken = await adminAuth.verifyIdToken(token, true);
+  // No revocation check — the DB `status !== 'activo'` check below already blocks
+  // disabled accounts, and the revocation-check network call to Google is a common
+  // source of transient failures (timeouts, DNS, firewall).
+  const decodedToken = await adminAuth.verifyIdToken(token);
   const uid = decodedToken.uid;
   const email = decodedToken.email || '';
 
@@ -121,10 +124,20 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
 
     // Log full detail internally — expose uniform message to client
     const message = error instanceof Error ? error.message : 'Unknown';
-    logger.warn('Auth verification failed', { action: 'requireAuth', error: message });
+    const code = (error as { code?: string }).code ?? '';
+    logger.warn('Auth verification failed', {
+      action: 'requireAuth',
+      error: message,
+      code,
+    });
 
-    // Uniform error: don't leak whether token was expired, revoked, or invalid
-    const isExpiredOrRevoked = message.includes('auth/id-token-expired') || message.includes('auth/id-token-revoked');
+    // Classify using Firebase error code first, fallback to message matching
+    const isExpiredOrRevoked =
+      code === 'auth/id-token-expired' ||
+      code === 'auth/id-token-revoked' ||
+      message.includes('auth/id-token-expired') ||
+      message.includes('auth/id-token-revoked');
+
     throw new AuthError(
       isExpiredOrRevoked
         ? 'Tu sesión ha expirado. Inicia sesión de nuevo.'

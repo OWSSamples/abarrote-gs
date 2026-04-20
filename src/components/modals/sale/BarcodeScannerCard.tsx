@@ -10,6 +10,7 @@ export interface BarcodeScannerCardProps {
   onBarcodeInputChange: (value: string) => void;
   barcodeError: string;
   onScan: (code: string) => void;
+  inputId?: string;
 }
 
 export function BarcodeScannerCard({
@@ -17,6 +18,7 @@ export function BarcodeScannerCard({
   onBarcodeInputChange,
   barcodeError,
   onScan,
+  inputId,
 }: BarcodeScannerCardProps) {
   const [cameraOpen, setCameraOpen] = useState(false);
 
@@ -35,6 +37,7 @@ export function BarcodeScannerCard({
         }}
       >
         <TextField
+          id={inputId}
           label="Escanear"
           labelHidden
           value={barcodeInput}

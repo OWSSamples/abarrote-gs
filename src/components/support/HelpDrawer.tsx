@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import Image from 'next/image';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   BlockStack,
   InlineStack,
@@ -8,7 +9,6 @@ import {
   Card,
   Button,
   TextField,
-  Divider,
   Box,
   Badge,
   Banner,
@@ -16,6 +16,7 @@ import {
   Popover,
   ActionList,
   Icon,
+  UnstyledButton,
 } from '@shopify/polaris';
 import {
   ChatIcon,
@@ -23,15 +24,32 @@ import {
   EmailIcon,
   ExternalIcon,
   RefreshIcon,
-  DeleteIcon,
-  ArrowRightIcon,
   SearchIcon,
   ChevronDownIcon,
+  ChevronUpIcon,
   XSmallIcon,
   PlusIcon,
   MaximizeIcon,
-  ViewIcon,
+  EditIcon,
+  ClipboardIcon,
+  CheckSmallIcon,
+  ThumbsUpIcon,
+  ThumbsDownIcon,
+  StatusActiveIcon,
+  MicrophoneIcon,
+  ArrowDownIcon,
+  ReplayIcon,
+  StopCircleIcon,
+  ExportIcon,
+  PersonIcon,
+  AttachmentIcon,
+  TargetIcon,
+  ToggleOffIcon,
+  ToggleOnIcon,
+  SidekickIcon,
 } from '@shopify/polaris-icons';
+import { GlassCard } from 'react-premium-glass';
+import { useRouter } from 'next/navigation';
 import { useDashboardStore } from '@/store/dashboardStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -41,6 +59,16 @@ interface ChatMsg {
   role: 'user' | 'assistant';
   content: string;
   error?: boolean;
+  timestamp: number;
+  suggestions?: string[];
+  attachments?: ChatAttachment[];
+}
+
+interface ChatAttachment {
+  id: string;
+  file: File;
+  previewUrl: string | null;
+  type: 'image' | 'document';
 }
 
 type PanelView = 'chat' | 'faq' | 'contact' | 'shortcuts';
@@ -92,7 +120,7 @@ const SHORTCUTS = [
   { keys: ['-'], action: 'Reducir cantidad seleccionada', section: 'POS' },
 ];
 
-const QUICK_PROMPTS = [
+const _QUICK_PROMPTS = [
   '¿Cómo hago un corte de caja?',
   'No puedo conectar la impresora',
   '¿Cómo configuro MercadoPago?',
@@ -101,6 +129,24 @@ const QUICK_PROMPTS = [
   '¿Cómo exporto mis reportes?',
 ];
 
+// ── Context sections ───────────────────────────────────────────────────────
+
+const CONTEXT_SECTIONS = [
+  { id: 'general', label: 'General', prompt: '' },
+  { id: 'pos', label: 'Punto de Venta', prompt: 'El usuario necesita ayuda con el módulo de Punto de Venta (ventas, cobros, tickets, devoluciones).' },
+  { id: 'inventory', label: 'Inventario', prompt: 'El usuario necesita ayuda con el módulo de Inventario (productos, stock, categorías, proveedores, mermas).' },
+  { id: 'caja', label: 'Caja', prompt: 'El usuario necesita ayuda con el módulo de Caja (cortes, turnos, gastos, diferencias de efectivo).' },
+  { id: 'clients', label: 'Clientes', prompt: 'El usuario necesita ayuda con el módulo de Clientes (perfiles, fiado, puntos de lealtad, historial).' },
+  { id: 'payments', label: 'Pagos', prompt: 'El usuario necesita ayuda con métodos de pago integrados (MercadoPago, Stripe, Conekta, Clip, SPEI).' },
+  { id: 'reports', label: 'Reportes', prompt: 'El usuario necesita ayuda con reportes y analytics (dashboard, exportaciones, KPIs).' },
+  { id: 'config', label: 'Configuración', prompt: 'El usuario necesita ayuda con la configuración del sistema (tienda, tickets, hardware, notificaciones, IA).' },
+  { id: 'hardware', label: 'Hardware', prompt: 'El usuario necesita ayuda con hardware (impresora térmica, cajón de dinero, báscula, escáner).' },
+] as const;
+
+const ALLOWED_FILE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_FILES = 3;
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function getGreeting(): string {
@@ -108,6 +154,112 @@ function getGreeting(): string {
   if (h < 12) return 'Buenos días';
   if (h < 18) return 'Buenas tardes';
   return 'Buenas noches';
+}
+
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Renders basic markdown: **bold**, `code`, - lists, numbered lists */
+function renderMarkdown(text: string): React.ReactNode[] {
+  const lines = text.split('\n');
+  const nodes: React.ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Bullet list
+    if (/^[-•]\s/.test(line)) {
+      nodes.push(
+        <div key={i} style={{ display: 'flex', gap: '6px', paddingLeft: '4px' }}>
+          <span style={{ color: 'var(--p-color-text-subdued)', flexShrink: 0 }}>•</span>
+          <span>{renderInlineMarkdown(line.replace(/^[-•]\s/, ''))}</span>
+        </div>
+      );
+      continue;
+    }
+
+    // Numbered list
+    const numMatch = line.match(/^(\d+)[.)]\s/);
+    if (numMatch) {
+      nodes.push(
+        <div key={i} style={{ display: 'flex', gap: '6px', paddingLeft: '4px' }}>
+          <span style={{ color: 'var(--p-color-text-subdued)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{numMatch[1]}.</span>
+          <span>{renderInlineMarkdown(line.replace(/^\d+[.)]\s/, ''))}</span>
+        </div>
+      );
+      continue;
+    }
+
+    // Regular line
+    if (line.trim() === '') {
+      nodes.push(<div key={i} style={{ height: '8px' }} />);
+    } else {
+      nodes.push(<div key={i}>{renderInlineMarkdown(line)}</div>);
+    }
+  }
+  return nodes;
+}
+
+function renderInlineMarkdown(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  // Match **bold**, `code`
+  const regex = /(\*\*(.+?)\*\*|`([^`]+)`)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    if (match[2]) {
+      parts.push(<strong key={match.index}>{match[2]}</strong>);
+    } else if (match[3]) {
+      parts.push(
+        <code key={match.index} style={{
+          backgroundColor: 'var(--p-color-bg-surface-secondary)',
+          padding: '1px 5px',
+          borderRadius: '4px',
+          fontSize: '13px',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        }}>
+          {match[3]}
+        </code>
+      );
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
+}
+
+/** Contextual follow-up suggestions based on last bot message */
+function getSuggestions(lastBotMsg: string): string[] {
+  const lower = lastBotMsg.toLowerCase();
+  if (lower.includes('venta') || lower.includes('cobrar') || lower.includes('ticket')) {
+    return ['¿Cómo aplico un descuento?', '¿Cómo reimprimo un ticket?'];
+  }
+  if (lower.includes('inventario') || lower.includes('producto') || lower.includes('stock')) {
+    return ['¿Cómo recibo mercancía?', '¿Cómo ajusto el stock?'];
+  }
+  if (lower.includes('pago') || lower.includes('mercadopago') || lower.includes('stripe') || lower.includes('tarjeta')) {
+    return ['¿Cómo configuro otro método?', '¿Cómo verifico una transacción?'];
+  }
+  if (lower.includes('corte') || lower.includes('caja') || lower.includes('efectivo')) {
+    return ['¿Cómo registro un gasto?', '¿Cómo veo el historial de cortes?'];
+  }
+  if (lower.includes('impresora') || lower.includes('imprimir') || lower.includes('hardware')) {
+    return ['¿Cómo cambio el tamaño del papel?', '¿Qué impresoras son compatibles?'];
+  }
+  if (lower.includes('offline') || lower.includes('sincroniz') || lower.includes('conexión')) {
+    return ['¿Qué funciona sin internet?', '¿Cómo fuerzo la sincronización?'];
+  }
+  return [];
 }
 
 const NAV_LABELS: Record<PanelView, string> = {
@@ -127,19 +279,39 @@ interface HelpDrawerProps {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
+  const router = useRouter();
   const aiEnabled = useDashboardStore((s) => s.storeConfig.aiEnabled);
 
   // Panel navigation
   const [currentView, setCurrentView] = useState<PanelView>('chat');
   const [navOpen, setNavOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
+  const [isChatMemoryOn, setIsChatMemoryOn] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = localStorage.getItem('gs_chat_memory');
+    return stored !== null ? stored === '1' : true;
+  });
 
   // AI Chat
-  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = localStorage.getItem('gs_chat_history');
+      if (stored) return JSON.parse(stored) as ChatMsg[];
+    } catch { /* corrupted — start fresh */ }
+    return [];
+  });
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [lastFailedMsg, setLastFailedMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [contextSection, setContextSection] = useState<string>('general');
 
   // FAQ
   const [faqSearch, setFaqSearch] = useState('');
@@ -160,6 +332,13 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatMessages, chatLoading]);
+
+  // Persist chat messages when memory is on
+  useEffect(() => {
+    if (isChatMemoryOn && chatMessages.length > 0) {
+      localStorage.setItem('gs_chat_history', JSON.stringify(chatMessages.slice(-50)));
+    }
+  }, [chatMessages, isChatMemoryOn]);
 
   const handleClose = useCallback(() => {
     setNavOpen(false);
@@ -184,12 +363,105 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
 
   useEffect(() => {
     if (!open) return;
+
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target.isContentEditable
+      );
+    };
+
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose();
+      if (e.key === 'Escape') {
+        handleClose();
+        return;
+      }
+
+      if (e.key === '?' && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        setCurrentView('shortcuts');
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        const searchInput = document.querySelector<HTMLInputElement>('.ctb-search-native');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+        setCurrentView('chat');
+        return;
+      }
+
+      if (e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'd') {
+          e.preventDefault();
+          router.push('/dashboard');
+          handleClose();
+          return;
+        }
+        if (key === 'v') {
+          e.preventDefault();
+          router.push('/dashboard/sales');
+          handleClose();
+          return;
+        }
+        if (key === 'i') {
+          e.preventDefault();
+          router.push('/dashboard/products/inventory');
+          handleClose();
+          return;
+        }
+        if (key === 'c') {
+          e.preventDefault();
+          router.push('/dashboard/sales/corte');
+          handleClose();
+          return;
+        }
+        if (key === 'r') {
+          e.preventDefault();
+          router.push('/dashboard/analytics/reports');
+          handleClose();
+          return;
+        }
+      }
+
+      if (!isTypingTarget(e.target)) {
+        if (e.key === 'F2') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('gs-pos-shortcut', { detail: { action: 'manual-search' } }));
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('gs-pos-shortcut', { detail: { action: 'checkout' } }));
+          return;
+        }
+        if (e.key === 'Delete') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('gs-pos-shortcut', { detail: { action: 'remove-item' } }));
+          return;
+        }
+        if (e.key === '+' || (e.key === '=' && e.shiftKey) || e.key === 'Add') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('gs-pos-shortcut', { detail: { action: 'inc-qty' } }));
+          return;
+        }
+        if (e.key === '-' || e.key === 'Subtract') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('gs-pos-shortcut', { detail: { action: 'dec-qty' } }));
+        }
+      }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, handleClose]);
+  }, [open, handleClose, router]);
 
   // ── Chat logic ─────────────────────────────────────────────────────────
 
@@ -203,27 +475,58 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         .slice(-14)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const userMsg: ChatMsg = { id: `u-${Date.now()}`, role: 'user', content: trimmed };
+      // Build context-enriched message
+      const sectionCtx = CONTEXT_SECTIONS.find((s) => s.id === contextSection);
+      const contextPrefix = sectionCtx && sectionCtx.id !== 'general' ? `[Contexto: ${sectionCtx.label}] ` : '';
+
+      // Capture and clear pending attachments
+      const currentAttachments = [...pendingAttachments];
+      const attachmentNote = currentAttachments.length > 0
+        ? ` [${currentAttachments.length} archivo(s) adjunto(s): ${currentAttachments.map((a) => a.file.name).join(', ')}]`
+        : '';
+
+      const enrichedMessage = `${contextPrefix}${trimmed}${attachmentNote}`;
+
+      const userMsg: ChatMsg = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: trimmed,
+        timestamp: Date.now(),
+        attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+      };
       setChatMessages((prev) => [...prev, userMsg]);
       setChatInput('');
+      setPendingAttachments([]);
       setChatLoading(true);
       setChatError(null);
+      setLastFailedMsg(null);
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
       try {
         const res = await fetch('/api/support-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmed, history }),
+          body: JSON.stringify({ message: enrichedMessage, history }),
+          signal: controller.signal,
         });
         const data = (await res.json()) as { reply?: string; error?: string };
         if (!res.ok || !data.reply) throw new Error(data.error ?? 'Error al conectar con el asistente');
+
+        const suggestions = getSuggestions(data.reply);
         setChatMessages((prev) => [
           ...prev,
-          { id: `a-${Date.now()}`, role: 'assistant', content: data.reply! },
+          { id: `a-${Date.now()}`, role: 'assistant', content: data.reply!, timestamp: Date.now(), suggestions },
         ]);
       } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          // User cancelled — do nothing
+          return;
+        }
         const msg = err instanceof Error ? err.message : 'Error desconocido';
         setChatError(msg);
+        setLastFailedMsg(trimmed);
         setChatMessages((prev) => [
           ...prev,
           {
@@ -231,14 +534,40 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
             role: 'assistant',
             content: 'No pude generar una respuesta. Verifica que la IA esté configurada e intenta de nuevo.',
             error: true,
+            timestamp: Date.now(),
           },
         ]);
       } finally {
+        abortControllerRef.current = null;
         setChatLoading(false);
       }
     },
-    [chatLoading, chatMessages],
+    [chatLoading, chatMessages, contextSection, pendingAttachments],
   );
+
+  const handleStopGeneration = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setChatLoading(false);
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    if (lastFailedMsg) {
+      // Remove the last error message
+      setChatMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.error) return prev.slice(0, -1);
+        return prev;
+      });
+      // Also remove the last user message that failed
+      setChatMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'user') return prev.slice(0, -1);
+        return prev;
+      });
+      void sendMessage(lastFailedMsg);
+    }
+  }, [lastFailedMsg, sendMessage]);
 
   const handleChatKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -250,10 +579,132 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
     [chatInput, sendMessage],
   );
 
-  const clearChat = useCallback(() => {
+  const handleNewChat = useCallback(() => {
     setChatMessages([]);
+    setChatInput('');
     setChatError(null);
+    setCopiedMsgId(null);
+    setLastFailedMsg(null);
+    setPendingAttachments((prev) => {
+      prev.forEach((a) => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+      return [];
+    });
+    setContextSection('general');
+    localStorage.removeItem('gs_chat_history');
   }, []);
+
+  const toggleChatMemory = useCallback(() => {
+    setIsChatMemoryOn((prev) => {
+      const next = !prev;
+      localStorage.setItem('gs_chat_memory', next ? '1' : '0');
+      if (!next) {
+        localStorage.removeItem('gs_chat_history');
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCopyMessage = useCallback((msgId: string, content: string) => {
+    void navigator.clipboard.writeText(content).then(() => {
+      setCopiedMsgId(msgId);
+      setTimeout(() => setCopiedMsgId((prev) => (prev === msgId ? null : prev)), 2000);
+    });
+  }, []);
+
+  const handleExportChat = useCallback(() => {
+    if (chatMessages.length === 0) return;
+    const lines = chatMessages.map((m) => {
+      const time = formatTimestamp(m.timestamp);
+      const role = m.role === 'user' ? 'Tú' : 'Kiosko';
+      return `[${time}] ${role}: ${m.content}`;
+    });
+    const text = `Conversación de Soporte — Kiosko\nExportada: ${new Date().toLocaleString('es-MX')}\n${'─'.repeat(48)}\n\n${lines.join('\n\n')}`;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-soporte-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [chatMessages]);
+
+  const handleEscalateToHuman = useCallback(() => {
+    // Pre-fill contact form with conversation context
+    const summary = chatMessages
+      .slice(-6)
+      .map((m) => `${m.role === 'user' ? 'Yo' : 'Bot'}: ${m.content}`)
+      .join('\n');
+    setContactSubject('Escalación desde chat IA');
+    setContactMessage(`Contexto de la conversación:\n\n${summary}\n\n---\nDescripción del problema:\n`);
+    setCurrentView('contact');
+  }, [chatMessages]);
+
+  // Scroll detection for "scroll to bottom" button
+  const handleChatScroll = useCallback(() => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollBtn(distFromBottom > 80);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
+  }, []);
+
+  // ── File attachment logic ──────────────────────────────────────────────
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newAttachments: ChatAttachment[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!ALLOWED_FILE_TYPES.includes(file.type)) continue;
+      if (file.size > MAX_FILE_SIZE) continue;
+      const isImage = file.type.startsWith('image/');
+      newAttachments.push({
+        id: `att-${Date.now()}-${i}`,
+        file,
+        previewUrl: isImage ? URL.createObjectURL(file) : null,
+        type: isImage ? 'image' : 'document',
+      });
+    }
+
+    setPendingAttachments((prev) => {
+      const combined = [...prev, ...newAttachments].slice(0, MAX_FILES);
+      return combined;
+    });
+
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setPendingAttachments((prev) => {
+      const removed = prev.find((a) => a.id === id);
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((a) => a.id !== id);
+    });
+  }, []);
+
+  // Cleanup preview URLs on unmount
+  useEffect(() => {
+    return () => {
+      pendingAttachments.forEach((a) => {
+        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Context section helper ─────────────────────────────────────────────
+
+  const activeSection = CONTEXT_SECTIONS.find((s) => s.id === contextSection);
+  const contextLabel = activeSection && activeSection.id !== 'general' ? activeSection.label : null;
+
+  // Message count for header
+  const messageCount = useMemo(() => chatMessages.filter((m) => !m.error).length, [chatMessages]);
 
   // ── FAQ logic ──────────────────────────────────────────────────────────
 
@@ -283,30 +734,20 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
 
   const headerLabel =
     currentView === 'chat' && chatMessages.length > 0
-      ? 'Conversación'
+      ? (() => {
+          const first = chatMessages.find((m) => m.role === 'user');
+          if (!first) return 'Conversación';
+          return first.content.length > 28 ? first.content.slice(0, 28) + '…' : first.content;
+        })()
       : NAV_LABELS[currentView];
 
   // ── Styles ─────────────────────────────────────────────────────────────
-
-  const filterChipStyle = (active: boolean): React.CSSProperties => ({
-    padding: '4px 12px',
-    borderRadius: '999px',
-    border: `1px solid ${active ? 'var(--p-color-border-interactive)' : 'var(--p-color-border)'}`,
-    backgroundColor: active ? 'var(--p-color-bg-fill-selected)' : 'transparent',
-    color: active ? 'var(--p-color-text-interactive)' : 'var(--p-color-text-secondary)',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: active ? '600' : '400',
-    transition: 'all 150ms ease',
-    outline: 'none',
-    whiteSpace: 'nowrap' as const,
-  });
 
   const kbdStyle: React.CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
     padding: '2px 7px',
-    borderRadius: '4px',
+    borderRadius: 'var(--p-border-radius-100)',
     border: '1px solid var(--p-color-border)',
     backgroundColor: 'var(--p-color-bg-surface)',
     fontSize: '12px',
@@ -325,9 +766,22 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
     justifyContent: 'center',
     width: '32px',
     height: '32px',
-    borderRadius: '8px',
+    borderRadius: 'var(--p-border-radius-200)',
     color: 'var(--p-color-icon)',
     transition: 'background-color 100ms ease',
+  };
+
+  const msgActionBtnStyle: React.CSSProperties = {
+    all: 'unset',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '28px',
+    height: '28px',
+    borderRadius: 'var(--p-border-radius-150)',
+    color: 'var(--p-color-icon-secondary)',
+    transition: 'background-color 100ms ease, color 100ms ease',
   };
 
   // ── Early return ───────────────────────────────────────────────────────
@@ -345,22 +799,118 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         justifyContent: 'center',
         height: '100%',
         padding: '48px 32px',
-        background: 'linear-gradient(180deg, #F5F0FF 0%, #FDF4FF 20%, transparent 55%)',
       }}
     >
       {/* Mascot */}
       <div style={{ marginBottom: '20px', animation: 'gs-mascot-float 3s ease-in-out infinite' }}>
-        <svg width="72" height="72" viewBox="0 0 300 300" fill="none">
-          <circle cx="151" cy="151" r="116" fill="#fff" />
-          <clipPath id="gs-mask-a"><path d="M0 0h300v300H0z" /></clipPath>
-          <g clipPath="url(#gs-mask-a)">
-            <path fill="#1C004F" d="M132.47 216.57s-4.69-1.24-3.45 4c5.25 8 13.11 12.84 22.36 12.84 9.38 0 18.5-6.62 21.25-14.5 0-2.75-1.24-4.13-4-2.75-1.24 1.38-6.62 6.62-17.25 6.62s-9.66-.96-18.9-6.2Z" />
-            <path fill="#1C004F" d="M32.15 184.42s-.83-74.1 6.62-94.11h-.13c2.62-10.5 9.24-11.87 10.62-11.87 0-4-1.38-13.25 10.77-17.25 7.86-2.62 11.86-6.63 13.24-10.63 5.25-3.86 7.87-6.62 17.12-5.24C175.53 3.64 236.1 69.05 236.1 69.05c12 0 18.5 8 22.64 17.25 0 0 8.14 17.4 9.1 26.64 3.04 24.97 2.76 75.34 2.76 75.34 0 56.86-48.99 71.63-64.86 75.5-16 5.37-84.87 5.37-105.98 1.37-19.32-2.9-67.62-18.63-67.62-80.73Zm169.6 62.24s50.37-8 50.37-59.62c0 0 2.07-44.7-2.76-51.75 0 0 0-5.24-5.24-8-5.25-2.48-12.28-29.12-15.87-31.74-8.83-5.93-83.9-.83-90.25 1.93-6.35 2.48-16.29 22.08-17.12 20.7-.69-1.52-3.86-6.62-6.62-16-14.63-1.25-29.12 26.49-29.12 26.49-2.62 0-8-13.25-8-31.74 0 0-16.01-.28-21.12 22.63-4.83 21.12-5.38 64.86-5.38 64.86 0 47.2 33.12 59.34 53.13 63.62 18.5 2.62 89.98 1.24 97.98-1.38" />
-            <path fill="#7126FF" d="M238.87 132.67c-17.25-1.24-31.46 3.73-43.74 12-27.88 18.77-50.92 28.02-87.5 0-11.72-9.1-26.5-13.24-43.74-13.24-53.39.57-40.39 88.07 4 87.35 28.02 7.73 55.62-19.87 55.62-19.87 23.32-25.8 43.05-13.1 52.99 0a75.9 75.9 0 0 0 58.23 19.87c42.92-3.59 57.41-82.94 4.14-86.1Z" />
-            <path fill="#fff" d="M236.36 195.15a26.5 26.5 0 1 1-37.48-37.46 26.5 26.5 0 0 1 37.48 37.46m-132.48 0A26.5 26.5 0 1 1 66.4 157.7a26.5 26.5 0 0 1 37.48 37.46Z" />
-            <path fill="#1C004F" d="M202.72 167.03c1.65-3.45 8.14-9.93 19.6-7.86-11.05 10.2 3.17 20 11.86 12 2.76 10.63-4.28 21.67-18.77 21.67-3.72 0-20.97-6.35-12.7-25.8Zm-133.17 0c1.65-3.45 8.14-9.93 19.6-7.86-11.05 10.2 3.17 20 11.86 12 2.76 10.63-4.28 21.67-18.77 21.67-3.72 0-20.97-6.35-12.7-25.8Z" />
-            <clipPath id="gs-mask-b"><path d="M285.82 122.5H16V144h269.82z" /></clipPath>
-            <g clipPath="url(#gs-mask-b)"><clipPath id="gs-mask-c"><path d="M0 0h300v300H0z" /></clipPath><g fill="#7126FF" clipPath="url(#gs-mask-c)"><path d="M83.4 143.56a33 33 0 1 1 0 66 33 33 0 0 1 0-66m136 0a33 33 0 1 1 0 66 33 33 0 0 1 0-66" /></g></g>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" fill="none" width="120" height="120" aria-hidden="true">
+          <defs>
+            <radialGradient id="mBg" cx="50%" cy="45%" r="52%">
+              <stop offset="0%" stopColor="#EDE0FF"/><stop offset="100%" stopColor="#C4A8FF"/>
+            </radialGradient>
+            <radialGradient id="mBody" cx="40%" cy="30%" r="65%">
+              <stop offset="0%" stopColor="#9B59FF"/><stop offset="100%" stopColor="#5B0FCC"/>
+            </radialGradient>
+            <radialGradient id="mHead" cx="38%" cy="30%" r="62%">
+              <stop offset="0%" stopColor="#B57BFF"/><stop offset="100%" stopColor="#6E20E0"/>
+            </radialGradient>
+            <radialGradient id="mEye" cx="50%" cy="40%" r="55%">
+              <stop offset="0%" stopColor="#FFFFFF"/><stop offset="70%" stopColor="#E8D5FF"/><stop offset="100%" stopColor="#C0A0FF"/>
+            </radialGradient>
+            <radialGradient id="mPupil" cx="35%" cy="30%" r="60%">
+              <stop offset="0%" stopColor="#9B59FF"/><stop offset="100%" stopColor="#1C004F"/>
+            </radialGradient>
+            <linearGradient id="mAntenna" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#FF6BF8"/><stop offset="100%" stopColor="#7126FF"/>
+            </linearGradient>
+            <filter id="mGlow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <filter id="mShadow"><feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="#5B0FCC" floodOpacity="0.3"/></filter>
+          </defs>
+
+          {/* Background */}
+          <circle cx="150" cy="150" r="138" fill="url(#mBg)"/>
+          <circle cx="150" cy="150" r="138" fill="none" stroke="#D0AAFF" strokeWidth="2"/>
+
+          {/* Sparkles — rotating */}
+          <g style={{ transformOrigin: '150px 150px', animation: 'gs-mascot-sparkle-rotate 20s linear infinite' }}>
+            <path d="M62 72 l4 10 l10 4 l-10 4 l-4 10 l-4-10 l-10-4 l10-4z" fill="#FF6BF8" opacity="0.85"/>
+            <path d="M232 58 l3 7 l7 3 l-7 3 l-3 7 l-3-7 l-7-3 l7-3z" fill="#6BFFF8" opacity="0.85"/>
+            <circle cx="240" cy="100" r="5" fill="#FFD700" opacity="0.8"/>
+            <circle cx="55" cy="118" r="4" fill="#FF9BF8" opacity="0.75"/>
+            <circle cx="88" cy="50" r="3" fill="#9BFFF8" opacity="0.75"/>
+            <circle cx="214" cy="82" r="3.5" fill="#FFB347" opacity="0.75"/>
+          </g>
+
+          {/* Body — breathing */}
+          <g filter="url(#mShadow)" style={{ transformOrigin: '150px 228px', animation: 'gs-mascot-breathe 4s ease-in-out infinite' }}>
+            <rect x="96" y="192" width="108" height="72" rx="20" fill="url(#mBody)"/>
+            <rect x="106" y="198" width="88" height="8" rx="4" fill="white" opacity="0.15"/>
+            <rect x="114" y="214" width="72" height="36" rx="10" fill="#1C004F" opacity="0.35"/>
+            {/* LEDs — staggered pulse */}
+            <circle cx="132" cy="226" r="5" fill="#6BFFF8" style={{ animation: 'gs-mascot-led-pulse 1.5s ease-in-out 0s infinite' }}/>
+            <circle cx="150" cy="226" r="5" fill="#FF9BF8" style={{ animation: 'gs-mascot-led-pulse 1.5s ease-in-out 0.3s infinite' }}/>
+            <circle cx="168" cy="226" r="5" fill="#FFD700" style={{ animation: 'gs-mascot-led-pulse 1.5s ease-in-out 0.6s infinite' }}/>
+            <rect x="126" y="238" width="48" height="6" rx="3" fill="white" opacity="0.8"/>
+          </g>
+
+          {/* Arms — left waves */}
+          <g style={{ transformOrigin: '74px 198px', animation: 'gs-mascot-wave 6s ease-in-out infinite' }}>
+            <rect x="58" y="198" width="32" height="52" rx="16" fill="url(#mBody)"/>
+            <circle cx="74" cy="258" r="13" fill="url(#mHead)"/>
+          </g>
+          {/* Right arm */}
+          <rect x="210" y="198" width="32" height="52" rx="16" fill="url(#mBody)"/>
+          <circle cx="226" cy="258" r="13" fill="url(#mHead)"/>
+
+          <rect x="132" y="178" width="36" height="20" rx="8" fill="url(#mBody)"/>
+
+          {/* Head */}
+          <g filter="url(#mShadow)">
+            <rect x="76" y="86" width="148" height="102" rx="34" fill="url(#mHead)"/>
+            <ellipse cx="128" cy="100" rx="38" ry="12" fill="white" opacity="0.15"/>
+          </g>
+
+          {/* Antenna — swaying */}
+          <g style={{ transformOrigin: '150px 92px', animation: 'gs-mascot-antenna-sway 3s ease-in-out infinite' }}>
+            <rect x="146" y="56" width="8" height="36" rx="4" fill="url(#mAntenna)"/>
+            <circle cx="150" cy="50" r="11" fill="url(#mAntenna)" filter="url(#mGlow)"/>
+            <circle cx="150" cy="50" r="7" fill="#FFD700" style={{ animation: 'gs-mascot-antenna-glow 2s ease-in-out infinite' }}/>
+            <circle cx="147" cy="47" r="2.5" fill="white" opacity="0.8"/>
+          </g>
+
+          {/* Left eye — blinking */}
+          <ellipse cx="118" cy="136" rx="22" ry="24" fill="url(#mEye)"/>
+          <g style={{ transformOrigin: '118px 136px', animation: 'gs-mascot-blink 5s ease-in-out infinite' }}>
+            <ellipse cx="118" cy="138" rx="15" ry="17" fill="url(#mPupil)"/>
+            <g style={{ animation: 'gs-mascot-pupil-look 8s ease-in-out infinite' }}>
+              <circle cx="118" cy="136" r="8" fill="#7126FF"/>
+              <circle cx="118" cy="134" r="4" fill="white"/>
+            </g>
+          </g>
+          <circle cx="112" cy="130" r="3" fill="white" opacity="0.9"/>
+
+          {/* Right eye — blinking */}
+          <ellipse cx="182" cy="136" rx="22" ry="24" fill="url(#mEye)"/>
+          <g style={{ transformOrigin: '182px 136px', animation: 'gs-mascot-blink 5s ease-in-out 0.1s infinite' }}>
+            <ellipse cx="182" cy="138" rx="15" ry="17" fill="url(#mPupil)"/>
+            <g style={{ animation: 'gs-mascot-pupil-look 8s ease-in-out infinite' }}>
+              <circle cx="182" cy="136" r="8" fill="#7126FF"/>
+              <circle cx="182" cy="134" r="4" fill="white"/>
+            </g>
+          </g>
+          <circle cx="176" cy="130" r="3" fill="white" opacity="0.9"/>
+
+          {/* Mouth — smiling */}
+          <path d="M124 166 Q150 180 176 166" stroke="white" strokeWidth="5" strokeLinecap="round" fill="none" opacity="0.9"/>
+          <path d="M124 166 Q150 180 176 166" stroke="#FF9BF8" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.5"/>
+
+          {/* Chat bubble */}
+          <g style={{ animation: 'gs-mascot-chat-pop 3s ease-in-out infinite' }}>
+            <rect x="210" y="58" width="58" height="36" rx="12" fill="#FF6BF8"/>
+            <path d="M218 94 l-8 10 l18 0z" fill="#FF6BF8"/>
+            <circle cx="228" cy="76" r="4" fill="white"/>
+            <circle cx="240" cy="76" r="4" fill="white"/>
+            <circle cx="252" cy="76" r="4" fill="white"/>
           </g>
         </svg>
       </div>
@@ -374,43 +924,38 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         </Text>
       </div>
 
-      {/* Suggested prompts */}
-      <BlockStack gap="200">
-        {QUICK_PROMPTS.slice(0, 3).map((prompt) => (
-          <button
+      {/* Suggestion chips */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginTop: '4px' }}>
+        {['¿Qué hay de nuevo?', '¿Cómo registro una venta?', '¿Cómo hago un corte?'].map((prompt) => (
+          <GlassCard
             key={prompt}
-            type="button"
-            onClick={() => aiEnabled && void sendMessage(prompt)}
-            disabled={!aiEnabled || chatLoading}
+            enableWebGL={false}
             style={{
-              all: 'unset',
-              cursor: aiEnabled ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
-              borderRadius: '999px',
-              border: '1px solid var(--p-color-border)',
-              backgroundColor: 'var(--p-color-bg-surface)',
-              fontSize: '13px',
-              color: 'var(--p-color-text-secondary)',
-              opacity: aiEnabled ? 1 : 0.5,
-              transition: 'all 150ms ease',
+              borderRadius: '20px',
+              padding: '0',
+              cursor: aiEnabled && !chatLoading ? 'pointer' : 'default',
+              opacity: aiEnabled && !chatLoading ? 1 : 0.5,
             }}
           >
-            <span
+            <button
+              onClick={() => aiEnabled && !chatLoading && void sendMessage(prompt)}
+              disabled={!aiEnabled || chatLoading}
               style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                backgroundColor: '#00D4AA',
-                flexShrink: 0,
+                all: 'unset',
+                display: 'block',
+                padding: '7px 14px',
+                fontSize: '13px',
+                fontWeight: '500',
+                color: 'var(--p-color-text)',
+                whiteSpace: 'nowrap',
+                cursor: 'inherit',
               }}
-            />
-            {prompt}
-          </button>
+            >
+              {prompt}
+            </button>
+          </GlassCard>
         ))}
-      </BlockStack>
+      </div>
 
       {!aiEnabled && (
         <div style={{ marginTop: '24px', maxWidth: '320px' }}>
@@ -429,121 +974,190 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
   // ── Chat view: messages ────────────────────────────────────────────────
 
   const renderChatMessages = () => (
-    <div
-      ref={chatContainerRef}
-      style={{
-        height: '100%',
-        overflowY: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
-        padding: '12px 16px',
-      }}
-    >
-      {chatError && (
-        <div style={{ marginBottom: '8px' }}>
-          <Banner tone="critical" onDismiss={() => setChatError(null)}>
-            {chatError}
-          </Banner>
-        </div>
-      )}
+    <div style={{ height: '100%', position: 'relative' }}>
+      <div
+        ref={chatContainerRef}
+        onScroll={handleChatScroll}
+        style={{
+          height: '100%',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          padding: '20px 16px 24px',
+        }}
+      >
+        {chatError && (
+          <div style={{ marginBottom: '8px' }}>
+            <Banner tone="critical" onDismiss={() => setChatError(null)}>
+              {chatError}
+            </Banner>
+          </div>
+        )}
 
-      {chatMessages.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-          <Button
-            variant="plain"
-            size="slim"
-            icon={DeleteIcon}
-            onClick={clearChat}
-            accessibilityLabel="Limpiar conversación"
-          >
-            Limpiar
-          </Button>
-        </div>
-      )}
-
-      {chatMessages.map((msg, idx) => {
-        const isUser = msg.role === 'user';
-        const isLast = idx === chatMessages.length - 1;
-        const prevRole = idx > 0 ? chatMessages[idx - 1].role : null;
-        const showLabel = !prevRole || prevRole !== msg.role;
-        return (
-          <div
-            key={msg.id}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: isUser ? 'flex-end' : 'flex-start',
-              marginTop: showLabel && idx > 0 ? '14px' : '2px',
-              animation: isLast ? 'gs-msg-in 200ms ease-out' : 'none',
-            }}
-          >
-            {showLabel && (
-              <div style={{ marginBottom: '4px', paddingInline: '4px' }}>
-                <Text as="span" variant="bodySm" tone="subdued">
-                  {isUser ? 'Tú' : 'Asistente'}
-                </Text>
-              </div>
-            )}
+        {chatMessages.map((msg, idx) => {
+          const isUser = msg.role === 'user';
+          const isLast = idx === chatMessages.length - 1;
+          return (
             <div
+              key={msg.id}
               style={{
-                maxWidth: '85%',
-                padding: '10px 14px',
-                borderRadius: isUser ? '14px 14px 3px 14px' : '3px 14px 14px 14px',
-                backgroundColor: isUser
-                  ? '#7126FF'
-                  : msg.error
-                    ? 'var(--p-color-bg-fill-caution-secondary)'
-                    : 'var(--p-color-bg-surface-secondary)',
-                border: isUser ? 'none' : '1px solid var(--p-color-border)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: isUser ? 'flex-end' : 'flex-start',
+                animation: 'gs-msg-in 200ms ease-out',
               }}
             >
-              <span
-                style={{
-                  fontSize: '13px',
-                  lineHeight: '1.55',
-                  color: isUser
-                    ? '#ffffff'
-                    : msg.error
-                      ? 'var(--p-color-text-caution)'
-                      : 'var(--p-color-text)',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  display: 'block',
-                }}
-              >
-                {msg.content}
-              </span>
+              {isUser ? (
+                <div
+                  style={{
+                    maxWidth: '85%',
+                    padding: '10px 14px',
+                    borderRadius: 'var(--p-border-radius-full)',
+                    backgroundColor: '#f3f3f1',
+                    fontSize: '14px',
+                    lineHeight: '1.5',
+                    color: 'var(--p-color-text)',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {/* Inline attachment thumbnails */}
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                      {msg.attachments.map((att) => (
+                        <div
+                          key={att.id}
+                          style={{
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            border: '1px solid var(--p-color-border)',
+                            backgroundColor: 'var(--p-color-bg-surface)',
+                          }}
+                        >
+                          {att.previewUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={att.previewUrl}
+                              alt={att.file.name}
+                              style={{ width: '80px', height: '60px', objectFit: 'cover', display: 'block' }}
+                            />
+                          ) : (
+                            <div style={{
+                              width: '80px',
+                              height: '60px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '2px',
+                              padding: '4px',
+                            }}>
+                              <Icon source={AttachmentIcon} tone="subdued" />
+                              <span style={{ fontSize: '9px', color: 'var(--p-color-text-subdued)', textAlign: 'center', lineHeight: '1.1', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '72px', whiteSpace: 'nowrap' }}>
+                                {att.file.name}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {msg.content}
+                </div>
+              ) : (
+                <div style={{ maxWidth: '100%' }}>
+                  <div
+                    style={{
+                      fontSize: '14px',
+                      lineHeight: '1.6',
+                      color: msg.error ? 'var(--p-color-text-caution)' : 'var(--p-color-text)',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {msg.error ? msg.content : renderMarkdown(msg.content)}
+                  </div>
+                  {!msg.error && (
+                    <InlineStack gap="050" blockAlign="center">
+                      <UnstyledButton onClick={() => handleCopyMessage(msg.id, msg.content)} accessibilityLabel="Copiar">
+                        <div style={msgActionBtnStyle} title="Copiar">
+                          <Icon source={copiedMsgId === msg.id ? CheckSmallIcon : ClipboardIcon} tone="subdued" />
+                        </div>
+                      </UnstyledButton>
+                      <UnstyledButton accessibilityLabel="Me gusta">
+                        <div style={msgActionBtnStyle} title="Me gusta">
+                          <Icon source={ThumbsUpIcon} tone="subdued" />
+                        </div>
+                      </UnstyledButton>
+                      <UnstyledButton accessibilityLabel="No me gusta">
+                        <div style={msgActionBtnStyle} title="No me gusta">
+                          <Icon source={ThumbsDownIcon} tone="subdued" />
+                        </div>
+                      </UnstyledButton>
+                    </InlineStack>
+                  )}
+                  {/* Retry button on error */}
+                  {msg.error && lastFailedMsg && (
+                    <div style={{ marginTop: '8px' }}>
+                      <Button variant="plain" size="slim" icon={ReplayIcon} onClick={handleRetry}>
+                        Reintentar
+                      </Button>
+                    </div>
+                  )}
+                  {/* Contextual follow-up suggestions */}
+                  {!msg.error && isLast && msg.suggestions && msg.suggestions.length > 0 && !chatLoading && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
+                      {msg.suggestions.map((suggestion) => (
+                        <GlassCard
+                          key={suggestion}
+                          enableWebGL={false}
+                          style={{
+                            borderRadius: '16px',
+                            padding: '0',
+                            cursor: chatLoading ? 'default' : 'pointer',
+                          }}
+                        >
+                          <button
+                            onClick={() => !chatLoading && void sendMessage(suggestion)}
+                            disabled={chatLoading}
+                            style={{
+                              all: 'unset',
+                              display: 'block',
+                              padding: '5px 12px',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              color: 'var(--p-color-text)',
+                              whiteSpace: 'nowrap',
+                              cursor: 'inherit',
+                            }}
+                          >
+                            {suggestion}
+                          </button>
+                        </GlassCard>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Timestamp */}
+              <div style={{ marginTop: '3px', paddingInline: '4px' }}>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {formatTimestamp(msg.timestamp)}
+                </Text>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
 
-      {/* Thinking indicator */}
-      {chatLoading && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            marginTop: chatMessages.length > 0 ? '14px' : '2px',
-            animation: 'gs-msg-in 200ms ease-out',
-          }}
-        >
-          <div style={{ marginBottom: '4px', paddingInline: '4px' }}>
-            <Text as="span" variant="bodySm" tone="subdued">
-              Asistente
-            </Text>
-          </div>
+        {/* Thinking indicator with stop button */}
+        {chatLoading && (
           <div
             style={{
-              padding: '12px 16px',
-              borderRadius: '3px 14px 14px 14px',
-              backgroundColor: 'var(--p-color-bg-surface-secondary)',
-              border: '1px solid var(--p-color-border)',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
+              animation: 'gs-msg-in 200ms ease-out',
             }}
           >
             <InlineStack gap="100" blockAlign="center">
@@ -562,9 +1176,38 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
               ))}
             </InlineStack>
             <Text as="span" variant="bodySm" tone="subdued">
-              Analizando...
+              Pensando...
             </Text>
+            <UnstyledButton onClick={handleStopGeneration} accessibilityLabel="Detener generación">
+              <div style={{ ...msgActionBtnStyle, color: 'var(--p-color-icon-caution)' }} title="Detener">
+                <Icon source={StopCircleIcon} tone="caution" />
+              </div>
+            </UnstyledButton>
           </div>
+        )}
+
+        {/* Escalate to human — shown after 4+ messages */}
+        {chatMessages.length >= 4 && !chatLoading && (
+          <div style={{ textAlign: 'center', paddingTop: '4px' }}>
+            <Button variant="plain" size="slim" icon={PersonIcon} onClick={handleEscalateToHuman}>
+              Hablar con un agente humano
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Scroll to bottom button */}
+      {showScrollBtn && (
+        <div style={{
+          position: 'absolute',
+          bottom: '12px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 10,
+        }}>
+          <Button variant="secondary" size="slim" icon={ArrowDownIcon} onClick={scrollToBottom}>
+            Nuevo mensaje
+          </Button>
         </div>
       )}
     </div>
@@ -579,160 +1222,176 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
 
   // ── FAQ view ───────────────────────────────────────────────────────────
 
-  const renderFAQView = () => (
-    <Box padding="400">
-      <BlockStack gap="300">
-        <TextField
-          label="Buscar"
-          labelHidden
-          value={faqSearch}
-          onChange={setFaqSearch}
-          placeholder="Buscar en la base de conocimiento..."
-          autoComplete="off"
-          prefix={<Icon source={SearchIcon} tone="base" />}
-          clearButton
-          onClearButtonClick={() => setFaqSearch('')}
-        />
+  const renderFAQView = () => {
+    const activeCategoryLabel = FAQ_CATEGORIES.find((cat) => cat.id === faqCategory)?.label ?? 'Todas';
 
-        <div style={{ overflowX: 'auto', paddingBottom: '4px' }}>
-          <InlineStack gap="200">
-            {FAQ_CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => {
-                  setFaqCategory(cat.id);
-                  setExpandedFaq(null);
-                }}
-                style={filterChipStyle(faqCategory === cat.id)}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </InlineStack>
-        </div>
-
-        <InlineStack align="space-between" blockAlign="center">
-          <Text as="p" variant="bodySm" tone="subdued">
-            {filteredFaq.length} {filteredFaq.length === 1 ? 'resultado' : 'resultados'}
-          </Text>
-          {(faqSearch || faqCategory !== 'all') && (
-            <Button
-              variant="plain"
-              size="slim"
-              icon={RefreshIcon}
-              onClick={() => {
-                setFaqSearch('');
-                setFaqCategory('all');
-                setExpandedFaq(null);
-              }}
-            >
-              Limpiar filtros
-            </Button>
-          )}
-        </InlineStack>
-
-        {filteredFaq.length === 0 ? (
-          <Box padding="600">
+    return (
+      <Box padding="300">
+        <BlockStack gap="300">
+          <Card>
             <BlockStack gap="200">
-              <Text as="p" alignment="center" tone="subdued">
-                No se encontraron artículos para &ldquo;{faqSearch}&rdquo;
-              </Text>
-              <Text as="p" alignment="center" variant="bodySm" tone="subdued">
-                Prueba con otras palabras o usa el Asistente IA para una respuesta personalizada.
-              </Text>
-            </BlockStack>
-          </Box>
-        ) : (
-          <Card padding="0">
-            {filteredFaq.map((faq, idx) => {
-              const isExpanded = expandedFaq === idx;
-              const catLabel = FAQ_CATEGORIES.find((c) => c.id === faq.category)?.label;
-              return (
-                <Box
-                  key={idx}
-                  borderBlockStartWidth={idx > 0 ? '025' : '0'}
-                  borderColor="border"
-                  padding="300"
-                >
-                  <BlockStack gap="200">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedFaq(isExpanded ? null : idx)}
-                      style={{
-                        all: 'unset',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '10px',
-                        width: '100%',
+              <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                <BlockStack gap="050">
+                  <Text as="h3" variant="headingMd">
+                    Base de Conocimiento
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Guías rápidas para resolver dudas del sistema.
+                  </Text>
+                </BlockStack>
+                <Badge tone="info" size="medium">
+                  {`${filteredFaq.length} ${filteredFaq.length === 1 ? 'artículo' : 'artículos'}`}
+                </Badge>
+              </InlineStack>
+
+              <TextField
+                label="Buscar"
+                labelHidden
+                value={faqSearch}
+                onChange={setFaqSearch}
+                placeholder="Buscar en la base de conocimiento..."
+                autoComplete="off"
+                prefix={<Icon source={SearchIcon} tone="base" />}
+                clearButton
+                onClearButtonClick={() => setFaqSearch('')}
+              />
+
+              <div style={{ overflowX: 'auto', paddingBottom: '2px' }}>
+                <InlineStack gap="200" wrap={false}>
+                  {FAQ_CATEGORIES.map((cat) => (
+                    <Button
+                      key={cat.id}
+                      variant={faqCategory === cat.id ? 'primary' : 'secondary'}
+                      size="slim"
+                      onClick={() => {
+                        setFaqCategory(cat.id);
+                        setExpandedFaq(null);
                       }}
                     >
-                      <span
-                        style={{
-                          marginTop: '2px',
-                          fontSize: '14px',
-                          color: 'var(--p-color-icon)',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {isExpanded ? '▾' : '▸'}
-                      </span>
-                      <BlockStack gap="100">
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">
-                          {faq.question}
-                        </Text>
-                        {catLabel && (
-                          <span>
-                            <Badge tone="info" size="small">
-                              {catLabel}
-                            </Badge>
-                          </span>
-                        )}
-                      </BlockStack>
-                    </button>
-                    <Collapsible
-                      id={`faq-${idx}`}
-                      open={isExpanded}
-                      transition={{ duration: '150ms', timingFunction: 'ease' }}
-                    >
-                      <Box paddingBlockStart="100" paddingInlineStart="600">
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          <span style={{ whiteSpace: 'pre-line' }}>{faq.answer}</span>
-                        </Text>
-                      </Box>
-                    </Collapsible>
-                  </BlockStack>
-                </Box>
-              );
-            })}
-          </Card>
-        )}
+                      {cat.label}
+                    </Button>
+                  ))}
+                </InlineStack>
+              </div>
 
-        <Divider />
-        <InlineStack gap="300" wrap>
-          <Button
-            url="https://github.com/OWSSamples/abarrote-gs/wiki"
-            external
-            icon={ExternalIcon}
-            size="slim"
-            variant="plain"
-          >
-            Documentación completa
-          </Button>
-          <Button
-            url="https://github.com/OWSSamples/abarrote-gs/issues/new"
-            external
-            icon={ExternalIcon}
-            size="slim"
-            variant="plain"
-          >
-            Reportar un problema
-          </Button>
-        </InlineStack>
-      </BlockStack>
-    </Box>
-  );
+              <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Categoría activa: {activeCategoryLabel}
+                </Text>
+                {(faqSearch || faqCategory !== 'all') && (
+                  <Button
+                    variant="plain"
+                    size="slim"
+                    icon={RefreshIcon}
+                    onClick={() => {
+                      setFaqSearch('');
+                      setFaqCategory('all');
+                      setExpandedFaq(null);
+                    }}
+                  >
+                    Limpiar filtros
+                  </Button>
+                )}
+              </InlineStack>
+            </BlockStack>
+          </Card>
+
+          {filteredFaq.length === 0 ? (
+            <Card>
+              <Box padding="500">
+                <BlockStack gap="150" inlineAlign="center">
+                  <Text as="p" alignment="center" tone="subdued">
+                    No encontramos artículos para “{faqSearch}”.
+                  </Text>
+                  <Text as="p" alignment="center" variant="bodySm" tone="subdued">
+                    Prueba con otra palabra o cambia la categoría.
+                  </Text>
+                </BlockStack>
+              </Box>
+            </Card>
+          ) : (
+            <Card padding="0">
+              {filteredFaq.map((faq, idx) => {
+                const isExpanded = expandedFaq === idx;
+                const catLabel = FAQ_CATEGORIES.find((c) => c.id === faq.category)?.label;
+                return (
+                  <Box
+                    key={faq.question}
+                    borderBlockStartWidth={idx > 0 ? '025' : '0'}
+                    borderColor="border"
+                    padding="300"
+                  >
+                    <BlockStack gap="200">
+                      <UnstyledButton onClick={() => setExpandedFaq(isExpanded ? null : idx)}>
+                        <InlineStack align="space-between" blockAlign="start" wrap={false}>
+                          <BlockStack gap="100">
+                            {catLabel && (
+                              <span>
+                                <Badge tone="attention" size="small">
+                                  {catLabel}
+                                </Badge>
+                              </span>
+                            )}
+                            <Text as="span" variant="bodyMd" fontWeight="semibold">
+                              {faq.question}
+                            </Text>
+                          </BlockStack>
+                          <Box>
+                            <Icon source={isExpanded ? ChevronUpIcon : ChevronDownIcon} tone="subdued" />
+                          </Box>
+                        </InlineStack>
+                      </UnstyledButton>
+
+                      <Collapsible
+                        id={`faq-${idx}`}
+                        open={isExpanded}
+                        transition={{ duration: '180ms', timingFunction: 'ease' }}
+                      >
+                        <Box
+                          padding="300"
+                          borderRadius="200"
+                          background="bg-surface-secondary"
+                          borderColor="border"
+                          borderWidth="025"
+                        >
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            <span style={{ whiteSpace: 'pre-line', lineHeight: 1.5 }}>{faq.answer}</span>
+                          </Text>
+                        </Box>
+                      </Collapsible>
+                    </BlockStack>
+                  </Box>
+                );
+              })}
+            </Card>
+          )}
+
+          <Card>
+            <InlineStack gap="300" wrap>
+              <Button
+                url="https://github.com/OWSSamples/kiosko/wiki"
+                external
+                icon={ExternalIcon}
+                size="slim"
+                variant="secondary"
+              >
+                Ver documentación
+              </Button>
+              <Button
+                url="https://github.com/OWSSamples/kiosko/issues/new"
+                external
+                icon={ExternalIcon}
+                size="slim"
+                variant="plain"
+              >
+                Reportar problema
+              </Button>
+            </InlineStack>
+          </Card>
+        </BlockStack>
+      </Box>
+    );
+  };
 
   // ── Contact view ───────────────────────────────────────────────────────
 
@@ -743,27 +1402,11 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
           <Card>
             <Box padding="600">
               <BlockStack gap="300" inlineAlign="center">
-                <div
-                  style={{
-                    color: 'var(--p-color-icon-success)',
-                    display: 'flex',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <svg
-                    width="48"
-                    height="48"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22 4 12 14.01 9 11.01" />
-                  </svg>
-                </div>
+                <Box>
+                  <div style={{ color: 'var(--p-color-icon-success)' }}>
+                    <Icon source={StatusActiveIcon} tone="success" />
+                  </div>
+                </Box>
                 <Text as="h2" variant="headingMd" alignment="center">
                   Solicitud registrada
                 </Text>
@@ -873,7 +1516,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
                 {
                   icon: EmailIcon,
                   label: 'Correo electrónico',
-                  value: 'soporte@abarrote.gs',
+                  value: 'soporte@kiosko.app',
                   detail: 'Respuesta en 24 h hábiles',
                 },
                 {
@@ -885,7 +1528,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
                 {
                   icon: QuestionCircleIcon,
                   label: 'Portal de soporte',
-                  value: 'help.abarrote.gs',
+                  value: 'help.kiosko.app',
                   detail: 'Documentación y tickets',
                 },
               ].map(({ icon: ChannelIcon, label, value, detail }) => (
@@ -895,7 +1538,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
                       style={{
                         width: '36px',
                         height: '36px',
-                        borderRadius: '8px',
+                        borderRadius: 'var(--p-border-radius-200)',
                         backgroundColor: 'var(--p-color-bg-surface-secondary)',
                         border: '1px solid var(--p-color-border)',
                         display: 'flex',
@@ -1006,6 +1649,113 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-8px); }
         }
+        @keyframes gs-mascot-breathe {
+          0%, 100% { transform: scaleY(1); }
+          50% { transform: scaleY(1.03); }
+        }
+        @keyframes gs-mascot-blink {
+          0%, 42%, 48%, 100% { transform: scaleY(1); }
+          45% { transform: scaleY(0.08); }
+        }
+        @keyframes gs-mascot-antenna-sway {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(8deg); }
+          75% { transform: rotate(-8deg); }
+        }
+        @keyframes gs-mascot-antenna-glow {
+          0%, 100% { opacity: 0.6; r: 7; }
+          50% { opacity: 1; r: 10; }
+        }
+        @keyframes gs-mascot-pupil-look {
+          0%, 35%, 65%, 100% { transform: translateX(0); }
+          40%, 60% { transform: translateX(3px); }
+        }
+        @keyframes gs-mascot-wave {
+          0%, 30%, 100% { transform: rotate(0deg); }
+          5% { transform: rotate(-12deg); }
+          10% { transform: rotate(14deg); }
+          15% { transform: rotate(-10deg); }
+          20% { transform: rotate(8deg); }
+          25% { transform: rotate(0deg); }
+        }
+        @keyframes gs-mascot-chat-pop {
+          0%, 100% { transform: scale(1) translateY(0); opacity: 1; }
+          50% { transform: scale(1.08) translateY(-2px); opacity: 0.9; }
+        }
+        @keyframes gs-mascot-led-pulse {
+          0%, 100% { opacity: 0.7; }
+          50% { opacity: 1; }
+        }
+        @keyframes gs-mascot-mouth-talk {
+          0%, 70%, 100% { d: path("M124 166 Q150 180 176 166"); }
+          10% { d: path("M124 166 Q150 188 176 166"); }
+          20% { d: path("M124 166 Q150 175 176 166"); }
+          35% { d: path("M124 166 Q150 190 176 166"); }
+          50% { d: path("M124 166 Q150 172 176 166"); }
+          60% { d: path("M124 166 Q150 185 176 166"); }
+        }
+        @keyframes gs-mascot-sparkle-rotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .gs-chat-input-wrapper {
+          flex: 1;
+          background: #f3f4f6;
+          border: 1px solid rgba(28, 31, 35, 0.14);
+          border-radius: 18px;
+          padding: 0;
+          transition: background-color 160ms ease;
+        }
+        .gs-chat-input-wrapper .Polaris-TextField {
+          --pc-text-field-background: transparent;
+          --pc-text-field-background-hover: transparent;
+          --pc-text-field-background-active: transparent;
+          --pc-text-field-border: transparent;
+          --pc-text-field-border-hover: transparent;
+          --pc-text-field-border-focus: transparent;
+          --pc-text-field-shadow: none;
+          --pc-text-field-backdrop-filter: none;
+          background: transparent !important;
+          border: none !important;
+          border-radius: 18px;
+          box-shadow: none !important;
+          min-height: 38px;
+          padding-inline: 0;
+          transition: background-color 160ms ease, box-shadow 160ms ease;
+        }
+        .gs-chat-input-wrapper .Polaris-TextField::before,
+        .gs-chat-input-wrapper .Polaris-TextField::after,
+        .gs-chat-input-wrapper .Polaris-TextField__Backdrop {
+          border: none !important;
+          box-shadow: none !important;
+          background: transparent !important;
+        }
+        .gs-chat-input-wrapper .Polaris-TextField:hover {
+          background: transparent !important;
+        }
+        .gs-chat-input-wrapper .Polaris-TextField:focus-within {
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+        .gs-chat-input-wrapper:focus-within {
+          background: #eef0f3;
+        }
+        .gs-chat-input-wrapper .Polaris-TextField__Input {
+          border: none !important;
+          background: transparent !important;
+          padding: 8px 16px !important;
+          font-size: 14px !important;
+          line-height: 1.4 !important;
+          color: var(--p-color-text) !important;
+          box-shadow: none !important;
+        }
+        .gs-chat-input-wrapper .Polaris-TextField__Input::placeholder {
+          color: var(--p-color-text-subdued) !important;
+        }
+        .gs-chat-input-wrapper .Polaris-TextField__Input:focus {
+          outline: none !important;
+          box-shadow: none !important;
+        }
       `}</style>
 
       {/* Backdrop */}
@@ -1032,16 +1782,20 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         aria-label="Centro de Ayuda"
         style={{
           position: 'fixed',
-          top: '52px',
-          right: 0,
-          bottom: 0,
+          top: '60px',
+          right: '8px',
+          bottom: '8px',
           width: '420px',
-          maxWidth: '100vw',
+          maxWidth: 'calc(100vw - 16px)',
           backgroundColor: 'var(--p-color-bg-surface)',
-          boxShadow: '-8px 0 32px rgba(0, 0, 0, 0.08), -2px 0 8px rgba(0, 0, 0, 0.04)',
+          borderRadius: '16px',
+          boxShadow: isChatMemoryOn
+            ? '-10px 0 36px rgba(113, 38, 255, 0.12), -2px 0 10px rgba(0, 0, 0, 0.04)'
+            : '-8px 0 26px rgba(0, 0, 0, 0.08), -2px 0 8px rgba(0, 0, 0, 0.04)',
           zIndex: 520,
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'hidden',
           animation: 'gs-panel-in 280ms cubic-bezier(0.32, 0.72, 0, 1)',
         }}
       >
@@ -1053,30 +1807,30 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
             justifyContent: 'space-between',
             padding: '0 8px 0 16px',
             height: '52px',
-            borderBottom: '1px solid var(--p-color-border)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.18)',
             flexShrink: 0,
+            background: 'rgba(255, 255, 255, 0.62)',
+            backdropFilter: 'blur(24px) saturate(1.8)',
+            WebkitBackdropFilter: 'blur(24px) saturate(1.8)',
           }}
         >
           {/* Navigation dropdown */}
           <Popover
             active={navOpen}
             activator={
-              <button
-                type="button"
-                onClick={() => setNavOpen((v) => !v)}
-                style={{
-                  all: 'unset',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
-                <Text as="span" variant="bodyMd" fontWeight="semibold">
-                  {headerLabel}
-                </Text>
-                <Icon source={ChevronDownIcon} tone="base" />
-              </button>
+              <UnstyledButton onClick={() => setNavOpen((v) => !v)}>
+                <InlineStack gap="100" blockAlign="center">
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">
+                    {headerLabel}
+                  </Text>
+                  {currentView === 'chat' && messageCount > 0 && (
+                    <Badge tone="info" size="small">
+                      {String(messageCount)}
+                    </Badge>
+                  )}
+                  <Icon source={ChevronDownIcon} tone="base" />
+                </InlineStack>
+              </UnstyledButton>
             }
             onClose={() => setNavOpen(false)}
             preferredAlignment="left"
@@ -1085,7 +1839,7 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
               items={[
                 {
                   content: 'Iniciar conversación',
-                  icon: ChatIcon,
+                  icon: SidekickIcon,
                   active: currentView === 'chat',
                   onAction: () => setCurrentView('chat'),
                 },
@@ -1114,20 +1868,50 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
 
           {/* Header action icons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-            <button type="button" style={headerIconBtnStyle} aria-label="Vista previa">
-              <Icon source={ViewIcon} tone="subdued" />
-            </button>
-            <button type="button" style={headerIconBtnStyle} aria-label="Expandir">
-              <Icon source={MaximizeIcon} tone="subdued" />
-            </button>
-            <button
-              type="button"
-              style={headerIconBtnStyle}
-              aria-label="Cerrar"
-              onClick={handleClose}
-            >
-              <Icon source={XSmallIcon} tone="subdued" />
-            </button>
+            {currentView === 'chat' && chatMessages.length > 0 ? (
+              <>
+                <UnstyledButton
+                  accessibilityLabel="Exportar conversación"
+                  onClick={handleExportChat}
+                >
+                  <div style={headerIconBtnStyle} title="Exportar conversación">
+                    <Icon source={ExportIcon} tone="subdued" />
+                  </div>
+                </UnstyledButton>
+                <UnstyledButton
+                  accessibilityLabel="Nueva conversación"
+                  onClick={handleNewChat}
+                >
+                  <div style={headerIconBtnStyle} title="Nueva conversación">
+                    <Icon source={EditIcon} tone="subdued" />
+                  </div>
+                </UnstyledButton>
+              </>
+            ) : (
+              <UnstyledButton
+                accessibilityLabel={isChatMemoryOn ? 'Desactivar memoria del chat' : 'Activar memoria del chat'}
+                onClick={toggleChatMemory}
+              >
+                <div
+                  style={headerIconBtnStyle}
+                  title={isChatMemoryOn ? 'Memoria del chat activada' : 'Memoria del chat desactivada'}
+                  role="switch"
+                  aria-checked={isChatMemoryOn}
+                >
+                  <Icon source={isChatMemoryOn ? ToggleOnIcon : ToggleOffIcon} tone={isChatMemoryOn ? 'success' : 'subdued'} />
+                </div>
+              </UnstyledButton>
+            )}
+            <UnstyledButton accessibilityLabel="Expandir">
+              <div style={headerIconBtnStyle}>
+                <Icon source={MaximizeIcon} tone="subdued" />
+              </div>
+            </UnstyledButton>
+            <UnstyledButton accessibilityLabel="Cerrar" onClick={handleClose}>
+              <div style={headerIconBtnStyle}>
+                <Icon source={XSmallIcon} tone="subdued" />
+              </div>
+            </UnstyledButton>
           </div>
         </div>
 
@@ -1143,60 +1927,178 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
         {currentView === 'chat' && (
           <div
             style={{
-              borderTop: '1px solid var(--p-color-border)',
-              padding: '12px 16px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.18)',
+              padding: '0',
               flexShrink: 0,
-              backgroundColor: 'var(--p-color-bg-surface)',
+              background: 'rgba(255, 255, 255, 0.62)',
+              backdropFilter: 'blur(24px) saturate(1.8)',
+              WebkitBackdropFilter: 'blur(24px) saturate(1.8)',
             }}
           >
-            <div onKeyDown={handleChatKeyDown}>
-              <InlineStack gap="200" blockAlign="center">
-                <div style={{ flex: 1 }}>
-                  <TextField
-                    label="Mensaje"
-                    labelHidden
-                    value={chatInput}
-                    onChange={setChatInput}
-                    placeholder="Pregunta lo que sea..."
-                    autoComplete="off"
-                    disabled={!aiEnabled || chatLoading}
-                  />
-                </div>
-                <Popover
-                  active={promptsOpen}
-                  activator={
-                    <Button
-                      variant="tertiary"
-                      icon={PlusIcon}
-                      onClick={() => setPromptsOpen((v) => !v)}
-                      accessibilityLabel="Sugerencias rápidas"
-                      disabled={!aiEnabled}
-                    />
-                  }
-                  onClose={() => setPromptsOpen(false)}
-                  preferredPosition="above"
-                  preferredAlignment="right"
-                >
-                  <ActionList
-                    items={QUICK_PROMPTS.map((prompt) => ({
-                      content: prompt,
-                      onAction: () => {
-                        setPromptsOpen(false);
-                        void sendMessage(prompt);
-                      },
-                    }))}
-                    onActionAnyItem={() => setPromptsOpen(false)}
-                  />
-                </Popover>
-                <Button
-                  variant="primary"
-                  icon={ArrowRightIcon}
-                  onClick={() => void sendMessage(chatInput)}
-                  loading={chatLoading}
-                  disabled={!aiEnabled || !chatInput.trim()}
-                  accessibilityLabel="Enviar mensaje"
+            {/* Active context badge + pending attachments */}
+            {(contextLabel || pendingAttachments.length > 0) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', padding: '8px 16px 0' }}>
+                {contextLabel && (
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 8px 2px 10px',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    backgroundColor: '#f3e8ff',
+                    color: '#7126FF',
+                    border: '1px solid rgba(113, 38, 255, 0.2)',
+                  }}>
+                    <Icon source={TargetIcon} tone="magic" />
+                    {contextLabel}
+                    <UnstyledButton onClick={() => setContextSection('general')} accessibilityLabel="Limpiar contexto">
+                      <div style={{ display: 'flex', cursor: 'pointer', marginLeft: '2px' }}>
+                        <Icon source={XSmallIcon} tone="subdued" />
+                      </div>
+                    </UnstyledButton>
+                  </div>
+                )}
+                {pendingAttachments.map((att) => (
+                  <div
+                    key={att.id}
+                    style={{
+                      position: 'relative',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid var(--p-color-border)',
+                      backgroundColor: 'var(--p-color-bg-surface-secondary)',
+                    }}
+                  >
+                    {att.previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={att.previewUrl}
+                        alt={att.file.name}
+                        style={{ width: '56px', height: '42px', objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: '56px',
+                        height: '42px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '1px',
+                        padding: '4px',
+                      }}>
+                        <Icon source={AttachmentIcon} tone="subdued" />
+                        <span style={{ fontSize: '7px', color: 'var(--p-color-text-subdued)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '48px', whiteSpace: 'nowrap' }}>
+                          {att.file.name}
+                        </span>
+                      </div>
+                    )}
+                    <UnstyledButton onClick={() => removeAttachment(att.id)} accessibilityLabel={`Quitar ${att.file.name}`}>
+                      <div style={{
+                        position: 'absolute',
+                        top: '2px',
+                        right: '2px',
+                        width: '14px',
+                        height: '14px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(0,0,0,0.6)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}>
+                        <svg width="7" height="7" viewBox="0 0 8 8" fill="none">
+                          <path d="M1 1L7 7M7 1L1 7" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                        </svg>
+                      </div>
+                    </UnstyledButton>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ALLOWED_FILE_TYPES.join(',')}
+              multiple
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+              aria-hidden="true"
+            />
+
+            {/* Input row */}
+            <div
+              onKeyDown={handleChatKeyDown}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px' }}
+            >
+              {chatMessages.length > 0 && (
+                <Image
+                  src="/illustrations/support-sidekick-mascot.svg"
+                  alt=""
+                  width={28}
+                  height={28}
+                  style={{ flexShrink: 0 }}
                 />
-              </InlineStack>
+              )}
+              <div className="gs-chat-input-wrapper">
+                <TextField
+                  label="Mensaje"
+                  labelHidden
+                  value={chatInput}
+                  onChange={setChatInput}
+                  placeholder={contextLabel ? `Pregunta sobre ${contextLabel}...` : 'Pregunta lo que sea...'}
+                  autoComplete="off"
+                  disabled={!aiEnabled || chatLoading}
+                />
+              </div>
+              <Popover
+                active={promptsOpen}
+                activator={
+                  <UnstyledButton
+                    onClick={() => setPromptsOpen((v) => !v)}
+                    accessibilityLabel={promptsOpen ? 'Cerrar menú' : 'Más opciones'}
+                  >
+                    <div style={headerIconBtnStyle}>
+                      <Icon source={promptsOpen ? XSmallIcon : PlusIcon} tone="subdued" />
+                    </div>
+                  </UnstyledButton>
+                }
+                onClose={() => setPromptsOpen(false)}
+                preferredPosition="above"
+                preferredAlignment="right"
+              >
+                <ActionList
+                  items={[
+                    {
+                      content: 'Adjuntar archivo',
+                      helpText: pendingAttachments.length >= MAX_FILES ? `Máximo ${MAX_FILES}` : 'Imagen, PDF, CSV, Excel',
+                      icon: AttachmentIcon,
+                      disabled: pendingAttachments.length >= MAX_FILES,
+                      onAction: () => { setPromptsOpen(false); fileInputRef.current?.click(); },
+                    },
+                    ...CONTEXT_SECTIONS.filter((s) => s.id !== 'general').map((s) => ({
+                      content: s.label,
+                      icon: TargetIcon,
+                      active: contextSection === s.id,
+                      suffix: contextSection === s.id ? <Badge tone="success" size="small">Activo</Badge> : undefined,
+                      onAction: () => {
+                        setContextSection(contextSection === s.id ? 'general' : s.id);
+                        setPromptsOpen(false);
+                      },
+                    })),
+                  ]}
+                />
+              </Popover>
+              {/* Voice / AI call button */}
+              <UnstyledButton accessibilityLabel="Entrada de voz">
+                <div style={headerIconBtnStyle} title="Entrada de voz">
+                  <Icon source={MicrophoneIcon} tone="subdued" />
+                </div>
+              </UnstyledButton>
             </div>
           </div>
         )}
@@ -1206,7 +2108,9 @@ export function HelpDrawer({ open, onClose }: HelpDrawerProps) {
           style={{
             height: '2px',
             flexShrink: 0,
-            background: 'linear-gradient(90deg, #00D4AA, #00B8D4, #00D4AA)',
+            background: isChatMemoryOn
+              ? 'linear-gradient(90deg, #7126FF, #00B8D4, #00D4AA)'
+              : 'linear-gradient(90deg, #d4d4d8, #e4e4e7, #d4d4d8)',
           }}
         />
       </div>

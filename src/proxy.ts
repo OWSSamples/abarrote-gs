@@ -152,7 +152,7 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
 
   // Hide server technology fingerprint
   response.headers.delete('X-Powered-By');
-  response.headers.set('Server', 'abarrote');
+  response.headers.set('Server', 'kiosko');
 
   if (!isDev) {
     response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');

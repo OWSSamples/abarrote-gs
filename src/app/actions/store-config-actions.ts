@@ -20,6 +20,17 @@ import { emitDomainEvent } from '@/domain/events';
 
 /** All valid column keys derived from the Drizzle schema — single source of truth. */
 const ALL_DB_COLUMNS = new Set(Object.keys(getTableColumns(storeConfig)));
+const DB_COLUMN_NAME_TO_KEY = (() => {
+  const map = new Map<string, string>();
+  const columns = getTableColumns(storeConfig) as Record<string, { name?: string }>;
+  for (const [key, col] of Object.entries(columns)) {
+    const dbName = col?.name;
+    if (typeof dbName === 'string' && dbName.length > 0) {
+      map.set(dbName, key);
+    }
+  }
+  return map;
+})();
 
 function getErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== 'object') return undefined;
@@ -41,7 +52,17 @@ function isUndefinedColumnError(error: unknown): boolean {
   return text.includes('does not exist') || text.includes('undefined column');
 }
 
-/** Core columns present since the initial migration (safe fallback for un-migrated DBs). */
+function getMissingColumnName(error: unknown): string | undefined {
+  const text = getErrorText(error);
+  const quoted = text.match(/column\s+"([a-zA-Z0-9_]+)"\s+does not exist/);
+  if (quoted?.[1]) return quoted[1];
+  const unquoted = text.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/);
+  return unquoted?.[1];
+}
+
+/** Core columns present since the initial migration (safe fallback for un-migrated DBs).
+ * DO NOT add columns from later migrations here — this set must match the baseline DB.
+ * The auto-prune mechanism handles any remaining mismatches gracefully. */
 const CORE_DB_COLUMNS = new Set([
   'storeName',
   'legalName',
@@ -92,16 +113,6 @@ const CORE_DB_COLUMNS = new Set([
   'customerDisplayAccentColor',
   'customerDisplaySoundEnabled',
   'customerDisplayOrientation',
-  'customerDisplayMessageStyle',
-  'serviciosProvider',
-  'serviciosApiKey',
-  'serviciosApiSecret',
-  'serviciosSandbox',
-  // AI — added in migration 0026
-  'aiEnabled',
-  'aiProvider',
-  'aiApiKeyEnc',
-  'aiModel',
 ]);
 
 function parseTicketDesign(
@@ -156,6 +167,13 @@ function mapStoreConfigRow(row: any): StoreConfig {
     rfc: row.rfc,
     regimenFiscal: row.regimenFiscal,
     regimenDescription: row.regimenDescription,
+    cfdiPacProvider: row.cfdiPacProvider ?? DEFAULT_STORE_CONFIG.cfdiPacProvider,
+    cfdiPacEnvironment: row.cfdiPacEnvironment ?? DEFAULT_STORE_CONFIG.cfdiPacEnvironment,
+    cfdiPacAuthType: row.cfdiPacAuthType ?? DEFAULT_STORE_CONFIG.cfdiPacAuthType,
+    cfdiPacApiUrl: row.cfdiPacApiUrl ?? DEFAULT_STORE_CONFIG.cfdiPacApiUrl,
+    cfdiPacApiKey: row.cfdiPacApiKey ?? DEFAULT_STORE_CONFIG.cfdiPacApiKey,
+    cfdiPacApiSecret: row.cfdiPacApiSecret ?? DEFAULT_STORE_CONFIG.cfdiPacApiSecret,
+    cfdiPacCancelPath: row.cfdiPacCancelPath ?? DEFAULT_STORE_CONFIG.cfdiPacCancelPath,
     ivaRate: row.ivaRate,
     pricesIncludeIva: row.pricesIncludeIva ?? DEFAULT_STORE_CONFIG.pricesIncludeIva,
     currency: row.currency,
@@ -293,73 +311,47 @@ async function _fetchStoreConfig(): Promise<StoreConfig> {
   } catch (error) {
     if (!isUndefinedColumnError(error)) throw error;
 
-    // Fallback: select only core columns that are guaranteed to exist
-    const rows = await db
-      .select({
-        id: storeConfig.id,
-        storeName: storeConfig.storeName,
-        legalName: storeConfig.legalName,
-        address: storeConfig.address,
-        city: storeConfig.city,
-        postalCode: storeConfig.postalCode,
-        phone: storeConfig.phone,
-        rfc: storeConfig.rfc,
-        regimenFiscal: storeConfig.regimenFiscal,
-        regimenDescription: storeConfig.regimenDescription,
-        ivaRate: storeConfig.ivaRate,
-        pricesIncludeIva: storeConfig.pricesIncludeIva,
-        currency: storeConfig.currency,
-        lowStockThreshold: storeConfig.lowStockThreshold,
-        expirationWarningDays: storeConfig.expirationWarningDays,
-        printReceipts: storeConfig.printReceipts,
-        autoBackup: storeConfig.autoBackup,
-        ticketFooter: storeConfig.ticketFooter,
-        ticketServicePhone: storeConfig.ticketServicePhone,
-        ticketVigencia: storeConfig.ticketVigencia,
-        storeNumber: storeConfig.storeNumber,
-        ticketBarcodeFormat: storeConfig.ticketBarcodeFormat,
-        enableNotifications: storeConfig.enableNotifications,
-        telegramToken: storeConfig.telegramToken,
-        telegramChatId: storeConfig.telegramChatId,
-        printerIp: storeConfig.printerIp,
-        cashDrawerPort: storeConfig.cashDrawerPort,
-        scalePort: storeConfig.scalePort,
-        loyaltyEnabled: storeConfig.loyaltyEnabled,
-        pointsPerPeso: storeConfig.pointsPerPeso,
-        pointsValue: storeConfig.pointsValue,
-        logoUrl: storeConfig.logoUrl,
-        customerDisplayEnabled: storeConfig.customerDisplayEnabled,
-        customerDisplayWelcome: storeConfig.customerDisplayWelcome,
-        customerDisplayFarewell: storeConfig.customerDisplayFarewell,
-        customerDisplayPromoText: storeConfig.customerDisplayPromoText,
-        customerDisplayPromoImage: storeConfig.customerDisplayPromoImage,
-        customerDisplayIdleAnimation: storeConfig.customerDisplayIdleAnimation,
-        customerDisplayTransitionSpeed: storeConfig.customerDisplayTransitionSpeed,
-        customerDisplayPromoAnimation: storeConfig.customerDisplayPromoAnimation,
-        customerDisplayShowClock: storeConfig.customerDisplayShowClock,
-        customerDisplayTheme: storeConfig.customerDisplayTheme,
-        customerDisplayIdleCarousel: storeConfig.customerDisplayIdleCarousel,
-        customerDisplayCarouselInterval: storeConfig.customerDisplayCarouselInterval,
-        customerDisplayLogo: storeConfig.customerDisplayLogo,
-        customerDisplayFontScale: storeConfig.customerDisplayFontScale,
-        customerDisplayAutoReturnSec: storeConfig.customerDisplayAutoReturnSec,
-        customerDisplayAccentColor: storeConfig.customerDisplayAccentColor,
-        customerDisplaySoundEnabled: storeConfig.customerDisplaySoundEnabled,
-        customerDisplayOrientation: storeConfig.customerDisplayOrientation,
-        // AI — must be included in fallback to persist across reads
-        aiEnabled: storeConfig.aiEnabled,
-        aiProvider: storeConfig.aiProvider,
-        aiApiKeyEnc: storeConfig.aiApiKeyEnc,
-        aiModel: storeConfig.aiModel,
-      })
-      .from(storeConfig)
-      .limit(1);
+    // Fallback: progressively remove columns that don't exist in the DB.
+    // Start with CORE_DB_COLUMNS (no PAC, no email, no AI columns).
+    const allColumns = getTableColumns(storeConfig) as Record<string, unknown>;
+    const candidateKeys = [...CORE_DB_COLUMNS].filter((k) => k in allColumns);
+    let lastError: unknown = error;
 
-    if (rows.length === 0) {
-      await db.insert(storeConfig).values({ id: 'main' });
-      return DEFAULT_STORE_CONFIG;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const selectObj: Record<string, unknown> = {};
+        selectObj['id'] = storeConfig.id;
+        for (const key of candidateKeys) {
+          if (key in allColumns) {
+            selectObj[key] = (storeConfig as Record<string, unknown>)[key];
+          }
+        }
+        const rows = await db
+          .select(selectObj as Parameters<typeof db.select>[0])
+          .from(storeConfig)
+          .limit(1);
+
+        if (rows.length === 0) {
+          await db.insert(storeConfig).values({ id: 'main' });
+          return DEFAULT_STORE_CONFIG;
+        }
+        return mapStoreConfigRow(rows[0]);
+      } catch (retryError) {
+        lastError = retryError;
+        if (!isUndefinedColumnError(retryError)) throw retryError;
+        const missingCol = getMissingColumnName(retryError);
+        if (!missingCol) throw retryError;
+        // Map DB column name (snake_case) to JS key (camelCase)
+        const jsKey = DB_COLUMN_NAME_TO_KEY.get(missingCol);
+        if (jsKey) {
+          const idx = candidateKeys.indexOf(jsKey);
+          if (idx !== -1) candidateKeys.splice(idx, 1);
+          continue;
+        }
+        throw retryError;
+      }
     }
-    return mapStoreConfigRow(rows[0]);
+    throw lastError;
   }
 }
 
@@ -407,12 +399,31 @@ async function _saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig
     }
   };
 
+  const persistWithAutoPrune = async (dbValues: Record<string, unknown>) => {
+    const pruned = { ...dbValues };
+    // Hard cap prevents endless loop on unexpected errors.
+    for (let i = 0; i < 20; i++) {
+      try {
+        await persist(pruned);
+        return;
+      } catch (error) {
+        if (!isUndefinedColumnError(error)) throw error;
+        const missingDbColumn = getMissingColumnName(error);
+        if (!missingDbColumn) throw error;
+        const key = DB_COLUMN_NAME_TO_KEY.get(missingDbColumn);
+        if (!key || !(key in pruned)) throw error;
+        delete pruned[key];
+      }
+    }
+    throw new Error('No fue posible guardar configuración: demasiadas columnas faltantes en la base de datos.');
+  };
+
   try {
-    await persist(buildDbValues(ALL_DB_COLUMNS));
+    await persistWithAutoPrune(buildDbValues(ALL_DB_COLUMNS));
   } catch (error) {
     if (!isUndefinedColumnError(error)) throw error;
     // Fallback: only use core columns guaranteed to exist since initial migration
-    await persist(buildDbValues(CORE_DB_COLUMNS));
+    await persistWithAutoPrune(buildDbValues(CORE_DB_COLUMNS));
   }
 
   // Invalidate cached config so next read picks up changes

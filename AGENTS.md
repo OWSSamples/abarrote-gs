@@ -1,0 +1,1 @@
+Scan any new or modified code with `aikido_full_scan` before finalizing changes. This security check is required.

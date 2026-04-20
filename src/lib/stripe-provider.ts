@@ -99,7 +99,7 @@ export async function createStripeSPEICharge(params: {
       description: description || 'Venta POS',
       metadata: {
         sale_reference: saleReference,
-        source: 'abarrote-gs-pos',
+        source: 'kiosko-pos',
       },
     });
 
@@ -175,7 +175,7 @@ export async function createStripeOXXOCharge(params: {
       description: description || 'Venta POS',
       metadata: {
         sale_reference: saleReference,
-        source: 'abarrote-gs-pos',
+        source: 'kiosko-pos',
         customer_email: customerEmail,
       },
     });

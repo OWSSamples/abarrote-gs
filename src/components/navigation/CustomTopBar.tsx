@@ -17,7 +17,7 @@ import {
   CartIcon,
   AlertCircleIcon,
   XCircleIcon,
-  QuestionCircleIcon,
+  SidekickIcon,
 } from '@shopify/polaris-icons';
 import Image from 'next/image';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -369,7 +369,7 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
       <div className="ctb-actions">
         <Tooltip content="Soporte y Ayuda" dismissOnMouseOut>
           <button className="ctb-icon-btn" onClick={openLiveChat} aria-label="Soporte">
-            <Icon source={QuestionCircleIcon} tone="inherit" />
+            <Icon source={SidekickIcon} tone="inherit" />
           </button>
         </Tooltip>
 

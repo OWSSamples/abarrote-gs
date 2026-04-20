@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useForm, useField, notEmpty } from '@shopify/react-form';
 import {
   Modal,
@@ -14,6 +14,8 @@ import {
   DropZone,
   Thumbnail,
   Button,
+  Banner,
+  Box,
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
@@ -41,6 +43,24 @@ const unitOptions = [
 ];
 
 export function UpdateProductModal({ open, onClose, product }: UpdateProductModalProps) {
+  // Only mount the form when there IS a product — this ensures useField
+  // initializes with the actual product values instead of empty strings.
+  // When product changes, React unmounts/remounts the inner component
+  // because the key changes, giving useField fresh initial values.
+  if (!product) {
+    return (
+      <Modal open={open} onClose={onClose} title="Editar Producto">
+        <Modal.Section>
+          <Text as="p" variant="bodySm" tone="subdued">Selecciona un producto para editar.</Text>
+        </Modal.Section>
+      </Modal>
+    );
+  }
+
+  return <UpdateProductForm key={product.id} open={open} onClose={onClose} product={product} />;
+}
+
+function UpdateProductForm({ open, onClose, product }: { open: boolean; onClose: () => void; product: Product }) {
   const updateProductStore = useDashboardStore((s) => s.updateProduct);
   const categories = useDashboardStore((s) => s.categories);
   const storeConfig = useDashboardStore((s) => s.storeConfig);
@@ -55,66 +75,52 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
   const [file, setFile] = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  // ── Stock adjustment state ──
+  const [adjustmentQty, setAdjustmentQty] = useState('');
+  const [adjustmentReason, setAdjustmentReason] = useState('');
+  const [adjustmentBusy, setAdjustmentBusy] = useState(false);
+
   const { fields, makeClean, reset } = useForm({
     fields: {
       name: useField({
-        value: product?.name || '',
+        value: product.name || '',
         validates: [notEmpty('El nombre es obligatorio')],
       }),
       sku: useField({
-        value: product?.sku || '',
+        value: product.sku || '',
         validates: [notEmpty('El SKU es obligatorio')],
       }),
-      barcode: useField(product?.barcode || ''),
+      barcode: useField(product.barcode || ''),
       category: useField({
-        value: product?.category || '',
+        value: product.category || '',
         validates: [notEmpty('Selecciona una categoría')],
       }),
       unitPrice: useField({
-        value: product?.unitPrice?.toString() || '',
+        value: product.unitPrice?.toString() || '',
         validates: [
           notEmpty('Ingresa un precio de venta'),
           (val: string) => (parseFloat(val) <= 0 ? 'Debe ser mayor a 0' : undefined),
         ],
       }),
       costPrice: useField({
-        value: product?.costPrice?.toString() || '',
+        value: product.costPrice?.toString() || '',
         validates: [
           notEmpty('Ingresa un precio de costo'),
           (val: string) => (parseFloat(val) <= 0 ? 'Debe ser mayor a 0' : undefined),
         ],
       }),
-      unit: useField(product?.unit || 'pieza'),
-      unitMultiple: useField(product?.unitMultiple?.toString() || '1'),
+      unit: useField(product.unit || 'pieza'),
+      unitMultiple: useField(product.unitMultiple?.toString() || '1'),
       currentStock: useField({
-        value: product?.currentStock?.toString() || '0',
+        value: product.currentStock?.toString() || '0',
         validates: [(val: string) => (parseInt(val) < 0 ? 'No puede ser negativo' : undefined)],
       }),
-      minStock: useField(product?.minStock?.toString() || '0'),
-      isPerishable: useField(product?.isPerishable || false),
-      expirationDate: useField(product?.expirationDate || ''),
+      minStock: useField(product.minStock?.toString() || '0'),
+      isPerishable: useField(product.isPerishable || false),
+      expirationDate: useField(product.expirationDate || ''),
     },
     onSubmit: async () => ({ status: 'success' }),
   });
-
-  // Sync form when product changes
-  useEffect(() => {
-    if (product) {
-      fields.name.onChange(product.name || '');
-      fields.sku.onChange(product.sku || '');
-      fields.barcode.onChange(product.barcode || '');
-      fields.category.onChange(product.category || '');
-      fields.unitPrice.onChange(product.unitPrice?.toString() || '');
-      fields.costPrice.onChange(product.costPrice?.toString() || '');
-      fields.unit.onChange(product.unit || 'pieza');
-      fields.unitMultiple.onChange(product.unitMultiple?.toString() || '1');
-      fields.currentStock.onChange(product.currentStock?.toString() || '0');
-      fields.minStock.onChange(product.minStock?.toString() || '0');
-      fields.isPerishable.onChange(product.isPerishable || false);
-      fields.expirationDate.onChange(product.expirationDate || '');
-      makeClean();
-    }
-  }, [product, makeClean]);
 
   const autoSave = useCallback(
     async (fieldKey: string, value: unknown) => {
@@ -216,18 +222,62 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
   const handleClose = useCallback(() => {
     reset();
     setFile(null);
+    setAdjustmentQty('');
+    setAdjustmentReason('');
     onClose();
   }, [reset, onClose]);
 
+  const adjustmentReasonOptions = useMemo(
+    () => [
+      { label: 'Seleccionar motivo…', value: '' },
+      { label: 'Recepción de mercancía', value: 'recepcion' },
+      { label: 'Devolución de cliente', value: 'devolucion_cliente' },
+      { label: 'Corrección de conteo', value: 'correccion_conteo' },
+      { label: 'Transferencia entre sucursales', value: 'transferencia' },
+      { label: 'Otro', value: 'otro' },
+    ],
+    [],
+  );
+
+  const handleStockAdjustment = useCallback(async () => {
+    if (!product) return;
+    const qty = parseInt(adjustmentQty, 10);
+    if (isNaN(qty) || qty <= 0) {
+      showError('Ingresa una cantidad válida mayor a 0.');
+      return;
+    }
+    if (!adjustmentReason) {
+      showError('Selecciona un motivo para el surtido.');
+      return;
+    }
+
+    const currentStock = product.currentStock ?? 0;
+    const newStock = currentStock + qty;
+
+    setAdjustmentBusy(true);
+    try {
+      await updateProductStore(product.id, { currentStock: newStock });
+      fields.currentStock.onChange(newStock.toString());
+      fields.currentStock.newDefaultValue(newStock.toString());
+      setAdjustmentQty('');
+      setAdjustmentReason('');
+      showSuccess(
+        `+${qty} unidades surtidas. Stock actualizado: ${newStock}. Motivo: ${adjustmentReasonOptions.find((o) => o.value === adjustmentReason)?.label ?? adjustmentReason}`,
+      );
+    } catch {
+      showError('Error al surtir stock.');
+    }
+    setAdjustmentBusy(false);
+  }, [product, adjustmentQty, adjustmentReason, updateProductStore, fields.currentStock, showSuccess, showError, adjustmentReasonOptions]);
+
   return (
     <Modal
-      key={product?.id ?? 'new'}
       open={open}
       onClose={handleClose}
-      title={product ? `${product.name}` : 'Editar Producto'}
+      title={product.name}
       primaryAction={{
         content: 'Listo',
-        onAction: onClose,
+        onAction: handleClose,
       }}
     >
       {/* ── Imagen ── */}
@@ -445,6 +495,60 @@ export function UpdateProductModal({ open, onClose, product }: UpdateProductModa
               />
             )}
           </FormLayout>
+        </BlockStack>
+      </Modal.Section>
+
+      {/* ── Surtir Mercancía ── */}
+      <Modal.Section>
+        <BlockStack gap="300">
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="h3" variant="headingSm" fontWeight="semibold">
+              Surtir mercancía
+            </Text>
+            <Badge tone="info">
+              {`Stock actual: ${fields.currentStock.value}`}
+            </Badge>
+          </InlineStack>
+
+          <Banner tone="info">
+            <Text as="p" variant="bodySm">
+              Agrega unidades al inventario cuando recibas mercancía. El stock no se puede reducir manualmente
+              — solo se descuenta automáticamente al registrar ventas.
+            </Text>
+          </Banner>
+
+          <FormLayout>
+            <TextField
+              label="Cantidad a surtir"
+              type="number"
+              autoComplete="off"
+              value={adjustmentQty}
+              onChange={setAdjustmentQty}
+              min={1}
+              helpText={
+                adjustmentQty && parseInt(adjustmentQty, 10) > 0
+                  ? `Nuevo stock: ${(product.currentStock ?? 0) + parseInt(adjustmentQty, 10)}`
+                  : undefined
+              }
+            />
+            <FormSelect
+              label="Motivo del surtido"
+              options={adjustmentReasonOptions}
+              value={adjustmentReason}
+              onChange={setAdjustmentReason}
+            />
+          </FormLayout>
+
+          <Box>
+            <Button
+              variant="primary"
+              onClick={handleStockAdjustment}
+              loading={adjustmentBusy}
+              disabled={!adjustmentQty || parseInt(adjustmentQty, 10) <= 0 || !adjustmentReason}
+            >
+              Surtir al inventario
+            </Button>
+          </Box>
         </BlockStack>
       </Modal.Section>
     </Modal>

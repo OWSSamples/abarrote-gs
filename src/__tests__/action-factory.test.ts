@@ -1,14 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createAction, withLogging, wrapActions } from '@/lib/errors/action-factory';
 
-// Mock logger
-vi.mock('@/lib/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  },
-}));
+// Mock logger — incluye TODOS los métodos del logger real (debug, info, warn, error, child, withTiming)
+// para evitar que otros tests que reusan el mock fallen con "logger.X is not a function".
+vi.mock('@/lib/logger', () => {
+  const noop = vi.fn();
+  const childLogger = { debug: noop, info: noop, warn: noop, error: noop };
+  return {
+    logger: {
+      debug: noop,
+      info: noop,
+      warn: noop,
+      error: noop,
+      child: vi.fn(() => childLogger),
+      withTiming: vi.fn(async (_action: string, fn: () => Promise<unknown>) => fn()),
+    },
+    getRequestContext: vi.fn(() => undefined),
+    withRequestContext: vi.fn(<T>(_ctx: unknown, fn: () => T) => fn()),
+    extractRequestId: vi.fn(() => undefined),
+  };
+});
 
 describe('Action Factory', () => {
   beforeEach(() => {

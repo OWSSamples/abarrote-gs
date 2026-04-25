@@ -2,5 +2,6 @@
     "chat.tools.terminal.autoApprove": {
         "aws": true
     },
-    "snyk.advanced.autoSelectOrganization": true
+    "snyk.advanced.autoSelectOrganization": true,
+    "chat.agent.sandbox.enabled": "on"
 }

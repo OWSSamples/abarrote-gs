@@ -38,6 +38,9 @@
   }
 }
 
+
+
+
 /* --- Polaris Custom Overrides (Minimal & Clean) --- */
 
 /* Primary Button using Blue Zodiac */
@@ -109,6 +112,73 @@ body,
 }
 .accent-green {
   color: var(--feijoa-500);
+}
+
+/* Settings page: clickable category card (button reset) */
+.settings-card-button {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  border-radius: 12px;
+  position: relative;
+  isolation: isolate;
+  transition: transform 200ms ease;
+}
+
+/* Glow halo (blurred gradient border) — hidden by default */
+.settings-card-button::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  padding: 2px;
+  background: conic-gradient(
+    from 180deg at 50% 50%,
+    #12a3ff 0deg,
+    #00dada 90deg,
+    #46bb27 180deg,
+    #0055cf 270deg,
+    #12a3ff 360deg
+  );
+  filter: blur(10px);
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 250ms ease;
+  pointer-events: none;
+}
+
+/* Crisp gradient border ring */
+.settings-card-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  padding: 1.5px;
+  background: linear-gradient(135deg, #12a3ff, #00dada, #46bb27);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 250ms ease;
+  pointer-events: none;
+}
+
+.settings-card-button:hover {
+  transform: translateY(-2px);
+}
+.settings-card-button:hover::before,
+.settings-card-button:hover::after {
+  opacity: 1;
+}
+
+.settings-card-button:focus-visible::after {
+  opacity: 1;
+}
+.settings-card-button:focus-visible {
+  outline: none;
 }
 
 /* Ocultación radical de scrollbar en todos los niveles */

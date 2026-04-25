@@ -44,3 +44,6 @@ playwright-report/
 test-results/
 .env*.local
 .vscode/mcp.json
+
+# Sentry Config File
+.env.sentry-build-plugin

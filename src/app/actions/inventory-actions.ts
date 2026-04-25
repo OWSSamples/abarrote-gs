@@ -7,6 +7,7 @@ import { eq, gte, lte, and, desc, sql } from 'drizzle-orm';
 import type { InventoryAlert, KPIData, MermaRecord } from '@/types';
 import type { InventoryAudit, InventoryAuditItem } from '@/types';
 import { numVal } from './_helpers';
+import { adjustStock, recordStockMovement } from './_stock';
 import { sendNotification } from './_notifications';
 import { fetchAllProducts } from './product-actions';
 import {
@@ -158,7 +159,7 @@ async function _fetchMermaRecords(): Promise<MermaRecord[]> {
 }
 
 async function _createMerma(data: Omit<MermaRecord, 'id'>): Promise<MermaRecord> {
-  await requirePermission('inventory.edit');
+  const user = await requirePermission('inventory.edit');
   validateSchema(createMermaSchema, data, 'createMerma');
   const id = `merma-${crypto.randomUUID()}`;
   await db.insert(mermaRecords).values({
@@ -171,13 +172,19 @@ async function _createMerma(data: Omit<MermaRecord, 'id'>): Promise<MermaRecord>
     value: String(data.value),
   });
 
-  await db
-    .update(products)
-    .set({
-      currentStock: sql`greatest(0, current_stock - ${data.quantity})`,
-      updatedAt: new Date(),
-    })
-    .where(eq(products.id, data.productId));
+  const unitCost = data.quantity > 0 ? data.value / data.quantity : null;
+  await adjustStock(data.productId, -data.quantity, {
+    meta: {
+      type: 'merma',
+      source: 'merma',
+      sourceId: id,
+      sourceLabel: data.reason,
+      unitCost,
+      notes: `Merma · ${data.reason}`,
+      userId: user.uid,
+      userName: user.email ?? null,
+    },
+  });
 
   return { ...data, id };
 }
@@ -263,7 +270,7 @@ async function _saveAuditItem(data: Omit<InventoryAuditItem, 'id'>): Promise<voi
 }
 
 async function _completeInventoryAudit(id: string): Promise<void> {
-  await requirePermission('inventory.edit');
+  const user = await requirePermission('inventory.edit');
   validateSchema(idSchema, id, 'completeInventoryAudit:id');
   const audit = await getInventoryAudit(id);
   if (!audit || audit.status === 'completed') return;
@@ -278,6 +285,29 @@ async function _completeInventoryAudit(id: string): Promise<void> {
         .update(products)
         .set({ currentStock: item.countedStock, updatedAt: new Date() })
         .where(eq(products.id, item.productId));
+
+      // Kardex entry for the adjustment
+      const unitCost =
+        item.difference !== 0 ? Math.abs(item.adjustmentValue) / Math.abs(item.difference) : null;
+      await recordStockMovement(
+        item.productId,
+        item.productName,
+        item.difference,
+        item.countedStock,
+        {
+          type: 'audit',
+          source: 'audit',
+          sourceId: audit.id,
+          sourceLabel: `Auditoría: ${audit.title}`,
+          unitCost,
+          notes:
+            item.difference < 0
+              ? `Faltante encontrado en auditoría (${audit.auditor})`
+              : `Sobrante encontrado en auditoría (${audit.auditor})`,
+          userId: user.uid,
+          userName: audit.auditor || user.email || null,
+        },
+      );
 
       adjustedCount++;
 

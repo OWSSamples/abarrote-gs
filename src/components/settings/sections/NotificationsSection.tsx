@@ -28,6 +28,7 @@ import {
   CalendarIcon,
 } from '@shopify/polaris-icons';
 import type { SettingsSectionProps } from './types';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 interface NotificationsSectionProps extends SettingsSectionProps {
   tgTesting: boolean;
@@ -64,6 +65,11 @@ export function NotificationsSection({
       >
         <Card padding="500">
           <BlockStack gap="500">
+            <InlineStack gap="300" align="start" blockAlign="center">
+              <BrandLogo name="Telegram" size={28} />
+              <Text as="h3" variant="headingMd">Telegram</Text>
+              {isConfigured && <Badge tone="success">Conectado</Badge>}
+            </InlineStack>
             <Checkbox
               label="Activar motor de notificaciones externas"
               helpText="Permite que el sistema envíe llamadas a la API de canales externos."

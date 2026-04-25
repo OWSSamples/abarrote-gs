@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, numeric, timestamp, date, index, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, numeric, timestamp, date, index, jsonb, primaryKey } from 'drizzle-orm/pg-core';
 
 // ==================== CONFIGURACION DE TIENDA ====================
 export const storeConfig = pgTable('store_config', {
@@ -152,6 +152,34 @@ export const aiProviderConfigs = pgTable('ai_provider_configs', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// ==================== STORES (multi-tenant Phase 1 — ADR-001) ====================
+// Catalog of physical stores/branches. Single row 'main' covers single-tenant deployments.
+export const stores = pgTable('stores', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at'),
+});
+
+// User <-> Store access (N:N). Lets owners switch between branches.
+// `is_default` marks the store loaded on login when no cookie scope is set.
+export const userStoreAccess = pgTable(
+  'user_store_access',
+  {
+    userId: text('user_id').notNull(),
+    storeId: text('store_id')
+      .notNull()
+      .references(() => stores.id),
+    isDefault: boolean('is_default').notNull().default(false),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.storeId], name: 'user_store_access_pk' }),
+    index('user_store_access_user_idx').on(t.userId),
+    index('user_store_access_store_idx').on(t.storeId),
+  ],
+);
+
 // ==================== OAUTH PROVIDER CONNECTIONS ====================
 export const paymentProviderConnections = pgTable(
   'payment_provider_connections',
@@ -247,6 +275,7 @@ export const products = pgTable(
     name: text('name').notNull(),
     sku: text('sku').notNull().unique(),
     barcode: text('barcode').notNull().unique(),
+    description: text('description'),
     currentStock: integer('current_stock').notNull().default(0),
     minStock: integer('min_stock').notNull().default(0),
     expirationDate: date('expiration_date'),
@@ -264,6 +293,42 @@ export const products = pgTable(
     deletedAt: timestamp('deleted_at'),
   },
   (t) => [index('products_category_idx').on(t.category), index('products_current_stock_idx').on(t.currentStock)],
+);
+
+// ==================== STOCK MOVEMENTS (KARDEX) ====================
+// Registro inmutable de cada cambio de stock por producto.
+// Tipos: 'restock' (surtido), 'sale' (venta), 'merma', 'adjustment' (manual),
+// 'audit' (ajuste por auditoría), 'return' (devolución de cliente).
+export const stockMovements = pgTable(
+  'stock_movements',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    productName: text('product_name').notNull(),
+    type: text('type').notNull(),
+    quantity: integer('quantity').notNull(), // siempre positivo; el signo lo da el type
+    direction: text('direction').notNull(), // 'in' | 'out'
+    balanceAfter: integer('balance_after').notNull(),
+    unitCost: numeric('unit_cost', { precision: 10, scale: 2 }),
+    totalValue: numeric('total_value', { precision: 10, scale: 2 }),
+    source: text('source'), // 'pedido', 'venta', 'merma', 'audit', 'manual', 'devolucion'
+    sourceId: text('source_id'),
+    sourceLabel: text('source_label'), // folio, proveedor, motivo, etc.
+    notes: text('notes').notNull().default(''),
+    userId: text('user_id'),
+    userName: text('user_name'),
+    storeId: text('store_id').notNull().default('main'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('stock_movements_product_id_idx').on(t.productId),
+    index('stock_movements_created_at_idx').on(t.createdAt),
+    index('stock_movements_product_created_idx').on(t.productId, t.createdAt),
+    index('stock_movements_type_idx').on(t.type),
+    index('stock_movements_store_idx').on(t.storeId),
+  ],
 );
 
 // ==================== VENTAS ====================
@@ -288,12 +353,15 @@ export const saleRecords = pgTable(
     discountType: text('discount_type').notNull().default('amount'), // 'amount' | 'percent'
     date: timestamp('date').notNull().defaultNow(),
     status: text('status').notNull().default('completada'),
+    storeId: text('store_id').notNull().default('main'),
   },
   (t) => [
     index('sale_records_date_idx').on(t.date),
     index('sale_records_payment_method_idx').on(t.paymentMethod),
     index('sale_records_mp_payment_id_idx').on(t.mpPaymentId),
     index('sale_records_status_idx').on(t.status),
+    index('sale_records_store_idx').on(t.storeId),
+    index('sale_records_store_date_idx').on(t.storeId, t.date),
   ],
 );
 
@@ -312,8 +380,9 @@ export const saleItems = pgTable(
     quantity: integer('quantity').notNull(),
     unitPrice: numeric('unit_price', { precision: 10, scale: 2 }).notNull(),
     subtotal: numeric('subtotal', { precision: 10, scale: 2 }).notNull(),
+    storeId: text('store_id').notNull().default('main'),
   },
-  (t) => [index('sale_items_sale_id_idx').on(t.saleId), index('sale_items_product_id_idx').on(t.productId)],
+  (t) => [index('sale_items_sale_id_idx').on(t.saleId), index('sale_items_product_id_idx').on(t.productId), index('sale_items_store_idx').on(t.storeId)],
 );
 
 // ==================== MERMAS ====================
@@ -331,8 +400,9 @@ export const mermaRecords = pgTable(
     evidenceUrl: text('evidence_url'),
     date: timestamp('date').notNull().defaultNow(),
     value: numeric('value', { precision: 10, scale: 2 }).notNull(),
+    storeId: text('store_id').notNull().default('main'),
   },
-  (t) => [index('merma_records_product_id_idx').on(t.productId), index('merma_records_date_idx').on(t.date)],
+  (t) => [index('merma_records_product_id_idx').on(t.productId), index('merma_records_date_idx').on(t.date), index('merma_records_store_idx').on(t.storeId)],
 );
 
 // ==================== PEDIDOS ====================
@@ -388,11 +458,13 @@ export const fiadoTransactions = pgTable(
     description: text('description').notNull().default(''),
     saleFolio: text('sale_folio'),
     date: timestamp('date').notNull().defaultNow(),
+    storeId: text('store_id').notNull().default('main'),
   },
   (t) => [
     index('fiado_transactions_cliente_id_idx').on(t.clienteId),
     index('fiado_transactions_date_idx').on(t.date),
     index('fiado_transactions_cliente_date_idx').on(t.clienteId, t.date),
+    index('fiado_transactions_store_idx').on(t.storeId),
   ],
 );
 
@@ -428,8 +500,9 @@ export const gastos = pgTable(
     notas: text('notas').notNull().default(''),
     comprobante: boolean('comprobante').notNull().default(false),
     comprobanteUrl: text('comprobante_url'),
+    storeId: text('store_id').notNull().default('main'),
   },
-  (t) => [index('gastos_fecha_idx').on(t.fecha), index('gastos_categoria_idx').on(t.categoria)],
+  (t) => [index('gastos_fecha_idx').on(t.fecha), index('gastos_categoria_idx').on(t.categoria), index('gastos_store_idx').on(t.storeId)],
 );
 
 // ==================== PROVEEDORES ====================
@@ -467,8 +540,9 @@ export const cortesCaja = pgTable(
     gastosDelDia: numeric('gastos_del_dia', { precision: 10, scale: 2 }).notNull(),
     notas: text('notas').notNull().default(''),
     status: text('status').notNull().default('abierto'), // abierto, cerrado
+    storeId: text('store_id').notNull().default('main'),
   },
-  (t) => [index('cortes_caja_fecha_idx').on(t.fecha)],
+  (t) => [index('cortes_caja_fecha_idx').on(t.fecha), index('cortes_caja_store_idx').on(t.storeId)],
 );
 
 // ==================== AUDITORÍAS DE INVENTARIO ====================
@@ -479,6 +553,7 @@ export const inventoryAudits = pgTable('inventory_audits', {
   auditor: text('auditor').notNull(),
   status: text('status').notNull().default('draft'), // draft, completed
   notes: text('notes').notNull().default(''),
+  storeId: text('store_id').notNull().default('main'),
 });
 
 export const inventoryAuditItems = pgTable(
@@ -644,10 +719,12 @@ export const loyaltyTransactions = pgTable(
     notas: text('notas').notNull().default(''),
     cajero: text('cajero').notNull(),
     fecha: timestamp('fecha').notNull().defaultNow(),
+    storeId: text('store_id').notNull().default('main'),
   },
   (t) => [
     index('loyalty_transactions_cliente_id_idx').on(t.clienteId),
     index('loyalty_transactions_fecha_idx').on(t.fecha),
+    index('loyalty_transactions_store_idx').on(t.storeId),
   ],
 );
 

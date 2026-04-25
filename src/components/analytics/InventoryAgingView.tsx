@@ -71,7 +71,7 @@ export function InventoryAgingView() {
   if (!data || data.products.length === 0) {
     return (
       <Card>
-        <EmptyState heading="Sin datos de inventario" image="">
+        <EmptyState heading="Sin datos de inventario" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-inventory.svg">
           <p>No hay productos con stock para analizar.</p>
         </EmptyState>
       </Card>

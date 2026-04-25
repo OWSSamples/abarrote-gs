@@ -14,13 +14,11 @@ import {
   Banner,
   Badge,
   Divider,
-  Layout,
   Modal,
   Spinner,
   Collapsible,
   Icon,
   DropZone,
-  Thumbnail,
 } from '@shopify/polaris';
 import {
   CheckCircleIcon,
@@ -29,7 +27,6 @@ import {
   ChevronUpIcon,
   LockIcon,
   CreditCardIcon,
-  BankIcon,
 } from '@shopify/polaris-icons';
 import type { StoreConfig } from '@/types';
 import type { Field } from '@shopify/react-form';
@@ -41,6 +38,7 @@ import {
   disconnectClipAction,
   getClipStatusAction,
 } from '@/app/actions/payment-provider-actions';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 interface MPConnectionStatus {
   connected: boolean;
@@ -125,16 +123,11 @@ const CLABE_BANKS: Record<string, { name: string; domain?: string }> = {
   '722': { name: 'Mercado Pago', domain: 'mercadopago.com.mx' },
 };
 
-function getBankFromClabe(clabe: string): { name: string; favicon: string | null } | null {
+function getBankFromClabe(clabe: string): { name: string } | null {
   if (clabe.length < 3) return null;
   const bank = CLABE_BANKS[clabe.substring(0, 3)];
   if (!bank) return null;
-  return {
-    name: bank.name,
-    favicon: bank.domain
-      ? `https://www.google.com/s2/favicons?domain=${bank.domain}&sz=64`
-      : null,
-  };
+  return { name: bank.name };
 }
 
 export function PaymentsSection({
@@ -399,8 +392,7 @@ export function PaymentsSection({
                 <BlockStack gap="200">
                   <InlineStack align="space-between" blockAlign="center">
                     <InlineStack gap="200" blockAlign="center">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.logo} alt={p.name} width="24" height="24" style={{ borderRadius: 4, objectFit: 'contain' }} />
+                      <BrandLogo name={p.name} size={24} />
                       <Text variant="bodySm" fontWeight="bold" as="span">
                         {p.name}
                       </Text>
@@ -461,8 +453,7 @@ export function PaymentsSection({
           >
             <InlineStack align="space-between" blockAlign="center">
               <InlineStack gap="300" blockAlign="center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={PROVIDER_LOGOS.mercadopago} alt="Mercado Pago" width="28" height="28" style={{ borderRadius: 4, objectFit: 'contain' }} />
+                <BrandLogo name="Mercado Pago" size={28} />
                 <BlockStack gap="0">
                   <Text variant="headingSm" as="h3">
                     Mercado Pago
@@ -628,8 +619,7 @@ export function PaymentsSection({
           >
             <InlineStack align="space-between" blockAlign="center">
               <InlineStack gap="300" blockAlign="center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={PROVIDER_LOGOS.clip} alt="Clip" width="28" height="28" style={{ borderRadius: 4, objectFit: 'contain' }} />
+                <BrandLogo name="Clip" size={28} />
                 <BlockStack gap="0">
                   <Text variant="headingSm" as="h3">
                     Clip
@@ -756,8 +746,7 @@ export function PaymentsSection({
           <InlineStack gap="400" wrap>
             <Box padding="300" borderRadius="200" background="bg-surface-secondary" minWidth="200px">
               <InlineStack gap="200" blockAlign="center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={PROVIDER_LOGOS.conekta} alt="Conekta" width="24" height="24" style={{ borderRadius: 4, objectFit: 'contain', opacity: 0.5 }} />
+                <div style={{ opacity: 0.5 }}><BrandLogo name="Conekta" size={24} /></div>
                 <BlockStack gap="0">
                   <Text variant="bodySm" fontWeight="semibold" as="span">Conekta</Text>
                   <Text variant="bodySm" as="span" tone="subdued">SPEI automático · OXXO</Text>
@@ -767,8 +756,7 @@ export function PaymentsSection({
             </Box>
             <Box padding="300" borderRadius="200" background="bg-surface-secondary" minWidth="200px">
               <InlineStack gap="200" blockAlign="center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={PROVIDER_LOGOS.stripe} alt="Stripe" width="24" height="24" style={{ borderRadius: 4, objectFit: 'contain', opacity: 0.5 }} />
+                <div style={{ opacity: 0.5 }}><BrandLogo name="Stripe" size={24} /></div>
                 <BlockStack gap="0">
                   <Text variant="bodySm" fontWeight="semibold" as="span">Stripe México</Text>
                   <Text variant="bodySm" as="span" tone="subdued">SPEI automático · OXXO</Text>
@@ -800,7 +788,7 @@ export function PaymentsSection({
           <BlockStack gap="200">
             <InlineStack align="space-between" blockAlign="center">
               <InlineStack gap="200" blockAlign="center">
-                <Box minWidth="24px"><Icon source={BankIcon} tone="base" /></Box>
+                <BrandLogo name="SPEI" size={24} />
                 <Text variant="headingSm" as="h3">SPEI (CLABE)</Text>
               </InlineStack>
               {clabeNumberField.value ? (
@@ -825,16 +813,7 @@ export function PaymentsSection({
               if (!bank) return null;
               return (
                 <InlineStack gap="200" blockAlign="center">
-                  {bank.favicon && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={bank.favicon}
-                      alt={bank.name}
-                      width="20"
-                      height="20"
-                      style={{ borderRadius: 4, objectFit: 'contain' }}
-                    />
-                  )}
+                  <BrandLogo name={bank.name} size={20} />
                   <Badge tone="info" size="small">{bank.name}</Badge>
                 </InlineStack>
               );
@@ -847,8 +826,7 @@ export function PaymentsSection({
           <BlockStack gap="200">
             <InlineStack align="space-between" blockAlign="center">
               <InlineStack gap="200" blockAlign="center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={PROVIDER_LOGOS.paypal} alt="PayPal" width="24" height="24" style={{ borderRadius: 6, objectFit: 'contain' }} />
+                <BrandLogo name="PayPal" size={24} />
                 <Text variant="headingSm" as="h3">PayPal</Text>
               </InlineStack>
               {(paypalQrUrlField.value || paypalUsernameField.value) ? (
@@ -923,8 +901,7 @@ export function PaymentsSection({
           <BlockStack gap="200">
             <InlineStack align="space-between" blockAlign="center">
               <InlineStack gap="200" blockAlign="center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={PROVIDER_LOGOS.codi} alt="CoDi" width="24" height="24" style={{ borderRadius: 6, objectFit: 'contain' }} />
+                <BrandLogo name="CoDi" size={24} />
                 <Text variant="headingSm" as="h3">QR de Cobro (CoDi / Banco)</Text>
               </InlineStack>
               {cobrarQrUrlField.value ? (

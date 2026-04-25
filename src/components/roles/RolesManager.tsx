@@ -656,13 +656,13 @@ export function RolesManager() {
 
       {filteredUsers.length === 0 && userSearch ? (
         <Card>
-          <EmptyState heading={`Sin resultados para "${userSearch}"`} image="">
+          <EmptyState heading={`Sin resultados para "${userSearch}"`} image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
             <p>Intenta con otro término de búsqueda.</p>
           </EmptyState>
         </Card>
       ) : userRoles.length === 0 ? (
         <Card>
-          <EmptyState heading="Sin usuarios registrados" image="">
+          <EmptyState heading="Sin usuarios registrados" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
             <p>Agrega usuarios a tu tienda y asígnales un rol para controlar su acceso.</p>
           </EmptyState>
         </Card>
@@ -701,7 +701,7 @@ export function RolesManager() {
 
       {roleDefinitions.length === 0 ? (
         <Card>
-          <EmptyState heading="Sin roles definidos" image="">
+          <EmptyState heading="Sin roles definidos" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
             <p>Crea tu primer rol personalizado para empezar a gestionar accesos.</p>
           </EmptyState>
         </Card>

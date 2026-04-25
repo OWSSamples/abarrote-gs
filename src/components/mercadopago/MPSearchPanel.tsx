@@ -157,7 +157,7 @@ export function MPSearchPanel() {
         )}
 
         {results && results.results.length === 0 && (
-          <EmptyState heading="Sin resultados" image="">
+          <EmptyState heading="Sin resultados" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
             <p>No se encontraron pagos con los filtros seleccionados.</p>
           </EmptyState>
         )}

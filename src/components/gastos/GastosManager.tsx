@@ -26,16 +26,13 @@ import {
   Icon,
   OptionList,
 } from '@shopify/polaris';
-import { PlusIcon, ExportIcon, CalendarIcon } from '@shopify/polaris-icons';
+import { PlusIcon, CalendarIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { formatCurrency } from '@/lib/utils';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyStateCard } from '@/components/ui/EmptyStateCard';
 import { DeleteConfirmation } from '@/components/ui/DeleteConfirmation';
-import { GenericExportModal } from '@/components/inventory/ShopifyModals';
-import { generateCSV, downloadFile } from '@/components/export/ExportModal';
-import { generatePDF } from '@/components/export/generatePDF';
 import type { GastoCategoria } from '@/types';
 
 const categoriaOptions: { label: string; value: GastoCategoria | '' }[] = [
@@ -99,7 +96,6 @@ export function GastosManager() {
     const data = await res.json();
     return data.url;
   };
-  const [isExportOpen, setIsExportOpen] = useState(false);
   const [filterCategoria, setFilterCategoria] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
 
@@ -459,9 +455,6 @@ export function GastosManager() {
                 </Text>
               </BlockStack>
               <InlineStack gap="200">
-                <Button icon={ExportIcon} onClick={() => setIsExportOpen(true)} variant="secondary">
-                  Exportar
-                </Button>
                 <Button
                   icon={PlusIcon}
                   variant="primary"
@@ -988,31 +981,6 @@ export function GastosManager() {
           </BlockStack>
         </Modal.Section>
       </Modal>
-
-      <GenericExportModal
-        open={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        title="Exportar gastos"
-        exportName="gastos"
-        onExport={(format) => {
-          const exportData = filteredGastos.map((g) => ({
-            Fecha: i18n.formatDate(new Date(g.fecha)),
-            Concepto: g.concepto,
-            Categoría: categoriaBadge[g.categoria]?.label || g.categoria,
-            Monto: i18n.formatCurrency(g.monto, { currency: 'MXN' }),
-            Notas: g.notas || 'N/A',
-            Comprobante: g.comprobante ? 'Sí' : 'No',
-          }));
-          const filename = `Gastos_Kiosco_${new Date().toISOString().split('T')[0]}`;
-          if (format === 'pdf') {
-            generatePDF('Reporte de Gastos', exportData as Record<string, unknown>[], `${filename}.pdf`);
-          } else {
-            const csvContent = generateCSV(exportData as Record<string, unknown>[], true);
-            const mime = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/vnd.ms-excel;charset=utf-8;';
-            downloadFile(csvContent, `${filename}.csv`, mime);
-          }
-        }}
-      />
     </>
   );
 }

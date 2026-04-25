@@ -15,6 +15,7 @@ import { gastos, proveedores, pedidos, pedidoItems, products } from '@/db/schema
 import { eq, desc, sql } from 'drizzle-orm';
 import type { Gasto, GastoCategoria, Proveedor, PedidoRecord } from '@/types';
 import { numVal } from './_helpers';
+import { adjustStock } from './_stock';
 import { withLogging } from '@/lib/errors';
 import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
 import { withRateLimit } from '@/infrastructure/redis';
@@ -223,18 +224,34 @@ async function _updatePedidoStatus(id: string, estado: 'pendiente' | 'enviado' |
 }
 
 async function _receivePedido(pedidoId: string): Promise<void> {
-  await requirePermission('suppliers.edit');
+  const user = await requirePermission('suppliers.edit');
   validateId(pedidoId, 'Pedido ID');
+  const [pedido] = await db.select().from(pedidos).where(eq(pedidos.id, pedidoId)).limit(1);
+  if (!pedido) return;
+
   await db.update(pedidos).set({ estado: 'recibido' }).where(eq(pedidos.id, pedidoId));
   const items = await db.select().from(pedidoItems).where(eq(pedidoItems.pedidoId, pedidoId));
+
   for (const item of items) {
-    await db
-      .update(products)
-      .set({
-        currentStock: sql`current_stock + ${item.cantidad}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(products.id, item.productId));
+    const [productRow] = await db
+      .select({ costPrice: products.costPrice })
+      .from(products)
+      .where(eq(products.id, item.productId))
+      .limit(1);
+    const unitCost = productRow ? Number(productRow.costPrice) : null;
+
+    await adjustStock(item.productId, item.cantidad, {
+      meta: {
+        type: 'restock',
+        source: 'pedido',
+        sourceId: pedidoId,
+        sourceLabel: `Pedido a ${pedido.proveedor}`,
+        unitCost,
+        notes: pedido.notas || `Recepción de pedido ${pedidoId.slice(-6)}`,
+        userId: user.uid,
+        userName: user.email ?? null,
+      },
+    });
   }
 }
 

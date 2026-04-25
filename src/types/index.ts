@@ -539,6 +539,7 @@ export interface Product {
   name: string;
   sku: string;
   barcode: string;
+  description?: string | null;
   currentStock: number;
   minStock: number;
   expirationDate: string | null;
@@ -549,6 +550,28 @@ export interface Product {
   unitMultiple?: number;
   isPerishable: boolean;
   imageUrl?: string;
+}
+
+export type StockMovementType = 'restock' | 'sale' | 'merma' | 'adjustment' | 'audit' | 'return';
+export type StockMovementDirection = 'in' | 'out';
+
+export interface StockMovement {
+  id: string;
+  productId: string;
+  productName: string;
+  type: StockMovementType;
+  quantity: number;
+  direction: StockMovementDirection;
+  balanceAfter: number;
+  unitCost: number | null;
+  totalValue: number | null;
+  source: string | null;
+  sourceId: string | null;
+  sourceLabel: string | null;
+  notes: string;
+  userId: string | null;
+  userName: string | null;
+  createdAt: string;
 }
 
 export interface InventoryAlert {

@@ -17,6 +17,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         justifyContent: 'center',
         padding: '24px',
         position: 'relative',
+        background: '#f3f4f6',
       }}
     >
       {children}

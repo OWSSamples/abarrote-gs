@@ -238,7 +238,7 @@ export default function CategoriesPage() {
               {categories.length === 0 ? (
                 <EmptyState
                   heading="Organiza tu inventario"
-                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                  image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-inventory.svg"
                   action={{
                     content: 'Crear primera categoría',
                     onAction: () => setCreateModalOpen(true),
@@ -251,7 +251,7 @@ export default function CategoriesPage() {
               ) : filteredCategories.length === 0 ? (
                 <EmptyState
                   heading="Sin resultados"
-                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                  image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-inventory.svg"
                   action={{
                     content: 'Limpiar filtros',
                     onAction: () => {

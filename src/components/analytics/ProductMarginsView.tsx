@@ -70,7 +70,7 @@ export function ProductMarginsView() {
   if (!data || data.products.length === 0) {
     return (
       <Card>
-        <EmptyState heading="Sin ventas en el período" image="">
+        <EmptyState heading="Sin ventas en el período" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-sales.svg">
           <p>No hay datos de ventas para calcular márgenes.</p>
         </EmptyState>
       </Card>

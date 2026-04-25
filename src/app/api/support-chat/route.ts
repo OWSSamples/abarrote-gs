@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateText, tool } from 'ai';
+import { generateText, stepCountIs, tool } from 'ai';
 import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/guard';
 import { getAIModel } from '@/lib/ai';
@@ -98,12 +98,12 @@ export async function POST(req: Request) {
       system: SYSTEM_PROMPT,
       messages,
       maxOutputTokens: 400,
-      maxSteps: 3,
+      stopWhen: stepCountIs(3),
       tools: {
         searchProducts: tool({
           description:
             'Busca productos en el inventario de la tienda por nombre, SKU o código de barras. Devuelve nombre, precio de venta, stock, unidad y categoría.',
-          parameters: z.object({
+          inputSchema: z.object({
             query: z.string().describe('Término de búsqueda: nombre del producto, SKU o código de barras'),
           }),
           execute: async ({ query }) => {
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
         getPaymentMethods: tool({
           description:
             'Consulta los métodos de pago configurados y activos en la tienda. Incluye efectivo, transferencia y proveedores integrados (MercadoPago, Stripe, Conekta, Clip).',
-          parameters: z.object({}),
+          inputSchema: z.object({}),
           execute: async () => {
             const [config] = await db
               .select({

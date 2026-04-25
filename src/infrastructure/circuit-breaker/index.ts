@@ -255,7 +255,13 @@ export const mercadopagoBreaker = createCircuitBreaker('mercadopago', {
 // ══════════════════════════════════════════════════════════════
 
 const ALL_BREAKERS = [telegramBreaker, stripeBreaker, conektaBreaker, clipBreaker, mercadopagoBreaker];
+const PAYMENT_BREAKERS = [stripeBreaker, conektaBreaker, clipBreaker, mercadopagoBreaker];
 
 export function getAllCircuitBreakerStats(): CircuitBreakerStats[] {
   return ALL_BREAKERS.map((b) => b.getStats());
+}
+
+/** Stats restringidas a los breakers de pagos (excluye telegram). */
+export function getPaymentCircuitBreakerStats(): CircuitBreakerStats[] {
+  return PAYMENT_BREAKERS.map((b) => b.getStats());
 }

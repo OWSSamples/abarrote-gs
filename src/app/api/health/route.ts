@@ -6,6 +6,10 @@ import { getDomainEventStats } from '@/domain/events';
 import { db } from '@/db';
 import { sql } from 'drizzle-orm';
 
+// Health checks deben reflejar estado actual — jamás cachearse.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * Health Check Endpoint
  *

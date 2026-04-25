@@ -91,7 +91,7 @@ export function MPDevicesPanel() {
         <Divider />
 
         {devices.length === 0 ? (
-          <EmptyState heading="Sin terminales registradas" image="">
+          <EmptyState heading="Sin terminales registradas" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
             <p>
               Conecta una terminal MercadoPago Point desde la app de MercadoPago para cobrar con tarjetas físicas. Las
               terminales vinculadas a tu cuenta aparecerán aquí.

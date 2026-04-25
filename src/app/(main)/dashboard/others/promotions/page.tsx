@@ -25,7 +25,7 @@ import {
   ProgressBar,
   EmptyState,
 } from '@shopify/polaris';
-import { PlusIcon, DeleteIcon, EditIcon, RefreshIcon, SearchIcon } from '@shopify/polaris-icons';
+import { PlusIcon, DeleteIcon, EditIcon, SearchIcon } from '@shopify/polaris-icons';
 import {
   fetchPromotions,
   createPromotion,
@@ -154,7 +154,6 @@ export default function PromotionsPage() {
       subtitle={`${promotions.length} promociones — ${activePromos.length} activas ahora`}
       backAction={{ content: 'Dashboard', url: '/dashboard' }}
       primaryAction={{ content: 'Nueva promoción', icon: PlusIcon, onAction: handleNew }}
-      secondaryActions={[{ content: 'Actualizar', icon: RefreshIcon, onAction: load }]}
     >
       <Layout>
         {/* KPI cards */}
@@ -206,7 +205,7 @@ export default function PromotionsPage() {
               <Box paddingBlockStart="200">
                 <EmptyState
                   heading="Sin promociones"
-                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                  image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-inventory.svg"
                 >
                   <Text as="p" tone="subdued">
                     Crea tu primera promoción para atraer más ventas.

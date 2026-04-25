@@ -13,7 +13,7 @@ export default function PagosMPPage() {
         <BlockStack gap="400">
           <EmptyState
             heading="Conecta tu cuenta de MercadoPago"
-            image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+            image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg"
             action={{
               content: 'Ir a Configuración → Pagos',
               url: '/dashboard/settings',

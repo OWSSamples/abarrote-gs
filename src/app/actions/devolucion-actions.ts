@@ -107,7 +107,19 @@ async function _createDevolucion(data: {
 
     // Regresar al inventario si aplica
     if (item.regresoInventario) {
-      await adjustStock(item.productId, item.quantity, { now });
+      await adjustStock(item.productId, item.quantity, {
+        now,
+        meta: {
+          type: 'return',
+          source: 'devolucion',
+          sourceId: id,
+          sourceLabel: `Devolución folio ${data.saleFolio}`,
+          unitCost: item.unitPrice,
+          notes: 'Producto devuelto por cliente',
+          userId: authUser.uid,
+          userName: authUser.email ?? null,
+        },
+      });
     }
 
     savedItems.push({ ...item, id: itemId });

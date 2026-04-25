@@ -20,12 +20,9 @@ import {
   ProgressBar,
   useIndexResourceState,
 } from '@shopify/polaris';
-import { PlusIcon, ExportIcon } from '@shopify/polaris-icons';
+import { PlusIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
-import { GenericExportModal } from '@/components/inventory/ShopifyModals';
-import { generateCSV, downloadFile } from '@/components/export/ExportModal';
-import { generatePDF } from '@/components/export/generatePDF';
 
 export function ProveedoresManager() {
   const proveedores = useDashboardStore((s) => s.proveedores);
@@ -34,7 +31,6 @@ export function ProveedoresManager() {
   const deleteProveedor = useDashboardStore((s) => s.deleteProveedor);
   const { showSuccess, showError } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
-  const [isExportOpen, setIsExportOpen] = useState(false);
   const [nombre, setNombre] = useState('');
   const [contacto, setContacto] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -352,9 +348,6 @@ export function ProveedoresManager() {
               </Text>
             </BlockStack>
             <InlineStack gap="200">
-              <Button icon={ExportIcon} onClick={() => setIsExportOpen(true)} variant="secondary">
-                Exportar
-              </Button>
               <Button icon={PlusIcon} variant="primary" onClick={() => setModalOpen(true)}>
                 Agregar proveedor
               </Button>
@@ -378,7 +371,7 @@ export function ProveedoresManager() {
 
       {filteredProveedores.length === 0 && proveedores.length === 0 ? (
         <Card>
-          <EmptyState heading="Administra tus proveedores" image="">
+          <EmptyState heading="Administra tus proveedores" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
             <p>Agrega proveedores para llevar un mejor control de tus pedidos y costos.</p>
           </EmptyState>
         </Card>
@@ -453,32 +446,6 @@ export function ProveedoresManager() {
           </FormLayout>
         </Modal.Section>
       </Modal>
-
-      <GenericExportModal
-        open={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        title="Exportar proveedores"
-        exportName="proveedores"
-        onExport={(format) => {
-          const exportData = proveedores.map((p) => ({
-            'Empresa / Nombre': p.nombre,
-            Contacto: p.contacto || 'N/A',
-            Teléfono: p.telefono || 'N/A',
-            Email: p.email || 'N/A',
-            'Categoría Principal': p.categorias.join(', '),
-            'Último Pedido': p.ultimoPedido ? new Date(p.ultimoPedido).toLocaleDateString('es-MX') : 'N/A',
-            Activo: p.activo ? 'Sí' : 'No',
-          }));
-          const filename = `Proveedores_Kiosco_${new Date().toISOString().split('T')[0]}`;
-          if (format === 'pdf') {
-            generatePDF('Reporte de Proveedores', exportData as Record<string, unknown>[], `${filename}.pdf`);
-          } else {
-            const csvContent = generateCSV(exportData as Record<string, unknown>[], true);
-            const mime = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/vnd.ms-excel;charset=utf-8;';
-            downloadFile(csvContent, `${filename}.csv`, mime);
-          }
-        }}
-      />
     </BlockStack>
   );
 }

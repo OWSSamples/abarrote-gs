@@ -738,7 +738,7 @@ export default function CustomerDisplayPage() {
                 </InlineStack>
                 {sale.items.length === 0 ? (
                   <Box paddingBlockStart="1200">
-                    <EmptyState heading="Escaneando productos…" image="">
+                    <EmptyState heading="Escaneando productos…" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
                       <p>Los productos aparecerán aquí conforme se escanean.</p>
                     </EmptyState>
                   </Box>

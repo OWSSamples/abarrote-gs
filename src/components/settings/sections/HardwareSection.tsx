@@ -16,6 +16,7 @@ import {
 import { ConnectIcon, ResetIcon } from '@shopify/polaris-icons';
 import { useTicketPrinter } from '@/hooks/useTicketPrinter';
 import type { SettingsSectionProps } from './types';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 const STATUS_LABELS: Record<string, string> = {
   disconnected: 'Desconectada',
@@ -219,8 +220,12 @@ export function HardwareSection({ config, updateField }: SettingsSectionProps) {
             <InlineStack gap="200" blockAlign="center">
               <Badge tone="success">Funcional</Badge>
               <Text as="span" variant="bodySm">
-                <strong>Terminal de pago</strong> — MercadoPago y Clip integrados por red.
+                <strong>Terminal de pago</strong> — integrados por red:
               </Text>
+              <InlineStack gap="150" blockAlign="center">
+                <BrandLogo name="Mercado Pago" size={20} />
+                <BrandLogo name="Clip" size={20} />
+              </InlineStack>
             </InlineStack>
           </BlockStack>
         </Card>

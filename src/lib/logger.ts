@@ -142,6 +142,25 @@ function log(level: LogLevel, message: string, ctx?: LogContext): void {
 
   if (level === 'error') {
     console.error(JSON.stringify(cleaned));
+    // Reporta a observabilidad (Sentry) — fire-and-forget, no-op si no está configurado.
+    // Import lazy para evitar ciclo logger ↔ observability.
+    void import('./observability')
+      .then((obs) => {
+        const errPayload =
+          ctx && (ctx.stack || ctx.error)
+            ? Object.assign(new Error(typeof ctx.error === 'string' ? ctx.error : message), {
+                stack: typeof ctx.stack === 'string' ? ctx.stack : undefined,
+              })
+            : message;
+        obs.captureError(errPayload, {
+          ...ctx,
+          requestId: ctx?.requestId ?? requestContext?.requestId,
+          userId: ctx?.userId ?? requestContext?.userId,
+        });
+      })
+      .catch(() => {
+        /* observability is best-effort */
+      });
   } else if (level === 'warn') {
     console.warn(JSON.stringify(cleaned));
   } else if (level === 'debug') {

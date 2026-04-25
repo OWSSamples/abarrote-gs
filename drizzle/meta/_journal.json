@@ -134,6 +134,48 @@
       "when": 1776189731146,
       "tag": "0018_paypal_qr_url",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1777996800000,
+      "tag": "0019_consolidate_drift",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1776872250861,
+      "tag": "0020_verify_alignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1777593600000,
+      "tag": "0021_stock_movements",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1777680000000,
+      "tag": "0022_product_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1777766400000,
+      "tag": "0023_multi_tenant_phase1",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1777852800000,
+      "tag": "0024_multi_tenant_store_id",
+      "breakpoints": true
     }
   ]
 }

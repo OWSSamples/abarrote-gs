@@ -61,6 +61,16 @@ const envSchema = z.object({
   AWS_S3_BUCKET: z.string().min(1).optional(),
   SES_FROM_EMAIL: z.string().email().optional(),
 
+  // ── SMTP (Spacemail / cualquier proveedor IMAP/SMTP/POP3) ──
+  // Si SMTP_HOST está definido, sendEmail() usa nodemailer en lugar de SES.
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: z.string().regex(/^\d+$/).optional(),
+  SMTP_SECURE: z.enum(['true', 'false']).optional(),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASSWORD: z.string().min(1).optional(),
+  SMTP_FROM_EMAIL: z.string().email().optional(),
+  SMTP_FROM_NAME: z.string().min(1).optional(),
+
   // ── Telegram ──
   TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
   TELEGRAM_CHAT_ID: z.string().min(1).optional(),

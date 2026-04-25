@@ -44,6 +44,7 @@ export const createSaleSchema = z.object({
   discount: money.default(0),
   discountType: z.enum(['amount', 'percent']).default('amount'),
   clienteId: z.string().max(200).optional(),
+  clientRequestId: z.string().min(8).max(200).optional(),
 });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
@@ -60,6 +61,7 @@ export const createProductSchema = z.object({
   name: safeString('Nombre del producto', 300),
   sku: safeString('SKU', 100),
   barcode: safeString('Código de barras', 100),
+  description: z.string().max(2000).nullable().optional(),
   currentStock: nonNegativeInt,
   minStock: nonNegativeInt,
   expirationDate: z.string().max(20).nullable().optional(),

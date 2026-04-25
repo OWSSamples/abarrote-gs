@@ -49,7 +49,11 @@ export class PosEngine {
     try {
       // 1. Intentar guardar en la nube primero (Modo Online)
       if (navigator.onLine) {
-        const result = await createSale(saleData);
+        // Generate a per-attempt idempotency key so retries from the same
+        // checkout reuse it and the server-side guard rejects exact dupes
+        // without rejecting legitimate identical totals from different attempts.
+        const clientRequestId = crypto.randomUUID();
+        const result = await createSale({ ...saleData, clientRequestId });
         return { success: true, folio: result.folio, isOffline: false };
       }
       throw new Error('Offline detected');

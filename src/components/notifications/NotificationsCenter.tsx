@@ -491,7 +491,7 @@ export function NotificationsCenter({ alerts, storeConfig, onProductClick, onOpe
               <Box padding="600">
                 <EmptyState
                   heading={alerts.length === 0 ? '¡Todo en orden!' : 'Sin resultados para este filtro'}
-                  image=""
+                  image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg"
                 >
                   <p>
                     {alerts.length === 0

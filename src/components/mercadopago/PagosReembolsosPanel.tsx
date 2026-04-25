@@ -244,7 +244,7 @@ export function PagosReembolsosPanel() {
 
   const paymentsMarkup =
     payments.length === 0 ? (
-      <EmptyState heading="Sin pagos registrados" image="">
+      <EmptyState heading="Sin pagos registrados" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
         <p>Los pagos procesados por MercadoPago aparecerán aquí automáticamente al recibir pagos con terminal o web.</p>
       </EmptyState>
     ) : (
@@ -334,7 +334,7 @@ export function PagosReembolsosPanel() {
 
   const refundsMarkup =
     refunds.length === 0 ? (
-      <EmptyState heading="Sin reembolsos" image="">
+      <EmptyState heading="Sin reembolsos" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
         <p>Cuando proceses un reembolso desde la pestaña de Pagos, aparecerá aquí con su status actualizado.</p>
       </EmptyState>
     ) : (

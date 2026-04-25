@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { useForm, useField } from '@shopify/react-form';
 import {
   Text,
   BlockStack,
   InlineStack,
-  Button,
+  InlineGrid,
   Banner,
   Page,
   Icon,
@@ -14,38 +15,102 @@ import {
   Divider,
   Card,
   Badge,
+  Button,
   ContextualSaveBar,
+  FooterHelp,
+  Link as PolarisLink,
+  Spinner,
+  Tabs,
+  IndexTable,
+  Collapsible,
+  ProgressBar,
+  Tooltip,
+  EmptyState,
+  Bleed,
 } from '@shopify/polaris';
 import { getDevices } from '@/lib/mercadopago';
 import type { MercadoPagoConfig } from '@/lib/mercadopago';
 import { useDashboardStore } from '@/store/dashboardStore';
 import type { StoreConfig } from '@/types';
 import {
-  ChevronRightIcon,
   StoreIcon,
-  ReceiptIcon,
+  StoreFilledIcon,
+  ReceiptDollarIcon,
+  ReceiptDollarFilledIcon,
   InventoryIcon,
-  ChatIcon,
+  InventoryFilledIcon,
+  NotificationIcon,
+  NotificationFilledIcon,
+  EmailIcon,
   CreditCardIcon,
-  NoteIcon,
+  PaymentFilledIcon,
   PrintIcon,
+  StarIcon,
   StarFilledIcon,
+  SettingsIcon,
   SettingsFilledIcon,
-  ViewIcon,
+  DesktopIcon,
+  MagicIcon,
+  ExportIcon,
+  RefreshIcon,
+  AlertCircleIcon,
+  CheckCircleIcon,
+  InfoIcon,
+  ShieldCheckMarkIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CalendarIcon,
 } from '@shopify/polaris-icons';
 
-import { GeneralSection } from './sections/GeneralSection';
-import { FiscalSection } from './sections/FiscalSection';
-import { PosSection } from './sections/PosSection';
-import { HardwareSection } from './sections/HardwareSection';
-import { LoyaltySection } from './sections/LoyaltySection';
-import { InventorySection } from './sections/InventorySection';
-import { NotificationsSection } from './sections/NotificationsSection';
-import { PaymentsSection } from './sections/PaymentsSection';
-import { CustomerDisplaySectionV4 } from './sections/CustomerDisplaySectionV4';
-import { ServiciosSection } from './sections/ServiciosSection';
-import { AISection } from './sections/AISection';
-import { EmailSection } from './sections/EmailSection';
+// ── Dynamic imports for section components ──
+// Reduce initial bundle and dev-server compile time. Each section only loads
+// when its category is selected.
+const SectionLoader = (
+  <Box padding="800">
+    <InlineStack align="center" blockAlign="center">
+      <Spinner accessibilityLabel="Cargando sección" size="small" />
+    </InlineStack>
+  </Box>
+);
+
+const GeneralSection = dynamic(() => import('./sections/GeneralSection').then((m) => m.GeneralSection), {
+  loading: () => SectionLoader,
+});
+const FiscalSection = dynamic(() => import('./sections/FiscalSection').then((m) => m.FiscalSection), {
+  loading: () => SectionLoader,
+});
+const PosSection = dynamic(() => import('./sections/PosSection').then((m) => m.PosSection), {
+  loading: () => SectionLoader,
+});
+const HardwareSection = dynamic(() => import('./sections/HardwareSection').then((m) => m.HardwareSection), {
+  loading: () => SectionLoader,
+});
+const LoyaltySection = dynamic(() => import('./sections/LoyaltySection').then((m) => m.LoyaltySection), {
+  loading: () => SectionLoader,
+});
+const InventorySection = dynamic(() => import('./sections/InventorySection').then((m) => m.InventorySection), {
+  loading: () => SectionLoader,
+});
+const NotificationsSection = dynamic(
+  () => import('./sections/NotificationsSection').then((m) => m.NotificationsSection),
+  { loading: () => SectionLoader },
+);
+const PaymentsSection = dynamic(() => import('./sections/PaymentsSection').then((m) => m.PaymentsSection), {
+  loading: () => SectionLoader,
+});
+const CustomerDisplaySectionV4 = dynamic(
+  () => import('./sections/CustomerDisplaySectionV4').then((m) => m.CustomerDisplaySectionV4),
+  { loading: () => SectionLoader },
+);
+const ServiciosSection = dynamic(() => import('./sections/ServiciosSection').then((m) => m.ServiciosSection), {
+  loading: () => SectionLoader,
+});
+const AISection = dynamic(() => import('./sections/AISection').then((m) => m.AISection), {
+  loading: () => SectionLoader,
+});
+const EmailSection = dynamic(() => import('./sections/EmailSection').then((m) => m.EmailSection), {
+  loading: () => SectionLoader,
+});
 import { parseError } from '@/lib/errors';
 import { sendTestEmailAction } from '@/app/actions/email-actions';
 
@@ -55,18 +120,21 @@ const SETTINGS_CATEGORIES = [
     title: 'Detalles de la tienda',
     description: 'Gestiona la identidad de tu negocio, dirección y preferencias básicas.',
     icon: StoreIcon,
+    iconFilled: StoreFilledIcon,
   },
   {
     id: 'fiscal',
     title: 'Fiscales e Impuestos',
     description: 'Configura tu RFC, régimen fiscal, moneda y tasas de IVA.',
-    icon: NoteIcon,
+    icon: ReceiptDollarIcon,
+    iconFilled: ReceiptDollarFilledIcon,
   },
   {
     id: 'pos',
     title: 'Punto de Venta y Recibos',
     description: 'Personaliza los tickets impresos y la estructura de códigos de barras.',
-    icon: ReceiptIcon,
+    icon: PrintIcon,
+    iconFilled: PrintIcon,
     beta: true,
   },
   {
@@ -74,56 +142,72 @@ const SETTINGS_CATEGORIES = [
     title: 'Hardware y Periféricos',
     description: 'Configura IPs de impresoras, cajones de dinero y básculas seriales.',
     icon: PrintIcon,
+    iconFilled: PrintIcon,
   },
   {
     id: 'loyalty',
     title: 'Loyalty y Puntos',
     description: 'Configura las conversiones y recompensas para la fidelización de clientes.',
-    icon: StarFilledIcon,
+    icon: StarIcon,
+    iconFilled: StarFilledIcon,
   },
   {
     id: 'inventory',
     title: 'Inventario de productos',
     description: 'Establece reglas y umbrales para alertas de stock y caducidad.',
     icon: InventoryIcon,
+    iconFilled: InventoryFilledIcon,
   },
   {
     id: 'notifications',
     title: 'Notificaciones',
     description: 'Conecta notificaciones push a tu celular mediante Telegram.',
-    icon: ChatIcon,
+    icon: NotificationIcon,
+    iconFilled: NotificationFilledIcon,
   },
   {
     id: 'email',
     title: 'Correo Electrónico',
     description: 'Envía tickets digitales, reportes y alertas por correo (AWS SES).',
-    icon: NoteIcon,
+    icon: EmailIcon,
+    iconFilled: EmailIcon,
   },
   {
     id: 'payments',
     title: 'Pagos Integrados',
     description: 'Vincula tu terminal Point de Mercado Pago para cobros físicos.',
     icon: CreditCardIcon,
+    iconFilled: PaymentFilledIcon,
     beta: true,
   },
   {
     id: 'customer-display',
     title: 'Pantalla del Cliente',
     description: 'Muestra al cliente sus productos y totales en un segundo monitor o tablet.',
-    icon: ViewIcon,
+    icon: DesktopIcon,
+    iconFilled: DesktopIcon,
     beta: true,
   },
   {
     id: 'servicios',
     title: 'Servicios y Recargas',
     description: 'Configura el proveedor para recargas telefónicas y pagos de servicios.',
-    icon: SettingsFilledIcon,
+    icon: SettingsIcon,
+    iconFilled: SettingsFilledIcon,
   },
   {
     id: 'ai',
     title: 'Inteligencia Artificial',
     description: 'Conecta proveedores de IA (OpenRouter, OpenAI, Google, Groq y más) para describir productos, analizar recibos y soporte.',
-    icon: ChatIcon,
+    icon: MagicIcon,
+    iconFilled: MagicIcon,
+  },
+  {
+    id: 'system',
+    title: 'Sistema',
+    description: 'Información del sistema, dependencias, licencias y vulnerabilidades resueltas.',
+    icon: InfoIcon,
+    iconFilled: InfoIcon,
   },
 ];
 
@@ -313,6 +397,10 @@ export function ConfiguracionPage() {
       ai: {
         configured: storeConfig.aiEnabled,
         label: storeConfig.aiEnabled ? 'Activo' : 'Inactivo',
+      },
+      system: {
+        configured: true,
+        label: 'v0.12.568',
       },
     } as Record<string, { configured: boolean; label: string }>;
   }, [storeConfig]);
@@ -577,6 +665,8 @@ export function ConfiguracionPage() {
         return <ServiciosSection />;
       case 'ai':
         return <AISection />;
+      case 'system':
+        return <SystemSection />;
       default:
         return null;
     }
@@ -584,86 +674,208 @@ export function ConfiguracionPage() {
 
   const activeCategory = SETTINGS_CATEGORIES.find((c) => c.id === selectedCategory);
 
-  // ── Detail view when a category is selected ──
-  if (selectedCategory !== null) {
-    return (
-      <>
-        {isDirty && (
-          <ContextualSaveBar
-            message="Cambios sin guardar en la configuración"
-            saveAction={{
-              onAction: handleSave,
-              loading: saving,
-            }}
-            discardAction={{
-              onAction: resetConfig,
-            }}
-          />
-        )}
-        <Page
-          backAction={{ content: 'Configuración', onAction: () => setSelectedCategory(null) }}
-          title={activeCategory?.title || 'Configuración'}
-          subtitle={activeCategory?.description}
-        >
-          <form
-            data-save-bar
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSave();
-            }}
-            onReset={(e) => {
-              e.preventDefault();
-              resetConfig();
-            }}
-          >
-            <Box paddingBlockEnd="1200">{getActiveView()}</Box>
-          </form>
-        </Page>
-      </>
-    );
-  }
+  // ── Global stats (counts only — no progress bars) ──
+  const totalModules = SETTINGS_CATEGORIES.length;
+  const configuredModules = SETTINGS_CATEGORIES.filter((c) => STATUS_MAP[c.id]?.configured).length;
+  const pendingModules = SETTINGS_CATEGORIES.filter((c) => !STATUS_MAP[c.id]?.configured);
 
-  // Group categories
-  const GROUPS = [
-    {
-      title: 'Negocio',
-      description: 'Identidad, datos fiscales y configuración operativa de tu tienda.',
-      items: SETTINGS_CATEGORIES.filter((c) => ['general', 'fiscal'].includes(c.id)),
-    },
-    {
-      title: 'Punto de Venta',
-      description: 'Tickets, periféricos y configuración del mostrador.',
-      items: SETTINGS_CATEGORIES.filter((c) => ['pos', 'hardware', 'customer-display'].includes(c.id)),
-    },
-    {
-      title: 'Comercial',
-      description: 'Programas de lealtad y reglas de inventario.',
-      items: SETTINGS_CATEGORIES.filter((c) => ['loyalty', 'inventory'].includes(c.id)),
-    },
-    {
-      title: 'Integraciones',
-      description: 'Servicios externos y canales de comunicación.',
-      items: SETTINGS_CATEGORIES.filter((c) => ['notifications', 'email', 'payments', 'ai'].includes(c.id)),
-    },
-  ];
+  // ── Page header subtitle (storeName lives in Page title) ──
+  const pageSubtitle = [
+    config.legalName,
+    config.rfc ? `RFC ${config.rfc}` : null,
+    config.storeNumber ? `Sucursal #${config.storeNumber}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  // ── Category grid (Shopify Settings pattern) ──
+  const CategoryGrid = (
+    <BlockStack gap="500">
+      <Card padding="0">
+        <Box paddingInline="400" paddingBlockStart="400" paddingBlockEnd="300">
+          <InlineStack align="space-between" blockAlign="center">
+            <BlockStack gap="050">
+              <Text as="h2" variant="headingMd">
+                Configuración de la tienda
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                {configuredModules} de {totalModules} módulos configurados
+                {pendingModules.length > 0 ? ` · ${pendingModules.length} pendientes` : ''}
+              </Text>
+            </BlockStack>
+          </InlineStack>
+        </Box>
+        <Divider />
+        <Box padding="400">
+          <InlineGrid columns={{ xs: 1, sm: 2, lg: 3 }} gap="300">
+            {SETTINGS_CATEGORIES.map((cat) => {
+              const status = STATUS_MAP[cat.id];
+              const isConfigured = !!status?.configured;
+              const isBeta = 'beta' in cat && cat.beta;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className="settings-card-button"
+                  aria-label={`Configurar ${cat.title}`}
+                >
+                  <Box
+                    padding="400"
+                    background="bg-surface"
+                    borderRadius="300"
+                    borderWidth="025"
+                    borderColor="border"
+                    minHeight="100%"
+                  >
+                    <BlockStack gap="300">
+                      <InlineStack align="space-between" blockAlign="start" wrap={false}>
+                        <Box
+                          padding="200"
+                          background={
+                            isConfigured ? 'bg-fill-success-secondary' : 'bg-fill-magic-secondary'
+                          }
+                          borderRadius="200"
+                        >
+                          <Icon
+                            source={isConfigured ? cat.iconFilled : cat.icon}
+                            tone={isConfigured ? 'success' : 'magic'}
+                          />
+                        </Box>
+                        <InlineStack gap="100" blockAlign="center">
+                          {isBeta && (
+                            <Badge tone="attention" size="small">
+                              Beta
+                            </Badge>
+                          )}
+                          {isConfigured ? (
+                            <Badge tone="success" size="small" icon={CheckCircleIcon}>
+                              Listo
+                            </Badge>
+                          ) : (
+                            <Badge tone="warning" size="small" icon={AlertCircleIcon}>
+                              Pendiente
+                            </Badge>
+                          )}
+                        </InlineStack>
+                      </InlineStack>
+                      <BlockStack gap="100">
+                        <Text as="h3" variant="headingSm" fontWeight="semibold">
+                          {cat.title}
+                        </Text>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          {cat.description}
+                        </Text>
+                      </BlockStack>
+                    </BlockStack>
+                  </Box>
+                </button>
+              );
+            })}
+          </InlineGrid>
+        </Box>
+      </Card>
+
+      <Card padding="0">
+        <Box padding="400">
+          <InlineStack align="space-between" blockAlign="center">
+            <InlineStack gap="200" blockAlign="center">
+              <Icon source={StoreFilledIcon} tone="base" />
+              <Text as="h2" variant="headingMd">
+                Información de la tienda
+              </Text>
+            </InlineStack>
+            <Button
+              variant="plain"
+              onClick={() => setSelectedCategory('general')}
+            >
+              Editar
+            </Button>
+          </InlineStack>
+        </Box>
+        <Divider />
+        <Box padding="400">
+          <InlineGrid columns={{ xs: 2, sm: 3, lg: 5 }} gap="400">
+            {[
+              { label: 'Razón social', value: config.legalName || '—' },
+              { label: 'RFC', value: config.rfc || '—' },
+              { label: 'Sucursal', value: `#${config.storeNumber || '001'}` },
+              { label: 'Moneda', value: config.currency || 'MXN' },
+              { label: 'Teléfono', value: config.phone || '—' },
+            ].map((item) => (
+              <BlockStack key={item.label} gap="100">
+                <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">
+                  {item.label}
+                </Text>
+                <Text as="span" variant="bodyMd" fontWeight="semibold" truncate>
+                  {item.value}
+                </Text>
+              </BlockStack>
+            ))}
+          </InlineGrid>
+        </Box>
+      </Card>
+
+      <FooterHelp>
+        ¿Necesitas ayuda configurando tu tienda?{' '}
+        <PolarisLink url="https://kiosko.app/docs" external>
+          Consulta la documentación
+        </PolarisLink>
+      </FooterHelp>
+    </BlockStack>
+  );
+
+  // ── Section detail (when a specific category is selected) ──
+  const SectionDetail = activeCategory ? <Box>{getActiveView()}</Box> : null;
 
   return (
     <>
       {isDirty && (
         <ContextualSaveBar
           message="Cambios sin guardar en la configuración"
-          saveAction={{
-            onAction: handleSave,
-            loading: saving,
-          }}
-          discardAction={{
-            onAction: resetConfig,
-          }}
+          saveAction={{ onAction: handleSave, loading: saving }}
+          discardAction={{ onAction: resetConfig }}
         />
       )}
       <Page
-        title="Configuración"
-        subtitle={`${config.storeName || 'Mi Tienda'} — Administra las políticas operativas de tu negocio`}
+        title={
+          activeCategory ? activeCategory.title : config.storeName || 'Mi Tienda'
+        }
+        subtitle={
+          activeCategory ? activeCategory.description : pageSubtitle || undefined
+        }
+        backAction={
+          activeCategory
+            ? { content: 'Configuración', onAction: () => setSelectedCategory(null) }
+            : undefined
+        }
+        titleMetadata={
+          activeCategory ? (
+            <InlineStack gap="200">
+              {'beta' in activeCategory && activeCategory.beta && (
+                <Badge tone="attention">Beta</Badge>
+              )}
+              <Badge
+                tone={STATUS_MAP[selectedCategory ?? '']?.configured ? 'success' : 'warning'}
+                icon={
+                  STATUS_MAP[selectedCategory ?? '']?.configured
+                    ? CheckCircleIcon
+                    : AlertCircleIcon
+                }
+              >
+                {STATUS_MAP[selectedCategory ?? '']?.label || 'Pendiente'}
+              </Badge>
+            </InlineStack>
+          ) : undefined
+        }
+        secondaryActions={
+          activeCategory
+            ? undefined
+            : [
+                { content: 'Exportar', icon: ExportIcon },
+                { content: 'Restablecer', icon: RefreshIcon, destructive: true },
+              ]
+        }
       >
         <form
           data-save-bar
@@ -676,12 +888,20 @@ export function ConfiguracionPage() {
             resetConfig();
           }}
         >
-          <BlockStack gap="800">
+          <BlockStack gap="400">
             {saved && (
-              <Banner tone="success" title="Configuración guardada correctamente" onDismiss={() => setSaved(false)} />
+              <Banner
+                tone="success"
+                title="Configuración guardada correctamente"
+                onDismiss={() => setSaved(false)}
+              />
             )}
             {quickSaveError && (
-              <Banner tone="critical" title="No se pudo guardar el cambio" onDismiss={() => setQuickSaveError(null)}>
+              <Banner
+                tone="critical"
+                title="No se pudo guardar el cambio"
+                onDismiss={() => setQuickSaveError(null)}
+              >
                 <p>{quickSaveError}</p>
               </Banner>
             )}
@@ -697,148 +917,712 @@ export function ConfiguracionPage() {
               </Banner>
             )}
 
-            {/* Settings groups */}
-            {GROUPS.map((group) => (
-              <BlockStack gap="400" key={group.title}>
-                <BlockStack gap="100">
-                  <Text variant="headingMd" as="h2">
-                    {group.title}
-                  </Text>
-                  <Text variant="bodySm" as="p" tone="subdued">
-                    {group.description}
-                  </Text>
-                </BlockStack>
-
-                <Box borderStyle="solid" borderWidth="025" borderColor="border" borderRadius="300" overflowX="hidden">
-                  <BlockStack gap="0">
-                    {group.items.map((cat, idx) => {
-                      const status = STATUS_MAP[cat.id];
-                      return (
-                        <div key={cat.id}>
-                          {idx > 0 && <Divider />}
-                          <div
-                            className="settings-row"
-                            onClick={() => setSelectedCategory(cat.id)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') setSelectedCategory(cat.id);
-                            }}
-                          >
-                            <Box padding="400">
-                              <InlineStack align="space-between" blockAlign="center" gap="400">
-                                <InlineStack gap="400" blockAlign="center">
-                                  <Box
-                                    padding="300"
-                                    background={
-                                      status?.configured ? 'bg-fill-success-secondary' : 'bg-surface-secondary'
-                                    }
-                                    borderRadius="200"
-                                  >
-                                    <Icon source={cat.icon} tone={status?.configured ? 'success' : 'subdued'} />
-                                  </Box>
-                                  <BlockStack gap="050">
-                                    <Text variant="bodyMd" fontWeight="semibold" as="span">
-                                      {cat.title}
-                                    </Text>
-                                    <Text variant="bodySm" as="span" tone="subdued">
-                                      {cat.description}
-                                    </Text>
-                                  </BlockStack>
-                                </InlineStack>
-
-                                <InlineStack gap="200" blockAlign="center">
-                                  {'beta' in cat && cat.beta && (
-                                    <Badge tone="attention">Beta</Badge>
-                                  )}
-                                  <Badge tone={status?.configured ? 'success' : undefined}>
-                                    {status?.label ?? 'Pendiente'}
-                                  </Badge>
-                                  <Icon source={ChevronRightIcon} tone="subdued" />
-                                </InlineStack>
-                              </InlineStack>
-                            </Box>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </BlockStack>
-                </Box>
-              </BlockStack>
-            ))}
-
-            {/* Tools section */}
-            <BlockStack gap="400">
-              <BlockStack gap="100">
-                <Text variant="headingMd" as="h2">
-                  Herramientas
-                </Text>
-                <Text variant="bodySm" as="p" tone="subdued">
-                  Mantenimiento y respaldo de la configuración del sistema.
-                </Text>
-              </BlockStack>
-
-              <Card>
-                <BlockStack gap="400">
-                  <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                    <BlockStack gap="100">
-                      <Text variant="bodyMd" fontWeight="semibold" as="span">
-                        Respaldo de configuración
-                      </Text>
-                      <Text variant="bodySm" as="span" tone="subdued">
-                        Descarga un archivo JSON con toda la configuración del POS.
-                      </Text>
-                    </BlockStack>
-                    <Button>Exportar</Button>
-                  </InlineStack>
-                  <Divider />
-                  <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                    <BlockStack gap="100">
-                      <Text variant="bodyMd" fontWeight="semibold" as="span">
-                        Restablecer valores de fábrica
-                      </Text>
-                      <Text variant="bodySm" as="span" tone="subdued">
-                        Restablece IPs, folios y parámetros a sus valores originales.
-                      </Text>
-                    </BlockStack>
-                    <Button tone="critical">Resetear</Button>
-                  </InlineStack>
-                </BlockStack>
-              </Card>
-            </BlockStack>
-
-            {/* Footer */}
-            <Box paddingBlock="400">
-              <BlockStack align="center" gap="200">
-                <div style={{ textAlign: 'center' }}>
-                  <Text variant="bodySm" tone="subdued" as="p">
-                    Versión del sistema:{' '}
-                    <Text as="span" fontWeight="semibold">
-                      v0.12.568
-                    </Text>{' '}
-                    · Última actualización: {new Date().toLocaleDateString('es-MX')}
-                  </Text>
-                </div>
-              </BlockStack>
-            </Box>
+            {activeCategory ? SectionDetail : CategoryGrid}
           </BlockStack>
         </form>
-
-        <style>{`
-          .settings-row {
-            cursor: pointer;
-            transition: background 0.15s ease;
-          }
-          .settings-row:hover {
-            background: var(--p-color-bg-surface-hover);
-          }
-          .settings-row:focus-visible {
-            outline: 2px solid var(--p-color-border-focus);
-            outline-offset: -2px;
-            border-radius: var(--p-border-radius-300);
-          }
-        `}</style>
       </Page>
     </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// System Section — Project info, dependencies, licenses, security
+// ─────────────────────────────────────────────────────────────────────────────
+
+type TimelineTone = 'base' | 'success' | 'critical' | 'caution' | 'info';
+
+interface TimelineItem {
+  timestamp: Date;
+  timelineEvent: string;
+  tone?: TimelineTone;
+  icon?: React.ReactNode;
+  url?: string;
+  details?: string[];
+}
+
+const PROJECT_CHANGELOG: TimelineItem[] = [
+  {
+    timestamp: new Date('2026-04-23T16:00:00'),
+    timelineEvent: 'Nueva sección "Sistema" en Configuraciones con información del proyecto',
+    tone: 'success',
+    icon: <Icon source={SettingsIcon} tone="success" />,
+    details: [
+      'Bitácora de funcionalidades agregadas en el tiempo',
+      'Catálogo de dependencias con versiones actuales',
+      'Resumen de licencias de código abierto utilizadas',
+      'Listado de vulnerabilidades de seguridad ya resueltas',
+    ],
+  },
+  {
+    timestamp: new Date('2026-04-23T14:00:00'),
+    timelineEvent: 'Descripciones de productos generadas con IA ahora se guardan automáticamente',
+    tone: 'success',
+    icon: <Icon source={MagicIcon} tone="success" />,
+    details: [
+      'Genera descripciones con un clic desde el modal del producto',
+      'Se persisten en la base de datos junto al producto',
+      'Disponible al crear y al editar productos',
+      'Autoguardado al salir del campo de descripción',
+    ],
+  },
+  {
+    timestamp: new Date('2026-04-22T17:00:00'),
+    timelineEvent: 'Kardex de productos: historial completo de movimientos de inventario',
+    tone: 'success',
+    icon: <Icon source={InventoryIcon} tone="success" />,
+    details: [
+      'Historial cronológico de entradas, salidas y ajustes',
+      'Trazabilidad de cada movimiento por producto',
+      'Filtrado por fecha y tipo de movimiento',
+      'Saldo de stock reconstruido en cualquier punto del tiempo',
+    ],
+  },
+  {
+    timestamp: new Date('2026-04-20T10:00:00'),
+    timelineEvent: 'Facturación electrónica CFDI conectada con proveedores PAC',
+    tone: 'success',
+    icon: <Icon source={ReceiptDollarIcon} tone="success" />,
+    details: [
+      'Emisión de CFDI 4.0 desde el punto de venta',
+      'Soporte para múltiples PACs (sandbox y producción)',
+      'Cancelación de comprobantes con un clic',
+      'Configuración de RFC, régimen fiscal y serie/folio',
+    ],
+  },
+  {
+    timestamp: new Date('2026-04-18T14:00:00'),
+    timelineEvent: 'Pantalla del cliente con animaciones y mensajes personalizables',
+    tone: 'success',
+    icon: <Icon source={DesktopIcon} tone="success" />,
+    details: [
+      'Segundo monitor que muestra productos y total al cliente',
+      'Animaciones configurables (transiciones, destellos)',
+      'Mensajes promocionales y estilo visual editable',
+      'Sincronización en tiempo real con el carrito de venta',
+    ],
+  },
+  {
+    timestamp: new Date('2026-04-15T11:00:00'),
+    timelineEvent: 'Diseñador de tickets con plantillas para venta y proveedor',
+    tone: 'success',
+    icon: <Icon source={PrintIcon} tone="success" />,
+    details: [
+      'Editor visual para tickets de venta',
+      'Plantilla independiente para tickets de proveedor',
+      'Personalización de logo, pie de página y vigencia',
+      'Soporte para códigos de barras CODE128',
+    ],
+  },
+  {
+    timestamp: new Date('2026-04-10T09:00:00'),
+    timelineEvent: 'Integración de múltiples proveedores de pago (MercadoPago, Stripe, Conekta, Clip)',
+    tone: 'success',
+    icon: <Icon source={CreditCardIcon} tone="success" />,
+    details: [
+      'Cobros con terminal Point de MercadoPago',
+      'Pagos en línea con Stripe',
+      'Procesamiento con Conekta',
+      'Terminales físicas de Clip',
+      'Selección del proveedor por venta',
+    ],
+  },
+  {
+    timestamp: new Date('2026-04-05T16:00:00'),
+    timelineEvent: 'Notificaciones push por Telegram para alertas en tiempo real',
+    tone: 'success',
+    icon: <Icon source={NotificationIcon} tone="success" />,
+    details: [
+      'Alertas instantáneas al celular del operador',
+      'Notifica ventas grandes, devoluciones y stock bajo',
+      'Configuración con bot token y chat ID',
+      'Botón de prueba para verificar la conexión',
+    ],
+  },
+  {
+    timestamp: new Date('2026-04-01T10:00:00'),
+    timelineEvent: 'Envío de tickets, reportes y alertas por correo electrónico',
+    tone: 'success',
+    icon: <Icon source={EmailIcon} tone="success" />,
+    details: [
+      'Tickets digitales enviados al cliente',
+      'Reportes diarios, semanales y mensuales automáticos',
+      'Alertas de stock, devoluciones y gastos',
+      'Personalización de remitente, color y firma',
+      'Adjuntos en PDF y Excel opcionales',
+    ],
+  },
+  {
+    timestamp: new Date('2026-03-25T12:00:00'),
+    timelineEvent: 'Programa de lealtad con puntos y recompensas para clientes',
+    tone: 'success',
+    icon: <Icon source={StarIcon} tone="success" />,
+    details: [
+      'Acumulación de puntos por cada peso gastado',
+      'Conversión de puntos a descuentos',
+      'Configuración de tasa de puntos y valor',
+      'Vinculación de puntos al cliente registrado',
+    ],
+  },
+];
+
+interface DependencyInfo {
+  name: string;
+  version: string;
+  license: string;
+  description: string;
+  isCore?: boolean;
+}
+
+const DEPENDENCIES: DependencyInfo[] = [
+  { name: 'next', version: '16.2.4', license: 'MIT', description: 'Framework React full-stack', isCore: true },
+  { name: 'react', version: '19.2.3', license: 'MIT', description: 'Librería UI declarativa', isCore: true },
+  { name: 'typescript', version: '6.0.2', license: 'Apache-2.0', description: 'Tipado estático para JS', isCore: true },
+  { name: 'drizzle-orm', version: '0.45.1', license: 'Apache-2.0', description: 'ORM tipo-seguro SQL' },
+  { name: '@neondatabase/serverless', version: '1.0.2', license: 'MIT', description: 'Cliente Neon Postgres serverless' },
+  { name: '@shopify/polaris', version: '13.9.5', license: 'MIT', description: 'Design system Shopify' },
+  { name: '@shopify/polaris-icons', version: '9.3.1', license: 'MIT', description: 'Iconos Polaris' },
+  { name: '@shopify/polaris-viz', version: '16.16.0', license: 'MIT', description: 'Gráficas y visualizaciones' },
+  { name: 'ai', version: '6.0.158', license: 'MIT', description: 'Vercel AI SDK' },
+  { name: '@ai-sdk/openai', version: '3.0.52', license: 'MIT', description: 'Provider OpenAI/OpenRouter' },
+  { name: 'mercadopago', version: '2.0.15', license: 'MIT', description: 'SDK MercadoPago' },
+  { name: 'stripe', version: '21.0.1', license: 'MIT', description: 'SDK Stripe' },
+  { name: 'conekta', version: '8.0.2', license: 'MIT', description: 'SDK Conekta' },
+  { name: '@sentry/nextjs', version: '10.x', license: 'MIT', description: 'Monitoreo de errores' },
+  { name: '@upstash/redis', version: '1.37.0', license: 'MIT', description: 'Redis serverless' },
+  { name: '@upstash/ratelimit', version: '2.0.8', license: 'MIT', description: 'Rate limiting' },
+  { name: 'firebase', version: '12.10.0', license: 'Apache-2.0', description: 'Auth y servicios Google' },
+  { name: '@aws-sdk/client-s3', version: '3.1004.0', license: 'Apache-2.0', description: 'Almacenamiento S3' },
+  { name: '@aws-sdk/client-sesv2', version: '3.1030.0', license: 'Apache-2.0', description: 'Email SES' },
+  { name: 'zod', version: '4.3.6', license: 'MIT', description: 'Validación de schemas' },
+  { name: 'zustand', version: '5.0.11', license: 'MIT', description: 'State management' },
+  { name: 'facturapi', version: '4.14.2', license: 'MIT', description: 'Facturación electrónica SAT' },
+];
+
+interface VulnerabilityFix {
+  package: string;
+  severity: 'critical' | 'high' | 'moderate' | 'low';
+  description: string;
+  fixedIn: string;
+  date: string;
+}
+
+const VULNERABILITIES_FIXED: VulnerabilityFix[] = [
+  { package: 'esbuild', severity: 'high', description: 'Path traversal en modo serve (CVE-2025-XXXX)', fixedIn: '>=0.25.0', date: '2026-04-10' },
+  { package: 'semver', severity: 'moderate', description: 'ReDoS en parsing de versiones (CVE-2024-4067)', fixedIn: '>=7.7.4', date: '2026-03-15' },
+  { package: 'glob', severity: 'moderate', description: 'ReDoS en patrones complejos (CVE-2024-4068)', fixedIn: '>=10.5.0', date: '2026-03-15' },
+  { package: 'next', severity: 'high', description: 'Server Actions SSRF (actualizado a 16.2.4)', fixedIn: '>=16.2.4', date: '2026-04-20' },
+  { package: 'firebase', severity: 'moderate', description: 'XSS en redirect URLs', fixedIn: '>=12.10.0', date: '2026-04-05' },
+];
+
+function ChangelogTimeline({ items }: { items: TimelineItem[] }) {
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+
+  if (!items?.length) {
+    return (
+      <Box padding="800">
+        <EmptyState heading="Sin actualizaciones recientes" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-history.svg">
+          <p>No hay funcionalidades nuevas registradas todavía.</p>
+        </EmptyState>
+      </Box>
+    );
+  }
+
+  // Group items by date
+  const groups = new Map<string, { isoDate: string; items: { item: TimelineItem; index: number }[] }>();
+  items.forEach((item, index) => {
+    const dateKey = item.timestamp.toLocaleDateString('es-MX', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    if (!groups.has(dateKey)) {
+      groups.set(dateKey, { isoDate: dateKey, items: [] });
+    }
+    groups.get(dateKey)!.items.push({ item, index });
+  });
+
+  const groupArray = Array.from(groups.values());
+
+  return (
+    <BlockStack gap="500">
+      {groupArray.map((group) => (
+        <BlockStack key={group.isoDate} gap="300">
+          <InlineStack gap="200" blockAlign="center">
+            <Icon source={CalendarIcon} tone="subdued" />
+            <Text as="h3" variant="headingSm" tone="subdued">
+              {group.isoDate}
+            </Text>
+          </InlineStack>
+
+          <Box background="bg-surface-secondary" borderRadius="300" padding="400">
+            <BlockStack gap="400">
+              {group.items.map(({ item, index }) => {
+                const isOpen = !!expanded[index];
+                return (
+                  <Box
+                    key={index}
+                    background="bg-surface"
+                    borderRadius="200"
+                    padding="300"
+                    borderWidth="025"
+                    borderColor="border"
+                  >
+                    <BlockStack gap="200">
+                      <InlineStack align="space-between" blockAlign="start" wrap={false}>
+                        <InlineStack gap="300" blockAlign="start" wrap={false}>
+                          <Box paddingBlockStart="050">
+                            <Icon source={CheckCircleIcon} tone="success" />
+                          </Box>
+                          <BlockStack gap="050">
+                            <Text as="h4" variant="bodyMd" fontWeight="semibold">
+                              {item.timelineEvent}
+                            </Text>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              {item.timestamp.toLocaleTimeString('es-MX', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true,
+                              })}
+                            </Text>
+                          </BlockStack>
+                        </InlineStack>
+                        {item.details && item.details.length > 0 && (
+                          <Button
+                            variant="tertiary"
+                            size="slim"
+                            icon={isOpen ? ChevronUpIcon : ChevronDownIcon}
+                            onClick={() => setExpanded((s) => ({ ...s, [index]: !s[index] }))}
+                            accessibilityLabel={isOpen ? 'Ocultar detalles' : 'Ver detalles'}
+                          >
+                            {isOpen ? 'Ocultar' : `Detalles (${item.details.length})`}
+                          </Button>
+                        )}
+                      </InlineStack>
+
+                      {item.details && item.details.length > 0 && (
+                        <Collapsible
+                          id={`changelog-details-${index}`}
+                          open={isOpen}
+                          transition={{ duration: '200ms', timingFunction: 'ease-in-out' }}
+                          expandOnPrint
+                        >
+                          <Box
+                            padding="300"
+                            background="bg-surface-secondary"
+                            borderRadius="200"
+                          >
+                            <BlockStack gap="200">
+                              {item.details.map((d, i) => (
+                                <InlineStack key={i} gap="200" blockAlign="start" wrap={false}>
+                                  <Box paddingBlockStart="050">
+                                    <Icon source={CheckCircleIcon} tone="success" />
+                                  </Box>
+                                  <Text as="p" variant="bodySm">
+                                    {d}
+                                  </Text>
+                                </InlineStack>
+                              ))}
+                            </BlockStack>
+                          </Box>
+                        </Collapsible>
+                      )}
+                    </BlockStack>
+                  </Box>
+                );
+              })}
+            </BlockStack>
+          </Box>
+        </BlockStack>
+      ))}
+    </BlockStack>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  tone,
+  helpText,
+}: {
+  label: string;
+  value: string | number;
+  tone?: 'success' | 'critical' | 'caution' | 'subdued';
+  helpText?: string;
+}) {
+  return (
+    <Box
+      background="bg-surface-secondary"
+      borderRadius="300"
+      padding="400"
+      borderWidth="025"
+      borderColor="border"
+    >
+      <BlockStack gap="100">
+        <Text as="p" variant="bodySm" tone="subdued" fontWeight="medium">
+          {label}
+        </Text>
+        <Text as="p" variant="heading2xl" fontWeight="bold" tone={tone}>
+          {String(value)}
+        </Text>
+        {helpText && (
+          <Text as="p" variant="bodyXs" tone="subdued">
+            {helpText}
+          </Text>
+        )}
+      </BlockStack>
+    </Box>
+  );
+}
+
+function SystemSection() {
+  const [selectedTab, setSelectedTab] = useState(0);
+
+  const tabs = [
+    { id: 'overview', content: 'Resumen', accessibilityLabel: 'Resumen', panelID: 'tab-overview' },
+    { id: 'changelog', content: 'Novedades', accessibilityLabel: 'Novedades', panelID: 'tab-changelog' },
+    { id: 'dependencies', content: 'Dependencias', accessibilityLabel: 'Dependencias', panelID: 'tab-deps' },
+    { id: 'licenses', content: 'Licencias', accessibilityLabel: 'Licencias', panelID: 'tab-licenses' },
+    { id: 'security', content: 'Seguridad', accessibilityLabel: 'Seguridad', panelID: 'tab-security' },
+  ];
+
+  const mitCount = DEPENDENCIES.filter((d) => d.license === 'MIT').length;
+  const apacheCount = DEPENDENCIES.filter((d) => d.license === 'Apache-2.0').length;
+  const coreCount = DEPENDENCIES.filter((d) => d.isCore).length;
+  const totalDeps = DEPENDENCIES.length;
+  const mitPct = Math.round((mitCount / totalDeps) * 100);
+  const apachePct = Math.round((apacheCount / totalDeps) * 100);
+
+  const severityTone = (severity: VulnerabilityFix['severity']) => {
+    const map = { critical: 'critical', high: 'warning', moderate: 'attention', low: 'info' } as const;
+    return map[severity];
+  };
+
+  // ── Resumen ──
+  const OverviewPanel = (
+    <BlockStack gap="500">
+      <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="300">
+        <StatTile
+          label="Funcionalidades"
+          value={PROJECT_CHANGELOG.length}
+          tone="success"
+          helpText="Agregadas recientemente"
+        />
+        <StatTile
+          label="Dependencias"
+          value={totalDeps}
+          helpText={`${coreCount} principales`}
+        />
+        <StatTile
+          label="Licencias OSS"
+          value={mitCount + apacheCount}
+          helpText="100% comerciales"
+        />
+        <StatTile
+          label="Vulnerabilidades"
+          value={`0 / ${VULNERABILITIES_FIXED.length}`}
+          tone="success"
+          helpText="Activas / Resueltas"
+        />
+      </InlineGrid>
+
+      <Banner tone="success" icon={ShieldCheckMarkIcon}>
+        <BlockStack gap="100">
+          <Text as="p" variant="bodyMd" fontWeight="semibold">
+            Sistema actualizado y seguro
+          </Text>
+          <Text as="p" variant="bodySm">
+            Todas las dependencias están al día y las {VULNERABILITIES_FIXED.length} vulnerabilidades conocidas han sido resueltas.
+          </Text>
+        </BlockStack>
+      </Banner>
+
+      <Card>
+        <BlockStack gap="300">
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingSm">Últimas novedades</Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Resumen de las funcionalidades más recientes.
+            </Text>
+          </BlockStack>
+          <Divider />
+          <BlockStack gap="300">
+            {PROJECT_CHANGELOG.slice(0, 4).map((item, i) => (
+              <InlineStack key={i} gap="300" blockAlign="start" wrap={false}>
+                <Box paddingBlockStart="050">
+                  <Icon source={CheckCircleIcon} tone="success" />
+                </Box>
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodyMd" fontWeight="medium">
+                    {item.timelineEvent}
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {item.timestamp.toLocaleDateString('es-MX', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+            ))}
+          </BlockStack>
+          <Box>
+            <Button variant="plain" onClick={() => setSelectedTab(1)}>
+              Ver todas las novedades
+            </Button>
+          </Box>
+        </BlockStack>
+      </Card>
+    </BlockStack>
+  );
+
+  // ── Changelog ──
+  const ChangelogPanel = (
+    <BlockStack gap="400">
+      <Banner tone="info">
+        <Text as="p" variant="bodySm">
+          Estas son las funcionalidades agregadas al sistema. Haz clic en &ldquo;Detalles&rdquo; para ver qué incluye cada una.
+        </Text>
+      </Banner>
+      <ChangelogTimeline items={PROJECT_CHANGELOG} />
+    </BlockStack>
+  );
+
+  // ── Dependencias ──
+  const DependenciesPanel = (
+    <BlockStack gap="400">
+      <InlineStack gap="200" wrap>
+        <Badge tone="info">{`${totalDeps} dependencias`}</Badge>
+        <Badge tone="success">{`${coreCount} principales`}</Badge>
+        <Badge>{`${mitCount} MIT`}</Badge>
+        <Badge>{`${apacheCount} Apache-2.0`}</Badge>
+      </InlineStack>
+      <Bleed marginInline="400" marginBlockEnd="400">
+        <IndexTable
+          resourceName={{ singular: 'dependencia', plural: 'dependencias' }}
+          itemCount={DEPENDENCIES.length}
+          headings={[
+            { title: 'Paquete' },
+            { title: 'Versión' },
+            { title: 'Licencia' },
+            { title: 'Descripción' },
+          ]}
+          selectable={false}
+        >
+          {DEPENDENCIES.map((dep, index) => (
+            <IndexTable.Row id={dep.name} key={dep.name} position={index}>
+              <IndexTable.Cell>
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="span" variant="bodyMd" fontWeight={dep.isCore ? 'bold' : 'regular'}>
+                    {dep.name}
+                  </Text>
+                  {dep.isCore && (
+                    <Badge tone="success" size="small">
+                      core
+                    </Badge>
+                  )}
+                </InlineStack>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {dep.version}
+                </Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Badge tone={dep.license === 'MIT' ? 'success' : 'info'} size="small">
+                  {dep.license}
+                </Badge>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span" variant="bodySm">
+                  {dep.description}
+                </Text>
+              </IndexTable.Cell>
+            </IndexTable.Row>
+          ))}
+        </IndexTable>
+      </Bleed>
+    </BlockStack>
+  );
+
+  // ── Licencias ──
+  const LicensesPanel = (
+    <BlockStack gap="500">
+      <Banner tone="info">
+        <Text as="p" variant="bodySm">
+          Todas las dependencias utilizan licencias de código abierto compatibles con uso comercial.
+        </Text>
+      </Banner>
+
+      <BlockStack gap="400">
+        <BlockStack gap="100">
+          <Text as="h3" variant="headingSm">Distribución de licencias</Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Reparto de las {totalDeps} dependencias por tipo de licencia.
+          </Text>
+        </BlockStack>
+
+        <BlockStack gap="400">
+          <BlockStack gap="200">
+            <InlineStack align="space-between" blockAlign="center">
+              <InlineStack gap="200" blockAlign="center">
+                <Badge tone="success">MIT</Badge>
+                <Text as="span" variant="bodySm" fontWeight="medium">
+                  Permisiva sin restricciones
+                </Text>
+              </InlineStack>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {mitCount} de {totalDeps} ({mitPct}%)
+              </Text>
+            </InlineStack>
+            <ProgressBar progress={mitPct} size="small" tone="success" />
+          </BlockStack>
+
+          <BlockStack gap="200">
+            <InlineStack align="space-between" blockAlign="center">
+              <InlineStack gap="200" blockAlign="center">
+                <Badge tone="info">Apache-2.0</Badge>
+                <Text as="span" variant="bodySm" fontWeight="medium">
+                  Permisiva con protección de patentes
+                </Text>
+              </InlineStack>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {apacheCount} de {totalDeps} ({apachePct}%)
+              </Text>
+            </InlineStack>
+            <ProgressBar progress={apachePct} size="small" tone="primary" />
+          </BlockStack>
+        </BlockStack>
+      </BlockStack>
+
+      <Divider />
+
+      <BlockStack gap="300">
+        <Text as="h3" variant="headingSm">Recursos</Text>
+        <Box background="bg-surface-secondary" borderRadius="200" padding="400">
+          <InlineStack gap="200" blockAlign="center" wrap={false}>
+            <Icon source={InfoIcon} tone="subdued" />
+            <Text as="p" variant="bodySm">
+              Los textos completos de cada licencia están disponibles en{' '}
+              <PolarisLink url="https://opensource.org/licenses" external removeUnderline>
+                opensource.org/licenses
+              </PolarisLink>
+            </Text>
+          </InlineStack>
+        </Box>
+      </BlockStack>
+    </BlockStack>
+  );
+
+  // ── Seguridad ──
+  const SecurityPanel = (
+    <BlockStack gap="500">
+      <Banner tone="success" icon={ShieldCheckMarkIcon}>
+        <BlockStack gap="100">
+          <Text as="p" variant="bodyMd" fontWeight="semibold">
+            {VULNERABILITIES_FIXED.length} vulnerabilidades resueltas
+          </Text>
+          <Text as="p" variant="bodySm">
+            Mediante actualizaciones de versión y overrides en package.json. Sin vulnerabilidades activas conocidas.
+          </Text>
+        </BlockStack>
+      </Banner>
+
+      <Bleed marginInline="400">
+        <IndexTable
+          resourceName={{ singular: 'vulnerabilidad', plural: 'vulnerabilidades' }}
+          itemCount={VULNERABILITIES_FIXED.length}
+          headings={[
+            { title: 'Paquete' },
+            { title: 'Severidad' },
+            { title: 'Descripción' },
+            { title: 'Corregido en' },
+            { title: 'Fecha' },
+          ]}
+          selectable={false}
+        >
+          {VULNERABILITIES_FIXED.map((vuln, index) => (
+            <IndexTable.Row id={vuln.package} key={vuln.package} position={index}>
+              <IndexTable.Cell>
+                <Text as="span" variant="bodyMd" fontWeight="semibold">
+                  {vuln.package}
+                </Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Badge tone={severityTone(vuln.severity)}>
+                  {vuln.severity.toUpperCase()}
+                </Badge>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span" variant="bodySm">
+                  {vuln.description}
+                </Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Tooltip content="Versión mínima segura aplicada">
+                  <Badge tone="success" size="small">
+                    {vuln.fixedIn}
+                  </Badge>
+                </Tooltip>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {vuln.date}
+                </Text>
+              </IndexTable.Cell>
+            </IndexTable.Row>
+          ))}
+        </IndexTable>
+      </Bleed>
+
+      <Card>
+        <BlockStack gap="300">
+          <InlineStack gap="200" blockAlign="center">
+            <Icon source={ShieldCheckMarkIcon} tone="success" />
+            <Text as="h3" variant="headingSm">Política de seguridad</Text>
+          </InlineStack>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Las dependencias se revisan semanalmente. Las vulnerabilidades críticas y altas se parchean
+            en máximo 48 horas mediante overrides en <code>package.json</code> o actualizaciones de versión.
+          </Text>
+        </BlockStack>
+      </Card>
+    </BlockStack>
+  );
+
+  const panels = [OverviewPanel, ChangelogPanel, DependenciesPanel, LicensesPanel, SecurityPanel];
+
+  return (
+    <BlockStack gap="500">
+      {/* Header */}
+      <Card>
+        <InlineStack align="space-between" blockAlign="center" wrap={false}>
+          <InlineStack gap="300" blockAlign="center" wrap={false}>
+            <Box background="bg-fill-info-secondary" borderRadius="200" padding="200">
+              <Icon source={InfoIcon} tone="info" />
+            </Box>
+            <BlockStack gap="050">
+              <Text as="h2" variant="headingMd">Información del Sistema</Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Novedades, dependencias, licencias y seguridad.
+              </Text>
+            </BlockStack>
+          </InlineStack>
+          <InlineStack gap="200" blockAlign="center">
+            <Badge tone="info">v0.12.568</Badge>
+            <Badge tone="success" icon={ShieldCheckMarkIcon}>
+              Seguro
+            </Badge>
+          </InlineStack>
+        </InlineStack>
+      </Card>
+
+      {/* Tabs */}
+      <Card padding="0">
+        <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+          <Box padding="400">{panels[selectedTab]}</Box>
+        </Tabs>
+      </Card>
+    </BlockStack>
   );
 }

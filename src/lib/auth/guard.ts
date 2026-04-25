@@ -118,7 +118,11 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
   }
 
   try {
-    return await verifyToken(token);
+    const user = await verifyToken(token);
+    // Asocia el usuario al contexto de observabilidad (Sentry).
+    // No-op si Sentry no está instalado/configurado.
+    void import('@/lib/observability').then((obs) => obs.setObservabilityUser({ id: user.uid, email: user.email }));
+    return user;
   } catch (error) {
     if (error instanceof AuthError) throw error;
 

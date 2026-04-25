@@ -16,6 +16,7 @@ import {
   Button,
   Banner,
   Box,
+  Tabs,
 } from '@shopify/polaris';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
@@ -25,6 +26,7 @@ import { useToast } from '@/components/notifications/ToastProvider';
 import { CameraScanner } from '@/components/scanner/CameraScanner';
 import { useAIDescription } from '@/hooks/useAIDescription';
 import { Product } from '@/types';
+import { ProductHistoryPanel } from './ProductHistoryPanel';
 
 interface UpdateProductModalProps {
   open: boolean;
@@ -71,7 +73,7 @@ function UpdateProductForm({ open, onClose, product }: { open: boolean; onClose:
   ];
   const { showSuccess, showError } = useToast();
   const { aiEnabled, generating, generateDescription } = useAIDescription();
-  const [aiDescription, setAiDescription] = useState('');
+  const [aiDescription, setAiDescription] = useState(product.description ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
@@ -79,6 +81,16 @@ function UpdateProductForm({ open, onClose, product }: { open: boolean; onClose:
   const [adjustmentQty, setAdjustmentQty] = useState('');
   const [adjustmentReason, setAdjustmentReason] = useState('');
   const [adjustmentBusy, setAdjustmentBusy] = useState(false);
+
+  // ── Tabs (Editar / Historial) ──
+  const [selectedTab, setSelectedTab] = useState(0);
+  const tabs = useMemo(
+    () => [
+      { id: 'edit', content: 'Editar', panelID: 'product-edit' },
+      { id: 'history', content: 'Historial de movimientos', panelID: 'product-history' },
+    ],
+    [],
+  );
 
   const { fields, makeClean, reset } = useForm({
     fields: {
@@ -251,21 +263,23 @@ function UpdateProductForm({ open, onClose, product }: { open: boolean; onClose:
       return;
     }
 
-    const currentStock = product.currentStock ?? 0;
-    const newStock = currentStock + qty;
+    const reasonLabel =
+      adjustmentReasonOptions.find((o) => o.value === adjustmentReason)?.label ?? adjustmentReason;
 
     setAdjustmentBusy(true);
     try {
+      const { restockProduct } = await import('@/app/actions/db-actions');
+      const { newStock } = await restockProduct(product.id, qty, reasonLabel, '');
+      // Sync local store optimistically so the inventory list reflects the change.
       await updateProductStore(product.id, { currentStock: newStock });
       fields.currentStock.onChange(newStock.toString());
       fields.currentStock.newDefaultValue(newStock.toString());
       setAdjustmentQty('');
       setAdjustmentReason('');
-      showSuccess(
-        `+${qty} unidades surtidas. Stock actualizado: ${newStock}. Motivo: ${adjustmentReasonOptions.find((o) => o.value === adjustmentReason)?.label ?? adjustmentReason}`,
-      );
-    } catch {
-      showError('Error al surtir stock.');
+      showSuccess(`+${qty} unidades surtidas. Stock actualizado: ${newStock}. Motivo: ${reasonLabel}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al surtir stock.';
+      showError(message);
     }
     setAdjustmentBusy(false);
   }, [product, adjustmentQty, adjustmentReason, updateProductStore, fields.currentStock, showSuccess, showError, adjustmentReasonOptions]);
@@ -280,6 +294,18 @@ function UpdateProductForm({ open, onClose, product }: { open: boolean; onClose:
         onAction: handleClose,
       }}
     >
+      <Modal.Section>
+        <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab} fitted />
+      </Modal.Section>
+
+      {selectedTab === 1 && (
+        <Modal.Section>
+          <ProductHistoryPanel productId={product.id} unit={fields.unit.value || product.unit} />
+        </Modal.Section>
+      )}
+
+      {selectedTab === 0 && (
+        <>
       {/* ── Imagen ── */}
       <Modal.Section>
         <BlockStack gap="300">
@@ -374,7 +400,12 @@ function UpdateProductForm({ open, onClose, product }: { open: boolean; onClose:
                       });
                       if (desc) {
                         setAiDescription(desc);
-                        showSuccess('Descripción generada');
+                        try {
+                          await updateProductStore(product.id, { description: desc });
+                          showSuccess('Descripción generada y guardada');
+                        } catch {
+                          showError('Descripción generada pero no se pudo guardar');
+                        }
                       }
                     }}
                     loading={generating}
@@ -388,10 +419,18 @@ function UpdateProductForm({ open, onClose, product }: { open: boolean; onClose:
                   labelHidden
                   value={aiDescription}
                   onChange={setAiDescription}
+                  onBlur={async () => {
+                    if (aiDescription === (product.description ?? '')) return;
+                    try {
+                      await updateProductStore(product.id, { description: aiDescription || null });
+                    } catch {
+                      showError('Error al guardar la descripción');
+                    }
+                  }}
                   multiline={3}
                   autoComplete="off"
                   placeholder="Haz clic en 'Generar con IA' para crear una descripción automática"
-                  helpText={generating ? 'Generando descripción...' : ''}
+                  helpText={generating ? 'Generando descripción...' : 'Se guarda automáticamente al salir del campo'}
                 />
               </BlockStack>
             )}
@@ -551,6 +590,8 @@ function UpdateProductForm({ open, onClose, product }: { open: boolean; onClose:
           </Box>
         </BlockStack>
       </Modal.Section>
+        </>
+      )}
     </Modal>
   );
 }

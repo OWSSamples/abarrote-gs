@@ -31,9 +31,7 @@ import { NewCustomerForm } from './NewCustomerForm';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { formatCurrency } from '@/lib/utils';
 import { usePermissions } from '@/hooks/usePermissions';
-import { CustomerExportModal, ClientImportModal } from '@/components/inventory/ShopifyModals';
-import { generateCSV, downloadFile } from '@/components/export/ExportModal';
-import { generatePDF } from '@/components/export/generatePDF';
+import { ClientImportModal } from '@/components/inventory/ShopifyModals';
 import type { Cliente } from '@/types';
 
 // ── Tab config ──
@@ -65,7 +63,6 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
   // ── Views ──
   const [addClienteOpen, setAddClienteOpen] = useState(false);
   const [viewingProfile, setViewingProfile] = useState<Cliente | null>(null);
-  const [isExportOpen, setIsExportOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
 
   // ── Index Filters ──
@@ -380,7 +377,6 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
           : undefined
       }
       secondaryActions={[
-        { content: 'Exportar', onAction: () => setIsExportOpen(true) },
         { content: 'Importar', onAction: () => setIsImportOpen(true) },
       ]}
     >
@@ -659,31 +655,6 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
           </FormLayout>
         </Modal.Section>
       </Modal>
-
-      <CustomerExportModal
-        open={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        onExport={(format, scope) => {
-          const dataToExport = scope === 'current' ? filteredClientes : clientes;
-          const exportData = dataToExport.map((c) => ({
-            'Nombre Completo': c.name,
-            Teléfono: c.phone || 'N/A',
-            Dirección: c.address || 'N/A',
-            'Límite de Crédito': c.creditLimit,
-            'Crédito Utilizado': c.balance,
-            'Crédito Disponible': Math.max(0, c.creditLimit - c.balance),
-            Puntos: c.points || 0,
-          }));
-          const filename = `Clientes_Kiosco_${new Date().toISOString().split('T')[0]}`;
-          if (format === 'pdf') {
-            generatePDF('Reporte de Clientes y Créditos', exportData as Record<string, unknown>[], `${filename}.pdf`);
-          } else {
-            const csvContent = generateCSV(exportData as Record<string, unknown>[], true);
-            const mime = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/vnd.ms-excel;charset=utf-8;';
-            downloadFile(csvContent, `${filename}.csv`, mime);
-          }
-        }}
-      />
 
       <ClientImportModal
         open={isImportOpen}

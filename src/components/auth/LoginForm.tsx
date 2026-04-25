@@ -3,10 +3,21 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signInWithEmailAndPassword, OAuthProvider, signInWithPopup } from 'firebase/auth';
+import { signInWithEmailAndPassword, OAuthProvider, signInWithPopup, User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { Card, FormLayout, TextField, Button, BlockStack, Box, Text, InlineStack } from '@shopify/polaris';
 import { useToast } from '@/components/notifications/ToastProvider';
+import { BrandLogo } from '@/components/ui/BrandLogo';
+
+function writeSessionCookie(token: string): void {
+  const isHttps = window.location.protocol === 'https:';
+  document.cookie = `__session=${token}; path=/; max-age=3600; SameSite=Strict${isHttps ? '; Secure' : ''}`;
+}
+
+async function ensureSessionCookie(user: User): Promise<void> {
+  const token = await user.getIdToken(true);
+  writeSessionCookie(token);
+}
 
 export function LoginForm() {
   const router = useRouter();
@@ -34,8 +45,10 @@ export function LoginForm() {
 
       provider.setCustomParameters(customParams);
 
-      await signInWithPopup(auth, provider);
+      const credential = await signInWithPopup(auth, provider);
+      await ensureSessionCookie(credential.user);
       toast.showSuccess('Bienvenido al sistema con Microsoft');
+      router.refresh();
       router.push('/');
     } catch (error: unknown) {
       console.error('Microsoft SignIn error:', error);
@@ -67,8 +80,10 @@ export function LoginForm() {
 
       setIsLoading(true);
       try {
-        await signInWithEmailAndPassword(auth, email, password);
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        await ensureSessionCookie(credential.user);
         toast.showSuccess('Bienvenido al sistema');
+        router.refresh();
         router.push('/');
       } catch (error: unknown) {
         console.error('SignIn error:', error);
@@ -183,14 +198,7 @@ export function LoginForm() {
                 loading={isMicrosoftLoading}
                 disabled={isLoading}
                 size="large"
-                icon={
-                  <svg width="18" height="18" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
-                    <path fill="#f25022" d="M1 1h9v9H1z" />
-                    <path fill="#00a4ef" d="M1 11h9v9H1z" />
-                    <path fill="#7fba00" d="M11 1h9v9h-9z" />
-                    <path fill="#ffb900" d="M11 11h9v9h-9z" />
-                  </svg>
-                }
+                icon={<BrandLogo name="Microsoft" size={18} />}
               >
                 Iniciar sesión con Microsoft
               </Button>

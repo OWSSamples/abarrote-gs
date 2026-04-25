@@ -9,7 +9,15 @@
 // ======================================================================
 
 // Products
-export { fetchAllProducts, createProduct, updateProductStock, deleteProduct, updateProduct } from './product-actions';
+export {
+  fetchAllProducts,
+  createProduct,
+  updateProductStock,
+  restockProduct,
+  fetchStockMovements,
+  deleteProduct,
+  updateProduct,
+} from './product-actions';
 
 // Store Config
 export { fetchStoreConfig, saveStoreConfig } from './store-config-actions';

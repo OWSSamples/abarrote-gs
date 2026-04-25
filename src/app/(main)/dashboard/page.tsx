@@ -14,14 +14,11 @@ import {
   InlineGrid,
   ProgressBar,
 } from '@shopify/polaris';
-import { ExportIcon, RefreshIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { KPICard } from '@/components/kpi/KPICard';
 import { InventoryTable } from '@/components/inventory/InventoryTable';
 import { QuickActions } from '@/components/actions/QuickActions';
 import { TopProducts } from '@/components/metrics/TopProducts';
-import { ExportModal } from '@/components/export/ExportModal';
-import { exportDashboardData } from '@/components/export/exportUtils';
 import { Product } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -35,7 +32,6 @@ export default function DashboardOverviewPage() {
   const saleRecords = useDashboardStore((s) => s.saleRecords);
   const clientes = useDashboardStore((s) => s.clientes);
   const mermaRecords = useDashboardStore((s) => s.mermaRecords);
-  const fetchDashboardData = useDashboardStore((s) => s.fetchDashboardData);
 
   const todayStr = useMemo(() => {
     return new Intl.DateTimeFormat('en-CA', {
@@ -124,24 +120,9 @@ export default function DashboardOverviewPage() {
     return { totalRevenue, totalUnits, avgTicket, totalDebt, debtors, mermaValue, peakHour };
   }, [todaySales, clientes, mermaRecords, hourlySalesData]);
 
-  const [exportModalOpen, setExportModalOpen] = useState(false);
-
   const handleProductClick = useCallback((product: Product) => {
     useDashboardStore.getState().openProductDetail(product);
   }, []);
-
-  const handleExport = useCallback(
-    (options: Parameters<typeof exportDashboardData>[0]) => {
-      const exportData = {
-        inventory: inventoryAlerts.map((a) => a.product),
-        lowStock: inventoryAlerts.filter((a) => a.alertType === 'low_stock').map((a) => a.product),
-        expiring: inventoryAlerts.filter((a) => a.alertType === 'expiration').map((a) => a.product),
-        dailySales: salesData,
-      };
-      exportDashboardData(options, exportData);
-    },
-    [inventoryAlerts, salesData],
-  );
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -168,18 +149,6 @@ export default function DashboardOverviewPage() {
           month: 'long',
           year: 'numeric',
         })}
-        primaryAction={{
-          content: 'Generar Reporte',
-          icon: ExportIcon,
-          onAction: () => setExportModalOpen(true),
-        }}
-        secondaryActions={[
-          {
-            content: 'Actualizar',
-            icon: RefreshIcon,
-            onAction: fetchDashboardData,
-          },
-        ]}
       >
         <BlockStack gap="500">
           {/* ═══ ROW 1: PRIMARY KPIs WITH SPARKLINES ═══ */}
@@ -435,7 +404,6 @@ export default function DashboardOverviewPage() {
           <InventoryTable alerts={inventoryAlerts} onProductClick={handleProductClick} />
         </BlockStack>
       </Page>
-      <ExportModal open={exportModalOpen} onClose={() => setExportModalOpen(false)} onExport={handleExport} />
     </>
   );
 }

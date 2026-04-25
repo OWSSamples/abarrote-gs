@@ -1,6 +1,7 @@
 'use server';
 
 import { requirePermission, validateId } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { db } from '@/db';
 import {
   saleRecords,
@@ -24,7 +25,7 @@ import { createClipCheckoutCharge, createClipTerminalCharge } from '@/lib/clip-p
 import { paymentCharges } from '@/db/schema';
 import { createSaleSchema } from '@/lib/validation/schemas';
 import { publishJob } from '@/infrastructure/qstash';
-import { withLogging } from '@/lib/errors';
+import { AppError, withLogging } from '@/lib/errors';
 import { withRateLimit, idempotencyCheck, withLock } from '@/infrastructure/redis';
 import { emitDomainEvent } from '@/domain/events';
 
@@ -172,15 +173,20 @@ async function _fetchSaleRecords(): Promise<SaleRecord[]> {
 }
 
 async function _createSale(
-  saleData: Omit<SaleRecord, 'id' | 'folio' | 'date'> & { clienteId?: string },
+  saleData: Omit<SaleRecord, 'id' | 'folio' | 'date'> & { clienteId?: string; clientRequestId?: string },
 ): Promise<SaleRecord> {
   return logger.withTiming(
     'createSale',
     async () => {
       const user = await requirePermission('sales.create');
+      const { storeId } = await requireStoreScope();
 
       // ── Idempotency guard: prevent duplicate sale creation from double-clicks/retries ──
-      const idempotencyKey = `sale:${saleData.total}:${saleData.paymentMethod}:${saleData.cajero}:${saleData.amountPaid}`;
+      // Prefer a client-provided request id (one per checkout attempt). Fall back
+      // to a content-based key so legacy callers stay protected.
+      const idempotencyKey = saleData.clientRequestId
+        ? `sale:req:${saleData.clientRequestId}`
+        : `sale:${saleData.total}:${saleData.paymentMethod}:${saleData.cajero}:${saleData.amountPaid}`;
       const isNew = await idempotencyCheck(idempotencyKey, { ttlMs: 10_000 });
       if (!isNew) {
         logger.warn('Duplicate sale creation blocked', { action: 'sale_idempotency_block', key: idempotencyKey });
@@ -249,6 +255,7 @@ async function _createSale(
               installments: saleData.installments ?? 1,
               mpPaymentId: saleData.mpPaymentId ?? null,
               date: now,
+              storeId,
             });
 
             // 3. Insert sale items
@@ -262,13 +269,60 @@ async function _createSale(
                 quantity: item.quantity,
                 unitPrice: String(item.unitPrice),
                 subtotal: String(item.subtotal),
+                storeId,
               });
+            }
+
+            // 3.5 Stock pre-check with row-level lock to prevent oversells.
+            // Aggregate quantities by productId in case the same product appears in multiple lines.
+            const required = new Map<string, number>();
+            for (const item of saleData.items) {
+              required.set(item.productId, (required.get(item.productId) ?? 0) + item.quantity);
+            }
+            const productIds = Array.from(required.keys());
+            const lockedRows = await tx
+              .select({ id: products.id, name: products.name, currentStock: products.currentStock })
+              .from(products)
+              .where(inArray(products.id, productIds))
+              .for('update');
+            const stockById = new Map(lockedRows.map((r) => [r.id, r]));
+            const insufficient: string[] = [];
+            for (const [pid, need] of required) {
+              const row = stockById.get(pid);
+              if (!row) {
+                insufficient.push(`Producto ${pid} no encontrado`);
+                continue;
+              }
+              if (row.currentStock < need) {
+                insufficient.push(`${row.name}: requiere ${need}, disponible ${row.currentStock}`);
+              }
+            }
+            if (insufficient.length > 0) {
+              throw new AppError(
+                'INSUFFICIENT_STOCK',
+                `Stock insuficiente para completar la venta: ${insufficient.join('; ')}`,
+                409,
+              );
             }
 
             // 4. Deduct stock using shared helper (inside tx)
             const alerts: { name: string; currentStock: number; minStock: number }[] = [];
             for (const item of saleData.items) {
-              const updated = await adjustStock(item.productId, -item.quantity, { tx, now });
+              const updated = await adjustStock(item.productId, -item.quantity, {
+                tx,
+                now,
+                meta: {
+                  type: 'sale',
+                  source: 'venta',
+                  sourceId: id,
+                  sourceLabel: `Folio ${txFolio}`,
+                  unitCost: item.unitPrice,
+                  notes: `Venta · ${cajero}`,
+                  userId: user.uid,
+                  userName: cajero,
+                  storeId,
+                },
+              });
               if (updated && updated.currentStock <= updated.minStock * 0.2) {
                 alerts.push(updated);
               }
@@ -304,6 +358,7 @@ async function _createSale(
                   notas: `Canje en venta folio ${txFolio}`,
                   cajero,
                   fecha: now,
+                  storeId,
                 });
                 runningBalance = saldoDespuesCanje;
               }
@@ -324,6 +379,7 @@ async function _createSale(
                   notas: `Acumulación en venta folio ${txFolio}`,
                   cajero,
                   fecha: now,
+                  storeId,
                 });
               }
             }
@@ -349,32 +405,33 @@ async function _createSale(
         metadata: { userId: user.uid, userEmail: user.email ?? '' },
       });
 
-      // Stock critical alerts
+      // Stock critical alerts — published as background jobs (non-blocking).
+      // QStash handles retries and falls back to inline fire-and-forget if unavailable.
       for (const alert of stockAlerts) {
-        sendNotification(
+        const message =
           `<b>REPORTE DE STOCK CRÍTICO</b>\n\n` +
-            `Producto: ${escapeHTML(alert.name)}\n` +
-            `Stock actual: ${alert.currentStock}\n` +
-            `Mínimo sugerido: ${alert.minStock}`,
-        );
+          `Producto: ${escapeHTML(alert.name)}\n` +
+          `Stock actual: ${alert.currentStock}\n` +
+          `Mínimo sugerido: ${alert.minStock}`;
+        void publishJob('notification', { message }, undefined, () => sendNotification(message));
       }
 
-      // Notificación de venta detallada y estética
+      // Notificación de venta detallada y estética — también async vía qstash
       const itemsList = saleData.items
         .map((it) => `• ${it.quantity}x ${escapeHTML(it.productName)} ($${numVal(String(it.unitPrice)).toFixed(2)})`)
         .join('\n');
 
-      await sendNotification(
+      const saleMessage =
         `<b>REPORTE DE VENTA (#${folio})</b>\n\n` +
-          `Cajero: ${escapeHTML(cajero)}\n` +
-          `Método de Pago: ${saleData.paymentMethod.toUpperCase()}\n` +
-          `---------------------------------\n` +
-          `<b>DETALLE DE PRODUCTOS:</b>\n${itemsList}\n` +
-          `---------------------------------\n` +
-          `<b>TOTAL: $${numVal(String(saleData.total)).toFixed(2)}</b>\n\n` +
-          (saleData.pointsUsed > 0 ? `Puntos canjeados: ${saleData.pointsUsed}\n` : '') +
-          `Hora: ${now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`,
-      );
+        `Cajero: ${escapeHTML(cajero)}\n` +
+        `Método de Pago: ${saleData.paymentMethod.toUpperCase()}\n` +
+        `---------------------------------\n` +
+        `<b>DETALLE DE PRODUCTOS:</b>\n${itemsList}\n` +
+        `---------------------------------\n` +
+        `<b>TOTAL: $${numVal(String(saleData.total)).toFixed(2)}</b>\n\n` +
+        (saleData.pointsUsed > 0 ? `Puntos canjeados: ${saleData.pointsUsed}\n` : '') +
+        `Hora: ${now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`;
+      void publishJob('notification', { message: saleMessage }, undefined, () => sendNotification(saleMessage));
 
       // ── Automated payment charge creation ──
       // For SPEI/OXXO automated methods, create a charge with the provider
@@ -536,13 +593,18 @@ async function _cancelSale(saleId: string): Promise<void> {
 
   const items = await db.select().from(saleItems).where(eq(saleItems.saleId, saleId));
   for (const item of items) {
-    await db
-      .update(products)
-      .set({
-        currentStock: sql`current_stock + ${item.quantity}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(products.id, item.productId));
+    await adjustStock(item.productId, item.quantity, {
+      meta: {
+        type: 'return',
+        source: 'venta',
+        sourceId: saleId,
+        sourceLabel: `Cancelación folio ${sale.folio}`,
+        unitCost: Number(item.unitPrice),
+        notes: 'Reversión por cancelación de venta',
+        userId: user.uid,
+        userName: user.email ?? null,
+      },
+    });
   }
 
   // Si fue fiado, revertir deuda global del cliente y limpiar tickets de deudores
@@ -586,12 +648,19 @@ async function _deleteSales(saleIds: string[]): Promise<void> {
 
   // Restaurar stock de todos los items involucrados
   const allItems = await db.select().from(saleItems).where(inArray(saleItems.saleId, activeIds));
+  const folioById = new Map(pendingSalesToCancel.map((s) => [s.id, s.folio]));
   await Promise.all(
     allItems.map((item) =>
-      db
-        .update(products)
-        .set({ currentStock: sql`current_stock + ${item.quantity}`, updatedAt: new Date() })
-        .where(eq(products.id, item.productId)),
+      adjustStock(item.productId, item.quantity, {
+        meta: {
+          type: 'return',
+          source: 'venta',
+          sourceId: item.saleId,
+          sourceLabel: `Cancelación folio ${folioById.get(item.saleId) ?? ''}`,
+          unitCost: Number(item.unitPrice),
+          notes: 'Reversión por cancelación masiva de ventas',
+        },
+      }),
     ),
   );
 

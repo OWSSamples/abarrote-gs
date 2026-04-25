@@ -4,10 +4,11 @@ import { cache } from '@/infrastructure/redis';
 import { requirePermission, requireAuth, sanitize, validateNumber, validateId } from '@/lib/auth/guard';
 import { validateSchema, createProductSchema, updateProductSchema, idSchema } from '@/lib/validation/schemas';
 import { db } from '@/db';
-import { products } from '@/db/schema';
-import { eq, or, and } from 'drizzle-orm';
+import { products, stockMovements } from '@/db/schema';
+import { eq, or, and, desc } from 'drizzle-orm';
 import type { Product } from '@/types';
 import { numVal } from './_helpers';
+import { adjustStock } from './_stock';
 import { AppError, withLogging } from '@/lib/errors';
 import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
 import { withRateLimit } from '@/infrastructure/redis';
@@ -28,6 +29,7 @@ async function _fetchAllProducts(): Promise<Product[]> {
     name: r.name,
     sku: r.sku,
     barcode: r.barcode,
+    description: r.description ?? null,
     currentStock: r.currentStock,
     minStock: r.minStock,
     expirationDate: r.expirationDate,
@@ -84,6 +86,7 @@ async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
     name: sanitize(data.name),
     sku: sanitizedSku,
     barcode: sanitizedBarcode,
+    description: data.description ? sanitize(data.description) : null,
     currentStock: validateNumber(data.currentStock, { label: 'Stock' }),
     minStock: validateNumber(data.minStock, { label: 'Stock mínimo' }),
     expirationDate: data.expirationDate || undefined,
@@ -110,6 +113,77 @@ async function _updateProductStock(productId: string, newStock: number): Promise
   validateId(productId, 'Product ID');
   validateNumber(newStock, { label: 'Nuevo stock' });
   await db.update(products).set({ currentStock: newStock, updatedAt: new Date() }).where(eq(products.id, productId));
+}
+
+/**
+ * Manual restock — adds inventory and records a kardex entry.
+ * Used by the "Surtir mercancía" flow in the product modal.
+ */
+async function _restockProduct(
+  productId: string,
+  quantity: number,
+  reason: string,
+  notes?: string,
+): Promise<{ newStock: number }> {
+  const user = await requirePermission('inventory.edit');
+  validateId(productId, 'Product ID');
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError('INVALID_QUANTITY', 'La cantidad a surtir debe ser mayor a 0', 400);
+  }
+  const [productRow] = await db
+    .select({ name: products.name, costPrice: products.costPrice })
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+  if (!productRow) {
+    throw new AppError('PRODUCT_NOT_FOUND', 'Producto no encontrado', 404);
+  }
+  const updated = await adjustStock(productId, quantity, {
+    meta: {
+      type: 'restock',
+      source: 'manual',
+      sourceId: null,
+      sourceLabel: reason || 'Surtido manual',
+      unitCost: Number(productRow.costPrice),
+      notes: notes ?? '',
+      userId: user.uid,
+      userName: user.email ?? null,
+    },
+  });
+  return { newStock: updated?.currentStock ?? 0 };
+}
+
+/**
+ * Fetch the kardex (stock movement history) for a single product.
+ */
+async function _fetchStockMovements(productId: string, limit = 100): Promise<import('@/types').StockMovement[]> {
+  await requirePermission('inventory.view');
+  validateId(productId, 'Product ID');
+  const rows = await db
+    .select()
+    .from(stockMovements)
+    .where(eq(stockMovements.productId, productId))
+    .orderBy(desc(stockMovements.createdAt))
+    .limit(Math.min(Math.max(limit, 1), 500));
+
+  return rows.map((r) => ({
+    id: r.id,
+    productId: r.productId,
+    productName: r.productName,
+    type: r.type as import('@/types').StockMovementType,
+    quantity: r.quantity,
+    direction: r.direction as import('@/types').StockMovementDirection,
+    balanceAfter: r.balanceAfter,
+    unitCost: r.unitCost != null ? Number(r.unitCost) : null,
+    totalValue: r.totalValue != null ? Number(r.totalValue) : null,
+    source: r.source,
+    sourceId: r.sourceId,
+    sourceLabel: r.sourceLabel,
+    notes: r.notes,
+    userId: r.userId,
+    userName: r.userName,
+    createdAt: r.createdAt.toISOString(),
+  }));
 }
 
 async function _deleteProduct(productId: string): Promise<void> {
@@ -145,6 +219,7 @@ async function _updateProduct(id: string, data: Partial<Product>): Promise<void>
   if (data.isPerishable !== undefined) updateData.isPerishable = data.isPerishable;
   if (data.expirationDate !== undefined) updateData.expirationDate = data.expirationDate;
   if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+  if (data.description !== undefined) updateData.description = data.description;
   await db.update(products).set(updateData).where(eq(products.id, id));
 
   emitDomainEvent({
@@ -160,5 +235,7 @@ async function _updateProduct(id: string, data: Partial<Product>): Promise<void>
 export const fetchAllProducts = withLogging('product.fetchAll', _fetchAllProducts);
 export const createProduct = withRateLimit('product.create', withLogging('product.create', _createProduct));
 export const updateProductStock = withLogging('product.updateStock', _updateProductStock);
+export const restockProduct = withRateLimit('product.restock', withLogging('product.restock', _restockProduct));
+export const fetchStockMovements = withLogging('product.fetchStockMovements', _fetchStockMovements);
 export const deleteProduct = withRateLimit('product.delete', withLogging('product.delete', _deleteProduct));
 export const updateProduct = withLogging('product.update', _updateProduct);

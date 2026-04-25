@@ -29,6 +29,7 @@ import {
 } from '@/app/actions/ai-actions';
 import { parseError } from '@/lib/errors';
 import { useToast } from '@/components/notifications/ToastProvider';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 // ── Provider catalogue ─────────────────────────────────────────────────────
 const AI_PROVIDERS = [
@@ -429,6 +430,7 @@ export function AISection() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                     <BlockStack gap="050">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
+                        <BrandLogo name={provider.name} size={20} />
                         <Text as="span" variant="bodyMd" fontWeight="semibold">
                           {provider.name}
                         </Text>

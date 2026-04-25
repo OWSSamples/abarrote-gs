@@ -321,9 +321,10 @@ async function _fetchStoreConfig(): Promise<StoreConfig> {
       try {
         const selectObj: Record<string, unknown> = {};
         selectObj['id'] = storeConfig.id;
+        const tableColumns = storeConfig as unknown as Record<string, unknown>;
         for (const key of candidateKeys) {
           if (key in allColumns) {
-            selectObj[key] = (storeConfig as Record<string, unknown>)[key];
+            selectObj[key] = tableColumns[key];
           }
         }
         const rows = await db

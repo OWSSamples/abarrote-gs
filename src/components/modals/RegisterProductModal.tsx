@@ -144,6 +144,7 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
           name: form.name.trim(),
           sku: form.sku.trim(),
           barcode: form.barcode.trim(),
+          description: aiDescription.trim() || null,
           category: form.category,
           costPrice: parseFloat(form.costPrice),
           unitPrice: parseFloat(form.unitPrice),
@@ -160,6 +161,7 @@ export function RegisterProductModal({ open, onClose }: RegisterProductModalProp
         onClose();
         reset();
         setFile(null);
+        setAiDescription('');
       } catch (err: unknown) {
         const parsed = parseError(err);
         showError(parsed);

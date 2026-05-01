@@ -116,20 +116,23 @@ export function useTicketPrinter() {
   );
 
   /** Open the cash drawer (via ESC/POS command or toast fallback) */
-  const openDrawer = useCallback(async () => {
-    const printer = printerRef.current;
+  const openDrawer = useCallback(
+    async (pin: 2 | 5 = 2) => {
+      const printer = printerRef.current;
 
-    if (printer && printer.status === 'ready') {
-      const drawerCmd = buildDrawerKick();
-      const success = await printer.print(drawerCmd);
-      if (success) {
-        toast.showSuccess('Cajón de dinero abierto');
-        return;
+      if (printer && printer.status === 'ready') {
+        const drawerCmd = buildDrawerKick(pin);
+        const success = await printer.print(drawerCmd);
+        if (success) {
+          toast.showSuccess('Cajón de dinero abierto');
+          return;
+        }
       }
-    }
 
-    toast.showWarning('Conecta una impresora térmica para abrir el cajón de dinero');
-  }, [toast]);
+      toast.showWarning('Conecta una impresora térmica para abrir el cajón de dinero');
+    },
+    [toast],
+  );
 
   return {
     // Actions

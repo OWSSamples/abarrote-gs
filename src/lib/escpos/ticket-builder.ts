@@ -91,7 +91,7 @@ function money(n: number): string {
 
 // ── Sale Ticket Builder ──────────────────────────────────────────
 
-export function buildSaleTicket(data: SaleTicketData, openDrawer: boolean = false): Uint8Array {
+export function buildSaleTicket(data: SaleTicketData, openDrawer: boolean = false, drawerPin: 2 | 5 = 2): Uint8Array {
   const parts: Uint8Array[] = [INIT, SET_CP858];
 
   // ── Header ──
@@ -194,7 +194,7 @@ export function buildSaleTicket(data: SaleTicketData, openDrawer: boolean = fals
 
   // ── Cash drawer kick ──
   if (openDrawer) {
-    parts.push(DRAWER_KICK_PIN2);
+    parts.push(drawerPin === 5 ? DRAWER_KICK_PIN5 : DRAWER_KICK_PIN2);
   }
 
   return concatBytes(parts);
@@ -256,6 +256,13 @@ export function buildCorteTicket(data: CorteTicketData): Uint8Array {
 
 // ── Cash Drawer Only ─────────────────────────────────────────────
 
-export function buildDrawerKick(): Uint8Array {
-  return concatBytes([INIT, DRAWER_KICK_PIN2]);
+/**
+ * Build the bytes that pulse the cash drawer.
+ *
+ * @param pin Solenoid pin used by the drawer. Most drawers (Epson, Star,
+ * Xprinter, Nextep standard) use pin 2. A subset of Nextep/Bematech models
+ * wire the solenoid to pin 5 — if pin 2 doesn't open your drawer, try 5.
+ */
+export function buildDrawerKick(pin: 2 | 5 = 2): Uint8Array {
+  return concatBytes([INIT, pin === 5 ? DRAWER_KICK_PIN5 : DRAWER_KICK_PIN2]);
 }

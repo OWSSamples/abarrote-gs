@@ -59,6 +59,7 @@ export function QuickActions() {
   const [aperturaOpen, setAperturaOpen] = useState(false);
   const [pinPadOpen, setPinPadOpen] = useState(false);
   const { openDrawer } = useTicketPrinter();
+  const storeConfig = useDashboardStore((s) => s.storeConfig);
 
   const [abonoOpen, setAbonoOpen] = useState(false);
   const [abonoClienteId, setAbonoClienteId] = useState('');
@@ -611,7 +612,15 @@ export function QuickActions() {
         onSuccess={(_uid: string, _name: string) => {
           setPinPadOpen(false);
           // Apertura autorizada — señal enviada al driver
-          openDrawer();
+          // Resolve drawer pin from storeConfig (defaults to pin 2; users
+          // with Nextep/Bematech variants can write "pin5" in the Hardware
+          // settings field to switch).
+          const pin =
+            storeConfig.cashDrawerPort &&
+            /pin\s*5|^5$/i.test(storeConfig.cashDrawerPort.trim())
+              ? 5
+              : 2;
+          openDrawer(pin);
         }}
         title="Autorizar Apertura de Cajón"
         label="Ingresa PIN para abrir cajón de dinero"

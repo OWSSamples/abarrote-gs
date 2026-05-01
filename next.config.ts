@@ -39,20 +39,47 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  reactStrictMode: true,
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
   transpilePackages: ['@shopify/polaris', '@shopify/polaris-icons'],
   serverExternalPackages: [
+    // Firebase Admin (Node-only)
     'firebase-admin',
     'firebase-admin/app',
     'firebase-admin/auth',
+    // Payment SDKs
     'mercadopago',
+    'stripe',
+    'conekta',
+    'facturapi',
+    // PDF / barcode generation (heavy, server-side rendering only)
     'jspdf',
     'jspdf-autotable',
     'fflate',
+    'qrcode',
+    'jsbarcode',
+    // AWS SDK (huge — keep out of client bundle)
+    '@aws-sdk/client-s3',
+    '@aws-sdk/client-sesv2',
+    '@aws-sdk/s3-request-presigner',
+    // Database / cache / queue
+    'postgres',
+    'drizzle-orm',
+    '@neondatabase/serverless',
+    '@upstash/redis',
+    '@upstash/ratelimit',
+    '@upstash/qstash',
+    '@upstash/search',
+    // Mail / parsers / sockets
+    'nodemailer',
+    'csv-parse',
+    'ws',
   ],
   compress: true,
   compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
   },
   images: {
     remotePatterns: [
@@ -98,7 +125,27 @@ const nextConfig: NextConfig = {
     imageSizes: [40, 64, 96, 128, 256],
   },
   experimental: {
-    optimizePackageImports: ['@shopify/polaris', '@shopify/polaris-icons', 'lucide-react', 'date-fns', 'recharts'],
+    // Per-import barrel splitting — drops ~hundreds of KB of dead Polaris/icon
+    // exports from each client chunk. Add any new heavy barrel libs here.
+    optimizePackageImports: [
+      '@shopify/polaris',
+      '@shopify/polaris-icons',
+      '@shopify/polaris-viz',
+      '@shopify/react-i18n',
+      '@shopify/react-form',
+      'lucide-react',
+      'date-fns',
+      'recharts',
+      'radix-ui',
+      '@dnd-kit/core',
+      '@dnd-kit/sortable',
+      '@dnd-kit/modifiers',
+      '@dnd-kit/utilities',
+      'zustand',
+      'clsx',
+      'tailwind-merge',
+      'class-variance-authority',
+    ],
   },
   async headers() {
     return [
@@ -106,6 +153,16 @@ const nextConfig: NextConfig = {
         // Apply security headers to ALL routes
         source: '/(.*)',
         headers: SECURITY_HEADERS,
+      },
+      {
+        // Long-lived immutable cache for hashed Next assets
+        source: '/_next/static/(.*)',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        // Public icons / illustrations served from /public
+        source: '/(icon|illustrations)/(.*)',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }],
       },
     ];
   },

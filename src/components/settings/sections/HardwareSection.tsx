@@ -10,6 +10,7 @@ import {
   FormLayout,
   InlineStack,
   Layout,
+  Select,
   Text,
   TextField,
 } from '@shopify/polaris';
@@ -152,28 +153,32 @@ export function HardwareSection({ config, updateField }: SettingsSectionProps) {
       {/* ── Cash Drawer & Scale ── */}
       <Layout.AnnotatedSection
         title="Cajón de Dinero y Báscula"
-        description="El cajón se abre automáticamente al imprimir si está conectado al puerto RJ-11 de la impresora térmica."
+        description="El cajón se abre automáticamente al imprimir si está conectado al puerto RJ-11/RJ-12 de la impresora térmica. Compatible con Epson, Star, Xprinter, Nextep, Bematech y todos los cajones ESC/POS estándar."
       >
         <Card>
           <FormLayout>
-            <FormLayout.Group>
-              <TextField
-                label="Puerto del cajón de dinero"
-                placeholder="Ej: COM1 o USB"
-                value={config.cashDrawerPort || ''}
-                onChange={(v) => updateField('cashDrawerPort', v)}
-                autoComplete="off"
-                helpText="Si tu cajón está conectado a la impresora por RJ-11, no necesitas configurar nada aquí — se abre con el comando de impresión."
-              />
-              <TextField
-                label="Puerto de la báscula serial"
-                placeholder="Ej: COM2"
-                value={config.scalePort || ''}
-                onChange={(v) => updateField('scalePort', v)}
-                autoComplete="off"
-                helpText="Para lectura automática de peso en productos a granel. Requiere Chrome/Edge."
-              />
-            </FormLayout.Group>
+            <Select
+              label="Pin del solenoide del cajón"
+              options={[
+                { label: 'Pin 2 — Estándar (Epson, Star, Xprinter, Nextep)', value: 'pin2' },
+                { label: 'Pin 5 — Alternativo (Bematech, algunos Nextep)', value: 'pin5' },
+              ]}
+              value={
+                config.cashDrawerPort && /pin\s*5|^5$/i.test(config.cashDrawerPort.trim())
+                  ? 'pin5'
+                  : 'pin2'
+              }
+              onChange={(v) => updateField('cashDrawerPort', v === 'pin5' ? 'pin5' : '')}
+              helpText="Si tu cajón no abre con la opción Pin 2, cambia a Pin 5 y prueba de nuevo. La mayoría de cajones — incluido el Nextep estándar — usan Pin 2."
+            />
+            <TextField
+              label="Puerto de la báscula serial"
+              placeholder="Ej: COM2"
+              value={config.scalePort || ''}
+              onChange={(v) => updateField('scalePort', v)}
+              autoComplete="off"
+              helpText="Para lectura automática de peso en productos a granel. Requiere Chrome/Edge."
+            />
           </FormLayout>
         </Card>
       </Layout.AnnotatedSection>

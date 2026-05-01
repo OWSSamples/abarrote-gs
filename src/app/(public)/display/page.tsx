@@ -224,6 +224,32 @@ const EMPTY_SALE: SaleState = {
   status: 'idle',
 };
 
+// Format CLABE (18 digits) into readable groups for the customer display.
+function formatClabeForDisplay(raw: string): string {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (digits.length !== 18) return raw;
+  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 17)} ${digits.slice(17)}`;
+}
+
+// CLABE bank code lookup (Mexican interbank system)
+const CLABE_BANK_CODES: Record<string, string> = {
+  '002': 'Banamex', '006': 'Bancomext', '009': 'Banobras', '012': 'BBVA',
+  '014': 'Santander', '021': 'HSBC', '030': 'Bajío', '032': 'IXE',
+  '036': 'Inbursa', '037': 'Interacciones', '042': 'Mifel', '044': 'Scotiabank',
+  '058': 'Banregio', '059': 'Invex', '060': 'Bansi', '062': 'Afirme',
+  '072': 'Banorte', '102': 'Royal Bank', '106': 'BAMSA', '113': 'Ve por Más',
+  '127': 'Azteca', '128': 'Autofin', '130': 'Compartamos', '132': 'Multiva',
+  '133': 'Actinver', '134': 'Walmart', '137': 'Bancoppel', '138': 'ABC Capital',
+  '140': 'Consubanco', '143': 'CIBanco', '145': 'BBase', '147': 'Bankaool',
+  '148': 'Pagatodo', '155': 'ICBC', '156': 'Sabadell', '166': 'Bansefi',
+};
+
+function getBankNameFromClabe(raw: string): string | null {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (digits.length < 3) return null;
+  return CLABE_BANK_CODES[digits.substring(0, 3)] ?? null;
+}
+
 // ═══════════════════════════════════════════════════════════
 // Main Component
 // ═══════════════════════════════════════════════════════════
@@ -275,16 +301,22 @@ export default function CustomerDisplayPage() {
 
   // BroadcastChannel listener
   useEffect(() => {
+    const displayId = crypto.randomUUID();
     const channel = new BroadcastChannel('customer_display');
     channel.onmessage = (event) => {
-      if (event.data.type === 'UPDATE_SALE') {
+      if (event.data.type === 'UPDATE_SALE' || event.data.type === 'TEST_SALE') {
         setSale(event.data.payload as SaleState);
         setAnimKey((k) => k + 1);
       } else if (event.data.type === 'UPDATE_CONFIG') {
         setStoreConfig(event.data.payload as StoreConfig);
         setAnimKey((k) => k + 1);
+      } else if (event.data.type === 'PING') {
+        // Respond so the admin knows a display is alive
+        channel.postMessage({ type: 'PONG', payload: { displayId, at: Date.now() } });
       }
     };
+    // Announce presence on mount
+    channel.postMessage({ type: 'PONG', payload: { displayId, at: Date.now() } });
     return () => channel.close();
   }, []);
 
@@ -856,6 +888,50 @@ export default function CustomerDisplayPage() {
                       </BlockStack>
                     </InlineStack>
                   </Banner>
+                ) : sale.paymentMethod === 'spei' && storeConfig.clabeNumber ? (
+                  <Card>
+                    <BlockStack gap="300" inlineAlign="center">
+                      <Text variant="bodySm" as="p" tone="subdued">
+                        Pago por transferencia SPEI
+                      </Text>
+                      <Box
+                        background="bg-fill-info-secondary"
+                        borderRadius="300"
+                        padding="400"
+                        width="100%"
+                      >
+                        <BlockStack gap="200" inlineAlign="center">
+                          <Text variant="bodySm" as="p" tone="subdued" fontWeight="semibold">
+                            CLABE INTERBANCARIA
+                          </Text>
+                          <Text variant="heading2xl" as="p" fontWeight="bold">
+                            {formatClabeForDisplay(storeConfig.clabeNumber)}
+                          </Text>
+                          {getBankNameFromClabe(storeConfig.clabeNumber) && (
+                            <Badge tone="info" size="large">
+                              {`Banco: ${getBankNameFromClabe(storeConfig.clabeNumber)}`}
+                            </Badge>
+                          )}
+                          {storeConfig.storeName && (
+                            <Text variant="bodyMd" as="p" tone="subdued">
+                              A nombre de:{' '}
+                              <Text as="span" variant="bodyMd" fontWeight="semibold">
+                                {storeConfig.storeName}
+                              </Text>
+                            </Text>
+                          )}
+                          <Text variant="bodyMd" as="p" fontWeight="semibold">
+                            Monto a transferir: {formatCurrency(sale.total)}
+                          </Text>
+                        </BlockStack>
+                      </Box>
+                      <Text variant="bodySm" as="p" tone="subdued" alignment="center">
+                        Realiza la transferencia desde tu app bancaria.
+                        <br />
+                        Conserva tu comprobante.
+                      </Text>
+                    </BlockStack>
+                  </Card>
                 ) : (
                   <Card>
                     <BlockStack gap="200" inlineAlign="center">

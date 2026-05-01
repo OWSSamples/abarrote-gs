@@ -17,26 +17,27 @@ export function SaleItemsTable({ items, allProducts, onRemove, onUpdateQuantity 
   if (items.length === 0) return null;
 
   return (
-    <BlockStack gap="200">
-      {/* Header — hidden on mobile via CSS */}
-      <Box paddingInline="100">
-        <div className="sale-items-header">
+    <BlockStack gap="0">
+      {/* Column header */}
+      <Box paddingInline="300" paddingBlockEnd="200">
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto auto 32px',
+            gap: 16,
+            alignItems: 'center',
+          }}
+        >
           <Text variant="bodySm" as="span" tone="subdued" fontWeight="semibold">
             PRODUCTO
           </Text>
-          <InlineStack gap="600">
-            <Box minWidth="90px">
-              <Text variant="bodySm" as="span" tone="subdued" fontWeight="semibold" alignment="center">
-                CANT.
-              </Text>
-            </Box>
-            <Box minWidth="80px">
-              <Text variant="bodySm" as="span" tone="subdued" fontWeight="semibold" alignment="end">
-                SUBTOTAL
-              </Text>
-            </Box>
-            <Box minWidth="24px" />
-          </InlineStack>
+          <Text variant="bodySm" as="span" tone="subdued" fontWeight="semibold" alignment="center">
+            CANT.
+          </Text>
+          <Text variant="bodySm" as="span" tone="subdued" fontWeight="semibold" alignment="end">
+            SUBTOTAL
+          </Text>
+          <span />
         </div>
       </Box>
 
@@ -47,135 +48,128 @@ export function SaleItemsTable({ items, allProducts, onRemove, onUpdateQuantity 
         const productInfo = allProducts.find((p) => p.id === item.productId);
         const stock = productInfo?.currentStock ?? 0;
         const isLowStock = stock > 0 && stock <= (productInfo?.minStock ?? 3);
-        const isLastItem = idx === items.length - 1;
 
         return (
-          <div key={item.productId}>
-            <Box paddingBlock="150" paddingInline="100">
-              {/* Desktop layout */}
-              <div className="sale-item-desktop">
-                <InlineStack align="space-between" blockAlign="center" wrap={false}>
+          <Box
+            key={item.productId}
+            paddingBlock="300"
+            paddingInline="300"
+            background={idx % 2 === 1 ? 'bg-surface-secondary' : undefined}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr auto auto 32px',
+                gap: 16,
+                alignItems: 'center',
+              }}
+            >
+              {/* Producto: image + name + sku + unit price */}
+              <InlineStack gap="300" blockAlign="center" wrap={false}>
+                <Box minWidth="44px" maxWidth="44px">
+                  <OptimizedImage
+                    source={productInfo?.imageUrl}
+                    alt={item.productName}
+                    size="small"
+                  />
+                </Box>
+                <BlockStack gap="050">
                   <InlineStack gap="200" blockAlign="center" wrap={false}>
-                    <Box minWidth="36px" maxWidth="36px">
-                      <OptimizedImage source={productInfo?.imageUrl} alt={item.productName} size="small" />
-                    </Box>
-                    <BlockStack gap="0">
-                      <InlineStack gap="100" blockAlign="center">
-                        <Text as="span" variant="bodyMd" fontWeight="semibold" truncate>
-                          {item.productName}
-                        </Text>
-                        {isLowStock && <Badge tone="warning" size="small">Bajo</Badge>}
-                      </InlineStack>
-                      <InlineStack gap="100">
-                        <Text as="span" variant="bodySm" tone="subdued">{item.sku}</Text>
-                        <Text as="span" variant="bodySm" tone="subdued">· {formatCurrency(item.unitPrice)} c/u</Text>
-                      </InlineStack>
-                    </BlockStack>
-                  </InlineStack>
-
-                  <InlineStack gap="400" blockAlign="center" wrap={false}>
-                    <Box minWidth="90px">
-                      {onUpdateQuantity ? (
-                        <InlineStack gap="100" blockAlign="center">
-                          <Button variant="tertiary" icon={MinusIcon} onClick={() => onUpdateQuantity(item.productId, -1)} disabled={item.quantity <= 1} accessibilityLabel="Menos" size="micro" />
-                          <Box minWidth="28px">
-                            <Text as="span" variant="bodyMd" fontWeight="bold" alignment="center">{item.quantity}</Text>
-                          </Box>
-                          <Button variant="tertiary" icon={PlusIcon} onClick={() => onUpdateQuantity(item.productId, 1)} disabled={item.quantity >= stock} accessibilityLabel="Más" size="micro" />
-                        </InlineStack>
-                      ) : (
-                        <Text as="span" variant="bodyMd" fontWeight="bold" alignment="center">{item.quantity}</Text>
-                      )}
-                    </Box>
-                    <Box minWidth="80px">
-                      <Text as="span" variant="bodyMd" fontWeight="semibold" alignment="end">{formatCurrency(item.subtotal)}</Text>
-                    </Box>
-                    <Button variant="plain" icon={DeleteIcon} tone="critical" onClick={() => onRemove(item.productId)} accessibilityLabel="Eliminar" size="micro" />
-                  </InlineStack>
-                </InlineStack>
-              </div>
-
-              {/* Mobile layout — stacked */}
-              <div className="sale-item-mobile">
-                <BlockStack gap="200">
-                  {/* Row 1: Product info + delete */}
-                  <InlineStack align="space-between" blockAlign="start" wrap={false}>
-                    <InlineStack gap="200" blockAlign="center" wrap={false}>
-                      <Box minWidth="32px" maxWidth="32px">
-                        <OptimizedImage source={productInfo?.imageUrl} alt={item.productName} size="small" />
-                      </Box>
-                      <BlockStack gap="0">
-                        <InlineStack gap="100" blockAlign="center">
-                          <Text as="span" variant="bodyMd" fontWeight="semibold" truncate>
-                            {item.productName}
-                          </Text>
-                          {isLowStock && <Badge tone="warning" size="small">Bajo</Badge>}
-                        </InlineStack>
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          {formatCurrency(item.unitPrice)} c/u
-                        </Text>
-                      </BlockStack>
-                    </InlineStack>
-                    <Button variant="plain" icon={DeleteIcon} tone="critical" onClick={() => onRemove(item.productId)} accessibilityLabel="Eliminar" />
-                  </InlineStack>
-
-                  {/* Row 2: Quantity controls + subtotal */}
-                  <InlineStack align="space-between" blockAlign="center">
-                    {onUpdateQuantity ? (
-                      <div className="sale-item-qty-controls">
-                        <Button icon={MinusIcon} onClick={() => onUpdateQuantity(item.productId, -1)} disabled={item.quantity <= 1} accessibilityLabel="Menos" size="slim" />
-                        <Text as="span" variant="headingSm" fontWeight="bold" alignment="center">
-                          {item.quantity}
-                        </Text>
-                        <Button icon={PlusIcon} onClick={() => onUpdateQuantity(item.productId, 1)} disabled={item.quantity >= stock} accessibilityLabel="Más" size="slim" />
-                      </div>
-                    ) : (
-                      <Text as="span" variant="headingSm" fontWeight="bold">{item.quantity}</Text>
+                    <Text as="span" variant="bodyMd" fontWeight="semibold" truncate>
+                      {item.productName}
+                    </Text>
+                    {isLowStock && (
+                      <Badge tone="warning" size="small">
+                        Stock bajo
+                      </Badge>
                     )}
-                    <Text as="span" variant="headingSm" fontWeight="bold">
-                      {formatCurrency(item.subtotal)}
+                  </InlineStack>
+                  <InlineStack gap="200" blockAlign="center" wrap={false}>
+                    {item.sku && (
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {item.sku}
+                      </Text>
+                    )}
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {formatCurrency(item.unitPrice)} c/u
                     </Text>
                   </InlineStack>
                 </BlockStack>
-              </div>
-            </Box>
-            {!isLastItem && <Divider />}
-          </div>
+              </InlineStack>
+
+              {/* Quantity stepper */}
+              {onUpdateQuantity ? (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: 'var(--p-color-bg-surface-secondary)',
+                    border: '1px solid var(--p-color-border)',
+                    borderRadius: 8,
+                    padding: 2,
+                  }}
+                >
+                  <Button
+                    variant="tertiary"
+                    icon={MinusIcon}
+                    onClick={() => onUpdateQuantity(item.productId, -1)}
+                    disabled={item.quantity <= 1}
+                    accessibilityLabel="Disminuir cantidad"
+                    size="micro"
+                  />
+                  <Box minWidth="32px">
+                    <Text
+                      as="span"
+                      variant="bodyMd"
+                      fontWeight="bold"
+                      alignment="center"
+                    >
+                      {item.quantity}
+                    </Text>
+                  </Box>
+                  <Button
+                    variant="tertiary"
+                    icon={PlusIcon}
+                    onClick={() => onUpdateQuantity(item.productId, 1)}
+                    disabled={item.quantity >= stock}
+                    accessibilityLabel="Aumentar cantidad"
+                    size="micro"
+                  />
+                </div>
+              ) : (
+                <Box minWidth="80px">
+                  <Text
+                    as="span"
+                    variant="bodyMd"
+                    fontWeight="bold"
+                    alignment="center"
+                  >
+                    {item.quantity}
+                  </Text>
+                </Box>
+              )}
+
+              {/* Subtotal */}
+              <Box minWidth="80px">
+                <Text as="span" variant="bodyMd" fontWeight="semibold" alignment="end">
+                  {formatCurrency(item.subtotal)}
+                </Text>
+              </Box>
+
+              {/* Delete */}
+              <Button
+                variant="plain"
+                icon={DeleteIcon}
+                tone="critical"
+                onClick={() => onRemove(item.productId)}
+                accessibilityLabel={`Eliminar ${item.productName}`}
+                size="micro"
+              />
+            </div>
+          </Box>
         );
       })}
-
-      <style jsx>{`
-        .sale-items-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .sale-item-desktop {
-          display: block;
-        }
-        .sale-item-mobile {
-          display: none;
-        }
-        .sale-item-qty-controls {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          background: #f6f6f7;
-          border-radius: 8px;
-          padding: 4px 8px;
-        }
-        @media screen and (max-width: 520px) {
-          .sale-items-header {
-            display: none;
-          }
-          .sale-item-desktop {
-            display: none;
-          }
-          .sale-item-mobile {
-            display: block;
-          }
-        }
-      `}</style>
     </BlockStack>
   );
 }

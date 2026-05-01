@@ -55,8 +55,18 @@ export function createModelForProvider(providerId: string, apiKey: string, model
 
 /**
  * Loads the active AI model from the database.
- * Priority: ai_provider_configs[activeProvider] → legacy store_config.aiApiKeyEnc
- * Returns null if AI is disabled or not configured.
+ *
+ * Resolution order:
+ *   1. `store_config.ai_enabled` must be true.
+ *   2. `ai_provider_configs[active]` is the source of truth (per-provider key + model).
+ *   3. If that row has no key but the legacy single-provider columns
+ *      (`store_config.ai_api_key_enc` + `ai_model`) ARE populated, we
+ *      auto-backfill them into `ai_provider_configs` and use them. This
+ *      handles deployments where the consolidation migration never ran or
+ *      the user configured AI before the multi-provider table existed.
+ *
+ * Returns null only if the user has not configured ANY API key for the
+ * currently-active provider.
  */
 export async function getAIModel() {
   try {
@@ -71,11 +81,13 @@ export async function getAIModel() {
       .where(eq(storeConfig.id, 'main'))
       .limit(1);
 
-    if (!config?.aiEnabled) return null;
+    if (!config?.aiEnabled) {
+      logger.info('AI disabled', { action: 'ai_model_disabled' });
+      return null;
+    }
 
     const providerId = config.aiProvider || 'openrouter';
 
-    // Try new per-provider config table first
     const [providerRow] = await db
       .select()
       .from(aiProviderConfigs)
@@ -84,17 +96,60 @@ export async function getAIModel() {
 
     if (providerRow?.apiKeyEnc) {
       const apiKey = decrypt(providerRow.apiKeyEnc);
-      const model = providerRow.selectedModel || PROVIDER_DEFAULT_MODELS[providerId] || 'gpt-4o-mini';
+      const model =
+        providerRow.selectedModel ||
+        PROVIDER_DEFAULT_MODELS[providerId] ||
+        'gpt-4o-mini';
       return createModelForProvider(providerId, apiKey, model);
     }
 
-    // Fallback: legacy single-provider config in store_config
-    if (config.aiApiKeyEnc) {
+    // Legacy fallback / auto-migration. Only valid when the active provider
+    // matches the legacy columns (which always stored OpenRouter keys).
+    if (config.aiApiKeyEnc && providerId === 'openrouter') {
+      const legacyModel =
+        config.aiModel || PROVIDER_DEFAULT_MODELS['openrouter'];
+
+      // Attempt to upsert into ai_provider_configs so we don't keep falling
+      // back. Best-effort: failures are non-fatal.
+      try {
+        await db
+          .insert(aiProviderConfigs)
+          .values({
+            id: 'openrouter',
+            apiKeyEnc: config.aiApiKeyEnc,
+            enabled: true,
+            selectedModel: legacyModel,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: aiProviderConfigs.id,
+            set: {
+              apiKeyEnc: config.aiApiKeyEnc,
+              selectedModel: legacyModel,
+              enabled: true,
+              updatedAt: new Date(),
+            },
+          });
+        logger.info('Backfilled legacy AI key into ai_provider_configs', {
+          action: 'ai_legacy_backfill',
+          providerId: 'openrouter',
+        });
+      } catch (backfillError) {
+        logger.warn('Legacy AI backfill failed (non-fatal)', {
+          action: 'ai_legacy_backfill_failed',
+          error: backfillError instanceof Error ? backfillError.message : 'unknown',
+        });
+      }
+
       const apiKey = decrypt(config.aiApiKeyEnc);
-      const model = config.aiModel || PROVIDER_DEFAULT_MODELS['openrouter'];
-      return createModelForProvider('openrouter', apiKey, model);
+      return createModelForProvider('openrouter', apiKey, legacyModel);
     }
 
+    logger.warn('Active AI provider has no API key configured', {
+      action: 'ai_model_no_key',
+      providerId,
+      hasLegacyKey: !!config.aiApiKeyEnc,
+    });
     return null;
   } catch (error) {
     logger.error('Failed to load AI model', {

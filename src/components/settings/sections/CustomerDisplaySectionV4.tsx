@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useState, useRef, useTransition, useEffect } from 'react';
+import { useCallback, useState, useRef, useTransition, useEffect, useMemo } from 'react';
+import QRCode from 'qrcode';
 import {
   Card,
   BlockStack,
@@ -25,6 +26,7 @@ import {
   OptionList,
   ColorPicker,
   Collapsible,
+  Tabs,
 } from '@shopify/polaris';
 import {
   DesktopIcon,
@@ -45,13 +47,15 @@ import {
   StarFilledIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  TextFontIcon,
   SoundIcon,
   MobileIcon,
   ColorIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   TextIcon,
+  WandIcon,
+  AlertCircleIcon,
+  CheckCircleIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { uploadFile } from '@/lib/storage';
@@ -190,6 +194,268 @@ function serializePromoImages(urls: string[]): string {
   if (urls.length === 1) return JSON.stringify(urls); // Still JSON for consistency
   return JSON.stringify(urls);
 }
+
+// ═══════════════════════════════════════════════════════════
+// Reusable section header (icon + title + description + actions)
+// ═══════════════════════════════════════════════════════════
+
+interface SectionHeaderProps {
+  icon: typeof StoreIcon;
+  title: string;
+  description?: string;
+  badge?: { label: string; tone?: 'success' | 'info' | 'warning' | 'critical' | 'attention' };
+  iconTone?: 'success' | 'info' | 'subdued' | 'critical';
+  actions?: React.ReactNode;
+}
+
+function SectionHeader({ icon, title, description, badge, iconTone = 'info', actions }: SectionHeaderProps) {
+  const bg =
+    iconTone === 'success'
+      ? 'bg-fill-success-secondary'
+      : iconTone === 'critical'
+        ? 'bg-fill-critical-secondary'
+        : 'bg-surface-secondary';
+  return (
+    <InlineStack align="space-between" blockAlign="center" wrap={false}>
+      <InlineStack gap="300" blockAlign="center" wrap={false}>
+        <div style={{ flexShrink: 0 }}>
+          <Box padding="200" background={bg} borderRadius="200">
+            <Icon source={icon} tone={iconTone} />
+          </Box>
+        </div>
+        <BlockStack gap="050">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+            <Text variant="headingMd" as="h3">
+              {title}
+            </Text>
+            {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
+          </div>
+          {description && (
+            <Text variant="bodySm" as="p" tone="subdued">
+              {description}
+            </Text>
+          )}
+        </BlockStack>
+      </InlineStack>
+      {actions && <div style={{ flexShrink: 0 }}>{actions}</div>}
+    </InlineStack>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// QR canvas — renders QR for the /display URL
+// ═══════════════════════════════════════════════════════════
+
+function QrDisplay({ url, size = 168, accent }: { url: string; size?: number; accent?: string }) {
+  const [dataUrl, setDataUrl] = useState<string>('');
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    QRCode.toDataURL(url, {
+      width: size * 2,
+      margin: 1,
+      color: { dark: accent && /^#[0-9a-f]{6}$/i.test(accent) ? accent : '#1a1a1a', light: '#ffffff' },
+    })
+      .then((d) => {
+        if (active) setDataUrl(d);
+      })
+      .catch((e: unknown) => {
+        if (active) setErr(e instanceof Error ? e.message : 'Error');
+      });
+    return () => {
+      active = false;
+    };
+  }, [url, size, accent]);
+
+  if (err) {
+    return (
+      <Box padding="400" background="bg-surface-secondary" borderRadius="200">
+        <Text variant="bodySm" as="p" tone="critical">
+          No se pudo generar el QR
+        </Text>
+      </Box>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        background: '#fff',
+        border: '1px solid var(--p-color-border)',
+        borderRadius: 8,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 8,
+      }}
+    >
+      {dataUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={dataUrl} alt="QR código pantalla cliente" width={size - 16} height={size - 16} />
+      ) : (
+        <Spinner size="small" />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Live connection status (PING/PONG over BroadcastChannel)
+// ═══════════════════════════════════════════════════════════
+
+type ConnectionState = 'unknown' | 'connected' | 'disconnected';
+
+const PING_INTERVAL_MS = 3_000;
+const DISPLAY_TTL_MS = 7_000;
+
+function useDisplayConnection(): {
+  state: ConnectionState;
+  connectedCount: number;
+  lastSeen: number | null;
+  refresh: () => void;
+} {
+  const displaysRef = useRef<Map<string, number>>(new Map());
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const [state, setState] = useState<ConnectionState>('unknown');
+  const [connectedCount, setConnectedCount] = useState(0);
+  const [lastSeen, setLastSeen] = useState<number | null>(null);
+
+  const reconcile = useCallback(() => {
+    const now = Date.now();
+    const map = displaysRef.current;
+    for (const [id, ts] of map) {
+      if (now - ts > DISPLAY_TTL_MS) map.delete(id);
+    }
+    const count = map.size;
+    setConnectedCount(count);
+    setState(count > 0 ? 'connected' : 'disconnected');
+    if (count > 0) setLastSeen(Math.max(...map.values()));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const ch = new BroadcastChannel('customer_display');
+    channelRef.current = ch;
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PONG') {
+        const displayId: string = event.data.payload?.displayId ?? 'legacy';
+        displaysRef.current.set(displayId, Date.now());
+        reconcile();
+      }
+    };
+    ch.addEventListener('message', onMessage);
+
+    // Initial PING
+    ch.postMessage({ type: 'PING' });
+
+    // Heartbeat: PING every 3s, then prune stale displays
+    const heartbeat = setInterval(() => {
+      ch.postMessage({ type: 'PING' });
+      setTimeout(reconcile, 1_500);
+    }, PING_INTERVAL_MS);
+
+    // Initial detection window
+    const initialCheck = setTimeout(reconcile, 1_500);
+
+    return () => {
+      clearInterval(heartbeat);
+      clearTimeout(initialCheck);
+      ch.removeEventListener('message', onMessage);
+      ch.close();
+      channelRef.current = null;
+    };
+  }, [reconcile]);
+
+  const refresh = useCallback(() => {
+    channelRef.current?.postMessage({ type: 'PING' });
+    setTimeout(reconcile, 1_500);
+  }, [reconcile]);
+
+  return { state, connectedCount, lastSeen, refresh };
+}
+
+// ═══════════════════════════════════════════════════════════
+// Templates — one-click presets for common business types
+// ═══════════════════════════════════════════════════════════
+
+interface PresetTemplate {
+  id: string;
+  name: string;
+  description: string;
+  welcome: string;
+  farewell: string;
+  promoText: string;
+  theme: CustomerDisplayTheme;
+  accentColor: string;
+}
+
+const PRESET_TEMPLATES: PresetTemplate[] = [
+  {
+    id: 'abarrotes',
+    name: 'Abarrotes',
+    description: 'Tienda de barrio, friendly y cercano',
+    welcome: '¡Bienvenido a su tienda de confianza!',
+    farewell: '¡Gracias por su preferencia, vuelva pronto!',
+    promoText: 'Ofertas del día disponibles',
+    theme: 'light',
+    accentColor: '#0d7a47',
+  },
+  {
+    id: 'cafeteria',
+    name: 'Cafetería',
+    description: 'Cálido, premium y acogedor',
+    welcome: 'Bienvenido · Disfruta tu visita',
+    farewell: 'Te esperamos pronto',
+    promoText: '2x1 en café americano antes de las 11am',
+    theme: 'brand',
+    accentColor: '#a0522d',
+  },
+  {
+    id: 'boutique',
+    name: 'Boutique / Moda',
+    description: 'Elegante y minimalista',
+    welcome: 'Bienvenido a nuestra colección',
+    farewell: 'Gracias por elegirnos',
+    promoText: '20% en colección nueva',
+    theme: 'dark',
+    accentColor: '#c9a86a',
+  },
+  {
+    id: 'farmacia',
+    name: 'Farmacia',
+    description: 'Profesional y confiable',
+    welcome: 'Bienvenido · Su salud es lo primero',
+    farewell: 'Cuídese mucho',
+    promoText: 'Consulta médica disponible · Sin cita',
+    theme: 'light',
+    accentColor: '#0066cc',
+  },
+  {
+    id: 'restaurant',
+    name: 'Restaurante',
+    description: 'Apetitoso y vibrante',
+    welcome: 'Bienvenido · Buen provecho',
+    farewell: '¡Gracias! Vuelva pronto',
+    promoText: 'Postre gratis con tu menú del día',
+    theme: 'brand',
+    accentColor: '#d97706',
+  },
+  {
+    id: 'minimal',
+    name: 'Minimalista',
+    description: 'Limpio y profesional',
+    welcome: 'Bienvenido',
+    farewell: 'Gracias',
+    promoText: '',
+    theme: 'light',
+    accentColor: '#1a1a1a',
+  },
+];
 
 // ═══════════════════════════════════════════════════════════
 // Component
@@ -564,60 +830,142 @@ export function CustomerDisplaySectionV4() {
   );
 
   // ─────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
+  // PREMIUM helpers
+  // ─────────────────────────────────────────────────────────
+  const [selectedTab, setSelectedTab] = useState(0);
+  const connection = useDisplayConnection();
+
+  const sendTestSale = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const ch = new BroadcastChannel('customer_display');
+    ch.postMessage({
+      type: 'TEST_SALE',
+      payload: {
+        items: [
+          { productName: 'Coca-Cola 600ml', quantity: 2, unitPrice: 15, subtotal: 30 },
+          { productName: 'Pan Bimbo Grande', quantity: 1, unitPrice: 52, subtotal: 52 },
+          { productName: 'Sabritas Original', quantity: 3, unitPrice: 18.5, subtotal: 55.5 },
+        ],
+        subtotal: 137.5,
+        iva: 19.03,
+        total: 137.5,
+        cardSurcharge: 0,
+        discountAmount: 0,
+        paymentMethod: 'efectivo',
+        status: 'active',
+      },
+    });
+    ch.close();
+    setStatus('saved');
+    setTimeout(() => setStatus('idle'), 1500);
+  }, []);
+
+  const applyTemplate = useCallback(
+    async (preset: PresetTemplate) => {
+      setWelcome(preset.welcome);
+      setFarewell(preset.farewell);
+      setPromoText(preset.promoText);
+      setTheme(preset.theme);
+      setAccentColor(preset.accentColor);
+      try {
+        setStatus('saving');
+        await doSave({
+          customerDisplayWelcome: preset.welcome,
+          customerDisplayFarewell: preset.farewell,
+          customerDisplayPromoText: preset.promoText,
+          customerDisplayTheme: preset.theme,
+          customerDisplayAccentColor: preset.accentColor,
+        });
+        setStatus('saved');
+        setTimeout(() => setStatus('idle'), 2000);
+      } catch (err) {
+        setErrorMsg(parseError(err).description);
+        setStatus('error');
+      }
+    },
+    [doSave],
+  );
+
+  // ─────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────
 
-  return (
+  const tabs = [
+    { id: 'connection', content: 'Conexión', accessibilityLabel: 'Conexión y estado', panelID: 'panel-connection' },
+    { id: 'messages', content: 'Mensajes', accessibilityLabel: 'Mensajes personalizados', panelID: 'panel-messages' },
+    { id: 'appearance', content: 'Apariencia', accessibilityLabel: 'Tema y diseño', panelID: 'panel-appearance' },
+    { id: 'behavior', content: 'Comportamiento', accessibilityLabel: 'Reloj, sonido y orientación', panelID: 'panel-behavior' },
+    { id: 'media', content: 'Imágenes', accessibilityLabel: 'Galería promocional', panelID: 'panel-media' },
+    { id: 'preview', content: 'Vista previa', accessibilityLabel: 'Vista previa interactiva', panelID: 'panel-preview' },
+  ];
+
+  const ConnectionPanel = (
     <BlockStack gap="400">
-      {/* Beta notice */}
-      <Banner tone="warning" title="Sección en Beta">
-        <p>
-          La <strong>Pantalla del Cliente</strong> está en fase Beta.
-          Las animaciones 3D, temas y configuraciones pueden presentar
-          comportamientos inesperados o cambios en futuras actualizaciones.
-        </p>
-      </Banner>
-
-      {/* Banners */}
-      {errorMsg && (
-        <Banner tone="critical" onDismiss={() => setErrorMsg(null)}>
-          {errorMsg}
-        </Banner>
-      )}
-      {status === 'saved' && (
-        <Banner tone="success" onDismiss={() => setStatus('idle')}>
-          Cambios guardados.
-        </Banner>
-      )}
-
-      {/* ═══════════════════════════════════════════════════
-          CARD 1 — Estado y acceso rápido
-          ═══════════════════════════════════════════════════ */}
       <Card>
         <BlockStack gap="400">
-          <InlineStack align="space-between" blockAlign="center" wrap={false}>
-            <InlineStack gap="300" blockAlign="center">
-              <Box
-                padding="200"
-                background={enabled ? 'bg-fill-success-secondary' : 'bg-surface-secondary'}
-                borderRadius="200"
-              >
-                <Icon source={DesktopIcon} tone={enabled ? 'success' : 'subdued'} />
-              </Box>
-              <BlockStack gap="050">
-                <Text variant="headingMd" as="h3">
-                  Pantalla del cliente
-                </Text>
-                <Text variant="bodySm" as="p" tone="subdued">
-                  Segundo monitor o tablet para mostrar la compra.
-                </Text>
-              </BlockStack>
+          <SectionHeader
+            icon={DesktopIcon}
+            iconTone={enabled ? 'success' : 'subdued'}
+            title="Pantalla del cliente"
+            description="Segundo monitor o tablet sincronizado en tiempo real."
+            badge={{ label: enabled ? 'Activa' : 'Inactiva', tone: enabled ? 'success' : undefined }}
+          />
+          <Box
+            background={
+              connection.state === 'connected'
+                ? 'bg-fill-success-secondary'
+                : connection.state === 'disconnected'
+                  ? 'bg-fill-warning-secondary'
+                  : 'bg-surface-secondary'
+            }
+            borderRadius="200"
+            padding="300"
+          >
+            <InlineStack align="space-between" blockAlign="center" wrap>
+              <InlineStack gap="200" blockAlign="center">
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background:
+                      connection.state === 'connected'
+                        ? '#0d7a47'
+                        : connection.state === 'disconnected'
+                          ? '#b98900'
+                          : '#9a9da0',
+                    display: 'inline-block',
+                    boxShadow:
+                      connection.state === 'connected' ? '0 0 0 4px rgba(13, 122, 71, 0.15)' : undefined,
+                    animation:
+                      connection.state === 'connected' ? 'pulse-dot 2s ease-in-out infinite' : undefined,
+                  }}
+                />
+                <BlockStack gap="050">
+                  <Text variant="bodyMd" as="p" fontWeight="semibold">
+                    {connection.state === 'connected'
+                      ? connection.connectedCount === 1
+                        ? '1 pantalla conectada'
+                        : `${connection.connectedCount} pantallas conectadas`
+                      : connection.state === 'disconnected'
+                        ? 'Sin pantalla activa'
+                        : 'Verificando conexión…'}
+                  </Text>
+                  <Text variant="bodySm" as="p" tone="subdued">
+                    {connection.state === 'connected'
+                      ? 'Sincronización en tiempo real activa · Se actualiza automáticamente.'
+                      : 'Abre la pantalla del cliente en otra ventana o pestaña.'}
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+              <Button icon={RefreshIcon} variant="plain" onClick={connection.refresh}>
+                Verificar
+              </Button>
             </InlineStack>
-            <Badge tone={enabled ? 'success' : undefined}>{enabled ? 'Activa' : 'Inactiva'}</Badge>
-          </InlineStack>
-
+          </Box>
           <Box background="bg-surface-secondary" borderRadius="200" padding="300">
-            <InlineStack align="space-between" blockAlign="center" wrap={false}>
+            <InlineStack align="space-between" blockAlign="center" wrap>
               <InlineStack gap="200" blockAlign="center">
                 <Icon source={StatusActiveIcon} tone={enabled ? 'success' : 'subdued'} />
                 <Text variant="bodySm" as="span" tone="subdued">
@@ -625,21 +973,33 @@ export function CustomerDisplaySectionV4() {
                 </Text>
               </InlineStack>
               <ButtonGroup>
-                <Tooltip content="Copiar URL">
+                <Tooltip content="Copiar URL al portapapeles">
                   <Button icon={ClipboardIcon} size="slim" onClick={copyUrl}>
                     {urlCopied ? '✓ Copiado' : 'Copiar'}
                   </Button>
                 </Tooltip>
-                <Tooltip content="Abrir en ventana 1024×768">
-                  <Button icon={ExternalIcon} size="slim" variant="primary" onClick={openDisplay} disabled={!enabled}>
+                <Tooltip content="Abrir pantalla en ventana nueva">
+                  <Button
+                    icon={ExternalIcon}
+                    size="slim"
+                    variant="primary"
+                    onClick={openDisplay}
+                    disabled={!enabled}
+                  >
                     Abrir pantalla
                   </Button>
                 </Tooltip>
               </ButtonGroup>
             </InlineStack>
           </Box>
-
-          <InlineStack align="end">
+          <InlineStack align="space-between" blockAlign="center" wrap>
+            <Button
+              icon={PlayIcon}
+              onClick={sendTestSale}
+              disabled={!enabled || connection.state !== 'connected'}
+            >
+              Enviar venta de prueba
+            </Button>
             <Button
               onClick={toggleEnabled}
               loading={isBusy}
@@ -652,208 +1012,274 @@ export function CustomerDisplaySectionV4() {
         </BlockStack>
       </Card>
 
-      {/* ═══════════════════════════════════════════════════
-          CARD 2 — Mensajes personalizados (diseñador)
-          ═══════════════════════════════════════════════════ */}
       <Card>
         <BlockStack gap="400">
-          <InlineStack gap="200" blockAlign="center">
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-              <Icon source={TextIcon} tone="info" />
-            </Box>
-            <BlockStack gap="050">
-              <InlineStack gap="200" blockAlign="center">
-                <Text variant="headingMd" as="h3">
-                  Mensajes personalizados
-                </Text>
-                <Badge tone="info">Auto-guardado</Badge>
-              </InlineStack>
-              <Text variant="bodySm" as="p" tone="subdued">
-                Configura el contenido y estilo de cada mensaje.
+          <SectionHeader
+            icon={MobileIcon}
+            iconTone="info"
+            title="Conectar desde tablet o celular"
+            description="Escanea este código con la cámara del dispositivo donde quieras mostrar la pantalla."
+          />
+          <InlineStack gap="500" blockAlign="center" wrap>
+            <QrDisplay url={displayUrl} accent={accentColor} />
+            <BlockStack gap="200">
+              <Text variant="bodyMd" as="p" fontWeight="semibold">
+                3 pasos rápidos:
               </Text>
-            </BlockStack>
-          </InlineStack>
-
-          {/* ─── Welcome Message ─── */}
-          <MessageSlotDesigner
-            label="Mensaje de bienvenida"
-            description="Se muestra en la pantalla de espera."
-            icon={StoreIcon}
-            textValue={welcome}
-            onTextChange={onWelcome}
-            textPlaceholder="Ej: ¡Bienvenido a nuestra tienda!"
-            maxLength={120}
-            style={msgStyle.welcome}
-            onStyleChange={(prop, value) => updateMsgSlot('welcome', prop, value)}
-            expanded={msgExpandedSlot === 'welcome'}
-            onToggle={() => setMsgExpandedSlot((p) => (p === 'welcome' ? null : 'welcome'))}
-          />
-
-          <Divider />
-
-          {/* ─── Farewell Message ─── */}
-          <MessageSlotDesigner
-            label="Mensaje de despedida"
-            description="Se muestra al finalizar una venta."
-            icon={StarFilledIcon}
-            textValue={farewell}
-            onTextChange={onFarewell}
-            textPlaceholder="Ej: ¡Gracias por su compra!"
-            maxLength={120}
-            style={msgStyle.farewell}
-            onStyleChange={(prop, value) => updateMsgSlot('farewell', prop, value)}
-            expanded={msgExpandedSlot === 'farewell'}
-            onToggle={() => setMsgExpandedSlot((p) => (p === 'farewell' ? null : 'farewell'))}
-          />
-
-          <Divider />
-
-          {/* ─── Promo Message ─── */}
-          <MessageSlotDesigner
-            label="Texto promocional"
-            description="Aparece con ícono de regalo en pantalla de espera."
-            icon={GiftCardIcon}
-            textValue={promoText}
-            onTextChange={onPromo}
-            textPlaceholder="Ej: 2×1 en refrescos · Solo hoy"
-            maxLength={200}
-            multiline
-            style={msgStyle.promo}
-            onStyleChange={(prop, value) => updateMsgSlot('promo', prop, value)}
-            expanded={msgExpandedSlot === 'promo'}
-            onToggle={() => setMsgExpandedSlot((p) => (p === 'promo' ? null : 'promo'))}
-          />
-        </BlockStack>
-      </Card>
-
-      {/* ═══════════════════════════════════════════════════
-          CARD 3 — Imágenes promocionales
-          ═══════════════════════════════════════════════════ */}
-      <Card>
-        <BlockStack gap="400">
-          <InlineStack align="space-between" blockAlign="center">
-            <InlineStack gap="200" blockAlign="center">
-              <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-                <Icon source={ImageIcon} tone="subdued" />
-              </Box>
-              <BlockStack gap="050">
-                <Text variant="headingMd" as="h3">
-                  Imágenes promocionales
-                </Text>
-                <Text variant="bodySm" as="p" tone="subdued">
-                  Se muestran en pantalla de espera. Recomendado: 1200×400px.
-                </Text>
+              <BlockStack gap="100">
+                <InlineStack gap="200" blockAlign="start" wrap={false}>
+                  <Badge tone="info">1</Badge>
+                  <Text variant="bodySm" as="p">
+                    Asegúrate de estar en la misma red Wi-Fi.
+                  </Text>
+                </InlineStack>
+                <InlineStack gap="200" blockAlign="start" wrap={false}>
+                  <Badge tone="info">2</Badge>
+                  <Text variant="bodySm" as="p">
+                    Escanea el QR con la cámara de tu tablet o celular.
+                  </Text>
+                </InlineStack>
+                <InlineStack gap="200" blockAlign="start" wrap={false}>
+                  <Badge tone="info">3</Badge>
+                  <Text variant="bodySm" as="p">
+                    En el navegador, presiona el botón de pantalla completa (F11 o ⛶).
+                  </Text>
+                </InlineStack>
               </BlockStack>
-            </InlineStack>
-            <Badge tone={promoImages.length >= MAX_PROMO_IMAGES ? 'warning' : 'info'}>
-              {`${promoImages.length}/${MAX_PROMO_IMAGES}`}
-            </Badge>
-          </InlineStack>
-
-          {/* Image gallery */}
-          {promoImages.length > 0 && (
-            <BlockStack gap="300">
-              {promoImages.map((url, idx) => (
-                <Box key={url} background="bg-surface-secondary" borderRadius="200" padding="300">
-                  <InlineStack align="space-between" blockAlign="center" gap="300" wrap={false}>
-                    <InlineStack gap="300" blockAlign="center" wrap={false}>
-                      <Text variant="bodySm" as="span" tone="subdued" fontWeight="bold">
-                        {idx + 1}
-                      </Text>
-                      <Thumbnail source={url} alt={`Promo ${idx + 1}`} size="small" />
-                      <Text variant="bodySm" as="span" tone="subdued" truncate>
-                        {url.split('/').pop() ?? 'imagen'}
-                      </Text>
-                    </InlineStack>
-                    <InlineStack gap="100" blockAlign="center">
-                      <Tooltip content="Mover izquierda">
-                        <Button
-                          icon={ChevronLeftIcon}
-                          size="slim"
-                          variant="plain"
-                          disabled={idx === 0}
-                          onClick={() => reorderImage(idx, idx - 1)}
-                          accessibilityLabel="Mover izquierda"
-                        />
-                      </Tooltip>
-                      <Tooltip content="Mover derecha">
-                        <Button
-                          icon={ChevronRightIcon}
-                          size="slim"
-                          variant="plain"
-                          disabled={idx === promoImages.length - 1}
-                          onClick={() => reorderImage(idx, idx + 1)}
-                          accessibilityLabel="Mover derecha"
-                        />
-                      </Tooltip>
-                      <Tooltip content="Eliminar imagen">
-                        <Button
-                          icon={DeleteIcon}
-                          size="slim"
-                          variant="plain"
-                          tone="critical"
-                          onClick={() => removeImage(idx)}
-                          accessibilityLabel="Eliminar"
-                        />
-                      </Tooltip>
-                    </InlineStack>
-                  </InlineStack>
-                </Box>
-              ))}
             </BlockStack>
-          )}
-
-          {/* Upload zone (hidden when max reached) */}
-          {promoImages.length < MAX_PROMO_IMAGES && (
-            <DropZone
-              accept="image/*"
-              type="image"
-              allowMultiple={false}
-              onDrop={onImageDrop}
-              onDropAccepted={onImageAccepted}
-            >
-              {uploading ? (
-                <Box padding="600">
-                  <BlockStack gap="200" inlineAlign="center">
-                    <Spinner size="small" />
-                    <Text variant="bodySm" as="span" tone="subdued">
-                      Subiendo...
-                    </Text>
-                  </BlockStack>
-                </Box>
-              ) : (
-                <DropZone.FileUpload actionHint="JPG, PNG o WebP · Máximo 2 MB" />
-              )}
-            </DropZone>
-          )}
-
-          {promoImages.length >= MAX_PROMO_IMAGES && (
-            <Banner tone="warning">
-              Has alcanzado el límite de {MAX_PROMO_IMAGES} imágenes. Elimina una para subir más.
-            </Banner>
-          )}
+          </InlineStack>
         </BlockStack>
       </Card>
 
-      {/* ═══════════════════════════════════════════════════
-          CARD 4 — Tema visual
-          ═══════════════════════════════════════════════════ */}
       <Card>
         <BlockStack gap="400">
-          <InlineStack gap="200" blockAlign="center">
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-              <Icon source={PaintBrushFlatIcon} tone="info" />
-            </Box>
-            <BlockStack gap="050">
-              <Text variant="headingMd" as="h3">
-                Tema visual
-              </Text>
-              <Text variant="bodySm" as="p" tone="subdued">
-                Selecciona la paleta de colores de la pantalla.
-              </Text>
-            </BlockStack>
-          </InlineStack>
+          <SectionHeader
+            icon={WandIcon}
+            iconTone="info"
+            title="Plantillas listas para usar"
+            description="Aplica con un clic mensajes y colores optimizados para tu tipo de negocio."
+            badge={{ label: 'Premium', tone: 'attention' }}
+          />
+          <InlineGrid columns={{ xs: 1, sm: 2, md: 3 }} gap="300">
+            {PRESET_TEMPLATES.map((p) => {
+              const isActive = theme === p.theme && accentColor === p.accentColor && welcome === p.welcome;
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    border: isActive
+                      ? `2px solid ${p.accentColor}`
+                      : '1px solid var(--p-color-border)',
+                    background: 'var(--p-color-bg-surface)',
+                    transition: 'box-shadow .2s, transform .15s',
+                    cursor: 'pointer',
+                    position: 'relative',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = `0 4px 20px ${p.accentColor}25`;
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = 'none';
+                    e.currentTarget.style.transform = 'none';
+                  }}
+                  onClick={() => applyTemplate(p)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyTemplate(p); } }}
+                  aria-label={`Aplicar plantilla ${p.name}`}
+                >
+                  {/* — Color band header — */}
+                  <div
+                    style={{
+                      height: 80,
+                      background: `linear-gradient(135deg, ${p.accentColor}, ${p.accentColor}99)`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                    }}
+                  >
+                    {/* Mini screen mockup */}
+                    <div
+                      style={{
+                        background: p.theme === 'dark' ? '#1a1a1a' : '#fff',
+                        borderRadius: 6,
+                        padding: '6px 14px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,.18)',
+                        maxWidth: '80%',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: p.theme === 'dark' ? '#fff' : '#333',
+                          fontWeight: 500,
+                          letterSpacing: '.01em',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: 'block',
+                          maxWidth: 160,
+                        }}
+                      >
+                        {p.welcome}
+                      </span>
+                    </div>
+                    {/* Theme badge */}
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: 6,
+                        right: 6,
+                        fontSize: 9,
+                        fontWeight: 600,
+                        letterSpacing: '.04em',
+                        textTransform: 'uppercase',
+                        background: 'rgba(255,255,255,.85)',
+                        color: '#333',
+                        borderRadius: 4,
+                        padding: '2px 5px',
+                        backdropFilter: 'blur(4px)',
+                      }}
+                    >
+                      {p.theme === 'dark' ? 'Oscuro' : p.theme === 'brand' ? 'Marca' : 'Claro'}
+                    </span>
+                    {isActive && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: 6,
+                          left: 6,
+                          background: '#fff',
+                          borderRadius: '50%',
+                          width: 20,
+                          height: 20,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 1px 4px rgba(0,0,0,.15)',
+                        }}
+                      >
+                        <Icon source={CheckIcon} tone="success" />
+                      </span>
+                    )}
+                  </div>
+                  {/* — Card body — */}
+                  <div style={{ padding: '12px 14px 14px' }}>
+                    <div style={{ marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--p-color-text)' }}>
+                        {p.name}
+                      </span>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--p-color-text-secondary)',
+                        display: 'block',
+                        marginBottom: 10,
+                      }}
+                    >
+                      {p.description}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: '50%',
+                            background: p.accentColor,
+                            display: 'inline-block',
+                            border: '2px solid var(--p-color-border)',
+                          }}
+                        />
+                        <span style={{ fontSize: 11, color: 'var(--p-color-text-secondary)' }}>
+                          {p.accentColor}
+                        </span>
+                      </div>
+                      <Button size="micro" variant={isActive ? 'primary' : 'secondary'} onClick={() => applyTemplate(p)}>
+                        {isActive ? '✓ Activa' : 'Aplicar'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </InlineGrid>
+        </BlockStack>
+      </Card>
+    </BlockStack>
+  );
 
+  const MessagesPanel = (
+    <Card>
+      <BlockStack gap="400">
+        <SectionHeader
+          icon={TextIcon}
+          iconTone="info"
+          title="Mensajes personalizados"
+          description="Configura el contenido y el estilo visual de cada mensaje."
+          badge={{ label: 'Auto-guardado', tone: 'info' }}
+        />
+        <MessageSlotDesigner
+          label="Mensaje de bienvenida"
+          description="Se muestra en la pantalla de espera."
+          icon={StoreIcon}
+          textValue={welcome}
+          onTextChange={onWelcome}
+          textPlaceholder="Ej: ¡Bienvenido a nuestra tienda!"
+          maxLength={120}
+          style={msgStyle.welcome}
+          onStyleChange={(prop, value) => updateMsgSlot('welcome', prop, value)}
+          expanded={msgExpandedSlot === 'welcome'}
+          onToggle={() => setMsgExpandedSlot((p) => (p === 'welcome' ? null : 'welcome'))}
+        />
+        <Divider />
+        <MessageSlotDesigner
+          label="Mensaje de despedida"
+          description="Se muestra al finalizar una venta."
+          icon={StarFilledIcon}
+          textValue={farewell}
+          onTextChange={onFarewell}
+          textPlaceholder="Ej: ¡Gracias por su compra!"
+          maxLength={120}
+          style={msgStyle.farewell}
+          onStyleChange={(prop, value) => updateMsgSlot('farewell', prop, value)}
+          expanded={msgExpandedSlot === 'farewell'}
+          onToggle={() => setMsgExpandedSlot((p) => (p === 'farewell' ? null : 'farewell'))}
+        />
+        <Divider />
+        <MessageSlotDesigner
+          label="Texto promocional"
+          description="Aparece con icono de regalo en pantalla de espera."
+          icon={GiftCardIcon}
+          textValue={promoText}
+          onTextChange={onPromo}
+          textPlaceholder="Ej: 2×1 en refrescos · Solo hoy"
+          maxLength={200}
+          multiline
+          style={msgStyle.promo}
+          onStyleChange={(prop, value) => updateMsgSlot('promo', prop, value)}
+          expanded={msgExpandedSlot === 'promo'}
+          onToggle={() => setMsgExpandedSlot((p) => (p === 'promo' ? null : 'promo'))}
+        />
+      </BlockStack>
+    </Card>
+  );
+
+  const AppearancePanel = (
+    <BlockStack gap="400">
+      <Card>
+        <BlockStack gap="400">
+          <SectionHeader
+            icon={PaintBrushFlatIcon}
+            iconTone="info"
+            title="Tema visual"
+            description="Selecciona la paleta de colores base de la pantalla."
+          />
           <InlineStack gap="300" blockAlign="stretch">
             {CUSTOMER_DISPLAY_THEMES.map((t) => {
               const mt = THEME_META[t];
@@ -872,7 +1298,10 @@ export function CustomerDisplaySectionV4() {
                     border: active ? `2px solid ${mt.accent}` : '2px solid transparent',
                     borderRadius: 12,
                     padding: 12,
-                    background: active ? 'var(--p-color-bg-surface-selected)' : 'var(--p-color-bg-surface-secondary)',
+                    background: active
+                      ? 'var(--p-color-bg-surface-selected)'
+                      : 'var(--p-color-bg-surface-secondary)',
+                    flex: 1,
                   }}
                 >
                   <BlockStack gap="200" inlineAlign="center">
@@ -897,182 +1326,102 @@ export function CustomerDisplaySectionV4() {
         </BlockStack>
       </Card>
 
-      {/* ═══════════════════════════════════════════════════
-          CARD 5 — Animaciones
-          ═══════════════════════════════════════════════════ */}
       <Card>
         <BlockStack gap="500">
-          <InlineStack gap="200" blockAlign="center">
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-              <Icon source={PlayIcon} tone="info" />
-            </Box>
-            <BlockStack gap="050">
-              <Text variant="headingMd" as="h3">
-                Animaciones
-              </Text>
-              <Text variant="bodySm" as="p" tone="subdued">
-                Configura cómo aparecen los elementos en la pantalla.
-              </Text>
-            </BlockStack>
-          </InlineStack>
+          <SectionHeader
+            icon={ColorIcon}
+            iconTone="info"
+            title="Color y tipografía"
+            description="Personaliza el acento y el tamaño del texto."
+          />
 
-          <Divider />
-
-          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-            {/* Idle animation — Popover + OptionList */}
-            <BlockStack gap="200">
-              <Text variant="bodySm" as="p" fontWeight="semibold">
-                Animación de entrada
-              </Text>
-              <Popover
-                active={idleAnimPop}
-                activator={
-                  <Button onClick={() => setIdleAnimPop((p) => !p)} disclosure fullWidth textAlign="left">
-                    {IDLE_ANIM_LABELS[idleAnim]}
-                  </Button>
-                }
-                onClose={() => setIdleAnimPop(false)}
-                fullWidth
-              >
-                <OptionList
-                  onChange={(sel) => {
-                    onIdleAnim(sel[0]);
-                  }}
-                  options={CUSTOMER_DISPLAY_ANIMATIONS.map((v) => ({ label: IDLE_ANIM_LABELS[v], value: v }))}
-                  selected={[idleAnim]}
-                />
-              </Popover>
-              <Text variant="bodySm" as="p" tone="subdued">
-                Cómo entran los elementos al iniciar.
-              </Text>
-            </BlockStack>
-
-            {/* Promo animation — Popover + OptionList */}
-            <BlockStack gap="200">
-              <Text variant="bodySm" as="p" fontWeight="semibold">
-                Animación de promoción
-              </Text>
-              <Popover
-                active={promoAnimPop}
-                activator={
-                  <Button onClick={() => setPromoAnimPop((p) => !p)} disclosure fullWidth textAlign="left">
-                    {PROMO_ANIM_LABELS[promoAnim]}
-                  </Button>
-                }
-                onClose={() => setPromoAnimPop(false)}
-                fullWidth
-              >
-                <OptionList
-                  onChange={(sel) => {
-                    onPromoAnim(sel[0]);
-                  }}
-                  options={CUSTOMER_DISPLAY_PROMO_ANIMATIONS.map((v) => ({ label: PROMO_ANIM_LABELS[v], value: v }))}
-                  selected={[promoAnim]}
-                />
-              </Popover>
-              <Text variant="bodySm" as="p" tone="subdued">
-                Efecto para la imagen/texto de promo.
-              </Text>
-            </BlockStack>
-          </InlineGrid>
-
-          <Divider />
-
-          {/* Speed — segmented buttons */}
+          {/* Color de acento */}
           <BlockStack gap="200">
             <Text variant="bodySm" as="p" fontWeight="semibold">
-              Velocidad de transición
+              Color de acento personalizado
             </Text>
-            <ButtonGroup variant="segmented">
-              {TRANSITION_SPEEDS.map((s) => (
-                <Button key={s} pressed={speed === s} onClick={() => onSpeed(s)}>
-                  {SPEED_LABELS[s]}
-                </Button>
-              ))}
-            </ButtonGroup>
+            <InlineStack gap="300" blockAlign="center" wrap={false}>
+              <Popover
+                active={colorPickerOpen}
+                onClose={() => setColorPickerOpen(false)}
+                activator={
+                  <button
+                    type="button"
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      background: accentColor || THEME_META[theme].accent,
+                      border: '2px solid var(--p-color-border)',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      outline: 'none',
+                      transition: 'box-shadow .15s',
+                      boxShadow: colorPickerOpen
+                        ? `0 0 0 3px ${accentColor || THEME_META[theme].accent}40`
+                        : 'none',
+                    }}
+                    onClick={() => setColorPickerOpen(true)}
+                    aria-label="Elegir color de acento"
+                  />
+                }
+              >
+                <Box padding="300">
+                  <ColorPicker
+                    color={hexToHsb(accentColor || THEME_META[theme].accent)}
+                    onChange={(hsb) => onAccentColor(hsbToHex(hsb))}
+                  />
+                </Box>
+              </Popover>
+              <div style={{ maxWidth: 220 }}>
+                <TextField
+                  label="Código hex"
+                  labelHidden
+                  value={accentColor}
+                  onChange={onAccentColor}
+                  placeholder="#00d4aa"
+                  maxLength={9}
+                  autoComplete="off"
+                  prefix="#"
+                  helpText="Ej. FF6B00. Vacío = color del tema."
+                />
+              </div>
+            </InlineStack>
+          </BlockStack>
+
+          <Divider />
+
+          {/* Tamaño de fuente */}
+          <BlockStack gap="200">
+            <Text variant="bodySm" as="p" fontWeight="semibold">
+              Tamaño de fuente
+            </Text>
+            <Box paddingInlineEnd="200">
+              <RangeSlider
+                label={`${Number(fontScale).toFixed(1)}x`}
+                value={Number(fontScale) * 10}
+                min={7}
+                max={15}
+                step={1}
+                onChange={(v) => onFontScale((v as number) / 10)}
+                output
+              />
+            </Box>
+            <Text variant="bodySm" as="p" tone="subdued">
+              0.7x (pequeño) → 1.5x (grande).
+            </Text>
           </BlockStack>
         </BlockStack>
       </Card>
 
-      {/* ═══════════════════════════════════════════════════
-          CARD 6 — Reloj y carrusel
-          ═══════════════════════════════════════════════════ */}
       <Card>
         <BlockStack gap="400">
-          <InlineStack gap="200" blockAlign="center">
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-              <Icon source={ClockIcon} tone="subdued" />
-            </Box>
-            <BlockStack gap="050">
-              <Text variant="headingMd" as="h3">
-                Reloj y carrusel
-              </Text>
-              <Text variant="bodySm" as="p" tone="subdued">
-                Controla el reloj digital y la rotación de contenido.
-              </Text>
-            </BlockStack>
-          </InlineStack>
-
-          <Divider />
-
-          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-            <BlockStack gap="300">
-              <Checkbox
-                label="Mostrar reloj digital"
-                checked={showClock}
-                onChange={onShowClock}
-                helpText="Hora y fecha en la pantalla de espera."
-              />
-              <Checkbox
-                label="Carrusel automático"
-                checked={carousel}
-                onChange={onCarousel}
-                helpText="Alterna bienvenida → promo → imagen."
-              />
-            </BlockStack>
-
-            {carousel && (
-              <BlockStack gap="200">
-                <Text variant="bodySm" as="p" fontWeight="semibold">
-                  Intervalo del carrusel
-                </Text>
-                <RangeSlider
-                  label={`${carouselSec} segundos`}
-                  value={Number(carouselSec)}
-                  min={3}
-                  max={15}
-                  step={1}
-                  onChange={(v) => onCarouselSec(v as number)}
-                  output
-                />
-                <Text variant="bodySm" as="p" tone="subdued">
-                  Tiempo entre cada slide.
-                </Text>
-              </BlockStack>
-            )}
-          </InlineGrid>
-        </BlockStack>
-      </Card>
-
-      {/* ═══════════════════════════════════════════════════
-          CARD 6.1 — Logo personalizado
-          ═══════════════════════════════════════════════════ */}
-      <Card>
-        <BlockStack gap="400">
-          <InlineStack gap="200" blockAlign="center">
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-              <Icon source={ImageIcon} tone="info" />
-            </Box>
-            <BlockStack gap="050">
-              <Text variant="headingMd" as="h3">
-                Logo de pantalla
-              </Text>
-              <Text variant="bodySm" as="p" tone="subdued">
-                Logo que aparece en la pantalla de espera. Si no se configura, se usa el logo general.
-              </Text>
-            </BlockStack>
-          </InlineStack>
-
+          <SectionHeader
+            icon={ImageIcon}
+            iconTone="info"
+            title="Logo de la pantalla"
+            description="Si no se configura, se usa el logo general de la tienda."
+          />
           {customLogo ? (
             <InlineStack gap="400" blockAlign="center">
               <Thumbnail source={customLogo} alt="Logo display" size="large" />
@@ -1105,51 +1454,155 @@ export function CustomerDisplaySectionV4() {
         </BlockStack>
       </Card>
 
-      {/* ═══════════════════════════════════════════════════
-          CARD 6.2 — Personalización avanzada
-          ═══════════════════════════════════════════════════ */}
       <Card>
         <BlockStack gap="500">
-          <InlineStack gap="200" blockAlign="center">
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-              <Icon source={TextFontIcon} tone="info" />
-            </Box>
-            <BlockStack gap="050">
-              <Text variant="headingMd" as="h3">
-                Personalización avanzada
+          <SectionHeader
+            icon={PlayIcon}
+            iconTone="info"
+            title="Animaciones"
+            description="Configura cómo aparecen los elementos en pantalla."
+          />
+          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+            <BlockStack gap="200">
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                Animación de entrada
               </Text>
+              <Popover
+                active={idleAnimPop}
+                activator={
+                  <Button onClick={() => setIdleAnimPop((p) => !p)} disclosure fullWidth textAlign="left">
+                    {IDLE_ANIM_LABELS[idleAnim]}
+                  </Button>
+                }
+                onClose={() => setIdleAnimPop(false)}
+                fullWidth
+              >
+                <OptionList
+                  onChange={(sel) => {
+                    onIdleAnim(sel[0]);
+                  }}
+                  options={CUSTOMER_DISPLAY_ANIMATIONS.map((v) => ({
+                    label: IDLE_ANIM_LABELS[v],
+                    value: v,
+                  }))}
+                  selected={[idleAnim]}
+                />
+              </Popover>
               <Text variant="bodySm" as="p" tone="subdued">
-                Tipografía, colores y comportamiento.
+                Cómo entran los elementos al iniciar.
               </Text>
             </BlockStack>
-          </InlineStack>
+
+            <BlockStack gap="200">
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                Animación de promoción
+              </Text>
+              <Popover
+                active={promoAnimPop}
+                activator={
+                  <Button onClick={() => setPromoAnimPop((p) => !p)} disclosure fullWidth textAlign="left">
+                    {PROMO_ANIM_LABELS[promoAnim]}
+                  </Button>
+                }
+                onClose={() => setPromoAnimPop(false)}
+                fullWidth
+              >
+                <OptionList
+                  onChange={(sel) => {
+                    onPromoAnim(sel[0]);
+                  }}
+                  options={CUSTOMER_DISPLAY_PROMO_ANIMATIONS.map((v) => ({
+                    label: PROMO_ANIM_LABELS[v],
+                    value: v,
+                  }))}
+                  selected={[promoAnim]}
+                />
+              </Popover>
+              <Text variant="bodySm" as="p" tone="subdued">
+                Efecto para imagen y texto promocional.
+              </Text>
+            </BlockStack>
+          </InlineGrid>
 
           <Divider />
 
-          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-            {/* Font scale */}
-            <BlockStack gap="200">
-              <Text variant="bodySm" as="p" fontWeight="semibold">
-                Tamaño de fuente
-              </Text>
-              <RangeSlider
-                label={`${Number(fontScale).toFixed(1)}x`}
-                value={Number(fontScale) * 10}
-                min={7}
-                max={15}
-                step={1}
-                onChange={(v) => onFontScale((v as number) / 10)}
-                output
-              />
-              <Text variant="bodySm" as="p" tone="subdued">
-                Escala del texto: 0.7x (pequeño) → 1.5x (grande).
-              </Text>
-            </BlockStack>
+          <BlockStack gap="200">
+            <Text variant="bodySm" as="p" fontWeight="semibold">
+              Velocidad de transición
+            </Text>
+            <ButtonGroup variant="segmented">
+              {TRANSITION_SPEEDS.map((s) => (
+                <Button key={s} pressed={speed === s} onClick={() => onSpeed(s)}>
+                  {SPEED_LABELS[s]}
+                </Button>
+              ))}
+            </ButtonGroup>
+          </BlockStack>
+        </BlockStack>
+      </Card>
+    </BlockStack>
+  );
 
-            {/* Auto return */}
+  const BehaviorPanel = (
+    <BlockStack gap="400">
+      <Card>
+        <BlockStack gap="400">
+          <SectionHeader
+            icon={ClockIcon}
+            iconTone="info"
+            title="Reloj y carrusel"
+            description="Controla el reloj digital y la rotación del contenido."
+          />
+          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+            <BlockStack gap="300">
+              <Checkbox
+                label="Mostrar reloj digital"
+                checked={showClock}
+                onChange={onShowClock}
+                helpText="Hora y fecha en la pantalla de espera."
+              />
+              <Checkbox
+                label="Carrusel automático"
+                checked={carousel}
+                onChange={onCarousel}
+                helpText="Alterna bienvenida → promo → imagen."
+              />
+            </BlockStack>
+            {carousel && (
+              <BlockStack gap="200">
+                <Text variant="bodySm" as="p" fontWeight="semibold">
+                  Intervalo del carrusel
+                </Text>
+                <RangeSlider
+                  label={`${carouselSec} segundos`}
+                  value={Number(carouselSec)}
+                  min={3}
+                  max={15}
+                  step={1}
+                  onChange={(v) => onCarouselSec(v as number)}
+                  output
+                />
+                <Text variant="bodySm" as="p" tone="subdued">
+                  Tiempo entre cada slide.
+                </Text>
+              </BlockStack>
+            )}
+          </InlineGrid>
+        </BlockStack>
+      </Card>
+
+      <Card>
+        <BlockStack gap="400">
+          <SectionHeader
+            icon={SettingsIcon}
+            iconTone="info"
+            title="Comportamiento avanzado"
+            description="Auto-retorno tras venta y notificaciones sonoras."
+          />
+          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
             <BlockStack gap="200">
               <Text variant="bodySm" as="p" fontWeight="semibold">
-                Tiempo auto-retorno
+                Tiempo de auto-retorno
               </Text>
               <RangeSlider
                 label={`${autoReturnSec} segundos`}
@@ -1161,66 +1614,9 @@ export function CustomerDisplaySectionV4() {
                 output
               />
               <Text variant="bodySm" as="p" tone="subdued">
-                Segundos para volver a pantalla de espera después de una venta.
+                Vuelve a pantalla de espera tras finalizar la venta.
               </Text>
             </BlockStack>
-          </InlineGrid>
-
-          <Divider />
-
-          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-            {/* Accent color */}
-            <BlockStack gap="200">
-              <InlineStack gap="200" blockAlign="center">
-                <Icon source={ColorIcon} tone="subdued" />
-                <Text variant="bodySm" as="p" fontWeight="semibold">
-                  Color de acento personalizado
-                </Text>
-              </InlineStack>
-              <InlineStack gap="300" blockAlign="center">
-                <Popover
-                  active={colorPickerOpen}
-                  onClose={() => setColorPickerOpen(false)}
-                  activator={
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 8,
-                        background: accentColor || THEME_META[theme].accent,
-                        border: '2px solid var(--p-color-border)',
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => setColorPickerOpen(true)}
-                      role="button"
-                      tabIndex={0}
-                      title="Clic para elegir color"
-                    />
-                  }
-                >
-                  <Box padding="300">
-                    <ColorPicker
-                      color={hexToHsb(accentColor || THEME_META[theme].accent)}
-                      onChange={(hsb) => onAccentColor(hsbToHex(hsb))}
-                    />
-                  </Box>
-                </Popover>
-                <div style={{ flex: 1 }}>
-                  <TextField
-                    label=""
-                    labelHidden
-                    value={accentColor}
-                    onChange={onAccentColor}
-                    placeholder="#00d4aa"
-                    maxLength={9}
-                    autoComplete="off"
-                    helpText="Hex (ej. #FF6B00). Vacío = color del tema."
-                  />
-                </div>
-              </InlineStack>
-            </BlockStack>
-
-            {/* Sound */}
             <BlockStack gap="200">
               <InlineStack gap="200" blockAlign="center">
                 <Icon source={SoundIcon} tone="subdued" />
@@ -1232,32 +1628,21 @@ export function CustomerDisplaySectionV4() {
                 label="Reproducir sonido al iniciar venta"
                 checked={soundEnabled}
                 onChange={onSoundEnabled}
-                helpText="Un beep corto cuando se agrega el primer producto."
+                helpText="Un beep corto al agregar el primer producto."
               />
             </BlockStack>
           </InlineGrid>
         </BlockStack>
       </Card>
 
-      {/* ═══════════════════════════════════════════════════
-          CARD 6.3 — Orientación de pantalla
-          ═══════════════════════════════════════════════════ */}
       <Card>
         <BlockStack gap="400">
-          <InlineStack gap="200" blockAlign="center">
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-              <Icon source={MobileIcon} tone="info" />
-            </Box>
-            <BlockStack gap="050">
-              <Text variant="headingMd" as="h3">
-                Orientación de pantalla
-              </Text>
-              <Text variant="bodySm" as="p" tone="subdued">
-                Selecciona según la posición de tu monitor o tablet.
-              </Text>
-            </BlockStack>
-          </InlineStack>
-
+          <SectionHeader
+            icon={MobileIcon}
+            iconTone="info"
+            title="Orientación de pantalla"
+            description="Selecciona según la posición física de tu monitor o tablet."
+          />
           <InlineStack gap="300" blockAlign="stretch">
             {[
               { value: 'landscape', label: 'Horizontal', desc: 'Monitor estándar', width: 64, height: 40 },
@@ -1278,7 +1663,9 @@ export function CustomerDisplaySectionV4() {
                     border: active ? '2px solid var(--p-color-border-emphasis)' : '2px solid transparent',
                     borderRadius: 12,
                     padding: 16,
-                    background: active ? 'var(--p-color-bg-surface-selected)' : 'var(--p-color-bg-surface-secondary)',
+                    background: active
+                      ? 'var(--p-color-bg-surface-selected)'
+                      : 'var(--p-color-bg-surface-secondary)',
                     minWidth: 140,
                   }}
                 >
@@ -1307,39 +1694,13 @@ export function CustomerDisplaySectionV4() {
         </BlockStack>
       </Card>
 
-      {/* ═══════════════════════════════════════════════════
-          CARD 7 — Vista previa
-          ═══════════════════════════════════════════════════ */}
-      <PreviewCard
-        theme={theme}
-        welcome={welcome}
-        farewell={farewell}
-        promoText={promoText}
-        promoImages={promoImages}
-        showClock={showClock}
-        storeName={storeConfig.storeName ?? 'Tu Tienda'}
-        logoUrl={customLogo || storeConfig.logoUrl || ''}
-        accentColor={accentColor}
-        fontScale={fontScale}
-        orientation={orientation}
-        msgStyle={msgStyle}
-        phone={storeConfig.phone ?? ''}
-        address={storeConfig.address ?? ''}
-      />
-
-      {/* ═══════════════════════════════════════════════════
-          CARD 8 — Info técnica
-          ═══════════════════════════════════════════════════ */}
       <Card>
-        <BlockStack gap="400">
-          <InlineStack gap="200" blockAlign="center">
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-              <Icon source={SettingsIcon} tone="subdued" />
-            </Box>
-            <Text variant="headingMd" as="h3">
-              Información técnica
-            </Text>
-          </InlineStack>
+        <BlockStack gap="300">
+          <SectionHeader
+            icon={CheckCircleIcon}
+            iconTone="success"
+            title="Información técnica"
+          />
           <Divider />
           <BlockStack gap="300">
             <InlineStack align="space-between" blockAlign="center">
@@ -1348,7 +1709,7 @@ export function CustomerDisplaySectionV4() {
                   Sincronización en tiempo real
                 </Text>
                 <Text variant="bodySm" as="p" tone="subdued">
-                  Cambios se reflejan al instante en /display via BroadcastChannel.
+                  Cambios se reflejan al instante via BroadcastChannel.
                 </Text>
               </BlockStack>
               <Badge tone="success">Activa</Badge>
@@ -1372,13 +1733,224 @@ export function CustomerDisplaySectionV4() {
                   Modo pantalla completa
                 </Text>
                 <Text variant="bodySm" as="p" tone="subdued">
-                  Oculta la navegación del navegador automáticamente. Usa F11 para máximo efecto.
+                  Oculta la navegación del navegador. Usa F11 para máximo efecto.
                 </Text>
               </BlockStack>
               <Badge tone="info">Automático</Badge>
             </InlineStack>
           </BlockStack>
         </BlockStack>
+      </Card>
+    </BlockStack>
+  );
+
+  const MediaPanel = (
+    <Card>
+      <BlockStack gap="400">
+        <SectionHeader
+          icon={ImageIcon}
+          iconTone="info"
+          title="Imágenes promocionales"
+          description="Se muestran en pantalla de espera. Recomendado: 1200×400px."
+          badge={{
+            label: `${promoImages.length}/${MAX_PROMO_IMAGES}`,
+            tone: promoImages.length >= MAX_PROMO_IMAGES ? 'warning' : 'info',
+          }}
+        />
+
+        {promoImages.length === 0 ? (
+          <BlockStack gap="300" inlineAlign="center">
+            <Text variant="bodyMd" as="p" tone="subdued" alignment="center">
+              Aún no hay imágenes. Arrastra o haz clic para subir la primera.
+            </Text>
+            <DropZone
+              accept="image/*"
+              type="image"
+              allowMultiple={false}
+              onDrop={onImageDrop}
+              onDropAccepted={onImageAccepted}
+            >
+              {uploading ? (
+                <Box padding="600">
+                  <BlockStack gap="200" inlineAlign="center">
+                    <Spinner size="small" />
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      Subiendo...
+                    </Text>
+                  </BlockStack>
+                </Box>
+              ) : (
+                <DropZone.FileUpload actionHint={`Agrega hasta ${MAX_PROMO_IMAGES} imágenes · JPG, PNG o WebP`} />
+              )}
+            </DropZone>
+          </BlockStack>
+        ) : (
+          <BlockStack gap="300">
+            {promoImages.map((url, idx) => (
+              <Box key={url} background="bg-surface-secondary" borderRadius="200" padding="300">
+                <InlineStack align="space-between" blockAlign="center" gap="300" wrap={false}>
+                  <InlineStack gap="300" blockAlign="center" wrap={false}>
+                    <Badge tone="info">{`#${idx + 1}`}</Badge>
+                    <Thumbnail source={url} alt={`Promo ${idx + 1}`} size="small" />
+                    <Text variant="bodySm" as="span" tone="subdued" truncate>
+                      {url.split('/').pop() ?? 'imagen'}
+                    </Text>
+                  </InlineStack>
+                  <InlineStack gap="100" blockAlign="center">
+                    <Tooltip content="Mover izquierda">
+                      <Button
+                        icon={ChevronLeftIcon}
+                        size="slim"
+                        variant="plain"
+                        disabled={idx === 0}
+                        onClick={() => reorderImage(idx, idx - 1)}
+                        accessibilityLabel="Mover izquierda"
+                      />
+                    </Tooltip>
+                    <Tooltip content="Mover derecha">
+                      <Button
+                        icon={ChevronRightIcon}
+                        size="slim"
+                        variant="plain"
+                        disabled={idx === promoImages.length - 1}
+                        onClick={() => reorderImage(idx, idx + 1)}
+                        accessibilityLabel="Mover derecha"
+                      />
+                    </Tooltip>
+                    <Tooltip content="Eliminar imagen">
+                      <Button
+                        icon={DeleteIcon}
+                        size="slim"
+                        variant="plain"
+                        tone="critical"
+                        onClick={() => removeImage(idx)}
+                        accessibilityLabel="Eliminar"
+                      />
+                    </Tooltip>
+                  </InlineStack>
+                </InlineStack>
+              </Box>
+            ))}
+          </BlockStack>
+        )}
+
+        {promoImages.length < MAX_PROMO_IMAGES && (
+          <DropZone
+            accept="image/*"
+            type="image"
+            allowMultiple={false}
+            onDrop={onImageDrop}
+            onDropAccepted={onImageAccepted}
+          >
+            {uploading ? (
+              <Box padding="600">
+                <BlockStack gap="200" inlineAlign="center">
+                  <Spinner size="small" />
+                  <Text variant="bodySm" as="span" tone="subdued">
+                    Subiendo...
+                  </Text>
+                </BlockStack>
+              </Box>
+            ) : (
+              <DropZone.FileUpload actionHint="JPG, PNG o WebP · Máximo 2 MB" />
+            )}
+          </DropZone>
+        )}
+
+        {promoImages.length >= MAX_PROMO_IMAGES && (
+          <Banner tone="warning" icon={AlertCircleIcon}>
+            Has alcanzado el límite de {MAX_PROMO_IMAGES} imágenes. Elimina una para subir más.
+          </Banner>
+        )}
+      </BlockStack>
+    </Card>
+  );
+
+  const PreviewPanel = (
+    <PreviewCard
+      theme={theme}
+      welcome={welcome}
+      farewell={farewell}
+      promoText={promoText}
+      promoImages={promoImages}
+      showClock={showClock}
+      storeName={storeConfig.storeName ?? 'Tu Tienda'}
+      logoUrl={customLogo || storeConfig.logoUrl || ''}
+      accentColor={accentColor}
+      fontScale={fontScale}
+      orientation={orientation}
+      msgStyle={msgStyle}
+      phone={storeConfig.phone ?? ''}
+      address={storeConfig.address ?? ''}
+    />
+  );
+
+  const panels = useMemo(
+    () => [ConnectionPanel, MessagesPanel, AppearancePanel, BehaviorPanel, MediaPanel, PreviewPanel],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      enabled, welcome, farewell, promoText, promoImages, theme, accentColor, customLogo,
+      idleAnim, promoAnim, speed, showClock, carousel, carouselSec, fontScale, autoReturnSec,
+      soundEnabled, orientation, msgStyle, msgExpandedSlot, idleAnimPop, promoAnimPop,
+      colorPickerOpen, urlCopied, uploading, isBusy, connection.state, connection.connectedCount, connection.lastSeen,
+    ],
+  );
+
+  return (
+    <BlockStack gap="400">
+      {/* Pulse animation for connection dot */}
+      <style>{`@keyframes pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(13,122,71,.4)}50%{box-shadow:0 0 0 6px rgba(13,122,71,0)}}`}</style>
+      {errorMsg && (
+        <Banner tone="critical" onDismiss={() => setErrorMsg(null)} icon={AlertCircleIcon}>
+          {errorMsg}
+        </Banner>
+      )}
+      {status === 'saved' && (
+        <Banner tone="success" onDismiss={() => setStatus('idle')} icon={CheckCircleIcon}>
+          Cambios guardados.
+        </Banner>
+      )}
+
+      <Card>
+        <InlineStack align="space-between" blockAlign="center" wrap={false}>
+          <InlineStack gap="300" blockAlign="center" wrap={false}>
+            <div style={{ flexShrink: 0 }}>
+              <Box
+                padding="300"
+                background={enabled ? 'bg-fill-success-secondary' : 'bg-surface-secondary'}
+                borderRadius="200"
+              >
+                <Icon source={DesktopIcon} tone={enabled ? 'success' : 'subdued'} />
+              </Box>
+            </div>
+            <BlockStack gap="100">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
+                <Text variant="headingLg" as="h2">
+                  Pantalla del cliente
+                </Text>
+                <Badge tone={enabled ? 'success' : undefined}>{enabled ? 'Activa' : 'Inactiva'}</Badge>
+                <Badge tone="attention">Premium</Badge>
+              </div>
+              <Text variant="bodySm" as="p" tone="subdued">
+                Convierte cualquier monitor o tablet en un display profesional sincronizado en tiempo real.
+              </Text>
+            </BlockStack>
+          </InlineStack>
+          <ButtonGroup>
+            <Button icon={RefreshIcon} variant="plain" onClick={connection.refresh}>
+              Conexión
+            </Button>
+            <Button icon={ExternalIcon} onClick={openDisplay} disabled={!enabled} variant="primary">
+              Abrir pantalla
+            </Button>
+          </ButtonGroup>
+        </InlineStack>
+      </Card>
+
+      <Card padding="0">
+        <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+          <Box padding="400">{panels[selectedTab]}</Box>
+        </Tabs>
       </Card>
     </BlockStack>
   );

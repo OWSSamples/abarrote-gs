@@ -198,9 +198,11 @@ export function LoginForm() {
                 loading={isMicrosoftLoading}
                 disabled={isLoading}
                 size="large"
-                icon={<BrandLogo name="Microsoft" size={18} />}
               >
-                Iniciar sesión con Microsoft
+                <InlineStack gap="200" blockAlign="center" align="center" wrap={false}>
+                  <BrandLogo name="Microsoft" size={18} />
+                  <span>Iniciar sesión con Microsoft</span>
+                </InlineStack>
               </Button>
             </BlockStack>
           </Box>

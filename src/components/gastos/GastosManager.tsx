@@ -33,6 +33,7 @@ import { formatCurrency } from '@/lib/utils';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyStateCard } from '@/components/ui/EmptyStateCard';
 import { DeleteConfirmation } from '@/components/ui/DeleteConfirmation';
+import { ReceiptScanner } from '@/components/gastos/ReceiptScanner';
 import type { GastoCategoria } from '@/types';
 
 const categoriaOptions: { label: string; value: GastoCategoria | '' }[] = [
@@ -264,22 +265,26 @@ export function GastosManager() {
   );
 
   // ── AI Extraction ──
+  // Sends the file DIRECTLY to /api/extract-receipt as multipart/form-data.
+  // No S3 upload required for the scan — the comprobante is only uploaded if
+  // the user actually saves the gasto with `comprobante = true`. This makes
+  // scanning work even when the bucket is private or upload credentials are
+  // missing, and gives instant feedback to the user.
   const analyzeReceipt = async (file: File, fields: typeof addFields) => {
     setIsAnalyzing(true);
     setExtractedItems([]);
     try {
-      const url = await uploadComprobante(file);
-      setUploadedComprobanteUrl(url);
+      const formData = new FormData();
+      formData.append('file', file);
 
       const res = await fetch('/api/extract-receipt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: formData,
       });
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || 'Error al analizar');
+        throw new Error(body.error || `Error ${res.status} al analizar`);
       }
       const { data } = await res.json();
 
@@ -291,15 +296,16 @@ export function GastosManager() {
         if (data.items && data.items.length > 0) {
           setExtractedItems(data.items);
         }
+        // Mark "comprobante adjunto" automatically — the user already gave us
+        // a real receipt file.
+        fields.comprobante.onChange(true);
         showSuccess(`Datos extraídos — ${data.items?.length || 0} líneas detectadas`);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
-      if (message.includes('no configurada')) {
-        showError(message);
-      } else {
-        showError('Error al analizar con IA. Rellena los campos manualmente.');
-      }
+      const message = err instanceof Error ? err.message : 'Error desconocido al analizar';
+      // Surface the real error message — useful for diagnosing AI/model
+      // configuration issues (e.g. "IA no configurada", invalid model id, etc.)
+      showError(message);
     } finally {
       setIsAnalyzing(false);
     }
@@ -588,102 +594,39 @@ export function GastosManager() {
       >
         {/* ── SECTION 1: AI Receipt Upload (fastest path) ── */}
         <Modal.Section>
-          <BlockStack gap="300">
-            <BlockStack gap="100">
-              <Text as="h3" variant="headingSm" fontWeight="bold">
-                Escaneo Inteligente
-              </Text>
-              <Text as="p" variant="bodySm" tone="subdued">
-                Sube un ticket o factura y la IA rellenará los campos automáticamente
-              </Text>
-            </BlockStack>
-            <DropZone
-              accept="image/*,application/pdf"
-              type="file"
-              allowMultiple={false}
-              onDrop={handleAddDropZoneDrop}
-            >
-              <DropZone.FileUpload
-                actionHint={
-                  isAnalyzing
-                    ? 'Analizando con IA...'
-                    : comprobanteFile
-                      ? comprobanteFile.name
-                      : 'Arrastra o selecciona: JPG, PNG, PDF'
-                }
-              />
-            </DropZone>
-            {isAnalyzing && (
-              <ProgressBar size="small" tone="highlight" />
-            )}
-            {isAnalyzing && (
-              <Banner tone="info">Analizando el ticket con IA — los campos se llenarán automáticamente...</Banner>
-            )}
-            {comprobanteFile && !isAnalyzing && (
-              <InlineStack gap="200" blockAlign="center">
-                <Badge tone="success">Archivo adjuntado</Badge>
-                <Text as="span" variant="bodySm" tone="subdued">
-                  {comprobanteFile.name}
-                </Text>
-              </InlineStack>
-            )}
-            {extractedItems.length > 0 && !isAnalyzing && (
-              <Card padding="0">
-                <BlockStack gap="0">
-                  <Box padding="300" paddingBlockEnd="200">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <Text as="h4" variant="headingSm">
-                        Líneas detectadas
-                      </Text>
-                      <Badge tone="info">{`${extractedItems.length} artículos`}</Badge>
-                    </InlineStack>
-                  </Box>
-                  <IndexTable
-                    resourceName={{ singular: 'artículo', plural: 'artículos' }}
-                    itemCount={extractedItems.length}
-                    headings={[
-                      { title: 'Producto' },
-                      { title: 'Cant.', alignment: 'end' },
-                      { title: 'P. Unit.', alignment: 'end' },
-                      { title: 'Subtotal', alignment: 'end' },
-                    ]}
-                    selectable={false}
-                  >
-                    {extractedItems.map((item, idx) => (
-                      <IndexTable.Row id={`item-${idx}`} key={idx} position={idx}>
-                        <IndexTable.Cell>
-                          <Text as="span" variant="bodySm">{item.nombre}</Text>
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Text as="span" variant="bodySm" alignment="end">
-                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{item.cantidad}</span>
-                          </Text>
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Text as="span" variant="bodySm" alignment="end">
-                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(item.precioUnitario)}</span>
-                          </Text>
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Text as="span" variant="bodySm" alignment="end">
-                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(item.cantidad * item.precioUnitario)}</span>
-                          </Text>
-                        </IndexTable.Cell>
-                      </IndexTable.Row>
-                    ))}
-                  </IndexTable>
-                </BlockStack>
-              </Card>
-            )}
-          </BlockStack>
+          <ReceiptScanner
+            file={comprobanteFile}
+            isAnalyzing={isAnalyzing}
+            extractedItems={extractedItems}
+            formValues={{
+              concepto: addFields.concepto.value,
+              categoria: addFields.categoria.value as GastoCategoria | '',
+              monto: parseFloat(addFields.monto.value) || 0,
+              fecha: addFields.fecha.value,
+            }}
+            onDrop={(accepted) => handleAddDropZoneDrop(accepted, accepted)}
+            onRescan={() => {
+              if (comprobanteFile) analyzeReceipt(comprobanteFile, addFields);
+            }}
+            onClear={() => {
+              setComprobanteFile(null);
+              setUploadedComprobanteUrl(null);
+              setExtractedItems([]);
+            }}
+          />
         </Modal.Section>
 
         {/* ── SECTION 2: Core expense data ── */}
         <Modal.Section>
           <BlockStack gap="400">
-            <Text as="h3" variant="headingSm" fontWeight="bold">
-              Datos del Gasto
-            </Text>
+            <InlineStack align="space-between" blockAlign="center">
+              <Text as="h3" variant="headingSm" fontWeight="bold">
+                Datos del Gasto
+              </Text>
+              {extractedItems.length > 0 && !isAnalyzing && (
+                <Badge tone="success">Auto-completado por IA</Badge>
+              )}
+            </InlineStack>
             <TextField
               label="Concepto"
               placeholder="Ej: Pago de renta mensual"
@@ -819,45 +762,33 @@ export function GastosManager() {
       >
         {/* ── SECTION 1: Receipt / AI Upload ── */}
         <Modal.Section>
-          <BlockStack gap="300">
-            <BlockStack gap="100">
-              <Text as="h3" variant="headingSm" fontWeight="bold">
-                Comprobante
-              </Text>
-              <Text as="p" variant="bodySm" tone="subdued">
-                {editOriginalUrl
-                  ? 'Ya tiene un archivo adjunto. Sube otro para reemplazar y re-escanear con IA.'
-                  : 'Sube un ticket o factura para extraer datos automáticamente'}
-              </Text>
-            </BlockStack>
-            <DropZone
-              accept="image/*,application/pdf"
-              type="file"
-              allowMultiple={false}
-              onDrop={handleEditDropZoneDrop}
-            >
-              <DropZone.FileUpload
-                actionHint={
-                  isAnalyzing
-                    ? 'Analizando con IA...'
-                    : comprobanteFile
-                      ? comprobanteFile.name
-                      : 'Arrastra o selecciona: JPG, PNG, PDF'
-                }
-              />
-            </DropZone>
-            {isAnalyzing && (
-              <Banner tone="info">Analizando el ticket con IA — los campos se actualizarán automáticamente...</Banner>
-            )}
-            {(comprobanteFile || editOriginalUrl) && !isAnalyzing && (
-              <InlineStack gap="200" blockAlign="center">
-                <Badge tone="success">{comprobanteFile ? 'Nuevo archivo' : 'Archivo existente'}</Badge>
-                <Text as="span" variant="bodySm" tone="subdued">
-                  {comprobanteFile ? comprobanteFile.name : 'Comprobante original'}
-                </Text>
-              </InlineStack>
-            )}
-          </BlockStack>
+          <ReceiptScanner
+            variant="edit"
+            existingUrl={editOriginalUrl}
+            file={comprobanteFile}
+            isAnalyzing={isAnalyzing}
+            extractedItems={extractedItems}
+            formValues={{
+              concepto: editFields.concepto.value,
+              categoria: editFields.categoria.value as GastoCategoria | '',
+              monto: parseFloat(editFields.monto.value) || 0,
+              fecha: editFields.fecha.value,
+            }}
+            description={
+              editOriginalUrl
+                ? 'Ya tiene un archivo adjunto. Sube otro para reemplazar y re-escanear con IA.'
+                : 'Sube un ticket o factura para extraer datos automáticamente.'
+            }
+            onDrop={(accepted) => handleEditDropZoneDrop(accepted, accepted)}
+            onRescan={() => {
+              if (comprobanteFile) analyzeReceipt(comprobanteFile, editFields);
+            }}
+            onClear={() => {
+              setComprobanteFile(null);
+              setUploadedComprobanteUrl(null);
+              setExtractedItems([]);
+            }}
+          />
         </Modal.Section>
 
         {/* ── SECTION 2: Core expense data ── */}

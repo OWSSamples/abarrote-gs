@@ -5,6 +5,57 @@ import { requireAuth } from '@/lib/auth/guard';
 import { getAIModel } from '@/lib/ai';
 import { logger } from '@/lib/logger';
 
+// 8 MB hard cap on uploads (matches /api/upload + a small margin for FormData overhead).
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+]);
+
+/**
+ * Returns { buffer, mimeType } from a multipart/form-data body containing a
+ * `file` field. The legacy `{ url: string }` JSON path was removed to avoid
+ * server-side request forgery (SSRF) — the server should never fetch
+ * arbitrary URLs supplied by the client.
+ */
+async function readReceipt(req: Request): Promise<
+  | { ok: true; buffer: ArrayBuffer; mimeType: string }
+  | { ok: false; status: number; error: string }
+> {
+  const contentType = req.headers.get('content-type') || '';
+  if (!contentType.includes('multipart/form-data')) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Envía el comprobante como multipart/form-data con el campo "file".',
+    };
+  }
+
+  const form = await req.formData();
+  const file = form.get('file');
+  if (!(file instanceof File)) {
+    return { ok: false, status: 400, error: 'Falta el archivo a analizar.' };
+  }
+  if (!ALLOWED_MIME.has(file.type)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Tipo de archivo no soportado (${file.type || 'desconocido'}). Usa JPG, PNG, WebP o PDF.`,
+    };
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    return {
+      ok: false,
+      status: 413,
+      error: `El archivo excede el límite de ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB.`,
+    };
+  }
+  return { ok: true, buffer: await file.arrayBuffer(), mimeType: file.type };
+}
+
 export async function POST(req: Request) {
   try {
     await requireAuth();
@@ -17,20 +68,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const { url } = await req.json();
-
-    if (!url || typeof url !== 'string') {
-      return NextResponse.json({ error: 'Falta la URL del comprobante' }, { status: 400 });
+    const read = await readReceipt(req);
+    if (!read.ok) {
+      return NextResponse.json({ error: read.error }, { status: read.status });
     }
-
-    const fileRes = await fetch(url);
-    if (!fileRes.ok) {
-      return NextResponse.json({ error: 'No se pudo descargar el archivo' }, { status: 400 });
-    }
-    const buffer = await fileRes.arrayBuffer();
-
-    const isPdf = url.toLowerCase().endsWith('.pdf') || fileRes.headers.get('content-type')?.includes('pdf');
-    const mimeType = isPdf ? 'application/pdf' : 'image/jpeg';
+    const { buffer, mimeType } = read;
 
     const promptText = `
       Eres un asistente experto en contabilidad para una tienda de abarrotes en México.
@@ -85,12 +127,15 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ data: object });
   } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error desconocido';
     logger.error('Receipt extraction failed', {
       action: 'ai_receipt_error',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: message,
     });
+    // Surface the underlying error message — without it the user only sees a
+    // generic toast and cannot diagnose (model 404, rate limit, bad key, etc.)
     return NextResponse.json(
-      { error: 'Error procesando el recibo', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: `Error procesando el recibo: ${message}` },
       { status: 500 },
     );
   }

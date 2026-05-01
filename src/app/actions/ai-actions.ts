@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { encrypt, decrypt } from '@/lib/crypto';
 import { requireAuth } from '@/lib/auth/guard';
 import { logger } from '@/lib/logger';
+import { cache } from '@/infrastructure/redis';
 import { z } from 'zod';
 import { createModelForProvider, PROVIDER_DEFAULT_MODELS } from '@/lib/ai';
 import { generateText } from 'ai';
@@ -70,6 +71,9 @@ export async function saveProviderConfigAction(
     });
   }
 
+  // Invalidate cached store config in case the active provider points here.
+  await cache.invalidatePattern('config:');
+
   logger.info('AI provider config saved', { action: 'ai_provider_saved', providerId: parsed.providerId });
   return { success: true };
 }
@@ -129,6 +133,81 @@ export async function deleteProviderConfigAction(
     .set({ apiKeyEnc: null, enabled: false, updatedAt: new Date() })
     .where(eq(aiProviderConfigs.id, providerId));
 
+  await cache.invalidatePattern('config:');
+
   logger.info('AI provider config removed', { action: 'ai_provider_removed', providerId });
   return { success: true };
+}
+
+// ── Fetch live model catalogue from a provider's API ─────────────────────
+// Used by the UI dropdown so the list always matches the provider's real
+// catalogue (avoids the user selecting a fictitious model id).
+type ModelOption = { label: string; value: string; free?: boolean };
+
+const PROVIDER_MODELS_ENDPOINT: Record<string, string> = {
+  openrouter: 'https://openrouter.ai/api/v1/models',
+  openai: 'https://api.openai.com/v1/models',
+  groq: 'https://api.groq.com/openai/v1/models',
+  deepseek: 'https://api.deepseek.com/v1/models',
+  mistral: 'https://api.mistral.ai/v1/models',
+};
+
+export async function listProviderModelsAction(
+  providerId: string
+): Promise<{ success: boolean; models: ModelOption[]; error?: string }> {
+  await requireAuth();
+
+  const endpoint = PROVIDER_MODELS_ENDPOINT[providerId];
+  if (!endpoint) return { success: true, models: [] };
+
+  try {
+    const [row] = await db
+      .select()
+      .from(aiProviderConfigs)
+      .where(eq(aiProviderConfigs.id, providerId))
+      .limit(1);
+    if (!row?.apiKeyEnc) {
+      return { success: false, models: [], error: 'Configura primero la API key.' };
+    }
+    const apiKey = decrypt(row.apiKeyEnc);
+
+    const res = await fetch(endpoint, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      return { success: false, models: [], error: `HTTP ${res.status}` };
+    }
+    const json = (await res.json()) as { data?: Array<{ id: string; name?: string; pricing?: { prompt?: string } }> };
+    const items = Array.isArray(json.data) ? json.data : [];
+    const models: ModelOption[] = items
+      .map((m) => {
+        const isFree =
+          m.id.endsWith(':free') ||
+          (m.pricing?.prompt !== undefined && parseFloat(m.pricing.prompt) === 0);
+        return {
+          label: m.name ? `${m.name}${isFree ? ' — Gratis' : ''}` : m.id,
+          value: m.id,
+          free: isFree,
+        };
+      })
+      // Free models first, then alpha by label
+      .sort((a, b) => {
+        if (a.free !== b.free) return a.free ? -1 : 1;
+        return a.label.localeCompare(b.label);
+      });
+
+    return { success: true, models };
+  } catch (error) {
+    logger.error('Failed to fetch provider model catalogue', {
+      action: 'ai_provider_models_fetch_failed',
+      providerId,
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+    return {
+      success: false,
+      models: [],
+      error: error instanceof Error ? error.message : 'No fue posible obtener la lista de modelos.',
+    };
+  }
 }

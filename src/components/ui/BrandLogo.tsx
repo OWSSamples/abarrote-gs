@@ -58,7 +58,13 @@ export function BrandLogo({ name, size = 24, alt, rounded = true }: BrandLogoPro
       height={size}
       unoptimized
       onError={() => setErrored(true)}
-      style={{ objectFit: 'contain', flexShrink: 0 }}
+      style={{
+        width: size,
+        height: size,
+        objectFit: 'contain',
+        flexShrink: 0,
+        display: 'block',
+      }}
     />
   );
 }

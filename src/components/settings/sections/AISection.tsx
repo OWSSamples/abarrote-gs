@@ -26,6 +26,7 @@ import {
   saveProviderConfigAction,
   testProviderAction,
   deleteProviderConfigAction,
+  listProviderModelsAction,
 } from '@/app/actions/ai-actions';
 import { parseError } from '@/lib/errors';
 import { useToast } from '@/components/notifications/ToastProvider';
@@ -92,19 +93,22 @@ const AI_PROVIDERS = [
 ] as const;
 
 // ── Model lists per provider ────────────────────────────────────────────────
+// NOTE: For OpenRouter, this is a curated fallback. The UI calls
+// `listProviderModelsAction('openrouter')` once an API key is configured to
+// replace these with the live catalogue (so the user can never select a
+// model id that doesn't exist on OpenRouter).
 const PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
   openrouter: [
-    { label: 'NVIDIA: Nemotron 3 Super 120B — Gratis', value: 'nvidia/nemotron-3-super-120b-a12b:free' },
-    { label: 'Arcee AI: Trinity Large Preview — Gratis', value: 'arcee-ai/trinity-large-preview:free' },
-    { label: 'Google: Gemma 4 31B — Gratis', value: 'google/gemma-4-31b-it:free' },
-    { label: 'Google: Gemma 4 26B A4B — Gratis', value: 'google/gemma-4-26b-it:free' },
-    { label: 'Meta: Llama 3.3 70B — Gratis', value: 'meta-llama/llama-3.3-70b-instruct:free' },
-    { label: 'MiniMax: M2.5 — Gratis (196k ctx)', value: 'minimax/minimax-m2.5:free' },
-    { label: 'DeepSeek V3 — Gratis', value: 'deepseek/deepseek-chat-v3-0324:free' },
-    { label: 'Qwen3 Coder 480B A35B — Gratis', value: 'qwen/qwen3-coder-480b-a35b-instruct:free' },
+    { label: 'NVIDIA: Nemotron Nano 9B v2 — Gratis', value: 'nvidia/nemotron-nano-9b-v2:free' },
+    { label: 'DeepSeek V3 0324 — Gratis', value: 'deepseek/deepseek-chat-v3-0324:free' },
+    { label: 'DeepSeek R1 — Gratis', value: 'deepseek/deepseek-r1:free' },
+    { label: 'Google: Gemma 3 27B IT — Gratis', value: 'google/gemma-3-27b-it:free' },
+    { label: 'Meta: Llama 3.3 70B Instruct — Gratis', value: 'meta-llama/llama-3.3-70b-instruct:free' },
+    { label: 'Mistral Small 3.2 24B — Gratis', value: 'mistralai/mistral-small-3.2-24b-instruct:free' },
+    { label: 'Qwen3 Coder — Gratis', value: 'qwen/qwen3-coder:free' },
     { label: 'Z.ai: GLM 4.5 Air — Gratis', value: 'z-ai/glm-4.5-air:free' },
     { label: 'OpenAI: GPT-OSS 120B — Gratis', value: 'openai/gpt-oss-120b:free' },
-    { label: 'Google: Gemini 2.5 Flash Preview', value: 'google/gemini-2.5-flash-preview' },
+    { label: 'OpenAI: GPT-OSS 20B — Gratis', value: 'openai/gpt-oss-20b:free' },
     { label: 'Anthropic: Claude 3.5 Haiku', value: 'anthropic/claude-3.5-haiku' },
     { label: 'OpenAI: GPT-4o Mini', value: 'openai/gpt-4o-mini' },
   ],
@@ -190,6 +194,10 @@ export function AISection() {
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
   const [removingProvider, setRemovingProvider] = useState<string | null>(null);
   const [feedbacks, setFeedbacks] = useState<FeedbackMap>({});
+  // Live catalogue per provider — replaces the static PROVIDER_MODELS once
+  // the API returns the real list (see refreshLiveCatalogue).
+  const [liveModels, setLiveModels] = useState<Record<string, { label: string; value: string }[]>>({});
+  const [loadingCatalogue, setLoadingCatalogue] = useState<Record<string, boolean>>({});
 
   // Sync global state from store when it changes externally
   useEffect(() => {
@@ -234,6 +242,34 @@ export function AISection() {
     setFeedbacks((prev) => ({ ...prev, [id]: undefined }));
   }, []);
 
+  // Lazily fetch the real model catalogue for a provider (only once per
+  // session, only after a key is configured). This keeps the dropdown in
+  // sync with what the provider actually serves — the static list above is
+  // only a fallback for first-time configuration.
+  const refreshLiveCatalogue = useCallback(
+    async (providerId: string) => {
+      if (liveModels[providerId] || loadingCatalogue[providerId]) return;
+      if (!providerStates[providerId]?.hasKey) return;
+      setLoadingCatalogue((prev) => ({ ...prev, [providerId]: true }));
+      try {
+        const res = await listProviderModelsAction(providerId);
+        if (res.success && res.models.length > 0) {
+          setLiveModels((prev) => ({ ...prev, [providerId]: res.models }));
+        }
+      } catch {
+        // Non-critical — we just keep the static fallback list.
+      } finally {
+        setLoadingCatalogue((prev) => ({ ...prev, [providerId]: false }));
+      }
+    },
+    [liveModels, loadingCatalogue, providerStates]
+  );
+
+  // Trigger catalogue fetch when a provider card opens.
+  useEffect(() => {
+    if (expandedProvider) void refreshLiveCatalogue(expandedProvider);
+  }, [expandedProvider, refreshLiveCatalogue]);
+
   const handleSaveGlobal = async () => {
     setGlobalSaving(true);
     try {
@@ -266,6 +302,17 @@ export function AISection() {
       if (result.success) {
         await refreshProviderStates();
         setApiKeyInputs((prev) => ({ ...prev, [providerId]: '' }));
+        // If the api key was just (re)entered, the live catalogue may have
+        // changed (different account = different access). Drop the cache and
+        // re-fetch so the user sees the current real list of models.
+        if (apiKeyInputs[providerId]) {
+          setLiveModels((prev) => {
+            const next = { ...prev };
+            delete next[providerId];
+            return next;
+          });
+          void refreshLiveCatalogue(providerId);
+        }
         setFeedbacks((prev) => ({
           ...prev,
           [providerId]: { success: true, message: 'Configuración guardada correctamente.' },
@@ -412,7 +459,7 @@ export function AISection() {
             const isExpanded = expandedProvider === provider.id;
             const isActive = activeProvider === provider.id && state?.hasKey;
             const feedback = feedbacks[provider.id];
-            const models = PROVIDER_MODELS[provider.id] ?? [];
+            const models = liveModels[provider.id] ?? PROVIDER_MODELS[provider.id] ?? [];
             const selectedModel =
               modelSelections[provider.id] || state?.selectedModel || models[0]?.value || '';
             const selectedModelLabel =

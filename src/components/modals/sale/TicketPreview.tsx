@@ -15,6 +15,10 @@ export interface TicketPreviewProps {
   clienteId: string;
   clientes: Cliente[];
   customerEmail?: string;
+  /** HTML produced by `generateTicketHtml(storeConfig.ticketDesignVenta, ...)`.
+   *  When provided, this is rendered inside an iframe so the modal preview
+   *  matches the configured ticket design exactly. */
+  designHtml?: string;
   onPrint: () => void;
   onNewSale: () => void;
   onClose: () => void;
@@ -27,6 +31,7 @@ export function TicketPreview({
   clienteId,
   clientes,
   customerEmail: initialEmail,
+  designHtml,
   onPrint,
   onNewSale,
   onClose,
@@ -126,6 +131,21 @@ export function TicketPreview({
       <Modal.Section>
         <Box padding="400" background="bg-surface-secondary">
           <BlockStack gap="400" align="center">
+            {designHtml ? (
+              <div className="ticket-design-frame">
+                {isOffline && (
+                  <div className="offline-strip" style={{ marginBottom: 8 }}>
+                    MODO OFFLINE — COMPROBANTE DE EMERGENCIA
+                  </div>
+                )}
+                <iframe
+                  title="Vista previa del ticket"
+                  srcDoc={designHtml}
+                  className="ticket-design-iframe"
+                  sandbox="allow-same-origin"
+                />
+              </div>
+            ) : (
             <div className={`ticket-paper ${isOffline ? 'ticket-offline' : ''}`}>
               {/* ── Logo / Store Identity ── */}
               <div className="header-area">
@@ -264,10 +284,25 @@ export function TicketPreview({
                 <div className="powered-label">OPENDEX POS</div>
               </div>
             </div>
+            )}
           </BlockStack>
         </Box>
 
         <style>{`
+          .ticket-design-frame {
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06);
+            padding: 12px;
+            display: inline-block;
+          }
+          .ticket-design-iframe {
+            display: block;
+            border: none;
+            width: 320px;
+            height: 70vh;
+            max-height: 720px;
+            background: #fff;
+          }
           .ticket-paper {
             background: #fff;
             width: 300px;

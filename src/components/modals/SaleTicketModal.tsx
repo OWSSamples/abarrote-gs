@@ -25,6 +25,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useSaleCalculations } from '@/hooks/useSaleCalculations';
 import { useMercadoPagoTerminal } from '@/hooks/useMercadoPagoTerminal';
 import { useTicketPrinter } from '@/hooks/useTicketPrinter';
+import { generateTicketHtml, applyTicketTemplate } from '@/lib/printTicket';
 
 // Extracted sub-components
 import { TicketPreview } from './sale/TicketPreview';
@@ -40,6 +41,26 @@ interface SaleTicketModalProps {
   open: boolean;
   onClose: () => void;
 }
+
+// Payment method labels for printed tickets and modal preview.
+const PAYMENT_LABELS: Record<string, string> = {
+  efectivo: 'Efectivo',
+  tarjeta: 'Tarjeta (Terminal)',
+  tarjeta_web: 'Tarjeta (Mercado Pago Web)',
+  tarjeta_manual: 'Tarjeta (manual)',
+  transferencia: 'Transferencia',
+  spei: 'SPEI',
+  spei_conekta: 'SPEI (Conekta)',
+  spei_stripe: 'SPEI (Stripe)',
+  oxxo_conekta: 'OXXO (Conekta)',
+  oxxo_stripe: 'OXXO (Stripe)',
+  tarjeta_clip: 'Clip Checkout',
+  clip_terminal: 'Clip Terminal',
+  paypal: 'PayPal',
+  qr_cobro: 'QR de Cobro',
+  fiado: 'Crédito',
+  puntos: 'Puntos de Lealtad',
+};
 
 /* eslint-disable react-hooks/preserve-manual-memoization -- React Compiler cannot fully optimize this complex modal */
 export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
@@ -595,6 +616,85 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   // ── Responsive ──
   const isMobile = useMediaQuery('(max-width: 768px)');
 
+  // ── Build design-aware ticket HTML so the post-sale modal AND the printout
+  //    both reflect the configuration from "Punto de Venta y Recibos". ──
+  const designHtml = useMemo(() => {
+    if (!completedSale) return '';
+    const sale = completedSale;
+    const saleDate = new Date(sale.date);
+    const dateStr = saleDate.toLocaleDateString('es-MX', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+    const timeStr = saleDate.toLocaleTimeString('es-MX', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const fechaCompleta = `${dateStr} ${timeStr}`;
+    const cliente = clientes.find((c) => c.id === fields.clienteId.value);
+
+    const data = {
+      storeName: storeConfig.storeName || 'Tienda',
+      legalName: storeConfig.legalName || '',
+      address: storeConfig.address || '',
+      city: storeConfig.city || '',
+      postalCode: storeConfig.postalCode || '',
+      phone: storeConfig.phone || '',
+      rfc: storeConfig.rfc || '',
+      regimenDescription: storeConfig.regimenDescription || '',
+      storeNumber: storeConfig.storeNumber || '001',
+      logoUrl: storeConfig.logoUrl,
+      ivaRate: storeConfig.ivaRate || '16',
+      folio: sale.folio,
+      fecha: fechaCompleta,
+      cajero: sale.cajero || '—',
+      metodoPago: PAYMENT_LABELS[sale.paymentMethod] ?? sale.paymentMethod,
+      clienteName: cliente?.name,
+      items: sale.items.map((i) => ({
+        name: i.productName,
+        sku: i.sku,
+        qty: i.quantity,
+        unit: 'pza',
+        unitPrice: i.unitPrice,
+        subtotal: i.subtotal,
+      })),
+      subtotal: sale.subtotal,
+      iva: sale.iva ?? 0,
+      discount: sale.discount ?? 0,
+      total: sale.total,
+      amountPaid: sale.amountPaid ?? sale.total,
+      change: sale.change ?? 0,
+      ticketFooter: storeConfig.ticketFooter,
+      ticketServicePhone: storeConfig.ticketServicePhone,
+      ticketVigencia: storeConfig.ticketVigencia,
+    };
+
+    // Priority: 1) Custom HTML template, 2) Design config, 3) empty (preview falls back to legacy layout)
+    if (storeConfig.ticketTemplateVenta) {
+      const templateVars: Record<string, string> = {
+        storeName: data.storeName,
+        folio: data.folio,
+        fecha: data.fecha,
+        cajero: data.cajero,
+        metodoPago: data.metodoPago,
+        items: sale.items
+          .map(
+            (i) =>
+              `<div class="item-name">${i.productName}</div><div class="item-detail"><span>${i.quantity} pza × $${i.unitPrice.toFixed(2)}</span><span>$${i.subtotal.toFixed(2)}</span></div>`,
+          )
+          .join(''),
+        total: `$${sale.total.toFixed(2)}`,
+        footer: storeConfig.ticketFooter || '¡Gracias por su compra!',
+      };
+      return applyTicketTemplate(storeConfig.ticketTemplateVenta, templateVars, '');
+    }
+    if (storeConfig.ticketDesignVenta) {
+      return generateTicketHtml(storeConfig.ticketDesignVenta, data);
+    }
+    return '';
+  }, [completedSale, storeConfig, clientes, fields.clienteId.value]);
+
   // ── Ticket preview (after sale completed) ──
   if (completedSale) {
     return (
@@ -605,7 +705,8 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         clienteId={fields.clienteId.value}
         clientes={clientes}
         customerEmail={customerEmail}
-        onPrint={() => printTicket(completedSale)}
+        designHtml={designHtml}
+        onPrint={() => printTicket(completedSale, { fallbackHtml: designHtml || undefined })}
         onNewSale={resetForm}
         onClose={handleClose}
       />

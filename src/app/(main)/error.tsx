@@ -41,12 +41,6 @@ export default function DashboardError({
 
   const isNetworkError = /fetch|network|timeout|econnrefused/i.test(error.message ?? '');
   const tone = isNetworkError ? 'warning' : 'critical';
-  const accentColor = isNetworkError
-    ? 'var(--p-color-bg-surface-caution, #fff5ea)'
-    : 'var(--p-color-bg-surface-critical, #fee9e8)';
-  const accentBorder = isNetworkError
-    ? 'var(--p-color-border-caution, #ffd79d)'
-    : 'var(--p-color-border-critical, #fdb9b5)';
   const iconTone: 'caution' | 'critical' = isNetworkError ? 'caution' : 'critical';
   const iconSource = isNetworkError ? WifiIcon : AlertTriangleIcon;
 
@@ -64,36 +58,18 @@ export default function DashboardError({
       <div style={{ maxWidth: '720px', margin: '40px auto 0' }}>
         <Card padding="800">
           <BlockStack gap="600">
-            {/* Header: Icon + Badge */}
-            <InlineStack gap="400" blockAlign="center" wrap={false}>
-              <div
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: '14px',
-                  background: accentColor,
-                  border: `1px solid ${accentBorder}`,
-                  flexShrink: 0,
-                }}
-                aria-hidden="true"
-              >
-                <div style={{ width: '24px', height: '24px' }}>
+            {/* Header */}
+            <BlockStack gap="300">
+              <InlineStack gap="200" blockAlign="center">
+                <div style={{ width: '20px', height: '20px' }} aria-hidden="true">
                   <Icon source={iconSource} tone={iconTone} />
                 </div>
-              </div>
-
-              <BlockStack gap="100">
-                <InlineStack gap="200" blockAlign="center">
-                  <Badge tone={tone}>{isNetworkError ? 'Conexión interrumpida' : 'Error inesperado'}</Badge>
-                </InlineStack>
-                <Text as="h1" variant="headingLg">
-                  {title}
-                </Text>
-              </BlockStack>
-            </InlineStack>
+                <Badge tone={tone}>{isNetworkError ? 'Conexión interrumpida' : 'Error inesperado'}</Badge>
+              </InlineStack>
+              <Text as="h1" variant="heading2xl">
+                {title}
+              </Text>
+            </BlockStack>
 
             {/* Description */}
             <Text as="p" variant="bodyMd" tone="subdued">

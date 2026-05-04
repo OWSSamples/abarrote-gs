@@ -148,22 +148,30 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
+    const isProd = process.env.NODE_ENV === 'production';
     return [
       {
         // Apply security headers to ALL routes
         source: '/(.*)',
         headers: SECURITY_HEADERS,
       },
-      {
-        // Long-lived immutable cache for hashed Next assets
-        source: '/_next/static/(.*)',
-        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
-      },
-      {
-        // Public icons / illustrations served from /public
-        source: '/(icon|illustrations)/(.*)',
-        headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }],
-      },
+      // Cache headers ONLY in production — they break Turbopack HMR in dev
+      ...(isProd
+        ? [
+            {
+              // Long-lived immutable cache for hashed Next assets
+              source: '/_next/static/(.*)',
+              headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+            },
+            {
+              // Public icons / illustrations served from /public
+              source: '/(icon|illustrations)/(.*)',
+              headers: [
+                { key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' },
+              ],
+            },
+          ]
+        : []),
     ];
   },
 };

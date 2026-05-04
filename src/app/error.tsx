@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { Page, Banner, Button, BlockStack, Text, InlineStack, Box } from '@shopify/polaris';
+import { SessionExpiredScreen } from '@/components/auth/SessionExpiredScreen';
 
 /**
  * Root error boundary — catches unhandled errors in all routes.
@@ -81,6 +82,11 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
       console.error(`[ErrorBoundary] digest=${error.digest}`);
     }
   }, [error.digest]);
+
+  // Premium full-screen experience for session expired
+  if (info.title === 'Sesión expirada') {
+    return <SessionExpiredScreen reference={error.digest} />;
+  }
 
   return (
     <Page title="Error" fullWidth>

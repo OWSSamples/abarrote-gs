@@ -85,7 +85,7 @@ export {
   getUserRoleByUid,
   ensureOwnerRole,
   assignUserRole,
-  createFirebaseUserWithRole,
+  createCognitoUserWithRole,
   updateUserPin,
   updateUserRole,
   removeUserRole,

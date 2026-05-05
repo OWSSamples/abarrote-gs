@@ -1099,12 +1099,12 @@ const INFRASTRUCTURE_PROVIDERS: InfraProvider[] = [
     url: 'https://cloud.google.com/security/compliance',
   },
   {
-    name: 'Firebase',
-    brand: 'firebase',
+    name: 'Amazon Cognito',
+    brand: 'cognito',
     category: 'Autenticación',
     role: 'Identidad de usuarios, sesiones y control de acceso.',
-    certifications: ['SOC 2', 'ISO 27018', 'GDPR'],
-    url: 'https://firebase.google.com/support/privacy',
+    certifications: ['SOC 2', 'ISO 27018', 'HIPAA', 'PCI DSS'],
+    url: 'https://aws.amazon.com/compliance/cognito/',
   },
   {
     name: 'Cloudflare',
@@ -1153,7 +1153,6 @@ const VULNERABILITIES_FIXED: VulnerabilityFix[] = [
   { package: 'semver', severity: 'moderate', description: 'ReDoS en parsing de versiones (CVE-2024-4067)', fixedIn: '>=7.7.4', date: '2026-03-15' },
   { package: 'glob', severity: 'moderate', description: 'ReDoS en patrones complejos (CVE-2024-4068)', fixedIn: '>=10.5.0', date: '2026-03-15' },
   { package: 'next', severity: 'high', description: 'Server Actions SSRF (actualizado a 16.2.4)', fixedIn: '>=16.2.4', date: '2026-04-20' },
-  { package: 'firebase', severity: 'moderate', description: 'XSS en redirect URLs', fixedIn: '>=12.10.0', date: '2026-04-05' },
 ];
 
 function ChangelogTimeline({ items }: { items: TimelineItem[] }) {

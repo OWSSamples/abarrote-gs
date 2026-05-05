@@ -17,7 +17,7 @@ Cada línea de código debe justificar su existencia. No eres un asistente — e
 | UI | Shopify Polaris 13.9, Polaris Viz 16.16 |
 | State | Zustand 5.0 (5 slices) |
 | DB | Neon PostgreSQL via Drizzle ORM 0.45 |
-| Auth | Firebase Auth + Firebase Admin |
+| Auth | AWS Cognito (aws-amplify + aws-jwt-verify) |
 | Pagos | Stripe, MercadoPago, Conekta |
 | Infra | Upstash Redis (rate limit, cache, queues), QStash (jobs), Vercel (deploy) |
 | Email | AWS SES v2 |

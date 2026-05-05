@@ -3,7 +3,7 @@
 - **Estado:** Propuesta — pendiente de aprobación
 - **Fecha:** 2026-04-22
 - **Decisores:** Owner del producto + arquitecto
-- **Contexto técnico:** Next.js 16, Drizzle + Neon Postgres, Firebase Auth, ~30 tablas operativas
+- **Contexto técnico:** Next.js 16, Drizzle + Neon Postgres, AWS Cognito, ~30 tablas operativas
 
 ---
 
@@ -169,7 +169,7 @@ Para cada una:
 
 - **No** vamos a soportar multi-cliente SaaS hoy (eso es Opción C — preparado, no implementado).
 - **No** vamos a fragmentar la DB (Opción A descartada).
-- **No** vamos a tocar Firebase Auth — los usuarios siguen siendo globales, el acceso a sucursales se controla en `user_store_access`.
+- **No** vamos a tocar AWS Cognito — los usuarios siguen siendo globales, el acceso a sucursales se controla en `user_store_access`.
 - **No** vamos a duplicar OAuth tokens por sucursal en Fase 1 — hoy MercadoPago/Stripe es único por instalación.
 
 ---

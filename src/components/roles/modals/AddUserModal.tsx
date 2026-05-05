@@ -84,7 +84,7 @@ export function AddUserModal({
             onChange={setFormEmail}
             autoComplete="email"
             placeholder="cajero@mitienda.com"
-            helpText="El correo con el que el usuario se registro en Firebase"
+            helpText="El correo con el que el usuario inicia sesión en Cognito"
           />
           <TextField
             label="Nombre (opcional)"

@@ -213,7 +213,7 @@ export const createRoleSchema = z.object({
 export const updateRoleSchema = createRoleSchema.partial();
 
 export const assignUserRoleSchema = z.object({
-  firebaseUid: safeString('Firebase UID', 200),
+  cognitoSub: safeString('Cognito Sub', 200),
   email: z.string().email().max(300),
   displayName: z.string().max(200).default(''),
   roleId: idSchema,
@@ -231,12 +231,12 @@ export const createUserWithRoleSchema = z.object({
 });
 
 export const updateUserPinSchema = z.object({
-  firebaseUid: safeString('Firebase UID', 200),
+  cognitoSub: safeString('Cognito Sub', 200),
   pinCode: z.string().regex(/^\d{4,6}$/, 'PIN debe ser 4-6 dígitos'),
 });
 
 export const updateUserProfileSchema = z.object({
-  firebaseUid: safeString('Firebase UID', 200),
+  cognitoSub: safeString('Cognito Sub', 200),
   displayName: z.string().min(1).max(200).optional(),
   avatarUrl: z.string().url().max(2000).optional(),
 });

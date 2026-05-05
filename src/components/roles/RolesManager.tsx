@@ -322,8 +322,8 @@ export function RolesManager() {
         setAddOpen(false);
       } catch (error: unknown) {
         console.error(error);
-        const err = error as { message?: string; errorInfo?: { code?: string } };
-        if (err.message?.includes('FirebaseAuthError') || err.errorInfo?.code === 'auth/email-already-exists') {
+        const err = error as { message?: string; name?: string };
+        if (err.name === 'UsernameExistsException' || err.message?.includes('already exists')) {
           showError('Error: El correo electrónico ya está registrado en la base de datos.');
         } else {
           showError('Error al crear el usuario y asignar el rol');
@@ -340,9 +340,9 @@ export function RolesManager() {
       if (!selectedUser || !user) return;
       setSaving(true);
       try {
-        await updateRole(selectedUser.firebaseUid, data.roleId, user.userId);
+        await updateRole(selectedUser.cognitoSub, data.roleId, user.userId);
         if (data.pinCode.trim()) {
-          await updateUserPin(selectedUser.firebaseUid, data.pinCode.trim());
+          await updateUserPin(selectedUser.cognitoSub, data.pinCode.trim());
         }
         const roleName = roleMap.get(data.roleId)?.name ?? '';
         showSuccess(`Rol y accesos actualizados a ${roleName}`);
@@ -361,7 +361,7 @@ export function RolesManager() {
     if (!selectedUser) return;
     setSaving(true);
     try {
-      await deactivateUser(selectedUser.firebaseUid);
+      await deactivateUser(selectedUser.cognitoSub);
       showSuccess(
         `${selectedUser.displayName || selectedUser.email} ha sido dado de baja. Su Global ID queda reservado permanentemente.`,
       );
@@ -508,7 +508,7 @@ export function RolesManager() {
     const roleDef = roleMap.get(record.roleId);
     const roleIndex = roleDefinitions.findIndex((d) => d.id === record.roleId);
     const isOwnerUser = roleDef?.name === 'Propietario';
-    const isSelf = record.firebaseUid === user?.userId;
+    const isSelf = record.cognitoSub === user?.userId;
     const isBaja = record.status === 'baja';
 
     return (
@@ -565,7 +565,7 @@ export function RolesManager() {
                     variant="primary"
                     onClick={async () => {
                       try {
-                        const gid = await generateGlobalId(record.firebaseUid);
+                        const gid = await generateGlobalId(record.cognitoSub);
                         showSuccess(`Global ID generado: ${gid}`);
                       } catch (e: unknown) {
                         showError(e instanceof Error ? e.message : 'Error al generar Global ID');
@@ -588,7 +588,7 @@ export function RolesManager() {
                 size="micro"
                 onClick={async () => {
                   try {
-                    await reactivateUser(record.firebaseUid);
+                    await reactivateUser(record.cognitoSub);
                     showSuccess(`${record.displayName || record.email} ha sido reactivado`);
                   } catch (e: unknown) {
                     showError(e instanceof Error ? e.message : 'Error al reactivar');
@@ -606,7 +606,7 @@ export function RolesManager() {
                     variant="primary"
                     onClick={async () => {
                       try {
-                        const gid = await generateGlobalId(record.firebaseUid);
+                        const gid = await generateGlobalId(record.cognitoSub);
                         showSuccess(`Global ID generado: ${gid}`);
                       } catch (e: unknown) {
                         showError(e instanceof Error ? e.message : 'Error al generar Global ID');

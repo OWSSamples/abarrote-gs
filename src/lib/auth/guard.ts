@@ -71,7 +71,7 @@ const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
     })
     .from(userRoles)
     .leftJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
-    .where(eq(userRoles.firebaseUid, uid))
+    .where(eq(userRoles.cognitoSub, uid))
     .limit(1);
 
   if (rows.length === 0) {

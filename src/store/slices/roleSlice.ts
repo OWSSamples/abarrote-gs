@@ -7,7 +7,7 @@ import {
   fetchUserRoles as dbFetchUserRoles,
   ensureOwnerRole as dbEnsureOwnerRole,
   assignUserRole as dbAssignUserRole,
-  createFirebaseUserWithRole as dbCreateFirebaseUserWithRole,
+  createCognitoUserWithRole as dbCreateCognitoUserWithRole,
   updateUserRole as dbUpdateUserRole,
   updateUserPin as dbUpdateUserPin,
   removeUserRole as dbRemoveUserRole,
@@ -80,9 +80,9 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  ensureOwnerRole: async (firebaseUid, email, displayName) => {
+  ensureOwnerRole: async (cognitoSub, email, displayName) => {
     try {
-      const role = await dbEnsureOwnerRole(firebaseUid, email, displayName);
+      const role = await dbEnsureOwnerRole(cognitoSub, email, displayName);
       set({ currentUserRole: role });
       return role;
     } catch (error) {
@@ -95,9 +95,9 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     try {
       const newRole = await dbAssignUserRole(data, assignedByUid);
       const state = get();
-      const existing = state.userRoles.find((r) => r.firebaseUid === data.firebaseUid);
+      const existing = state.userRoles.find((r) => r.cognitoSub === data.cognitoSub);
       if (existing) {
-        set({ userRoles: state.userRoles.map((r) => (r.firebaseUid === data.firebaseUid ? newRole : r)) });
+        set({ userRoles: state.userRoles.map((r) => (r.cognitoSub === data.cognitoSub ? newRole : r)) });
       } else {
         set({ userRoles: [...state.userRoles, newRole] });
       }
@@ -109,7 +109,7 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
 
   createUserWithRole: async (data, assignedByUid) => {
     try {
-      const newRole = await dbCreateFirebaseUserWithRole(data, assignedByUid);
+      const newRole = await dbCreateCognitoUserWithRole(data, assignedByUid);
       const state = get();
       set({ userRoles: [...state.userRoles, newRole] });
     } catch (error) {
@@ -118,13 +118,13 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  updateRole: async (firebaseUid, newRoleId, assignedByUid) => {
+  updateRole: async (cognitoSub, newRoleId, assignedByUid) => {
     try {
-      await dbUpdateUserRole(firebaseUid, newRoleId, assignedByUid);
+      await dbUpdateUserRole(cognitoSub, newRoleId, assignedByUid);
       const state = get();
       set({
         userRoles: state.userRoles.map((r) =>
-          r.firebaseUid === firebaseUid ? { ...r, roleId: newRoleId, updatedAt: new Date().toISOString() } : r,
+          r.cognitoSub === cognitoSub ? { ...r, roleId: newRoleId, updatedAt: new Date().toISOString() } : r,
         ),
       });
     } catch (error) {
@@ -133,16 +133,16 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  updateUserPin: async (firebaseUid, pinCode) => {
+  updateUserPin: async (cognitoSub, pinCode) => {
     try {
-      await dbUpdateUserPin(firebaseUid, pinCode);
+      await dbUpdateUserPin(cognitoSub, pinCode);
       const state = get();
       set({
         userRoles: state.userRoles.map((r) =>
-          r.firebaseUid === firebaseUid ? { ...r, pinCode, updatedAt: new Date().toISOString() } : r,
+          r.cognitoSub === cognitoSub ? { ...r, pinCode, updatedAt: new Date().toISOString() } : r,
         ),
       });
-      if (state.currentUserRole?.firebaseUid === firebaseUid) {
+      if (state.currentUserRole?.cognitoSub === cognitoSub) {
         set({ currentUserRole: { ...state.currentUserRole, pinCode } });
       }
     } catch (error) {
@@ -151,20 +151,20 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  removeRole: async (firebaseUid) => {
+  removeRole: async (cognitoSub) => {
     try {
-      await dbRemoveUserRole(firebaseUid);
+      await dbRemoveUserRole(cognitoSub);
       const state = get();
-      set({ userRoles: state.userRoles.filter((r) => r.firebaseUid !== firebaseUid) });
+      set({ userRoles: state.userRoles.filter((r) => r.cognitoSub !== cognitoSub) });
     } catch (error) {
       console.error('[store:role] removeRole failed', error);
       throw error;
     }
   },
 
-  getUserRole: async (firebaseUid) => {
+  getUserRole: async (cognitoSub) => {
     try {
-      const role = await dbGetUserRoleByUid(firebaseUid);
+      const role = await dbGetUserRoleByUid(cognitoSub);
       if (role) set({ currentUserRole: role });
       return role;
     } catch (error) {
@@ -173,13 +173,13 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  generateGlobalId: async (firebaseUid) => {
+  generateGlobalId: async (cognitoSub) => {
     try {
-      const globalId = await dbGenerateGlobalId(firebaseUid);
+      const globalId = await dbGenerateGlobalId(cognitoSub);
       const state = get();
       set({
         userRoles: state.userRoles.map((r) =>
-          r.firebaseUid === firebaseUid ? { ...r, globalId, updatedAt: new Date().toISOString() } : r,
+          r.cognitoSub === cognitoSub ? { ...r, globalId, updatedAt: new Date().toISOString() } : r,
         ),
       });
       return globalId;
@@ -189,14 +189,14 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  deactivateUser: async (firebaseUid) => {
+  deactivateUser: async (cognitoSub) => {
     try {
-      await dbDeactivateUser(firebaseUid);
+      await dbDeactivateUser(cognitoSub);
       const state = get();
       const now = new Date().toISOString();
       set({
         userRoles: state.userRoles.map((r) =>
-          r.firebaseUid === firebaseUid ? { ...r, status: 'baja' as const, deactivatedAt: now, updatedAt: now } : r,
+          r.cognitoSub === cognitoSub ? { ...r, status: 'baja' as const, deactivatedAt: now, updatedAt: now } : r,
         ),
       });
     } catch (error) {
@@ -205,14 +205,14 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  reactivateUser: async (firebaseUid) => {
+  reactivateUser: async (cognitoSub) => {
     try {
-      await dbReactivateUser(firebaseUid);
+      await dbReactivateUser(cognitoSub);
       const state = get();
       const now = new Date().toISOString();
       set({
         userRoles: state.userRoles.map((r) =>
-          r.firebaseUid === firebaseUid
+          r.cognitoSub === cognitoSub
             ? { ...r, status: 'activo' as const, deactivatedAt: undefined, updatedAt: now }
             : r,
         ),
@@ -223,13 +223,13 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  updateUserProfile: async (firebaseUid, data) => {
+  updateUserProfile: async (cognitoSub, data) => {
     try {
-      const updated = await dbUpdateUserProfile(firebaseUid, data);
+      const updated = await dbUpdateUserProfile(cognitoSub, data);
       const state = get();
       set({
-        currentUserRole: state.currentUserRole?.firebaseUid === firebaseUid ? updated : state.currentUserRole,
-        userRoles: state.userRoles.map((r) => (r.firebaseUid === firebaseUid ? updated : r)),
+        currentUserRole: state.currentUserRole?.cognitoSub === cognitoSub ? updated : state.currentUserRole,
+        userRoles: state.userRoles.map((r) => (r.cognitoSub === cognitoSub ? updated : r)),
       });
       return updated;
     } catch (error) {

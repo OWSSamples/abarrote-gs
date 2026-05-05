@@ -109,13 +109,12 @@ export function LoginForm() {
             toast.showError('Error al completar el inicio de sesión. Inténtalo de nuevo.');
           }
         } else if (
-          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_OTP' ||
           result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_CODE' ||
-          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE' ||
-          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_CODE'
+          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_CODE' ||
+          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_TOTP_CODE'
         ) {
           void logAuthEvent({ event: 'sign_in_challenge', email, reason: result.nextStep.signInStep });
-          const isSms = result.nextStep.signInStep.includes('SMS');
+          const isSms = result.nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_CODE';
           setMfaDelivery(isSms ? 'sms' : 'email');
           setRequiresMfa(true);
         } else {

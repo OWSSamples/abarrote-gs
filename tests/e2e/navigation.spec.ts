@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
  * Navigation & Routing E2E Tests
  *
  * Validates critical navigation paths, auth guards,
- * and public route accessibility without real Firebase auth.
+ * and public route accessibility without real AWS Cognito.
  */
 
 test.describe('Public Routes — Accessibility', () => {

@@ -124,24 +124,24 @@ export interface RoleSlice {
   ) => Promise<void>;
   deleteRoleDefinition: (id: string) => Promise<void>;
   fetchRoles: () => Promise<void>;
-  ensureOwnerRole: (firebaseUid: string, email: string, displayName: string) => Promise<UserRoleRecord>;
+  ensureOwnerRole: (cognitoSub: string, email: string, displayName: string) => Promise<UserRoleRecord>;
   assignRole: (
-    data: { firebaseUid: string; email: string; displayName: string; roleId: string },
+    data: { cognitoSub: string; email: string; displayName: string; roleId: string },
     assignedByUid: string,
   ) => Promise<void>;
   createUserWithRole: (
     data: { email: string; password?: string; displayName: string; roleId: string; pinCode?: string },
     assignedByUid: string,
   ) => Promise<void>;
-  updateRole: (firebaseUid: string, newRoleId: string, assignedByUid: string) => Promise<void>;
-  updateUserPin: (firebaseUid: string, pinCode: string) => Promise<void>;
-  removeRole: (firebaseUid: string) => Promise<void>;
-  getUserRole: (firebaseUid: string) => Promise<UserRoleRecord | null>;
-  generateGlobalId: (firebaseUid: string) => Promise<string>;
-  deactivateUser: (firebaseUid: string) => Promise<void>;
-  reactivateUser: (firebaseUid: string) => Promise<void>;
+  updateRole: (cognitoSub: string, newRoleId: string, assignedByUid: string) => Promise<void>;
+  updateUserPin: (cognitoSub: string, pinCode: string) => Promise<void>;
+  removeRole: (cognitoSub: string) => Promise<void>;
+  getUserRole: (cognitoSub: string) => Promise<UserRoleRecord | null>;
+  generateGlobalId: (cognitoSub: string) => Promise<string>;
+  deactivateUser: (cognitoSub: string) => Promise<void>;
+  reactivateUser: (cognitoSub: string) => Promise<void>;
   updateUserProfile: (
-    firebaseUid: string,
+    cognitoSub: string,
     data: { displayName?: string; avatarUrl?: string },
   ) => Promise<UserRoleRecord>;
   authorizePin: (

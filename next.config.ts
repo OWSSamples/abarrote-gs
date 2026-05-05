@@ -99,11 +99,6 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: '*.firebasestorage.app',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
         hostname: 'svgl.app',
         pathname: '/**',
       },

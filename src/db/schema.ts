@@ -591,10 +591,10 @@ export const userRoles = pgTable(
   'user_roles',
   {
     id: text('id').primaryKey(),
-    // NOTE: column is named `firebase_uid` for legacy compatibility but
+    // NOTE: column is named `cognito_sub` for legacy compatibility but
     // now stores the Cognito `sub` (subject) claim. A future migration
     // will rename this column to `cognito_sub`. See SECURITY.md.
-    firebaseUid: text('firebase_uid').notNull(),
+    cognitoSub: text('cognito_sub').notNull(),
     email: text('email').notNull(),
     displayName: text('display_name').notNull().default(''),
     avatarUrl: text('avatar_url').notNull().default(''),
@@ -610,7 +610,7 @@ export const userRoles = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
-  (t) => [index('user_roles_firebase_uid_idx').on(t.firebaseUid), index('user_roles_role_id_idx').on(t.roleId)],
+  (t) => [index('user_roles_cognito_sub_idx').on(t.cognitoSub), index('user_roles_role_id_idx').on(t.roleId)],
 );
 
 // ==================== AUDIT LOGS ====================

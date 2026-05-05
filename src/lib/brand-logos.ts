@@ -61,8 +61,6 @@ const LOCAL_ICONS: Record<string, string> = {
   googlecloud: '/icon/google-cloud.svg',
   gcp: '/icon/google-cloud.svg',
   shopify: '/icon/shopify.svg',
-  firebase: '/icon/firebase.svg',
-  // ^ kept for legacy display only — Firebase auth has been removed.
   cognito: '/icon/aws.svg',
   cloudflare: '/icon/cloudflare.svg',
   sentry: '/icon/sentry.svg',

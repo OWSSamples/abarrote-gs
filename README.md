@@ -72,7 +72,7 @@ Construido sobre una arquitectura **offline-first** con sincronización en tiemp
 ├─────────────────────────────────────────────────────────────────────┤
 │                       CAPA DE INFRAESTRUCTURA                       │
 │  Neon PostgreSQL (32 tablas) · Drizzle ORM · Redis (Upstash)      │
-│  QStash Jobs · Firebase Auth · S3/Vercel Blob · WebSerial          │
+│  QStash Jobs · AWS Cognito · S3/Vercel Blob · WebSerial           │
 │  Circuit Breaker · Rate Limiting · Distributed Locks               │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -195,7 +195,7 @@ Abstracción de PAC (Proveedor Autorizado de Certificación) con soporte para:
 
 | Característica | Detalle |
 |---|---|
-| **Firebase Auth** | Email/password, recuperación de contraseña, sesiones seguras |
+| **AWS Cognito** | Email/password, recuperación de contraseña, sesiones seguras |
 | **Roles** | Owner, Admin, Gerente, Cajero, Almacenista, Contador — totalmente customizables |
 | **Permisos Granulares** | 12+ permisos: `manage_sales`, `cancel_sales`, `manage_inventory`, `view_reports`, `cashdrawer.open`, etc. |
 | **PIN Pad** | Autenticación rápida por PIN numérico para cambio de cajero |
@@ -238,7 +238,7 @@ Motor de pagos de servicios con 4 proveedores:
 | **Database** | Neon Serverless PostgreSQL | — |
 | **ORM** | Drizzle ORM | 0.45.1 |
 | **State** | Zustand (5 slices) | 5.0.11 |
-| **Auth** | Firebase Authentication + Admin | 12.10 / 13.7 |
+| **Auth** | AWS Cognito (aws-amplify + aws-jwt-verify) | 6.16 / 5.1 |
 | **Deployment** | Vercel (Edge + Serverless) | — |
 | **Package Manager** | Bun | 1.3+ |
 
@@ -294,7 +294,7 @@ Motor de pagos de servicios con 4 proveedores:
 |---|---|
 | [Bun](https://bun.sh/) | 1.3+ |
 | [Neon](https://neon.tech/) | Cuenta activa |
-| [Firebase](https://firebase.google.com/) | Proyecto con Auth habilitado |
+| [AWS Cognito](https://aws.amazon.com/cognito/) | User Pool con App Client habilitado |
 
 ### Setup
 
@@ -346,11 +346,14 @@ bun run dev          # → http://localhost:3000
 # ── Base de Datos ──
 DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
 
-# ── Firebase ──
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=
-FIREBASE_SERVICE_ACCOUNT_KEY=    # JSON (para Admin SDK)
+# ── AWS Cognito ──
+NEXT_PUBLIC_COGNITO_USER_POOL_ID=
+NEXT_PUBLIC_COGNITO_CLIENT_ID=
+NEXT_PUBLIC_COGNITO_REGION=us-east-2
+NEXT_PUBLIC_COGNITO_DOMAIN=         # us-east-2xxxxx.auth.us-east-2.amazoncognito.com
+AWS_REGION=us-east-2
+AWS_ACCESS_KEY_ID=                  # IAM con permisos cognito-idp:AdminCreateUser
+AWS_SECRET_ACCESS_KEY=
 
 # ── Redis (Upstash) ──
 UPSTASH_REDIS_REST_URL=
@@ -478,7 +481,7 @@ bun run test:e2e:ui       # E2E con UI
 
 | Control | Implementación |
 |---|---|
-| **Autenticación** | Firebase Auth (email/password) con verificación server-side |
+| **Autenticación** | AWS Cognito (email/password) con verificación JWT server-side |
 | **Autorización** | RBAC con 12+ permisos granulares |
 | **Validación** | Zod 4 schemas en todas las Server Actions |
 | **Rate Limiting** | Upstash Redis por endpoint y usuario |

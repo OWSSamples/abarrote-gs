@@ -853,8 +853,8 @@ export interface RoleDefinition {
 
 export interface UserRoleRecord {
   id: string;
-  /** Cognito `sub` (subject) claim. Field name kept as `firebaseUid` for legacy compatibility. */
-  firebaseUid: string;
+  /** Cognito `sub` (subject) claim. Field name kept as `cognitoSub` for legacy compatibility. */
+  cognitoSub: string;
   email: string;
   displayName: string;
   avatarUrl: string;

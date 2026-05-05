@@ -176,6 +176,13 @@
       "when": 1777852800000,
       "tag": "0024_multi_tenant_store_id",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1778025600000,
+      "tag": "0025_rename_firebase_uid_to_cognito_sub",
+      "breakpoints": true
     }
   ]
 }

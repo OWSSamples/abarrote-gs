@@ -166,6 +166,13 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
 
   if (!isDev) {
     response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  } else {
+    // In development, prevent the browser from caching anything. Stale
+    // chunks (e.g. after a dependency removal like firebase) cause the
+    // dreaded "module factory is not available" error in Turbopack.
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
   }
 
   response.headers.set('Content-Security-Policy', CSP);

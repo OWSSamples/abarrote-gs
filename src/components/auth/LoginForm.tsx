@@ -110,10 +110,13 @@ export function LoginForm() {
           }
         } else if (
           result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_OTP' ||
-          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE'
+          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_CODE' ||
+          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE' ||
+          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_CODE'
         ) {
           void logAuthEvent({ event: 'sign_in_challenge', email, reason: result.nextStep.signInStep });
-          setMfaDelivery(result.nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_OTP' ? 'email' : 'sms');
+          const isSms = result.nextStep.signInStep.includes('SMS');
+          setMfaDelivery(isSms ? 'sms' : 'email');
           setRequiresMfa(true);
         } else {
           console.error('[LoginForm] Unhandled signInStep:', result.nextStep?.signInStep, result);

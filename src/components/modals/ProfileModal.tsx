@@ -32,7 +32,8 @@ import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { signInWithRedirect } from '@/lib/cognito';
+// Note: signInWithRedirect is imported dynamically inside handleLinkMicrosoft
+// to avoid evaluating aws-amplify at module load time.
 
 interface ProfileModalProps {
   open: boolean;
@@ -106,8 +107,8 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
     setLinkingMicrosoft(true);
     try {
       // Cognito handles account linking via the Hosted UI OAuth flow.
-      // If the user already exists, Cognito's Pre-Sign-Up Lambda trigger
-      // can auto-link the federated identity.
+      // Dynamic import keeps aws-amplify out of the initial bundle.
+      const { signInWithRedirect } = await import('@/lib/cognito');
       await signInWithRedirect({ provider: { custom: 'Microsoft' } });
     } catch (error: unknown) {
       console.error('Microsoft link error:', error);

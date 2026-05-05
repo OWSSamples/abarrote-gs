@@ -3,30 +3,26 @@
 import { useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { confirmPasswordReset } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { confirmResetPassword } from '@/lib/cognito';
+import { evaluatePassword } from '@/lib/auth/password-policy';
+import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
 import { Card, FormLayout, TextField, Button, BlockStack, Box, Text, Icon } from '@shopify/polaris';
-import { AlertDiamondIcon, CheckCircleIcon } from '@shopify/polaris-icons';
+import { AlertDiamondIcon, CheckCircleIcon, HideIcon, ViewIcon } from '@shopify/polaris-icons';
 import { useToast } from '@/components/notifications/ToastProvider';
 
 export function ResetPasswordForm() {
   const searchParams = useSearchParams();
-  const token = searchParams.get('oobCode');
+  const token = searchParams.get('code');
+  const username = searchParams.get('username') || '';
   const toast = useToast();
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const passwordRequirements = [
-    { label: '8+ chars', met: password.length >= 8 },
-    { label: 'Mayúscula', met: /[A-Z]/.test(password) },
-    { label: 'Minúscula', met: /[a-z]/.test(password) },
-    { label: 'Número', met: /\d/.test(password) },
-  ];
-
-  const isPasswordValid = passwordRequirements.every((req) => req.met);
+  const isPasswordValid = evaluatePassword(password).isValid;
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
 
   const handleSubmit = useCallback(
@@ -43,32 +39,32 @@ export function ResetPasswordForm() {
         return;
       }
 
-      if (!token) {
+      if (!token || !username) {
         toast.showError('Enlace de recuperación inválido');
         return;
       }
 
       setIsLoading(true);
       try {
-        await confirmPasswordReset(auth, token, password);
+        await confirmResetPassword({ username, confirmationCode: token, newPassword: password });
         setSuccess(true);
         toast.showSuccess('Contraseña actualizada correctamente');
       } catch (error: unknown) {
-        const err = error as { code?: string };
+        const err = error as { name?: string };
         const errorMessage =
-          err.code === 'auth/invalid-action-code'
-            ? 'El enlace ha expirado o ya ha sido utilizado'
+          err.name === 'ExpiredCodeException' || err.name === 'CodeMismatchException'
+            ? 'El código ha expirado o es inválido'
             : 'Error al restablecer la contraseña';
         toast.showError(errorMessage);
       } finally {
         setIsLoading(false);
       }
     },
-    [password, isPasswordValid, passwordsMatch, token, toast],
+    [password, isPasswordValid, passwordsMatch, token, username, toast],
   );
 
   // Invalid token
-  if (!token) {
+  if (!token || !username) {
     return (
       <Box width="100%" maxWidth="440px">
         <Card>
@@ -193,40 +189,28 @@ export function ResetPasswordForm() {
                 label="Nueva contraseña"
                 value={password}
                 onChange={setPassword}
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 disabled={isLoading}
                 placeholder="••••••••"
+                suffix={
+                  <div
+                    onClick={() => setShowPassword((v) => !v)}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 4px' }}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    <Icon source={showPassword ? HideIcon : ViewIcon} tone="subdued" />
+                  </div>
+                }
               />
 
-              {password && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {passwordRequirements.map((req, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        fontSize: '11px',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        backgroundColor: req.met ? '#e6fff1' : '#f1f1f1',
-                        color: req.met ? '#008060' : '#6d7175',
-                        border: `1px solid ${req.met ? '#bbe5b3' : '#e1e3e5'}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      {req.met ? '✓' : '○'} {req.label}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <PasswordStrengthMeter password={password} />
 
               <TextField
                 label="Confirmar contraseña"
                 value={confirmPassword}
                 onChange={setConfirmPassword}
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 disabled={isLoading}
                 placeholder="••••••••"

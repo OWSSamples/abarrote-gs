@@ -45,10 +45,9 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
   transpilePackages: ['@shopify/polaris', '@shopify/polaris-icons'],
   serverExternalPackages: [
-    // Firebase Admin (Node-only)
-    'firebase-admin',
-    'firebase-admin/app',
-    'firebase-admin/auth',
+    // Cognito Admin (Node-only)
+    '@aws-sdk/client-cognito-identity-provider',
+    'aws-jwt-verify',
     // Payment SDKs
     'mercadopago',
     'stripe',

@@ -32,7 +32,7 @@ import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { OAuthProvider, linkWithPopup } from 'firebase/auth';
+import { signInWithRedirect } from '@/lib/cognito';
 
 interface ProfileModalProps {
   open: boolean;
@@ -58,7 +58,7 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
   useEffect(() => {
     if (open && currentUserRole) {
       setDisplayName(currentUserRole.displayName || user?.displayName || '');
-      setAvatarUrl(currentUserRole.avatarUrl || user?.photoURL || '');
+      setAvatarUrl(currentUserRole.avatarUrl || '');
       setFile(null);
       setView('overview');
     }
@@ -68,7 +68,7 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
     if (!user || !currentUserRole || !displayName.trim()) return;
     setSaving(true);
     try {
-      await updateUserProfile(user.uid, { displayName: displayName.trim() });
+      await updateUserProfile(user.userId, { displayName: displayName.trim() });
       showSuccess('Nombre actualizado');
       setView('overview');
     } catch (error: unknown) {
@@ -84,10 +84,10 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
     try {
       let newUrl = avatarUrl;
       if (file) {
-        const path = getUserAvatarPath(user.uid, file.name);
+        const path = getUserAvatarPath(user.userId, file.name);
         newUrl = await uploadFile(file, path);
       }
-      await updateUserProfile(user.uid, {
+      await updateUserProfile(user.userId, {
         displayName: currentUserRole.displayName || displayName.trim(),
         avatarUrl: newUrl,
       });
@@ -105,25 +105,17 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
     if (!user) return;
     setLinkingMicrosoft(true);
     try {
-      const provider = new OAuthProvider('microsoft.com');
-      const customParams: Record<string, string> = { prompt: 'select_account' };
-      if (process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID) {
-        customParams.tenant = process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID;
-      }
-      provider.setCustomParameters(customParams);
-      await linkWithPopup(user, provider);
-      showSuccess('Cuenta de Microsoft vinculada correctamente');
+      // Cognito handles account linking via the Hosted UI OAuth flow.
+      // If the user already exists, Cognito's Pre-Sign-Up Lambda trigger
+      // can auto-link the federated identity.
+      await signInWithRedirect({ provider: { custom: 'Microsoft' } });
     } catch (error: unknown) {
-      const firebaseError = error as { code?: string };
-      if (firebaseError.code === 'auth/credential-already-in-use') {
-        showError('Esta cuenta de Microsoft ya está ligada a otro usuario.');
-      } else {
-        showError('Error al vincular con Microsoft.');
-      }
+      console.error('Microsoft link error:', error);
+      showError('Error al vincular con Microsoft.');
     } finally {
       setLinkingMicrosoft(false);
     }
-  }, [user, showSuccess, showError]);
+  }, [user, showError]);
 
   const handleDropZoneDrop = useCallback(
     (_dropFiles: File[], acceptedFiles: File[], _rejectedFiles: File[]) => setFile(acceptedFiles[0]),
@@ -144,13 +136,13 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
   }, [displayName, user?.email]);
 
   const authProvider = useMemo(() => {
-    if (!user?.providerData || user.providerData.length === 0) return 'Email';
-    const providerId = user.providerData[0]?.providerId;
-    if (providerId?.includes('google')) return 'Google';
-    if (providerId?.includes('microsoft')) return 'Microsoft';
-    if (providerId?.includes('password')) return 'Email';
+    // Cognito doesn't expose providerData on the client.
+    // We infer from the username format (Cognito federated users
+    // have usernames like "Microsoft_<sub>").
+    if (user?.username?.startsWith('Microsoft')) return 'Microsoft';
+    if (user?.username?.startsWith('Google')) return 'Google';
     return 'Email';
-  }, [user?.providerData]);
+  }, [user?.username]);
 
   const memberSince = useMemo(() => {
     if (!currentUserRole) return '—';

@@ -1,7 +1,7 @@
 'use server';
 
 import { requireOwner, requirePermission, requireAuth, validateId } from '@/lib/auth/guard';
-import { adminAuth } from '@/lib/firebase-admin';
+import { createCognitoUser } from '@/lib/cognito-admin';
 import { db } from '@/db';
 import { userRoles, roleDefinitions, auditLogs } from '@/db/schema';
 import { eq, isNotNull } from 'drizzle-orm';
@@ -358,7 +358,7 @@ async function _createFirebaseUserWithRole(
   validateSchema(createUserWithRoleSchema, data, 'createFirebaseUserWithRole');
   validateSchema(idSchema, assignedByUid, 'createFirebaseUserWithRole.assignedByUid');
 
-  const userRecord = await adminAuth.createUser({
+  const userRecord = await createCognitoUser({
     email: data.email,
     password: data.password || 'Temp1234!',
     displayName: data.displayName,

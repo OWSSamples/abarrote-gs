@@ -53,7 +53,7 @@ export function UserMenu() {
     .toUpperCase()
     .slice(0, 2);
 
-  const avatarSource = currentUserRole?.avatarUrl || user.photoURL || undefined;
+  const avatarSource = currentUserRole?.avatarUrl || undefined;
 
   const getRoleBadgeTone = (): 'success' | 'info' | 'attention' => {
     if (currentUserRole?.roleId === 'owner') return 'success';

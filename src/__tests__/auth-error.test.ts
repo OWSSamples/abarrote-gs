@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// Mock firebase-admin before importing guard
-vi.mock('@/lib/firebase-admin', () => ({
-  adminAuth: {},
+// Mock cognito-admin before importing guard
+vi.mock('@/lib/cognito-admin', () => ({
+  verifyIdToken: vi.fn(),
 }));
 
 vi.mock('@/db', () => ({ db: {} }));

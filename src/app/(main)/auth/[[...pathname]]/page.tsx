@@ -2,6 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { AuthLayout, LoginForm, RegisterForm, ForgotPasswordForm, ResetPasswordForm } from '@/components/auth';
+import { AuthCallbackHandler } from '@/components/auth/AuthCallbackHandler';
 import { Toaster } from 'sileo';
 import 'sileo/styles.css';
 
@@ -20,6 +21,8 @@ export default function AuthPage() {
         return <ForgotPasswordForm />;
       case 'reset-password':
         return <ResetPasswordForm />;
+      case 'callback':
+        return <AuthCallbackHandler />;
       default:
         return <LoginForm />;
     }

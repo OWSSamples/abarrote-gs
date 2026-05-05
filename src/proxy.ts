@@ -120,17 +120,27 @@ function csrfCheck(request: NextRequest): NextResponse | null {
 
 const isDev = process.env.NODE_ENV === 'development';
 
+const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN || '';
+const cognitoRegion = process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-2';
+const cognitoOrigins = [
+  cognitoDomain ? `https://${cognitoDomain}` : '',
+  `https://cognito-idp.${cognitoRegion}.amazonaws.com`,
+  `https://cognito-identity.${cognitoRegion}.amazonaws.com`,
+]
+  .filter(Boolean)
+  .join(' ');
+
 const scriptSrc = isDev
-  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://sdk.mercadopago.com"
-  : "script-src 'self' 'unsafe-inline' https://apis.google.com https://www.gstatic.com https://sdk.mercadopago.com";
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://sdk.mercadopago.com"
+  : "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://sdk.mercadopago.com";
 
 const CSP = [
   "default-src 'self'",
   scriptSrc,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.shopify.com",
   "font-src 'self' data: https://fonts.gstatic.com https://cdn.shopify.com",
-  "img-src 'self' data: blob: https://*.amazonaws.com https://lh3.googleusercontent.com https://*.mlstatic.com https://*.firebasestorage.app",
-  "connect-src 'self' https://*.neon.tech wss://*.neon.tech https://firestore.googleapis.com https://firebase.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.upstash.io https://api.mercadopago.com https://api.stripe.com https://api.conekta.io https://api.telegram.org https://*.firebaseio.com wss://*.firebaseio.com https://*.amazonaws.com",
+  "img-src 'self' data: blob: https://*.amazonaws.com https://*.mlstatic.com",
+  `connect-src 'self' https://*.neon.tech wss://*.neon.tech https://*.upstash.io https://api.mercadopago.com https://api.stripe.com https://api.conekta.io https://api.telegram.org https://*.amazonaws.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io ${cognitoOrigins}`,
   "frame-src 'none'",
   "frame-ancestors 'none'",
   "object-src 'none'",

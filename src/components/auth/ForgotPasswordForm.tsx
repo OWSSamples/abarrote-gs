@@ -2,8 +2,9 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { resetPassword } from '@/lib/cognito';
+import { logAuthEvent } from '@/lib/auth/auth-logger';
+import { checkAuthRateLimit } from '@/app/actions/auth-rate-limit';
 import { Card, FormLayout, TextField, Button, BlockStack, Box, Text, Icon } from '@shopify/polaris';
 import { ArrowLeftIcon, EmailIcon } from '@shopify/polaris-icons';
 import { useToast } from '@/components/notifications/ToastProvider';
@@ -24,11 +25,25 @@ export function ForgotPasswordForm() {
       }
 
       setIsLoading(true);
+      void logAuthEvent({ event: 'password_reset_request', email });
       try {
-        await sendPasswordResetEmail(auth, email);
+        const limit = await checkAuthRateLimit('password_reset', email);
+        if (!limit.allowed) {
+          toast.showError(
+            `Demasiados intentos. Vuelve a intentar en ${limit.retryAfterSeconds} segundos.`,
+          );
+          return;
+        }
+        await resetPassword({ username: email });
+        void logAuthEvent({ event: 'password_reset_success', email });
         setEmailSent(true);
         toast.showSuccess('Correo de recuperación enviado');
-      } catch {
+      } catch (err) {
+        void logAuthEvent({
+          event: 'password_reset_failure',
+          email,
+          errorCode: (err as { name?: string }).name,
+        });
         toast.showError('Error al enviar el correo. Verifica que la dirección sea correcta.');
       } finally {
         setIsLoading(false);
@@ -40,7 +55,7 @@ export function ForgotPasswordForm() {
   const handleResend = useCallback(async () => {
     setIsLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      await resetPassword({ username: email });
       toast.showSuccess('Correo reenviado exitosamente');
     } catch {
       toast.showError('Error al reenviar el correo');

@@ -23,7 +23,7 @@ export const auth = {
       }
 
       // Token exists and looks structurally valid — allow through.
-      // Deep verification (Firebase Admin verifyIdToken) happens in
+      // Deep verification (Cognito JWT verification via aws-jwt-verify) happens in
       // server actions via guard.ts requireAuth().
       return NextResponse.next();
     };

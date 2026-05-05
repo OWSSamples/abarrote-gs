@@ -1,0 +1,75 @@
+# ════════════════════════════════════════════════════════════
+# Gitleaks configuration — Abarrote-GS
+# ════════════════════════════════════════════════════════════
+# Extends the default ruleset with project-specific patterns.
+# Run locally: gitleaks detect --config .gitleaks.toml --redact -v
+# CI runs this on every push/PR via .github/workflows/security.yml
+
+title = "abarrote-gs gitleaks config"
+
+[extend]
+useDefault = true
+
+# ─── Project-specific custom rules ───────────────────────────
+[[rules]]
+id  = "mp-access-token"
+description = "MercadoPago access token"
+regex = '''APP_USR-[0-9]+-[0-9]{6}-[a-f0-9]{32}-[0-9]+'''
+tags  = ["mercadopago", "key"]
+
+[[rules]]
+id  = "qstash-token"
+description = "Upstash QStash JWT token (eyJVc2VySUQ prefix)"
+regex = '''eyJVc2VySUQ[A-Za-z0-9+/=_-]{40,}'''
+tags  = ["upstash", "jwt"]
+
+[[rules]]
+id  = "sentry-auth-token"
+description = "Sentry user auth token"
+regex = '''sntrys_[A-Za-z0-9_=]{40,}'''
+tags  = ["sentry"]
+
+[[rules]]
+id  = "neon-database-url"
+description = "Neon Postgres connection string with password"
+regex = '''postgres(?:ql)?://[^:]+:[^@]+@[a-z0-9.-]+\.neon\.tech'''
+tags  = ["neon", "database"]
+
+[[rules]]
+id  = "clip-api-key"
+description = "Clip terminal UUID API key"
+regex = '''CLIP_(API|SECRET)_KEY\s*=\s*["']?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'''
+tags  = ["clip"]
+
+[[rules]]
+id  = "private-key-block"
+description = "PEM-encoded private key"
+regex = '''-----BEGIN [A-Z ]*PRIVATE KEY-----'''
+tags  = ["pem", "private-key"]
+
+# ─── Allowlist (false positives) ─────────────────────────────
+[allowlist]
+description = "Global allowlist for known-safe tokens, fixtures and docs"
+paths = [
+  '''(.*?)(jpg|jpeg|gif|png|svg|webp|ico|mp4|mov)$''',
+  '''node_modules/''',
+  '''\.next/''',
+  '''drizzle/meta/''',
+  '''bun\.lock''',
+  '''package-lock\.json''',
+  '''skills-lock\.json''',
+  '''\.env\.example$''',
+  '''SECURITY\.md$''',
+  '''\.gitleaks\.toml$''',
+  '''README\.md$''',
+  '''/__tests__/''',
+  '''/tests/e2e/''',
+]
+regexes = [
+  # Stripe key prefix used in conditional logic, not a real key
+  '''sk_(test|live)_['"\)]''',
+  '''sk_(test|live)_$''',
+  # Test fixtures
+  '''postgres://user:password@''',
+  '''postgresql://user:password@''',
+]

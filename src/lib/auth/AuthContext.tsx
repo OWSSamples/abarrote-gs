@@ -1,12 +1,27 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from 'react';
+import { fetchAuthSession, getCurrentUser, signOut as cognitoSignOut } from '@/lib/cognito';
 import { useRouter } from 'next/navigation';
+import { Hub } from 'aws-amplify/utils';
+import { logAuthEvent } from '@/lib/auth/auth-logger';
+
+// Cross-tab broadcast channel name. All app tabs receiving the same `signOut`/`signIn`
+// message will react accordingly so the user is never left in an inconsistent state.
+const AUTH_CHANNEL = 'kiosko-auth';
+const AUTH_LOGIN_TIME_KEY = 'kiosko_login_time';
+
+type AuthBroadcast = { type: 'signOut' } | { type: 'signIn'; userId: string };
+
+export interface CognitoUser {
+  userId: string;
+  username: string;
+  email?: string;
+  displayName?: string;
+}
 
 interface AuthContextType {
-  user: User | null;
+  user: CognitoUser | null;
   loading: boolean;
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
@@ -33,67 +48,127 @@ function clearSessionCookie(): void {
   document.cookie = `__session=; path=/; max-age=0; SameSite=Strict${isHttps ? '; Secure' : ''}`;
 }
 
-/**
- * Sets the __session cookie with the Firebase ID token.
- * This cookie is read by server-side code (Server Actions, API routes)
- * to authenticate requests.
- *
- * IMPORTANT: We only SET the cookie when a user is present.
- * We DO NOT clear the cookie here - that's only done on explicit logout.
- * This prevents race conditions where a new tab briefly reports user=null
- * before Firebase auth state is restored, which would clear the shared cookie.
- */
-async function syncSessionCookie(user: User | null, forceRefresh = false) {
-  if (user) {
-    try {
-      const token = await user.getIdToken(forceRefresh);
-      document.cookie = buildSessionCookie(token);
-    } catch (error) {
-      console.error('Error setting session cookie:', error);
+async function syncSessionCookie(forceRefresh = false): Promise<string | null> {
+  try {
+    const session = await fetchAuthSession({ forceRefresh });
+    const idToken = session.tokens?.idToken?.toString();
+    if (idToken) {
+      document.cookie = buildSessionCookie(idToken);
+      return idToken;
     }
+  } catch (error) {
+    console.error('Error syncing session cookie:', error);
   }
-  // NOTE: Cookie clearing is ONLY done in handleSignOut(), not here.
-  // This prevents new tabs/windows from accidentally clearing the shared cookie.
+  return null;
+}
+
+async function resolveUser(): Promise<CognitoUser | null> {
+  try {
+    const cognitoUser = await getCurrentUser();
+    const session = await fetchAuthSession();
+    const payload = session.tokens?.idToken?.payload;
+
+    return {
+      userId: cognitoUser.userId,
+      username: cognitoUser.username,
+      email: (payload?.email as string) || undefined,
+      displayName:
+        (payload?.['custom:display_name'] as string) || (payload?.name as string) || undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<CognitoUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const channelRef = useRef<BroadcastChannel | null>(null);
 
+  // Cross-tab broadcast channel
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
-      if (user) {
-        // Force-refresh on first auth to guarantee a fresh token in the cookie.
-        // Cached tokens from previous sessions may have expired or been invalidated.
-        await syncSessionCookie(user, true);
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel(AUTH_CHANNEL);
+    channelRef.current = channel;
+    channel.onmessage = (e: MessageEvent<AuthBroadcast>) => {
+      const msg = e.data;
+      if (msg.type === 'signOut') {
+        // Another tab signed out — clear local state and redirect.
+        setUser(null);
+        clearSessionCookie();
+        localStorage.removeItem(AUTH_LOGIN_TIME_KEY);
+        void logAuthEvent({ event: 'sign_out', reason: 'cross_tab_broadcast' });
+        router.push('/auth/login');
+      } else if (msg.type === 'signIn') {
+        // Another tab signed in — refresh our state.
+        void resolveUser().then((resolved) => {
+          if (resolved) {
+            setUser(resolved);
+            void syncSessionCookie(true);
+          }
+        });
       }
+    };
+    return () => {
+      channel.close();
+      channelRef.current = null;
+    };
+  }, [router]);
 
-      setUser(user);
+  // Initial auth check
+  useEffect(() => {
+    async function checkAuth() {
+      const resolved = await resolveUser();
+      if (resolved) {
+        await syncSessionCookie(true);
+      }
+      setUser(resolved);
       setLoading(false);
 
-      // Only manage login time when we POSITIVELY have a user.
-      // We do NOT clear localStorage on user=null here because new tabs
-      // may briefly report null before Firebase restores auth state.
-      // Cleanup of localStorage is done only in handleSignOut().
-      if (user && !localStorage.getItem('kiosko_login_time')) {
-        localStorage.setItem('kiosko_login_time', Date.now().toString());
+      if (resolved && !localStorage.getItem(AUTH_LOGIN_TIME_KEY)) {
+        localStorage.setItem(AUTH_LOGIN_TIME_KEY, Date.now().toString());
+      }
+    }
+    checkAuth();
+  }, []);
+
+  // Listen for Amplify Hub auth events
+  useEffect(() => {
+    const unsubscribe = Hub.listen('auth', async ({ payload }) => {
+      switch (payload.event) {
+        case 'signedIn': {
+          const resolved = await resolveUser();
+          if (resolved) {
+            await syncSessionCookie(true);
+            localStorage.setItem(AUTH_LOGIN_TIME_KEY, Date.now().toString());
+            channelRef.current?.postMessage({ type: 'signIn', userId: resolved.userId } satisfies AuthBroadcast);
+          }
+          setUser(resolved);
+          setLoading(false);
+          break;
+        }
+        case 'signedOut':
+          setUser(null);
+          clearSessionCookie();
+          localStorage.removeItem(AUTH_LOGIN_TIME_KEY);
+          channelRef.current?.postMessage({ type: 'signOut' } satisfies AuthBroadcast);
+          break;
+        case 'tokenRefresh':
+          await syncSessionCookie(true);
+          void logAuthEvent({ event: 'session_refresh' });
+          break;
       }
     });
     return unsubscribe;
   }, []);
 
-  // Refresh the token/cookie periodically (every 50 min, tokens expire at 60 min)
+  // Refresh token/cookie every 50 min (Cognito tokens expire at 60 min)
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(
       async () => {
-        try {
-          await user.getIdToken(true); // Force refresh
-          await syncSessionCookie(user);
-        } catch {
-          // Token refresh failed — user might be signed out
-        }
+        await syncSessionCookie(true);
       },
       50 * 60 * 1000,
     );
@@ -101,45 +176,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const handleSignOut = useCallback(async () => {
+    void logAuthEvent({ event: 'sign_out', userId: user?.userId, email: user?.email });
     clearSessionCookie();
-    localStorage.removeItem('kiosko_login_time');
-    await firebaseSignOut(auth);
+    localStorage.removeItem(AUTH_LOGIN_TIME_KEY);
+    channelRef.current?.postMessage({ type: 'signOut' } satisfies AuthBroadcast);
+    await cognitoSignOut();
     router.push('/auth/login');
-  }, [router]);
+  }, [router, user]);
 
-  // Checar la expiración de sesión cada minuto (6 horas = 21600000 ms)
+  // Session expiration check (6 hours)
   useEffect(() => {
     if (!user) return;
 
     const checkExpiration = () => {
-      const loginTimeStr = localStorage.getItem('kiosko_login_time');
+      const loginTimeStr = localStorage.getItem(AUTH_LOGIN_TIME_KEY);
       if (loginTimeStr) {
         const loginTime = parseInt(loginTimeStr, 10);
         const SIX_HOURS = 6 * 60 * 60 * 1000;
 
         if (Date.now() - loginTime > SIX_HOURS) {
-          console.warn('La sesión ha expirado por tiempo máximo (6 horas). Cerrando sesión...');
+          console.warn(
+            'La sesión ha expirado por tiempo máximo (6 horas). Cerrando sesión...',
+          );
+          void logAuthEvent({ event: 'session_expired', userId: user?.userId, reason: 'absolute_lifetime' });
           handleSignOut();
         }
       }
     };
 
     checkExpiration();
-    const expInterval = setInterval(checkExpiration, 60 * 1000); // 1 min check
-
+    const expInterval = setInterval(checkExpiration, 60 * 1000);
     return () => clearInterval(expInterval);
   }, [user, handleSignOut]);
 
   const getIdToken = useCallback(
     async (forceRefresh = false): Promise<string | null> => {
       if (!user) return null;
-      try {
-        const token = await user.getIdToken(forceRefresh);
-        document.cookie = buildSessionCookie(token);
-        return token;
-      } catch {
-        return null;
-      }
+      return syncSessionCookie(forceRefresh);
     },
     [user],
   );

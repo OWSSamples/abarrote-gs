@@ -3,9 +3,13 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signInWithEmailAndPassword, OAuthProvider, signInWithPopup, User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { Card, FormLayout, TextField, Button, BlockStack, Box, Text, InlineStack } from '@shopify/polaris';
+import { signIn, signInWithRedirect, confirmSignIn, fetchAuthSession } from '@/lib/cognito';
+import { evaluatePassword } from '@/lib/auth/password-policy';
+import { logAuthEvent } from '@/lib/auth/auth-logger';
+import { checkAuthRateLimit } from '@/app/actions/auth-rate-limit';
+import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
+import { Card, FormLayout, TextField, Button, BlockStack, Box, Text, InlineStack, Icon } from '@shopify/polaris';
+import { HideIcon, ViewIcon } from '@shopify/polaris-icons';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 
@@ -14,9 +18,12 @@ function writeSessionCookie(token: string): void {
   document.cookie = `__session=${token}; path=/; max-age=3600; SameSite=Strict${isHttps ? '; Secure' : ''}`;
 }
 
-async function ensureSessionCookie(user: User): Promise<void> {
-  const token = await user.getIdToken(true);
-  writeSessionCookie(token);
+async function ensureSessionCookie(): Promise<void> {
+  const session = await fetchAuthSession({ forceRefresh: true });
+  const idToken = session.tokens?.idToken?.toString();
+  if (idToken) {
+    writeSessionCookie(idToken);
+  }
 }
 
 export function LoginForm() {
@@ -26,48 +33,30 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [requiresNewPassword, setRequiresNewPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   const handleMicrosoftLogin = useCallback(async () => {
     setIsMicrosoftLoading(true);
+    void logAuthEvent({ event: 'oauth_redirect', provider: 'microsoft' });
     try {
-      const provider = new OAuthProvider('microsoft.com');
-
-      const customParams: Record<string, string> = {
-        prompt: 'select_account',
-      };
-
-      // Si la aplicación de Azure/Entra es de un solo inquilino (Single-Tenant), Firebase
-      // necesita saber cuál es el Tenant ID para no intentar irse a "/common".
-      // Lo puedes definir en tu archivo .env.local
-      if (process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID) {
-        customParams.tenant = process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID;
-      }
-
-      provider.setCustomParameters(customParams);
-
-      const credential = await signInWithPopup(auth, provider);
-      await ensureSessionCookie(credential.user);
-      toast.showSuccess('Bienvenido al sistema con Microsoft');
-      router.refresh();
-      router.push('/');
+      // Cognito federated sign-in redirects to Microsoft via Hosted UI
+      await signInWithRedirect({ provider: { custom: 'Microsoft' } });
+      // The redirect will happen — callback handled by /auth/callback page
     } catch (error: unknown) {
       console.error('Microsoft SignIn error:', error);
-      const err = error as { code?: string; message?: string };
-      if (err.code === 'auth/account-exists-with-different-credential') {
-        toast.showError(
-          'Ya existe una cuenta con este correo. Inicia sesión con contraseña y ve a "Perfil" para vincular.',
-        );
-      } else if (err.message?.includes('not configured as a multi-tenant application')) {
-        toast.showError(
-          'Error: Configura el NEXT_PUBLIC_MICROSOFT_TENANT_ID en tu archivo .env.local, o convierte tu app de Azure en Multi-Tenant.',
-        );
-      } else {
-        toast.showError('Error al conectarse a Microsoft. Contacta al administrador.');
-      }
+      void logAuthEvent({
+        event: 'oauth_callback_failure',
+        provider: 'microsoft',
+        errorCode: (error as { name?: string }).name,
+      });
+      toast.showError('Error al conectarse a Microsoft. Contacta al administrador.');
     } finally {
       setIsMicrosoftLoading(false);
     }
-  }, [router, toast]);
+  }, [toast]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -79,25 +68,80 @@ export function LoginForm() {
       }
 
       setIsLoading(true);
+      void logAuthEvent({ event: 'sign_in_attempt', email });
       try {
-        const credential = await signInWithEmailAndPassword(auth, email, password);
-        await ensureSessionCookie(credential.user);
-        toast.showSuccess('Bienvenido al sistema');
-        router.refresh();
-        router.push('/');
+        const limit = await checkAuthRateLimit('login', email);
+        if (!limit.allowed) {
+          toast.showError(
+            `Demasiados intentos. Vuelve a intentar en ${limit.retryAfterSeconds} segundos.`,
+          );
+          return;
+        }
+        const result = await signIn({ username: email, password });
+        if (result.isSignedIn) {
+          await ensureSessionCookie();
+          void logAuthEvent({ event: 'sign_in_success', email });
+          toast.showSuccess('Bienvenido al sistema');
+          router.refresh();
+          router.push('/');
+        } else if (result.nextStep?.signInStep === 'CONFIRM_SIGN_UP') {
+          void logAuthEvent({ event: 'sign_in_challenge', email, reason: 'CONFIRM_SIGN_UP' });
+          toast.showError('Confirma tu cuenta primero. Revisa tu correo.');
+        } else if (result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
+          void logAuthEvent({ event: 'force_password_change', email });
+          setRequiresNewPassword(true);
+        } else {
+          void logAuthEvent({ event: 'sign_in_challenge', email, reason: result.nextStep?.signInStep });
+          toast.showError('Se requiere un paso adicional de autenticación.');
+        }
       } catch (error: unknown) {
         console.error('SignIn error:', error);
-        const err = error as { code?: string };
+        const err = error as { name?: string };
+        void logAuthEvent({ event: 'sign_in_failure', email, errorCode: err.name });
         const errorMessage =
-          err.code === 'auth/invalid-credential'
+          err.name === 'NotAuthorizedException'
             ? 'Correo o contraseña incorrectos'
-            : 'Error al iniciar sesión. Inténtalo de nuevo.';
+            : err.name === 'UserNotFoundException'
+              ? 'Correo o contraseña incorrectos'
+              : 'Error al iniciar sesión. Inténtalo de nuevo.';
         toast.showError(errorMessage);
       } finally {
         setIsLoading(false);
       }
     },
     [email, password, router, toast],
+  );
+
+  const handleNewPassword = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (newPassword !== confirmNewPassword) {
+        toast.showError('Las contraseñas no coinciden.');
+        return;
+      }
+      const evaluation = evaluatePassword(newPassword);
+      if (!evaluation.isValid) {
+        toast.showError('La contraseña no cumple los requisitos de seguridad.');
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const result = await confirmSignIn({ challengeResponse: newPassword });
+        if (result.isSignedIn) {
+          await ensureSessionCookie();
+          toast.showSuccess('Contraseña actualizada. Bienvenido al sistema.');
+          router.refresh();
+          router.push('/');
+        }
+      } catch (error: unknown) {
+        console.error('confirmSignIn error:', error);
+        const err = error as { name?: string; message?: string };
+        toast.showError(err.message || 'Error al cambiar la contraseña.');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [newPassword, confirmNewPassword, router, toast],
   );
 
   return (
@@ -126,104 +170,169 @@ export function LoginForm() {
             </div>
             <BlockStack gap="200" align="center">
               <Text as="h1" variant="headingLg" fontWeight="bold">
-                Consola de Administración
+                {requiresNewPassword ? 'Establece tu contraseña' : 'Consola de Administración'}
               </Text>
               <Text as="p" variant="bodyMd" tone="subdued">
-                Ingresa tus credenciales para acceder al panel
+                {requiresNewPassword
+                  ? 'Tu cuenta requiere que establezcas una nueva contraseña para continuar.'
+                  : 'Ingresa tus credenciales para acceder al panel'}
               </Text>
             </BlockStack>
           </BlockStack>
 
-          <form onSubmit={handleSubmit}>
-            <FormLayout>
-              <TextField
-                label="Correo electrónico"
-                value={email}
-                onChange={setEmail}
-                autoComplete="email"
-                type="email"
-                disabled={isLoading}
-                placeholder="GlobalID@company.com"
-              />
-              <BlockStack gap="200">
+          {requiresNewPassword ? (
+            <form onSubmit={handleNewPassword}>
+              <FormLayout>
                 <TextField
-                  label="Contraseña"
-                  value={password}
-                  onChange={setPassword}
-                  type="password"
-                  autoComplete="current-password"
+                  label="Nueva contraseña"
+                  value={newPassword}
+                  onChange={setNewPassword}
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
                   disabled={isLoading}
-                  placeholder=""
+                  placeholder="Mínimo 8 caracteres"
+                  suffix={
+                    <div
+                      onClick={() => setShowPassword((v) => !v)}
+                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 4px' }}
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      <Icon source={showPassword ? HideIcon : ViewIcon} tone="subdued" />
+                    </div>
+                  }
                 />
-                <InlineStack align="end">
-                  <Link
-                    href="/auth/forgot-password"
-                    style={{
-                      fontSize: '13px',
-                      color: '#0518d2',
-                      textDecoration: 'none',
-                      fontWeight: '500',
-                    }}
+                <PasswordStrengthMeter password={newPassword} />
+                <TextField
+                  label="Confirmar contraseña"
+                  value={confirmNewPassword}
+                  onChange={setConfirmNewPassword}
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  disabled={isLoading}
+                  placeholder="Repite la contraseña"
+                  suffix={
+                    <div
+                      onClick={() => setShowPassword((v) => !v)}
+                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 4px' }}
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      <Icon source={showPassword ? HideIcon : ViewIcon} tone="subdued" />
+                    </div>
+                  }
+                />
+                <Box paddingBlockStart="300">
+                  <Button
+                    variant="primary"
+                    submit
+                    fullWidth
+                    loading={isLoading}
+                    size="large"
                   >
-                    ¿Olvidaste tu contraseña?
-                  </Link>
-                </InlineStack>
-              </BlockStack>
+                    Establecer contraseña
+                  </Button>
+                </Box>
+              </FormLayout>
+            </form>
+          ) : (
+            <>
+              <form onSubmit={handleSubmit}>
+                <FormLayout>
+                  <TextField
+                    label="Correo electrónico"
+                    value={email}
+                    onChange={setEmail}
+                    autoComplete="email"
+                    type="email"
+                    disabled={isLoading}
+                    placeholder="GlobalID@company.com"
+                  />
+                  <BlockStack gap="200">
+                    <TextField
+                      label="Contraseña"
+                      value={password}
+                      onChange={setPassword}
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      disabled={isLoading}
+                      placeholder=""
+                      suffix={
+                        <div
+                          onClick={() => setShowPassword((v) => !v)}
+                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 4px' }}
+                          aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                        >
+                          <Icon source={showPassword ? HideIcon : ViewIcon} tone="subdued" />
+                        </div>
+                      }
+                    />
+                    <InlineStack align="end">
+                      <Link
+                        href="/auth/forgot-password"
+                        style={{
+                          fontSize: '13px',
+                          color: '#0518d2',
+                          textDecoration: 'none',
+                          fontWeight: '500',
+                        }}
+                      >
+                        ¿Olvidaste tu contraseña?
+                      </Link>
+                    </InlineStack>
+                  </BlockStack>
 
-              <Box paddingBlockStart="300">
-                <Button
-                  variant="primary"
-                  submit
-                  fullWidth
-                  loading={isLoading}
-                  disabled={isMicrosoftLoading}
-                  size="large"
-                >
-                  Iniciar Sesión
-                </Button>
+                  <Box paddingBlockStart="300">
+                    <Button
+                      variant="primary"
+                      submit
+                      fullWidth
+                      loading={isLoading}
+                      disabled={isMicrosoftLoading}
+                      size="large"
+                    >
+                      Iniciar Sesión
+                    </Button>
+                  </Box>
+                </FormLayout>
+              </form>
+
+              <Box>
+                <BlockStack gap="300">
+                  <div style={{ textAlign: 'center' }}>
+                    <Text as="p" variant="bodyMd" tone="subdued">
+                      — o —
+                    </Text>
+                  </div>
+                  <Button
+                    onClick={handleMicrosoftLogin}
+                    fullWidth
+                    loading={isMicrosoftLoading}
+                    disabled={isLoading}
+                    size="large"
+                  >
+                    Iniciar sesión con Microsoft
+                  </Button>
+                </BlockStack>
               </Box>
-            </FormLayout>
-          </form>
 
-          <Box>
-            <BlockStack gap="300">
-              <div style={{ textAlign: 'center' }}>
-                <Text as="p" variant="bodyMd" tone="subdued">
-                  — o —
-                </Text>
-              </div>
-              <Button
-                onClick={handleMicrosoftLogin}
-                fullWidth
-                loading={isMicrosoftLoading}
-                disabled={isLoading}
-                size="large"
-              >
-                <InlineStack gap="200" blockAlign="center" align="center" wrap={false}>
-                  <BrandLogo name="Microsoft" size={18} />
-                  <span>Iniciar sesión con Microsoft</span>
-                </InlineStack>
-              </Button>
-            </BlockStack>
-          </Box>
-
-          <Box paddingBlockStart="300" borderBlockStartWidth="025" borderColor="border">
-            <div style={{ textAlign: 'center' }}>
-              <Text as="p" variant="bodyMd" tone="subdued">
-                ¿No tienes una cuenta?{' '}
-                <Link
-                  href="/auth/register"
-                  style={{
-                    color: '#0518d2',
-                    fontWeight: '600',
-                    textDecoration: 'none',
-                  }}
-                >
-                  Contacta a TI para ayuda
-                </Link>
-              </Text>
-            </div>
-          </Box>
+              <Box paddingBlockStart="300" borderBlockStartWidth="025" borderColor="border">
+                <div style={{ textAlign: 'center' }}>
+                  <Text as="p" variant="bodyMd" tone="subdued">
+                    ¿No tienes una cuenta?{' '}
+                    <Link
+                      href="/auth/register"
+                      style={{
+                        color: '#0518d2',
+                        fontWeight: '600',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      Contacta a TI para ayuda
+                    </Link>
+                  </Text>
+                </div>
+              </Box>
+            </>
+          )}
         </BlockStack>
       </Card>
     </Box>

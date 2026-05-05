@@ -76,10 +76,11 @@ const envSchema = z.object({
   TELEGRAM_CHAT_ID: z.string().min(1).optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
 
-  // ── Firebase Admin ──
-  FIREBASE_SERVICE_ACCOUNT_KEY: z.string().min(1).optional(),
-  FIREBASE_CLIENT_EMAIL: z.string().min(1).optional(),
-  FIREBASE_PRIVATE_KEY: z.string().min(1).optional(),
+  // ── Cognito ──
+  NEXT_PUBLIC_COGNITO_USER_POOL_ID: z.string().min(1).optional(),
+  NEXT_PUBLIC_COGNITO_CLIENT_ID: z.string().min(1).optional(),
+  NEXT_PUBLIC_COGNITO_REGION: z.string().min(1).optional(),
+  NEXT_PUBLIC_COGNITO_DOMAIN: z.string().min(1).optional(),
 
   // ── Encryption ──
   OAUTH_ENCRYPTION_KEY: z.string().min(1).optional(),
@@ -101,9 +102,6 @@ const envSchema = z.object({
 
   // ── Observability ──
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
-
-  // ── Firebase Client (NEXT_PUBLIC) ──
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: z.string().min(1).optional(),
 });
 
 // ══════════════════════════════════════════════════════════════

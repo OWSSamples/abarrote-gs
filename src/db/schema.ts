@@ -591,6 +591,9 @@ export const userRoles = pgTable(
   'user_roles',
   {
     id: text('id').primaryKey(),
+    // NOTE: column is named `firebase_uid` for legacy compatibility but
+    // now stores the Cognito `sub` (subject) claim. A future migration
+    // will rename this column to `cognito_sub`. See SECURITY.md.
     firebaseUid: text('firebase_uid').notNull(),
     email: text('email').notNull(),
     displayName: text('display_name').notNull().default(''),

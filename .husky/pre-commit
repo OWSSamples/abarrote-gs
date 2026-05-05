@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# ════════════════════════════════════════════════════════════
+# Pre-commit secret scanner — gitleaks
+# ════════════════════════════════════════════════════════════
+# Auto-installed by `bun install` (via "prepare" script in package.json).
+# Skips if gitleaks is not installed (logs a warning to encourage installation).
+#
+# Install gitleaks:
+#   - macOS:   brew install gitleaks
+#   - Linux:   https://github.com/gitleaks/gitleaks/releases
+#   - go:      go install github.com/gitleaks/gitleaks/v8@latest
+
+set -e
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠️  gitleaks no instalado — saltando escaneo de secretos."
+  echo "   Instálalo: brew install gitleaks  (o ver .husky/pre-commit)"
+  exit 0
+fi
+
+echo "🔍 gitleaks: escaneando staged changes..."
+gitleaks protect --staged --redact --config .gitleaks.toml --no-banner
+
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "❌ Posible secreto detectado en los cambios staged."
+  echo "   Revisa la salida arriba. Si es falso positivo, agrega el patrón a .gitleaks.toml [allowlist]."
+  echo "   Para bypass de emergencia (NO recomendado): SKIP_GITLEAKS=1 git commit ..."
+  exit 1
+fi
+
+echo "✅ gitleaks: sin secretos detectados."

@@ -45,7 +45,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Load user role on mount (this is NOT data fetching, just role lookup)
   useEffect(() => {
     if (user) {
-      getUserRole(user.uid);
+      getUserRole(user.userId);
     }
   }, [user, getUserRole]);
 

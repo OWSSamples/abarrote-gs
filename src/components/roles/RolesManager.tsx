@@ -212,7 +212,7 @@ export function RolesManager() {
     const init = async () => {
       try {
         if (user) {
-          await ensureOwnerRole(user.uid, user.email || '', user.displayName || '');
+          await ensureOwnerRole(user.userId, user.email || '', user.displayName || '');
         }
         await Promise.all([fetchRoleDefinitions(), fetchRoles()]);
       } catch (err) {
@@ -263,7 +263,7 @@ export function RolesManager() {
         } else {
           await createRoleDefinition(
             { name: data.name.trim(), description: data.description.trim(), permissions: data.permissions },
-            user.uid,
+            user.userId,
           );
           showSuccess(`Rol "${data.name.trim()}" creado`);
         }
@@ -314,7 +314,7 @@ export function RolesManager() {
             roleId: data.roleId,
             pinCode: data.pinCode.trim() || undefined,
           },
-          user.uid,
+          user.userId,
         );
 
         const roleName = roleMap.get(data.roleId)?.name ?? '';
@@ -340,7 +340,7 @@ export function RolesManager() {
       if (!selectedUser || !user) return;
       setSaving(true);
       try {
-        await updateRole(selectedUser.firebaseUid, data.roleId, user.uid);
+        await updateRole(selectedUser.firebaseUid, data.roleId, user.userId);
         if (data.pinCode.trim()) {
           await updateUserPin(selectedUser.firebaseUid, data.pinCode.trim());
         }
@@ -508,7 +508,7 @@ export function RolesManager() {
     const roleDef = roleMap.get(record.roleId);
     const roleIndex = roleDefinitions.findIndex((d) => d.id === record.roleId);
     const isOwnerUser = roleDef?.name === 'Propietario';
-    const isSelf = record.firebaseUid === user?.uid;
+    const isSelf = record.firebaseUid === user?.userId;
     const isBaja = record.status === 'baja';
 
     return (

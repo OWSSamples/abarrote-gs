@@ -1,6 +1,6 @@
 import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
-import { adminAuth } from '@/lib/firebase-admin';
+import { verifyIdToken } from '@/lib/cognito-admin';
 import { db } from '@/db';
 import { userRoles, roleDefinitions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -29,7 +29,7 @@ export class AuthError extends Error {
 // ==================== TOKEN EXTRACTION ====================
 
 /**
- * Extracts the Firebase ID token from the request.
+ * Extracts the Cognito ID token from the request.
  * Checks: Authorization header > __session cookie
  */
 async function extractToken(): Promise<string | null> {
@@ -57,11 +57,8 @@ async function extractToken(): Promise<string | null> {
  * If requireAuth() is called multiple times in one request, only one DB query runs.
  */
 const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
-  // No revocation check — the DB `status !== 'activo'` check below already blocks
-  // disabled accounts, and the revocation-check network call to Google is a common
-  // source of transient failures (timeouts, DNS, firewall).
-  const decodedToken = await adminAuth.verifyIdToken(token);
-  const uid = decodedToken.uid;
+  const decodedToken = await verifyIdToken(token);
+  const uid = decodedToken.sub;
   const email = decodedToken.email || '';
 
   // Single JOIN query: user role + permissions in one round-trip
@@ -135,15 +132,14 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
       code,
     });
 
-    // Classify using Firebase error code first, fallback to message matching
-    const isExpiredOrRevoked =
-      code === 'auth/id-token-expired' ||
-      code === 'auth/id-token-revoked' ||
-      message.includes('auth/id-token-expired') ||
-      message.includes('auth/id-token-revoked');
+    // Classify using Cognito JWT error types
+    const isExpired =
+      message.includes('Token expired') ||
+      message.includes('Token use is not') ||
+      (error as { name?: string }).name === 'JwtExpiredError';
 
     throw new AuthError(
-      isExpiredOrRevoked
+      isExpired
         ? 'Tu sesión ha expirado. Inicia sesión de nuevo.'
         : 'Error de autenticación. Inicia sesión de nuevo.',
       401,

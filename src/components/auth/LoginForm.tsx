@@ -193,9 +193,25 @@ export function LoginForm() {
           toast.showError('Código incorrecto. Inténtalo de nuevo.');
         }
       } catch (error: unknown) {
-        console.error('MFA confirmSignIn error:', error);
         const err = error as { name?: string; message?: string };
-        toast.showError(err.message || 'Error al verificar el código.');
+        console.warn('[LoginForm] MFA confirmSignIn failed:', err.name);
+        void logAuthEvent({ event: 'sign_in_failure', email, errorCode: err.name });
+        const msg =
+          err.name === 'CodeMismatchException'
+            ? 'Código incorrecto. Verifica e inténtalo de nuevo.'
+            : err.name === 'ExpiredCodeException'
+              ? 'El código expiró. Solicita uno nuevo iniciando sesión otra vez.'
+              : err.name === 'NotAuthorizedException'
+                ? 'La sesión expiró. Vuelve a iniciar sesión.'
+                : err.name === 'LimitExceededException'
+                  ? 'Demasiados intentos. Espera unos minutos antes de reintentar.'
+                  : err.message || 'Error al verificar el código.';
+        toast.showError(msg);
+        // Si la sesión se invalidó, regresar al formulario de login
+        if (err.name === 'NotAuthorizedException') {
+          setRequiresMfa(false);
+          setMfaCode('');
+        }
       } finally {
         setIsLoading(false);
       }

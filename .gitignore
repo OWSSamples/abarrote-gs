@@ -10,6 +10,11 @@
 !.yarn/releases
 !.yarn/versions
 
+# Bun is the canonical package manager — disallow npm/yarn/pnpm lockfiles
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
 # testing
 /coverage
 

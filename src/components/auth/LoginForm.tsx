@@ -37,6 +37,9 @@ export function LoginForm() {
   const [requiresNewPassword, setRequiresNewPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [requiresMfa, setRequiresMfa] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaDelivery, setMfaDelivery] = useState<'email' | 'sms' | null>(null);
 
   const handleMicrosoftLogin = useCallback(async () => {
     setIsMicrosoftLoading(true);
@@ -90,9 +93,32 @@ export function LoginForm() {
         } else if (result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
           void logAuthEvent({ event: 'force_password_change', email });
           setRequiresNewPassword(true);
+        } else if (result.nextStep?.signInStep === 'CONTINUE_SIGN_IN_WITH_MFA_SETUP_SELECTION') {
+          // MFA opcional — omitir configuración de MFA automáticamente
+          void logAuthEvent({ event: 'sign_in_challenge', email, reason: 'MFA_SETUP_SELECTION_SKIPPED' });
+          try {
+            const mfaResult = await confirmSignIn({ challengeResponse: 'NOMFA' });
+            if (mfaResult.isSignedIn) {
+              await ensureSessionCookie();
+              void logAuthEvent({ event: 'sign_in_success', email });
+              toast.showSuccess('Bienvenido al sistema');
+              router.refresh();
+              router.push('/');
+            }
+          } catch {
+            toast.showError('Error al completar el inicio de sesión. Inténtalo de nuevo.');
+          }
+        } else if (
+          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_OTP' ||
+          result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE'
+        ) {
+          void logAuthEvent({ event: 'sign_in_challenge', email, reason: result.nextStep.signInStep });
+          setMfaDelivery(result.nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_OTP' ? 'email' : 'sms');
+          setRequiresMfa(true);
         } else {
+          console.error('[LoginForm] Unhandled signInStep:', result.nextStep?.signInStep, result);
           void logAuthEvent({ event: 'sign_in_challenge', email, reason: result.nextStep?.signInStep });
-          toast.showError('Se requiere un paso adicional de autenticación.');
+          toast.showError(`Paso de autenticación no soportado: ${result.nextStep?.signInStep ?? 'desconocido'}. Contacta al administrador.`);
         }
       } catch (error: unknown) {
         console.error('SignIn error:', error);
@@ -144,6 +170,36 @@ export function LoginForm() {
     [newPassword, confirmNewPassword, router, toast],
   );
 
+  const handleMfaCode = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!mfaCode.trim()) {
+        toast.showError('Ingresa el código de verificación.');
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const result = await confirmSignIn({ challengeResponse: mfaCode.trim() });
+        if (result.isSignedIn) {
+          await ensureSessionCookie();
+          void logAuthEvent({ event: 'sign_in_success', email });
+          toast.showSuccess('Bienvenido al sistema');
+          router.refresh();
+          router.push('/');
+        } else {
+          toast.showError('Código incorrecto. Inténtalo de nuevo.');
+        }
+      } catch (error: unknown) {
+        console.error('MFA confirmSignIn error:', error);
+        const err = error as { name?: string; message?: string };
+        toast.showError(err.message || 'Error al verificar el código.');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [mfaCode, email, router, toast],
+  );
+
   return (
     <Box width="100%" maxWidth="440px">
       <Card>
@@ -170,17 +226,44 @@ export function LoginForm() {
             </div>
             <BlockStack gap="200" align="center">
               <Text as="h1" variant="headingLg" fontWeight="bold">
-                {requiresNewPassword ? 'Establece tu contraseña' : 'Consola de Administración'}
+                {requiresNewPassword
+                  ? 'Establece tu contraseña'
+                  : requiresMfa
+                    ? 'Verificación de identidad'
+                    : 'Consola de Administración'}
               </Text>
               <Text as="p" variant="bodyMd" tone="subdued">
                 {requiresNewPassword
                   ? 'Tu cuenta requiere que establezcas una nueva contraseña para continuar.'
-                  : 'Ingresa tus credenciales para acceder al panel'}
+                  : requiresMfa
+                    ? `Ingresa el código de verificación enviado a tu ${mfaDelivery === 'email' ? 'correo electrónico' : 'teléfono'}.`
+                    : 'Ingresa tus credenciales para acceder al panel'}
               </Text>
             </BlockStack>
           </BlockStack>
 
-          {requiresNewPassword ? (
+          {requiresMfa ? (
+            <form onSubmit={handleMfaCode}>
+              <FormLayout>
+                <TextField
+                  label="Código de verificación"
+                  value={mfaCode}
+                  onChange={setMfaCode}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  disabled={isLoading}
+                  placeholder="Ej. 123456"
+                  maxLength={8}
+                />
+                <Box paddingBlockStart="300">
+                  <Button variant="primary" submit fullWidth loading={isLoading} size="large">
+                    Verificar código
+                  </Button>
+                </Box>
+              </FormLayout>
+            </form>
+          ) : requiresNewPassword ? (
             <form onSubmit={handleNewPassword}>
               <FormLayout>
                 <TextField

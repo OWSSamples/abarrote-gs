@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signIn, signInWithRedirect, confirmSignIn, fetchAuthSession } from '@/lib/cognito';
+import { signIn, signOut, signInWithRedirect, confirmSignIn, fetchAuthSession } from '@/lib/cognito';
 import { evaluatePassword } from '@/lib/auth/password-policy';
 import { logAuthEvent } from '@/lib/auth/auth-logger';
 import { checkAuthRateLimit } from '@/app/actions/auth-rate-limit';
@@ -79,6 +79,14 @@ export function LoginForm() {
             `Demasiados intentos. Vuelve a intentar en ${limit.retryAfterSeconds} segundos.`,
           );
           return;
+        }
+        // Defensive: clear any leftover Cognito session from a previous
+        // partial sign-in attempt (e.g. abandoned MFA challenge). Without
+        // this, signIn() throws UserAlreadyAuthenticatedException.
+        try {
+          await signOut();
+        } catch {
+          // No active session — expected on a fresh login.
         }
         const result = await signIn({ username: email, password });
         if (result.isSignedIn) {

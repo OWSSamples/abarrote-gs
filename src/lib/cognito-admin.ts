@@ -9,9 +9,16 @@ import {
   AdminResetUserPasswordCommand,
   AdminSetUserPasswordCommand,
   AdminUpdateUserAttributesCommand,
+  AdminUserGlobalSignOutCommand,
+  AdminListGroupsForUserCommand,
+  AdminAddUserToGroupCommand,
+  AdminRemoveUserFromGroupCommand,
   ListUsersCommand,
+  ListGroupsCommand,
   type AdminCreateUserCommandOutput,
+  type ListUsersCommandOutput,
   type UserType,
+  type GroupType,
 } from '@aws-sdk/client-cognito-identity-provider';
 
 const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!;
@@ -104,6 +111,9 @@ export interface CognitoUserSummary {
   createdAt: string;
   updatedAt: string;
   mfaEnabled: boolean;
+  phoneNumber?: string;
+  phoneVerified?: boolean;
+  lastLogin?: string;
 }
 
 function toCognitoUserSummary(u: UserType): CognitoUserSummary {
@@ -120,18 +130,45 @@ function toCognitoUserSummary(u: UserType): CognitoUserSummary {
     createdAt: u.UserCreateDate?.toISOString() ?? '',
     updatedAt: u.UserLastModifiedDate?.toISOString() ?? '',
     mfaEnabled: (u.MFAOptions?.length ?? 0) > 0,
+    phoneNumber: find('phone_number') || undefined,
+    phoneVerified: find('phone_number_verified') === 'true' ? true : undefined,
   };
 }
 
 /**
- * Lists Cognito users. Paginates server-side using the SDK's PaginationToken.
- * @param limit per-page size (max 60 per Cognito API). Defaults to 60.
+ * Lists ALL Cognito users (auto-paginating). For enterprise use —
+ * retrieves all pages until no more PaginationToken is returned.
+ */
+export async function listAllCognitoUsers(filter?: string): Promise<CognitoUserSummary[]> {
+  const allUsers: CognitoUserSummary[] = [];
+  let paginationToken: string | undefined = undefined;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const response: ListUsersCommandOutput = await cognitoClient.send(
+      new ListUsersCommand({
+        UserPoolId: userPoolId,
+        Limit: 60,
+        PaginationToken: paginationToken,
+        Filter: filter || undefined,
+      }),
+    );
+    allUsers.push(...(response.Users ?? []).map(toCognitoUserSummary));
+    if (!response.PaginationToken) break;
+    paginationToken = response.PaginationToken;
+  }
+
+  return allUsers;
+}
+
+/**
+ * Lists Cognito users with cursor-based pagination.
  */
 export async function listCognitoUsers(params?: {
   limit?: number;
   paginationToken?: string;
   filter?: string;
-}): Promise<{ users: CognitoUserSummary[]; nextToken?: string }> {
+}): Promise<{ users: CognitoUserSummary[]; nextToken?: string; totalEstimate?: number }> {
   const result = await cognitoClient.send(
     new ListUsersCommand({
       UserPoolId: userPoolId,
@@ -147,11 +184,7 @@ export async function listCognitoUsers(params?: {
 }
 
 /**
- * Get a single Cognito user by their `cognito:username` (which is the sub
- * for our pool since we use `Username = email` only at creation time —
- * but Cognito assigns a permanent username = sub).
- *
- * Accepts either the sub or the email/alias — Cognito resolves both.
+ * Get a single Cognito user with full detail.
  */
 export async function getCognitoUser(usernameOrSub: string): Promise<CognitoUserSummary> {
   const result = await cognitoClient.send(
@@ -160,8 +193,6 @@ export async function getCognitoUser(usernameOrSub: string): Promise<CognitoUser
       Username: usernameOrSub,
     }),
   );
-  // AdminGetUser returns UserAttributes (camelCase from the SDK is Attributes)
-  // and shape differs slightly from ListUsers, so we normalize manually.
   const attrs = result.UserAttributes ?? [];
   const find = (n: string) => attrs.find((a) => a.Name === n)?.Value ?? '';
   return {
@@ -175,6 +206,8 @@ export async function getCognitoUser(usernameOrSub: string): Promise<CognitoUser
     createdAt: result.UserCreateDate?.toISOString() ?? '',
     updatedAt: result.UserLastModifiedDate?.toISOString() ?? '',
     mfaEnabled: (result.MFAOptions?.length ?? 0) > 0,
+    phoneNumber: find('phone_number') || undefined,
+    phoneVerified: find('phone_number_verified') === 'true' ? true : undefined,
   };
 }
 
@@ -196,6 +229,20 @@ export async function enableCognitoUser(username: string): Promise<void> {
 export async function deleteCognitoUser(username: string): Promise<void> {
   await cognitoClient.send(
     new AdminDeleteUserCommand({ UserPoolId: userPoolId, Username: username }),
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// SESSION MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Forces global sign-out — invalidates ALL of the user's tokens and
+ * sessions across all devices. They'll need to re-authenticate everywhere.
+ */
+export async function globalSignOutUser(username: string): Promise<void> {
+  await cognitoClient.send(
+    new AdminUserGlobalSignOutCommand({ UserPoolId: userPoolId, Username: username }),
   );
 }
 
@@ -237,12 +284,17 @@ export async function adminSetUserPassword(
 // ══════════════════════════════════════════════════════════════
 
 /**
- * Updates Cognito user attributes (display name, email, etc).
- * Pass attributes to update; omit to leave unchanged.
+ * Updates Cognito user attributes (display name, email, phone, etc).
  */
 export async function updateCognitoUserAttributes(
   username: string,
-  attrs: { email?: string; displayName?: string; emailVerified?: boolean },
+  attrs: {
+    email?: string;
+    displayName?: string;
+    emailVerified?: boolean;
+    phoneNumber?: string;
+    phoneVerified?: boolean;
+  },
 ): Promise<void> {
   const userAttributes: { Name: string; Value: string }[] = [];
   if (attrs.email !== undefined) userAttributes.push({ Name: 'email', Value: attrs.email });
@@ -250,6 +302,10 @@ export async function updateCognitoUserAttributes(
     userAttributes.push({ Name: 'email_verified', Value: String(attrs.emailVerified) });
   if (attrs.displayName !== undefined)
     userAttributes.push({ Name: 'custom:display_name', Value: attrs.displayName });
+  if (attrs.phoneNumber !== undefined)
+    userAttributes.push({ Name: 'phone_number', Value: attrs.phoneNumber });
+  if (attrs.phoneVerified !== undefined)
+    userAttributes.push({ Name: 'phone_number_verified', Value: String(attrs.phoneVerified) });
   if (userAttributes.length === 0) return;
 
   await cognitoClient.send(
@@ -259,5 +315,122 @@ export async function updateCognitoUserAttributes(
       UserAttributes: userAttributes,
     }),
   );
+}
+
+// ══════════════════════════════════════════════════════════════
+// GROUP MANAGEMENT (Cognito Groups as permission boundaries)
+// ══════════════════════════════════════════════════════════════
+
+export interface CognitoGroup {
+  name: string;
+  description: string;
+  precedence: number;
+  roleArn?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function toGroupSummary(g: GroupType): CognitoGroup {
+  return {
+    name: g.GroupName ?? '',
+    description: g.Description ?? '',
+    precedence: g.Precedence ?? 0,
+    roleArn: g.RoleArn ?? undefined,
+    createdAt: g.CreationDate?.toISOString() ?? '',
+    updatedAt: g.LastModifiedDate?.toISOString() ?? '',
+  };
+}
+
+/** Lists all groups in the User Pool. */
+export async function listCognitoGroups(): Promise<CognitoGroup[]> {
+  const result = await cognitoClient.send(
+    new ListGroupsCommand({ UserPoolId: userPoolId, Limit: 60 }),
+  );
+  return (result.Groups ?? []).map(toGroupSummary);
+}
+
+/** Lists groups a specific user belongs to. */
+export async function listUserGroups(username: string): Promise<CognitoGroup[]> {
+  const result = await cognitoClient.send(
+    new AdminListGroupsForUserCommand({
+      UserPoolId: userPoolId,
+      Username: username,
+      Limit: 60,
+    }),
+  );
+  return (result.Groups ?? []).map(toGroupSummary);
+}
+
+/** Adds a user to a Cognito group. */
+export async function addUserToGroup(username: string, groupName: string): Promise<void> {
+  await cognitoClient.send(
+    new AdminAddUserToGroupCommand({
+      UserPoolId: userPoolId,
+      Username: username,
+      GroupName: groupName,
+    }),
+  );
+}
+
+/** Removes a user from a Cognito group. */
+export async function removeUserFromGroup(username: string, groupName: string): Promise<void> {
+  await cognitoClient.send(
+    new AdminRemoveUserFromGroupCommand({
+      UserPoolId: userPoolId,
+      Username: username,
+      GroupName: groupName,
+    }),
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// BULK OPERATIONS
+// ══════════════════════════════════════════════════════════════
+
+export interface BulkOperationResult {
+  success: string[];
+  failed: { username: string; error: string }[];
+}
+
+/** Bulk disable multiple users. */
+export async function bulkDisableUsers(usernames: string[]): Promise<BulkOperationResult> {
+  const result: BulkOperationResult = { success: [], failed: [] };
+  for (const username of usernames) {
+    try {
+      await disableCognitoUser(username);
+      result.success.push(username);
+    } catch (err) {
+      result.failed.push({ username, error: err instanceof Error ? err.message : 'Unknown error' });
+    }
+  }
+  return result;
+}
+
+/** Bulk enable multiple users. */
+export async function bulkEnableUsers(usernames: string[]): Promise<BulkOperationResult> {
+  const result: BulkOperationResult = { success: [], failed: [] };
+  for (const username of usernames) {
+    try {
+      await enableCognitoUser(username);
+      result.success.push(username);
+    } catch (err) {
+      result.failed.push({ username, error: err instanceof Error ? err.message : 'Unknown error' });
+    }
+  }
+  return result;
+}
+
+/** Bulk force global sign-out for multiple users. */
+export async function bulkGlobalSignOut(usernames: string[]): Promise<BulkOperationResult> {
+  const result: BulkOperationResult = { success: [], failed: [] };
+  for (const username of usernames) {
+    try {
+      await globalSignOutUser(username);
+      result.success.push(username);
+    } catch (err) {
+      result.failed.push({ username, error: err instanceof Error ? err.message : 'Unknown error' });
+    }
+  }
+  return result;
 }
 

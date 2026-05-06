@@ -166,10 +166,15 @@ export function RolesManager() {
     return roleMap.get(currentUserRole.roleId) ?? null;
   }, [currentUserRole, roleMap]);
 
+  // Permission check: if role definitions aren't loaded yet, assume access
+  // (the server-side guard enforces the real check). Once loaded, verify client-side.
   const canManageRoles = useMemo(() => {
+    // If we haven't loaded role definitions yet, allow access (server enforces)
+    if (roleDefinitions.length === 0) return true;
     if (!currentRoleDef) return false;
+    if (currentRoleDef.name === 'Propietario' || currentRoleDef.name === 'Administrador') return true;
     return currentRoleDef.permissions.includes('roles.manage');
-  }, [currentRoleDef]);
+  }, [currentRoleDef, roleDefinitions.length]);
 
   // Build role select options for user assignment (exclude owner for non-owners)
   const roleSelectOptions = useMemo(() => {

@@ -257,17 +257,6 @@ export function SidebarNav({ onSelect, badges }: SidebarNavProps) {
     });
   }
 
-  if (can('roles.manage')) {
-    const isSel = isPath('/dashboard/settings/cognito-users');
-    systemItems.push({
-      url: '#',
-      label: 'Usuarios Cognito',
-      icon: isSel ? PersonLockIcon : PersonLockFilledIcon,
-      selected: isSel,
-      onClick: () => onSelect('cognito-users'),
-    });
-  }
-
   if (can('settings.view')) {
     const isSel = isPath('/dashboard/settings');
     systemItems.push({

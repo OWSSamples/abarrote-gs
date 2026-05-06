@@ -19,7 +19,6 @@ export const SECTION_TO_PATH: Record<string, string> = {
   reports: '/dashboard/analytics/reports',
   settings: '/dashboard/settings',
   roles: '/dashboard/settings/roles',
-  'cognito-users': '/dashboard/settings/cognito-users',
   notifications: '/dashboard/notifications',
   promotions: '/dashboard/others/promotions',
   categories: '/dashboard/others/categories',

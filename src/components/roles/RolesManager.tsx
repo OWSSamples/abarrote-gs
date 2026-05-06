@@ -32,6 +32,7 @@ import { AddUserModal } from './modals/AddUserModal';
 import { EditUserModal } from './modals/EditUserModal';
 import { DeactivateUserModal } from './modals/DeactivateUserModal';
 import { PermissionsDetailModal } from './modals/PermissionsDetailModal';
+import { CognitoUsersManager } from '@/components/admin/CognitoUsersManager';
 
 // Color tones cycled for badges
 const BADGE_TONES: Array<'info' | 'success' | 'warning' | 'critical' | 'attention' | 'new'> = [
@@ -840,6 +841,11 @@ export function RolesManager() {
       content: `Roles (${roleDefinitions.length})`,
       panelID: 'roles-panel',
     },
+    {
+      id: 'cognito',
+      content: 'Cognito Pool',
+      panelID: 'cognito-panel',
+    },
   ];
 
   return (
@@ -847,12 +853,13 @@ export function RolesManager() {
       {/* KPI Summary */}
       {kpiSection}
 
-      {/* Tabs: Equipo | Roles */}
+      {/* Tabs: Equipo | Roles | Cognito Pool */}
       <Card padding="0">
         <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
           <Box padding="400">
             {selectedTab === 0 && usersContent}
             {selectedTab === 1 && rolesContent}
+            {selectedTab === 2 && <CognitoUsersManager />}
           </Box>
         </Tabs>
       </Card>

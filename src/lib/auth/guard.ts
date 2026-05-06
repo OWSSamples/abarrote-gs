@@ -13,6 +13,7 @@ export interface AuthenticatedUser {
   uid: string;
   email: string;
   roleId: string;
+  roleName?: string;
   permissions: PermissionKey[];
   displayName?: string;
 }
@@ -69,6 +70,7 @@ const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
       roleId: userRoles.roleId,
       displayName: userRoles.displayName,
       permissions: roleDefinitions.permissions,
+      roleName: roleDefinitions.name,
     })
     .from(userRoles)
     .leftJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
@@ -80,16 +82,15 @@ const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
   // primer usuario en absoluto se vuelve Propietario; los siguientes
   // entran como "Solo lectura" hasta que un admin les asigne rol.
   if (rows.length === 0) {
-    logger.info({
+    logger.info('Auto-bootstrap: creating user_roles row for new Cognito user', {
       action: 'auth_auto_bootstrap',
-      message: 'Creating user_roles row for newly authenticated Cognito user',
       uid,
       email,
     });
     const { ensureOwnerRole } = await import('@/app/actions/role-actions');
     const created = await ensureOwnerRole(uid, email, tokenName);
     const roleDef = await db
-      .select({ permissions: roleDefinitions.permissions })
+      .select({ permissions: roleDefinitions.permissions, name: roleDefinitions.name })
       .from(roleDefinitions)
       .where(eq(roleDefinitions.id, created.roleId))
       .limit(1);
@@ -105,6 +106,7 @@ const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
       uid,
       email,
       roleId: created.roleId,
+      roleName: roleDef[0]?.name ?? undefined,
       permissions: perms,
       displayName: created.displayName || tokenName || undefined,
     };
@@ -129,6 +131,7 @@ const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
     uid,
     email,
     roleId: row.roleId,
+    roleName: row.roleName ?? undefined,
     permissions,
     displayName: row.displayName || undefined,
   };
@@ -187,8 +190,8 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
 export async function requirePermission(...requiredPerms: PermissionKey[]): Promise<AuthenticatedUser> {
   const user = await requireAuth();
 
-  // Owner bypasses all permission checks
-  if (user.roleId === 'owner') return user;
+  // Propietario/Administrador bypass all permission checks
+  if (user.roleName === 'Propietario' || user.roleName === 'Administrador') return user;
 
   const hasPermission = requiredPerms.some((perm) => user.permissions.includes(perm));
 
@@ -211,7 +214,7 @@ export async function requirePermission(...requiredPerms: PermissionKey[]): Prom
 export async function requireOwner(): Promise<AuthenticatedUser> {
   const user = await requireAuth();
 
-  if (user.roleId !== 'owner') {
+  if (user.roleName !== 'Propietario') {
     throw new AuthError('Esta acción requiere permisos de administrador TI', 403);
   }
 

@@ -60,6 +60,7 @@ const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
   const decodedToken = await verifyIdToken(token);
   const uid = decodedToken.sub;
   const email = decodedToken.email || '';
+  const tokenName = decodedToken['custom:display_name'] || decodedToken['cognito:username'] || '';
 
   // Single JOIN query: user role + permissions in one round-trip
   const rows = await db
@@ -74,8 +75,39 @@ const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
     .where(eq(userRoles.cognitoSub, uid))
     .limit(1);
 
+  // Auto-bootstrap: si el usuario tiene token Cognito válido pero no
+  // existe en la tabla user_roles, lo creamos automáticamente. El
+  // primer usuario en absoluto se vuelve Propietario; los siguientes
+  // entran como "Solo lectura" hasta que un admin les asigne rol.
   if (rows.length === 0) {
-    throw new AuthError('Usuario no registrado en el sistema', 403);
+    logger.info({
+      action: 'auth_auto_bootstrap',
+      message: 'Creating user_roles row for newly authenticated Cognito user',
+      uid,
+      email,
+    });
+    const { ensureOwnerRole } = await import('@/app/actions/role-actions');
+    const created = await ensureOwnerRole(uid, email, tokenName);
+    const roleDef = await db
+      .select({ permissions: roleDefinitions.permissions })
+      .from(roleDefinitions)
+      .where(eq(roleDefinitions.id, created.roleId))
+      .limit(1);
+    let perms: PermissionKey[] = [];
+    if (roleDef[0]?.permissions) {
+      try {
+        perms = JSON.parse(roleDef[0].permissions) as PermissionKey[];
+      } catch {
+        perms = [];
+      }
+    }
+    return {
+      uid,
+      email,
+      roleId: created.roleId,
+      permissions: perms,
+      displayName: created.displayName || tokenName || undefined,
+    };
   }
 
   const row = rows[0];

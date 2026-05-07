@@ -21,6 +21,7 @@ import {
   LINE_FEED,
   CUT_PARTIAL,
   DRAWER_KICK_PIN2,
+  DRAWER_KICK_PIN5,
   horizontalRule,
   doubleRule,
   feedLines,

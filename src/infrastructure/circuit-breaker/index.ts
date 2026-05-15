@@ -98,6 +98,7 @@ export function createCircuitBreaker(service: string, options?: CircuitBreakerOp
   let lastFailureTime: Date | null = null;
   let lastSuccessTime: Date | null = null;
   let totalRequests = 0;
+  let currentResetTimeoutMs = resetTimeoutMs; // Grows with exponential backoff
   let totalFailures = 0;
 
   function transitionTo(newState: CircuitState): void {
@@ -124,6 +125,8 @@ export function createCircuitBreaker(service: string, options?: CircuitBreakerOp
       halfOpenSuccesses++;
       if (halfOpenSuccesses >= halfOpenSuccess) {
         transitionTo('CLOSED');
+        // Reset backoff on successful recovery
+        currentResetTimeoutMs = resetTimeoutMs;
       }
     }
   }
@@ -142,7 +145,9 @@ export function createCircuitBreaker(service: string, options?: CircuitBreakerOp
     });
 
     if (state === 'HALF_OPEN') {
-      // Any failure in HALF_OPEN → back to OPEN
+      // Any failure in HALF_OPEN → back to OPEN with exponential backoff
+      // Cap at 5 minutes to avoid waiting too long
+      currentResetTimeoutMs = Math.min(currentResetTimeoutMs * 1.5, 300_000);
       transitionTo('OPEN');
     } else if (consecutiveFailures >= failureThreshold) {
       transitionTo('OPEN');
@@ -154,7 +159,7 @@ export function createCircuitBreaker(service: string, options?: CircuitBreakerOp
 
     if (state === 'OPEN') {
       const elapsed = Date.now() - (lastFailureTime?.getTime() ?? 0);
-      if (elapsed >= resetTimeoutMs) {
+      if (elapsed >= currentResetTimeoutMs) {
         transitionTo('HALF_OPEN');
         return true;
       }
@@ -170,7 +175,7 @@ export function createCircuitBreaker(service: string, options?: CircuitBreakerOp
 
     if (!shouldAllowRequest()) {
       const elapsed = Date.now() - (lastFailureTime?.getTime() ?? 0);
-      const retryAfter = Math.max(0, resetTimeoutMs - elapsed);
+      const retryAfter = Math.max(0, currentResetTimeoutMs - elapsed);
 
       if (fallback) {
         logger.info('Circuit open — executing fallback', {
@@ -211,6 +216,7 @@ export function createCircuitBreaker(service: string, options?: CircuitBreakerOp
     transitionTo('CLOSED');
     consecutiveFailures = 0;
     halfOpenSuccesses = 0;
+    currentResetTimeoutMs = resetTimeoutMs;
   }
 
   return { execute, getStats, reset };

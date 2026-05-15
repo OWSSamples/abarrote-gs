@@ -31,7 +31,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
     }
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2026-03-25.dahlia',
+      apiVersion: '2026-04-22.dahlia',
     });
 
     let event: Stripe.Event;

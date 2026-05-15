@@ -1,0 +1,623 @@
+[     475ms] [LOG] [Client Instrumentation Hook] Slow execution detected: 66ms (Note: Code download overhead is not included in this measurement) @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[     503ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[     689ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[    1184ms] [LOG] %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[    1184ms] [LOG] %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {route: /auth/[...pathname], path: /auth/login} @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[    1185ms] [LOG] %c[Vercel Web Analytics]%c [view] http://localhost:3000/auth/login?from=%2F color: rgb(120, 120, 120) color: inherit {o: http://localhost:3000/auth/login?from=%2F, sv: 0.1.3, sdkn: @vercel/analytics/next, sdkv: 2.0.1, ts: 1778806981963} /_vercel/insights/view @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[    1188ms] [LOG] %c[Vercel Speed Insights]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[  307699ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[  307723ms] [LOG] [Fast Refresh] done in 124ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1199793ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1200635ms] [LOG] [Fast Refresh] done in 903ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1200736ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1200756ms] [LOG] [Fast Refresh] done in 120ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201027ms] [LOG] %c[Vercel Speed Insights]%c [vitals] color: rgb(120, 120, 120) color: inherit {speed: 4g, metrics: Array(3), scriptVersion: 0.1.3, sdkName: @vercel/speed-insights/next, sdkVersion: 2.0.0} /_vercel/speed-insights/vitals @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201030ms] [LOG] %c[Vercel Speed Insights]%c [vitals] color: rgb(120, 120, 120) color: inherit {speed: 4g, metrics: Array(1), scriptVersion: 0.1.3, sdkName: @vercel/speed-insights/next, sdkVersion: 2.0.0} /_vercel/speed-insights/vitals @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201174ms] [LOG] [Client Instrumentation Hook] Slow execution detected: 41ms (Note: Code download overhead is not included in this measurement) @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201177ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201258ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201343ms] [LOG] %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201343ms] [LOG] %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {route: /auth/[...pathname], path: /auth/login} @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201344ms] [LOG] %c[Vercel Web Analytics]%c [view] http://localhost:3000/auth/login?from=%2F color: rgb(120, 120, 120) color: inherit {o: http://localhost:3000/auth/login?from=%2F, sv: 0.1.3, sdkn: @vercel/analytics/next, sdkv: 2.0.1, ts: 1778808182122} /_vercel/insights/view @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1201344ms] [LOG] %c[Vercel Speed Insights]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1772747ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1773173ms] [LOG] [Fast Refresh] done in 421ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1773343ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1773477ms] [LOG] [Fast Refresh] done in 234ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1978881ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 1979005ms] [LOG] [Fast Refresh] done in 224ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2003468ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2003619ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:5
+Expression expected
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:5
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2003619ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:6
+Unterminated regexp literal
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:6
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2003731ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:5
+Expression expected
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:5
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2003732ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:6
+Unterminated regexp literal
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:6
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2003771ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2009818ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:5
+Expression expected
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:5
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2009819ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:6
+Unterminated regexp literal
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:6
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2009920ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2011388ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:5
+Expression expected
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:5
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2011388ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:6
+Unterminated regexp literal
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:6
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2114294ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:5
+Expression expected
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:5
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2114295ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:6
+Unterminated regexp literal
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:6
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2114365ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2114507ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:5
+Expression expected
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:5
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |     ^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2114508ms] [ERROR] ./src/components/auth/LoginForm.tsx:499:6
+Unterminated regexp literal
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:499:6
+  497 |         </BlockStack>
+  498 |       </Card>
+> 499 |     </Box>
+      |      ^^^^^
+  500 |   );
+  501 | }
+  502 |
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2114554ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2118314ms] [ERROR] ./src/components/auth/LoginForm.tsx:493:17
+Expected '</', got 'ident'
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:493:17
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2118330ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2146351ms] [ERROR] ./src/components/auth/LoginForm.tsx:493:17
+Expected '</', got 'ident'
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:493:17
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2146414ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2148871ms] [ERROR] ./src/components/auth/LoginForm.tsx:493:17
+Expected '</', got 'ident'
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:493:17
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2148933ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2153476ms] [ERROR] ./src/components/auth/LoginForm.tsx:493:17
+Expected '</', got 'ident'
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:493:17
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2153547ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2162943ms] [ERROR] ./src/components/auth/LoginForm.tsx:493:17
+Expected '</', got 'ident'
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:493:17
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2163010ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2163470ms] [ERROR] ./src/components/auth/LoginForm.tsx:493:17
+Expected '</', got 'ident'
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Parsing ecmascript source code failed
+
+Generated code of loaders [next/dist/build/babel/loader] transform of file content of src/components/auth/LoginForm.tsx:
+./src/components/auth/LoginForm.tsx:493:17
+  491 |                   </Text>
+  492 |                 </div>
+> 493 |               </Box>
+      |                 ^^^
+  494 |             </>
+  495 |           )}
+  496 |         </BlockStack>
+
+Import traces:
+  Client Component Browser:
+    ./src/components/auth/LoginForm.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component Browser]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/auth/LoginForm.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Client Component SSR]
+    ./src/app/(main)/auth/[[...pathname]]/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2163540ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2206039ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2206290ms] [LOG] [Fast Refresh] done in 248ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2295220ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2295319ms] [LOG] [Fast Refresh] done in 199ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2562665ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2562732ms] [LOG] [Fast Refresh] done in 130ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2612308ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848
+[ 2612395ms] [LOG] [Fast Refresh] done in 143ms @ http://localhost:3000/_next/static/chunks/node_modules_%40sentry_core_build_esm_042slge._.js:10848

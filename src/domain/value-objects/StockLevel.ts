@@ -41,13 +41,18 @@ export class StockLevel {
   /**
    * Calculate stock status based on business rules:
    * - out_of_stock: current = 0
-   * - critical: current < minimum * 0.5
-   * - low: current <= minimum
-   * - ok: current > minimum
+   * - critical: current < minimum * 0.5 (and minimum > 0)
+   * - low: current <= minimum (and minimum > 0)
+   * - ok: current > minimum, or minimum is 0 and stock > 0
    */
   get status(): StockStatus {
     if (this.current.isZero()) {
       return 'out_of_stock';
+    }
+
+    // When no minimum is set, any stock > 0 is "ok"
+    if (this.minimum.isZero()) {
+      return 'ok';
     }
 
     const halfMin = this.minimum.value * 0.5;

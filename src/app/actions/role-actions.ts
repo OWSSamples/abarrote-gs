@@ -7,7 +7,8 @@ import { userRoles, roleDefinitions, auditLogs } from '@/db/schema';
 import { eq, isNotNull } from 'drizzle-orm';
 import type { UserRoleRecord, RoleDefinition, PermissionKey } from '@/types';
 import { DEFAULT_SYSTEM_ROLES } from '@/types';
-import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import { randomBytes, scryptSync, scrypt, timingSafeEqual } from 'crypto';
+import { promisify } from 'util';
 import { checkRateLimit } from '@/infrastructure/redis';
 import { withLogging } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -27,22 +28,24 @@ import {
 /** Strict rate limit for PIN auth: 5 attempts per 5 minutes per IP */
 const PIN_RATE_LIMIT = { maxRequests: 5, windowMs: 5 * 60_000 } as const;
 
-// ==================== PIN HASHING (scrypt) ====================
+// ==================== PIN HASHING (scrypt — async to avoid blocking event loop) ====================
 
-function hashPin(pin: string): string {
+const scryptAsync = promisify(scrypt);
+
+async function hashPin(pin: string): Promise<string> {
   const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(pin, salt, 64).toString('hex');
+  const hash = (await scryptAsync(pin, salt, 64) as Buffer).toString('hex');
   return `${salt}:${hash}`;
 }
 
-function verifyPin(pin: string, stored: string): boolean {
-  // Reject legacy unhashed PINs — they must be migrated
+async function verifyPin(pin: string, stored: string): Promise<boolean> {
+  // Reject legacy unhashed PINs — they must be re-set by admin
   if (!stored.includes(':')) {
     return false;
   }
   const [salt, hash] = stored.split(':');
   const hashBuf = Buffer.from(hash, 'hex');
-  const supplied = scryptSync(pin, salt, 64);
+  const supplied = await scryptAsync(pin, salt, 64) as Buffer;
   return timingSafeEqual(hashBuf, supplied);
 }
 
@@ -193,44 +196,18 @@ async function _ensureOwnerRole(cognitoSub: string, email: string, displayName: 
 
   if (!ownerDef || !viewerDef) throw new Error('System roles not found');
 
-  const existing = await db.select().from(userRoles);
+  // Check if this specific user already exists first (fast path)
+  const existingUser = await db
+    .select()
+    .from(userRoles)
+    .where(eq(userRoles.cognitoSub, cognitoSub))
+    .limit(1);
 
-  const nextNum = existing.length + 1;
-  const employeeNumber = `3226${String(nextNum).padStart(2, '0')}`;
-
-  if (existing.length === 0) {
-    const id = crypto.randomUUID();
-    const now = new Date();
-    await db.insert(userRoles).values({
-      id,
-      cognitoSub,
-      email,
-      displayName: displayName || '',
-      employeeNumber,
-      roleId: ownerDef.id,
-      assignedBy: cognitoSub,
-      createdAt: now,
-      updatedAt: now,
-    });
-    return {
-      id,
-      cognitoSub,
-      email,
-      displayName: displayName || '',
-      avatarUrl: '',
-      employeeNumber,
-      status: 'activo' as const,
-      roleId: ownerDef.id,
-      assignedBy: cognitoSub,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    };
-  }
-
-  const userRow = existing.find((r) => r.cognitoSub === cognitoSub);
-  if (userRow) {
+  if (existingUser.length > 0) {
+    const userRow = existingUser[0];
     if (!userRow.employeeNumber) {
-      const idx = existing.indexOf(userRow) + 1;
+      const allUsers = await db.select().from(userRoles);
+      const idx = allUsers.findIndex((r) => r.id === userRow.id) + 1;
       const empNum = `3226${String(idx).padStart(2, '0')}`;
       await db
         .update(userRoles)
@@ -241,19 +218,46 @@ async function _ensureOwnerRole(cognitoSub: string, email: string, displayName: 
     return mapUserRole(userRow);
   }
 
+  const existing = await db.select().from(userRoles);
+
+  const nextNum = existing.length + 1;
+  const employeeNumber = `3226${String(nextNum).padStart(2, '0')}`;
+  const isFirstUser = existing.length === 0;
+  const roleId = isFirstUser ? ownerDef.id : viewerDef.id;
+  const assignedBy = isFirstUser ? cognitoSub : 'system';
+
   const id = crypto.randomUUID();
   const now = new Date();
-  await db.insert(userRoles).values({
-    id,
-    cognitoSub,
-    email,
-    displayName: displayName || '',
-    employeeNumber,
-    roleId: viewerDef.id,
-    assignedBy: 'system',
-    createdAt: now,
-    updatedAt: now,
-  });
+
+  // Use ON CONFLICT to handle race condition: if two requests arrive
+  // simultaneously for the same Cognito user, only one INSERT succeeds.
+  // The loser gets the existing row via RETURNING or a follow-up SELECT.
+  try {
+    await db.insert(userRoles).values({
+      id,
+      cognitoSub,
+      email,
+      displayName: displayName || '',
+      employeeNumber,
+      roleId,
+      assignedBy,
+      createdAt: now,
+      updatedAt: now,
+    });
+  } catch (err) {
+    // Duplicate key — concurrent request already inserted this user
+    const msg = err instanceof Error ? err.message : '';
+    if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('23505')) {
+      const retryRow = await db
+        .select()
+        .from(userRoles)
+        .where(eq(userRoles.cognitoSub, cognitoSub))
+        .limit(1);
+      if (retryRow.length > 0) return mapUserRole(retryRow[0]);
+    }
+    throw err;
+  }
+
   return {
     id,
     cognitoSub,
@@ -262,8 +266,8 @@ async function _ensureOwnerRole(cognitoSub: string, email: string, displayName: 
     avatarUrl: '',
     employeeNumber,
     status: 'activo' as const,
-    roleId: viewerDef.id,
-    assignedBy: 'system',
+    roleId,
+    assignedBy,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   };
@@ -384,7 +388,7 @@ async function _createCognitoUserWithRole(
 async function _updateUserPin(cognitoSub: string, pinCode: string): Promise<void> {
   const currentUser = await requirePermission('roles.manage');
   validateSchema(updateUserPinSchema, { cognitoSub, pinCode }, 'updateUserPin');
-  const hashed = hashPin(pinCode);
+  const hashed = await hashPin(pinCode);
   const now = new Date();
   await db.update(userRoles).set({ pinCode: hashed, updatedAt: now }).where(eq(userRoles.cognitoSub, cognitoSub));
 
@@ -599,7 +603,7 @@ async function _authorizePin(
     // 5. Constant-time comparison across all PINs
     let matchedUser: (typeof rows)[number] | null = null;
     for (const row of rows) {
-      if (row.pinCode && verifyPin(pinCode, row.pinCode)) {
+      if (row.pinCode && await verifyPin(pinCode, row.pinCode)) {
         matchedUser = row;
         // Don't break — continue iterating for constant-time behavior
       }

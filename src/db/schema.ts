@@ -603,6 +603,7 @@ export const userRoles = pgTable(
     status: text('status').notNull().default('activo'), // 'activo' | 'baja'
     deactivatedAt: timestamp('deactivated_at'), // When the user was deactivated
     pinCode: text('pin_code'), // <-- Nuevo para PIN approvals
+    mfaNoticeAt: timestamp('mfa_notice_at'), // First time MFA notice was shown
     roleId: text('role_id')
       .notNull()
       .references(() => roleDefinitions.id), // FK to role_definitions

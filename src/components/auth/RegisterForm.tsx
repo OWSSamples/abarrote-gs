@@ -1,85 +1,65 @@
 'use client';
 
-import Link from 'next/link';
-import { Card, Button, BlockStack, Box, Text, Banner, List } from '@shopify/polaris';
-import { PersonAddIcon, LockIcon } from '@shopify/polaris-icons';
+import NextLink from 'next/link';
+import { Button } from '@cloudflare/kumo/components/button';
+import { Text } from '@cloudflare/kumo/components/text';
+import { Banner } from '@cloudflare/kumo/components/banner';
+import { Lock, ArrowLeft } from '@phosphor-icons/react';
 
 export function RegisterForm() {
   return (
-    <Box width="100%" maxWidth="480px">
-      <Card>
-        <BlockStack gap="600">
-          {/* Logo Section */}
-          <div
-            style={{
-              padding: '24px 0 12px 0',
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <img
-              src="/login-brand.svg"
-              alt="Logo"
-              style={{
-                width: '200px',
-                height: 'auto',
-              }}
-            />
-          </div>
+    <div className="space-y-5">
+      {/* Title */}
+      <div className="space-y-1">
+        <Text variant="heading2" as="h1">
+          Solicitud de Acceso
+        </Text>
+        <Text variant="secondary" size="sm">
+          La creación de perfiles es gestionada por el Departamento de TI de{' '}
+          <span className="font-semibold text-kumo-default">Opendex Web Services</span>.
+        </Text>
+      </div>
 
-          {/* Eye-catching Banner */}
-          <Banner title="Bienvenido a la Plataforma" tone="info">
-            <Text as="p" variant="bodyMd">
-              Estás a un paso de acceder a la consola de gestión líder en la industria.
+      {/* Steps card */}
+      <div className="space-y-3 rounded-lg bg-kumo-recessed p-4">
+        <Text size="sm" bold>
+          Sigue estos pasos para comenzar:
+        </Text>
+        <ul className="list-disc space-y-2 pl-5">
+          <li>
+            <Text variant="secondary" size="sm" as="span">
+              Contacta a tu administrador de sistemas local.
             </Text>
-          </Banner>
+          </li>
+          <li>
+            <Text variant="secondary" size="sm" as="span">
+              Presenta tu <span className="font-semibold text-kumo-default">GlobalID</span> corporativo válido.
+            </Text>
+          </li>
+          <li>
+            <Text variant="secondary" size="sm" as="span">
+              Confirma tus niveles de acceso requeridos.
+            </Text>
+          </li>
+        </ul>
+      </div>
 
-          <BlockStack gap="400">
-            <BlockStack gap="100">
-              <Text as="h1" variant="headingLg">
-                Solicitud de Acceso
-              </Text>
-              <Text as="p" variant="bodyMd" tone="subdued">
-                Para mantener la seguridad proactiva de{' '}
-                <span style={{ color: '#005bd3', fontWeight: 'bold' }}>Opendex Web Services</span>, la creación de
-                perfiles es gestionada por el Departamento de TI.
-              </Text>
-            </BlockStack>
+      {/* Security banner */}
+      <Banner variant="alert">
+        <div className="flex items-start gap-2">
+          <Lock size={16} className="mt-0.5 flex-shrink-0" />
+          <Text variant="secondary" size="sm" as="span">
+            La seguridad es nuestra prioridad. Nunca compartas tus llaves de acceso.
+          </Text>
+        </div>
+      </Banner>
 
-            <Box padding="400" background="bg-surface-secondary" borderRadius="300">
-              <BlockStack gap="300">
-                <Text as="p" variant="bodyMd" fontWeight="semibold">
-                  Sigue estos pasos para comenzar:
-                </Text>
-                <List type="bullet">
-                  <List.Item>Contacta a tu administrador de sistemas local.</List.Item>
-                  <List.Item>
-                    Presenta tu <span style={{ color: '#005bd3', fontWeight: 'bold' }}>GlobalID</span> corporativo
-                    válido.
-                  </List.Item>
-                  <List.Item>Confirma tus niveles de acceso requeridos.</List.Item>
-                </List>
-              </BlockStack>
-            </Box>
-
-            <Banner tone="warning" icon={LockIcon}>
-              <Text as="p" variant="bodySm">
-                La seguridad es nuestra prioridad. Nunca compartas tus llaves de acceso.
-              </Text>
-            </Banner>
-          </BlockStack>
-
-          <BlockStack gap="200">
-            <Link href="/auth/login" style={{ textDecoration: 'none' }}>
-              <Button variant="primary" fullWidth size="large" icon={PersonAddIcon}>
-                Volver al Portal de Acceso
-              </Button>
-            </Link>
-          </BlockStack>
-        </BlockStack>
-      </Card>
-    </Box>
+      {/* Action button */}
+      <NextLink href="/auth/login" className="block">
+        <Button variant="primary" className="w-full justify-center" size="lg" icon={ArrowLeft}>
+          Volver al inicio de sesión
+        </Button>
+      </NextLink>
+    </div>
   );
 }

@@ -139,18 +139,25 @@ export class PricingService {
           ? sale.items.filter((i) => promotion.productIds!.includes(i.productId))
           : sale.items;
 
-        // Flatten to individual units and sort by unit price ascending (cheapest first)
-        const units: Money[] = [];
-        for (const item of eligible) {
-          for (let u = 0; u < item.quantity.value; u++) {
-            units.push(item.unitPrice);
-          }
-        }
-        units.sort((a, b) => a.toPesos() - b.toPesos());
+        // Calculate total eligible units without materializing per-unit array
+        const totalEligibleUnits = eligible.reduce((sum, i) => sum + i.quantity.value, 0);
 
-        if (units.length >= triggerQty + freeQty) {
-          // The cheapest N items are free
-          discount = units.slice(0, freeQty).reduce((sum, price) => sum.add(price), Money.zero());
+        if (totalEligibleUnits >= triggerQty + freeQty) {
+          // Build sorted unit prices only for the count we need (freeQty cheapest)
+          // Sort items by unit price ascending — pick cheapest units first
+          const sortedItems = [...eligible].sort(
+            (a, b) => a.unitPrice.toPesos() - b.unitPrice.toPesos(),
+          );
+
+          let remainingFree = freeQty;
+          let totalDiscount = Money.zero();
+          for (const item of sortedItems) {
+            if (remainingFree <= 0) break;
+            const freeFromThis = Math.min(remainingFree, item.quantity.value);
+            totalDiscount = totalDiscount.add(item.unitPrice.multiply(freeFromThis));
+            remainingFree -= freeFromThis;
+          }
+          discount = totalDiscount;
         } else {
           discount = Money.zero();
         }

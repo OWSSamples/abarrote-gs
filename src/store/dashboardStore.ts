@@ -68,98 +68,101 @@ export const useDashboardStore = create<DashboardStore>((set, get) => {
     // ── Fetch all dashboard data ──
     // Shows loading spinner only on initial load (when kpiData is null).
     // Background refreshes (SyncEngine polling, visibility, cross-tab) are silent.
-    // IMPORTANT: This function has built-in concurrency protection via the
-    // isFetching flag to prevent duplicate calls during HMR or rapid navigation.
+    // Uses Promise-based deduplication: concurrent calls share the same in-flight
+    // fetch instead of a boolean flag (which is not atomic and allows races).
     fetchDashboardData: (() => {
-      let isFetching = false; // Closure-based mutex to prevent concurrent calls
+      let fetchPromise: Promise<void> | null = null;
 
       return async () => {
-        // Prevent concurrent fetches — if a fetch is in progress, skip this one
-        if (isFetching) {
-          return;
+        // Deduplicate: if a fetch is already in-flight, return the same promise
+        if (fetchPromise) {
+          return fetchPromise;
         }
 
-        isFetching = true;
         const isInitialLoad = get().kpiData === null;
 
         if (isInitialLoad) {
           set({ isLoading: true, error: null });
         }
 
-        try {
-          const data = await fetchDashboardFromDB();
-          set({
-            kpiData: data.kpiData,
-            products: data.products,
-            inventoryAlerts: data.inventoryAlerts,
-            salesData: data.salesData,
-            saleRecords: data.saleRecords,
-            mermaRecords: data.mermaRecords,
-            pedidos: data.pedidos,
-            clientes: data.clientes,
-            fiadoTransactions: data.fiadoTransactions,
-            gastos: data.gastos,
-            proveedores: data.proveedores,
-            cortesHistory: data.cortesHistory,
-            inventoryAudits: data.inventoryAudits,
-            storeConfig: data.storeConfig,
-            devoluciones: data.devoluciones,
-            cashMovements: data.cashMovements,
-            loyaltyTransactions: data.loyaltyTransactions,
-            hourlySalesData: data.hourlySalesData,
-            categories: data.categories || [],
-            isLoading: false,
-            lastSyncAt: Date.now(),
-          });
-
-          // ── Partial error handling ──
-          // Only show errors if there are significant failures (>2 modules)
-          // Single module failures are often transient and self-heal
-          if (data.partialErrors && data.partialErrors.length > 2) {
-            import('sileo').then(({ sileo }) => {
-              sileo.warning({
-                title: 'Algunos datos no cargaron',
-                description: `${data.partialErrors!.length} módulos tuvieron problemas. La app sigue funcionando.`,
-                duration: 5000,
-              });
-            });
-          }
-        } catch (error) {
-          // En caso de que falle toda la llamada fetchDashboardFromDB
-          const { title, description } = parseError(error);
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          const isNetworkError =
-            errorMsg.toLowerCase() === 'failed to fetch' ||
-            errorMsg.toLowerCase().includes('network') ||
-            errorMsg.toLowerCase().includes('timeout') ||
-            errorMsg.toLowerCase().includes('abort');
-
-          // Only log non-network errors or first occurrence to reduce noise
-          if (!isNetworkError || isInitialLoad) {
-            logger.error('Dashboard fetch failed', {
-              error: errorMsg,
-              action: 'fetchDashboardData',
-              isInitialLoad,
-            });
-          }
-
-          if (isInitialLoad) {
+        fetchPromise = (async () => {
+          try {
+            const data = await fetchDashboardFromDB();
             set({
-              error: `${title}: ${description}`,
+              kpiData: data.kpiData,
+              products: data.products,
+              inventoryAlerts: data.inventoryAlerts,
+              salesData: data.salesData,
+              saleRecords: data.saleRecords,
+              mermaRecords: data.mermaRecords,
+              pedidos: data.pedidos,
+              clientes: data.clientes,
+              fiadoTransactions: data.fiadoTransactions,
+              gastos: data.gastos,
+              proveedores: data.proveedores,
+              cortesHistory: data.cortesHistory,
+              inventoryAudits: data.inventoryAudits,
+              storeConfig: data.storeConfig,
+              devoluciones: data.devoluciones,
+              cashMovements: data.cashMovements,
+              loyaltyTransactions: data.loyaltyTransactions,
+              hourlySalesData: data.hourlySalesData,
+              categories: data.categories || [],
               isLoading: false,
+              lastSyncAt: Date.now(),
             });
-          }
 
-          // Only show toast for initial load failures or non-network errors
-          // Background polling errors are handled silently by circuit breaker
-          if (isInitialLoad) {
-            import('sileo').then(({ sileo }) => {
-              sileo.error({ title, description, duration: isNetworkError ? 5000 : 10000 });
-            });
+            // ── Partial error handling ──
+            // Only show errors if there are significant failures (>2 modules)
+            // Single module failures are often transient and self-heal
+            if (data.partialErrors && data.partialErrors.length > 2) {
+              import('sileo').then(({ sileo }) => {
+                sileo.warning({
+                  title: 'Algunos datos no cargaron',
+                  description: `${data.partialErrors!.length} módulos tuvieron problemas. La app sigue funcionando.`,
+                  duration: 5000,
+                });
+              });
+            }
+          } catch (error) {
+            // En caso de que falle toda la llamada fetchDashboardFromDB
+            const { title, description } = parseError(error);
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            const isNetworkError =
+              errorMsg.toLowerCase() === 'failed to fetch' ||
+              errorMsg.toLowerCase().includes('network') ||
+              errorMsg.toLowerCase().includes('timeout') ||
+              errorMsg.toLowerCase().includes('abort');
+
+            // Only log non-network errors or first occurrence to reduce noise
+            if (!isNetworkError || isInitialLoad) {
+              logger.error('Dashboard fetch failed', {
+                error: errorMsg,
+                action: 'fetchDashboardData',
+                isInitialLoad,
+              });
+            }
+
+            if (isInitialLoad) {
+              set({
+                error: `${title}: ${description}`,
+                isLoading: false,
+              });
+            }
+
+            // Only show toast for initial load failures or non-network errors
+            // Background polling errors are handled silently by circuit breaker
+            if (isInitialLoad) {
+              import('sileo').then(({ sileo }) => {
+                sileo.error({ title, description, duration: isNetworkError ? 5000 : 10000 });
+              });
+            }
+          } finally {
+            fetchPromise = null;
           }
-        } finally {
-          isFetching = false;
-        }
+        })();
+
+        return fetchPromise;
       };
     })(),
 

@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
+@import '@cloudflare/kumo/styles/tailwind';
+
+@source "../../node_modules/@cloudflare/kumo/dist";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -336,3 +338,71 @@ body,
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   AUTH LAYOUT — Pure Polaris (no custom styles needed)
+   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   LEGAL PAGES — Prose styles for terms/privacy/cookies (Kumo)
+   ═══════════════════════════════════════════════════════════════ */
+.legal-prose h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-kumo-text-primary, inherit);
+}
+.legal-prose h2:first-child { margin-top: 0; }
+.legal-prose h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.35rem;
+}
+.legal-prose p {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--color-kumo-text-secondary, #4b5563);
+}
+.legal-prose ul, .legal-prose ol {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  padding-left: 1.25rem;
+  color: var(--color-kumo-text-secondary, #4b5563);
+}
+.legal-prose ul { list-style: disc; }
+.legal-prose ol { list-style: decimal; }
+.legal-prose li { margin-bottom: 0.25rem; }
+.legal-prose li > ul, .legal-prose li > ol { margin-top: 0.25rem; }
+.legal-prose strong { color: var(--color-kumo-text-primary, inherit); font-weight: 600; }
+.legal-prose a { color: var(--primary, #0055cf); text-decoration: underline; text-underline-offset: 2px; }
+.legal-prose a:hover { opacity: 0.8; }
+.legal-prose hr {
+  border: 0;
+  border-top: 1px solid var(--color-kumo-border, #e5e7eb);
+  margin: 1.5rem 0;
+}
+.legal-prose .legal-callout {
+  border-left: 3px solid var(--primary, #0055cf);
+  background: var(--color-kumo-recessed, #f9fafb);
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.legal-prose table {
+  width: 100%;
+  font-size: 0.825rem;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+.legal-prose th, .legal-prose td {
+  border: 1px solid var(--color-kumo-border, #e5e7eb);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.legal-prose th {
+  background: var(--color-kumo-recessed, #f9fafb);
+  font-weight: 600;
+}

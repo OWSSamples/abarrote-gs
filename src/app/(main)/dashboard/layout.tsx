@@ -7,6 +7,7 @@ import { SidebarNav } from '@/components/navigation/SidebarNav';
 import { CustomTopBar } from '@/components/navigation/CustomTopBar';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { UserMenu } from '@/components/auth/UserMenu';
+import { MfaEnforcementBanner } from '@/components/auth/MfaEnforcementBanner';
 import { useRequireAuth } from '@/lib/auth/useRequireAuth';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -172,6 +173,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {syncStatus.circuitOpen && syncStatus.isOnline && (
           <Banner tone="critical">Problemas de sincronización detectados. Reintentando automáticamente…</Banner>
         )}
+        <MfaEnforcementBanner />
         {isLoading && <Loading />}
         {error ? (
           <Page title={storeConfig.storeName || 'Mi Tienda'} fullWidth>

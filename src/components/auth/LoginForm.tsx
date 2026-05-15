@@ -1,17 +1,20 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import NextLink from 'next/link';
+import QRCode from 'qrcode';
 import { signIn, signOut, signInWithRedirect, confirmSignIn, fetchAuthSession } from '@/lib/cognito';
 import { evaluatePassword } from '@/lib/auth/password-policy';
 import { logAuthEvent } from '@/lib/auth/auth-logger';
 import { checkAuthRateLimit } from '@/app/actions/auth-rate-limit';
 import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
-import { Card, FormLayout, TextField, Button, BlockStack, Box, Text, InlineStack, Icon } from '@shopify/polaris';
-import { HideIcon, ViewIcon } from '@shopify/polaris-icons';
+import { Button } from '@cloudflare/kumo/components/button';
+import { Input } from '@cloudflare/kumo/components/input';
+import { SensitiveInput } from '@cloudflare/kumo/components/sensitive-input';
+import { Text } from '@cloudflare/kumo/components/text';
+import { Link } from '@cloudflare/kumo/components/link';
 import { useToast } from '@/components/notifications/ToastProvider';
-import { BrandLogo } from '@/components/ui/BrandLogo';
 
 function writeSessionCookie(token: string): void {
   const isHttps = window.location.protocol === 'https:';
@@ -33,13 +36,28 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [requiresNewPassword, setRequiresNewPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [requiresMfa, setRequiresMfa] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaDelivery, setMfaDelivery] = useState<'email' | 'sms' | null>(null);
+  const [totpSetup, setTotpSetup] = useState<{ secretCode: string; qrUri: string } | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const qrGenerated = useRef(false);
+
+  useEffect(() => {
+    if (totpSetup && !qrGenerated.current) {
+      qrGenerated.current = true;
+      QRCode.toDataURL(totpSetup.qrUri, { width: 200, margin: 2 })
+        .then(setQrDataUrl)
+        .catch(() => setQrDataUrl(null));
+    }
+    if (!totpSetup) {
+      qrGenerated.current = false;
+      setQrDataUrl(null);
+    }
+  }, [totpSetup]);
 
   const handleMicrosoftLogin = useCallback(async () => {
     setIsMicrosoftLoading(true);
@@ -102,20 +120,28 @@ export function LoginForm() {
           void logAuthEvent({ event: 'force_password_change', email });
           setRequiresNewPassword(true);
         } else if (result.nextStep?.signInStep === 'CONTINUE_SIGN_IN_WITH_MFA_SETUP_SELECTION') {
-          // MFA opcional — omitir configuración de MFA automáticamente
-          void logAuthEvent({ event: 'sign_in_challenge', email, reason: 'MFA_SETUP_SELECTION_SKIPPED' });
+          // Seleccionar TOTP como método MFA
+          void logAuthEvent({ event: 'sign_in_challenge', email, reason: 'MFA_SETUP_TOTP' });
           try {
-            const mfaResult = await confirmSignIn({ challengeResponse: 'NOMFA' });
-            if (mfaResult.isSignedIn) {
-              await ensureSessionCookie();
-              void logAuthEvent({ event: 'sign_in_success', email });
-              toast.showSuccess('Bienvenido al sistema');
-              router.refresh();
-              router.push('/');
+            const totpResult = await confirmSignIn({ challengeResponse: 'TOTP' });
+            if (totpResult.nextStep?.signInStep === 'CONTINUE_SIGN_IN_WITH_TOTP_SETUP') {
+              const setupDetails = totpResult.nextStep.totpSetupDetails;
+              const secretCode = setupDetails.sharedSecret;
+              const qrUri = setupDetails.getSetupUri('AbarroteGS', email).toString();
+              setTotpSetup({ secretCode, qrUri });
+              setRequiresMfa(true);
             }
           } catch {
-            toast.showError('Error al completar el inicio de sesión. Inténtalo de nuevo.');
+            toast.showError('Error al iniciar configuración MFA. Inténtalo de nuevo.');
           }
+        } else if (result.nextStep?.signInStep === 'CONTINUE_SIGN_IN_WITH_TOTP_SETUP') {
+          // Directo a TOTP setup (sin paso de selección)
+          void logAuthEvent({ event: 'sign_in_challenge', email, reason: 'TOTP_SETUP_DIRECT' });
+          const setupDetails = result.nextStep.totpSetupDetails;
+          const secretCode = setupDetails.sharedSecret;
+          const qrUri = setupDetails.getSetupUri('AbarroteGS', email).toString();
+          setTotpSetup({ secretCode, qrUri });
+          setRequiresMfa(true);
         } else if (
           result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_CODE' ||
           result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_CODE' ||
@@ -193,7 +219,7 @@ export function LoginForm() {
         if (result.isSignedIn) {
           await ensureSessionCookie();
           void logAuthEvent({ event: 'sign_in_success', email });
-          toast.showSuccess('Bienvenido al sistema');
+          toast.showSuccess(totpSetup ? 'MFA configurado exitosamente. Bienvenido.' : 'Bienvenido al sistema');
           router.refresh();
           router.push('/');
         } else {
@@ -218,232 +244,185 @@ export function LoginForm() {
         if (err.name === 'NotAuthorizedException') {
           setRequiresMfa(false);
           setMfaCode('');
+          setTotpSetup(null);
         }
       } finally {
         setIsLoading(false);
       }
     },
-    [mfaCode, email, router, toast],
+    [mfaCode, email, router, toast, totpSetup],
   );
 
   return (
-    <Box width="100%" maxWidth="440px">
-      <Card>
-        <BlockStack gap="600">
-          <BlockStack gap="400" align="center">
-            <div
-              style={{
-                padding: '24px 0 12px 0',
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <img
-                src="/login-brand.svg"
-                alt="Logo"
-                style={{
-                  width: '200px',
-                  height: 'auto',
-                }}
-              />
-            </div>
-            <BlockStack gap="200" align="center">
-              <Text as="h1" variant="headingLg" fontWeight="bold">
-                {requiresNewPassword
-                  ? 'Establece tu contraseña'
-                  : requiresMfa
-                    ? 'Verificación de identidad'
-                    : 'Consola de Administración'}
-              </Text>
-              <Text as="p" variant="bodyMd" tone="subdued">
-                {requiresNewPassword
-                  ? 'Tu cuenta requiere que establezcas una nueva contraseña para continuar.'
-                  : requiresMfa
-                    ? `Ingresa el código de verificación enviado a tu ${mfaDelivery === 'email' ? 'correo electrónico' : 'teléfono'}.`
-                    : 'Ingresa tus credenciales para acceder al panel'}
-              </Text>
-            </BlockStack>
-          </BlockStack>
+    <div className="space-y-4">
+      {requiresMfa ? (
+        <>
+          {/* ── MFA Title ── */}
+          <div className="space-y-1">
+            <Text variant="heading2" as="h1">
+              {totpSetup ? 'Configuración de Seguridad' : 'Verificación de Identidad'}
+            </Text>
+            <Text variant="secondary" size="sm">
+              {totpSetup
+                ? 'Escanea el código QR con tu app autenticadora.'
+                : mfaDelivery === 'sms'
+                  ? 'Ingresa el código enviado a tu teléfono.'
+                  : 'Ingresa el código de verificación.'}
+            </Text>
+          </div>
 
-          {requiresMfa ? (
-            <form onSubmit={handleMfaCode}>
-              <FormLayout>
-                <TextField
-                  label="Código de verificación"
-                  value={mfaCode}
-                  onChange={setMfaCode}
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  disabled={isLoading}
-                  placeholder="Ej. 123456"
-                  maxLength={8}
-                />
-                <Box paddingBlockStart="300">
-                  <Button variant="primary" submit fullWidth loading={isLoading} size="large">
-                    Verificar código
-                  </Button>
-                </Box>
-              </FormLayout>
-            </form>
-          ) : requiresNewPassword ? (
-            <form onSubmit={handleNewPassword}>
-              <FormLayout>
-                <TextField
-                  label="Nueva contraseña"
-                  value={newPassword}
-                  onChange={setNewPassword}
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  disabled={isLoading}
-                  placeholder="Mínimo 8 caracteres"
-                  suffix={
-                    <div
-                      onClick={() => setShowPassword((v) => !v)}
-                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 4px' }}
-                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    >
-                      <Icon source={showPassword ? HideIcon : ViewIcon} tone="subdued" />
+          <form onSubmit={handleMfaCode} className="space-y-4">
+            {totpSetup && (
+              <div className="flex flex-col items-center gap-4 rounded-lg bg-kumo-recessed p-3">
+                <div className="rounded-md bg-kumo-base p-4 shadow-xs">
+                  {qrDataUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={qrDataUrl} alt="Código QR para autenticador" width={180} height={180} className="block" />
+                  ) : (
+                    <div className="flex h-[180px] w-[180px] items-center justify-center">
+                      <Text variant="secondary" size="sm">Generando QR...</Text>
                     </div>
-                  }
-                />
-                <PasswordStrengthMeter password={newPassword} />
-                <TextField
-                  label="Confirmar contraseña"
-                  value={confirmNewPassword}
-                  onChange={setConfirmNewPassword}
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  disabled={isLoading}
-                  placeholder="Repite la contraseña"
-                  suffix={
-                    <div
-                      onClick={() => setShowPassword((v) => !v)}
-                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 4px' }}
-                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    >
-                      <Icon source={showPassword ? HideIcon : ViewIcon} tone="subdued" />
-                    </div>
-                  }
-                />
-                <Box paddingBlockStart="300">
-                  <Button
-                    variant="primary"
-                    submit
-                    fullWidth
-                    loading={isLoading}
-                    size="large"
-                  >
-                    Establecer contraseña
-                  </Button>
-                </Box>
-              </FormLayout>
-            </form>
-          ) : (
-            <>
-              <form onSubmit={handleSubmit}>
-                <FormLayout>
-                  <TextField
-                    label="Correo electrónico"
-                    value={email}
-                    onChange={setEmail}
-                    autoComplete="email"
-                    type="email"
-                    disabled={isLoading}
-                    placeholder="GlobalID@company.com"
-                  />
-                  <BlockStack gap="200">
-                    <TextField
-                      label="Contraseña"
-                      value={password}
-                      onChange={setPassword}
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      disabled={isLoading}
-                      placeholder=""
-                      suffix={
-                        <div
-                          onClick={() => setShowPassword((v) => !v)}
-                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 4px' }}
-                          aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                        >
-                          <Icon source={showPassword ? HideIcon : ViewIcon} tone="subdued" />
-                        </div>
-                      }
-                    />
-                    <InlineStack align="end">
-                      <Link
-                        href="/auth/forgot-password"
-                        style={{
-                          fontSize: '13px',
-                          color: '#0518d2',
-                          textDecoration: 'none',
-                          fontWeight: '500',
-                        }}
-                      >
-                        ¿Olvidaste tu contraseña?
-                      </Link>
-                    </InlineStack>
-                  </BlockStack>
-
-                  <Box paddingBlockStart="300">
-                    <Button
-                      variant="primary"
-                      submit
-                      fullWidth
-                      loading={isLoading}
-                      disabled={isMicrosoftLoading}
-                      size="large"
-                    >
-                      Iniciar Sesión
-                    </Button>
-                  </Box>
-                </FormLayout>
-              </form>
-
-              <Box>
-                <BlockStack gap="300">
-                  <div style={{ textAlign: 'center' }}>
-                    <Text as="p" variant="bodyMd" tone="subdued">
-                      — o —
+                  )}
+                </div>
+                <div className="space-y-1 text-center">
+                  <Text variant="secondary" size="xs" as="p" DANGEROUS_className="text-center">
+                    ¿No puedes escanear? Usa esta clave manual:
+                  </Text>
+                  <div className="rounded-md bg-kumo-recessed px-3 py-2">
+                    <Text variant="mono" as="p" DANGEROUS_className="text-center break-all text-sm">
+                      {totpSetup.secretCode}
                     </Text>
                   </div>
-                  <Button
-                    onClick={handleMicrosoftLogin}
-                    fullWidth
-                    loading={isMicrosoftLoading}
-                    disabled={isLoading}
-                    size="large"
-                  >
-                    Iniciar sesión con Microsoft
-                  </Button>
-                </BlockStack>
-              </Box>
-
-              <Box paddingBlockStart="300" borderBlockStartWidth="025" borderColor="border">
-                <div style={{ textAlign: 'center' }}>
-                  <Text as="p" variant="bodyMd" tone="subdued">
-                    ¿No tienes una cuenta?{' '}
-                    <Link
-                      href="/auth/register"
-                      style={{
-                        color: '#0518d2',
-                        fontWeight: '600',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      Contacta a TI para ayuda
-                    </Link>
-                  </Text>
                 </div>
-              </Box>
-            </>
-          )}
-        </BlockStack>
-      </Card>
-    </Box>
+              </div>
+            )}
+            <Input
+              label={totpSetup ? 'Código de tu app autenticadora' : 'Código de verificación'}
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              disabled={isLoading}
+              placeholder="123456"
+              maxLength={8}
+              autoFocus
+            />
+            <Button variant="primary" type="submit" className="w-full justify-center" loading={isLoading}>
+              Verificar
+            </Button>
+          </form>
+        </>
+      ) : requiresNewPassword ? (
+        <>
+          {/* ── New Password Title ── */}
+          <div className="space-y-1">
+            <Text variant="heading2" as="h1">
+              Establece tu contraseña
+            </Text>
+            <Text variant="secondary" size="sm">
+              Crea una contraseña segura para tu cuenta.
+            </Text>
+          </div>
+
+          <form onSubmit={handleNewPassword} className="space-y-4">
+            <SensitiveInput
+              label="Nueva contraseña"
+              value={newPassword}
+              onValueChange={setNewPassword}
+              autoComplete="new-password"
+              disabled={isLoading}
+            />
+            <PasswordStrengthMeter password={newPassword} />
+            <SensitiveInput
+              label="Confirmar contraseña"
+              value={confirmNewPassword}
+              onValueChange={setConfirmNewPassword}
+              autoComplete="new-password"
+              disabled={isLoading}
+            />
+            <Button variant="primary" type="submit" className="w-full justify-center" loading={isLoading}>
+              Guardar contraseña
+            </Button>
+          </form>
+        </>
+      ) : (
+        <>
+          {/* ── Login Title ── */}
+          <div className="space-y-0.5">
+            <Text variant="heading2" as="h1">
+              Iniciar sesión
+            </Text>
+            <Text variant="secondary" size="sm">
+              Ingresa tus credenciales para acceder a Kiosko.
+            </Text>
+          </div>
+
+          {/* ── SSO ── */}
+          <div className="space-y-2">
+            <Button variant="secondary" className="w-full justify-center" disabled onClick={handleMicrosoftLogin} icon={
+              <svg width="16" height="16" viewBox="0 0 21 21" fill="none">
+                <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+                <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+              </svg>
+            }>
+              Microsoft SSO
+            </Button>
+            <Button variant="secondary" className="w-full justify-center" disabled icon={
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src="/icon/aws.svg" alt="" className="h-3.5 w-6 object-contain" />
+            }>
+              AWS SSO
+            </Button>
+          </div>
+
+          {/* ── Divider ── */}
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-kumo-hairline" />
+            <Text variant="secondary" size="sm" as="span">o</Text>
+            <div className="h-px flex-1 bg-kumo-hairline" />
+          </div>
+
+          {/* ── Credentials ── */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              label="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              autoComplete="email"
+              disabled={isLoading}
+              placeholder="tu@empresa.com"
+              autoFocus
+            />
+            <SensitiveInput
+              label="Contraseña"
+              value={password}
+              onValueChange={setPassword}
+              autoComplete="current-password"
+              disabled={isLoading}
+            />
+            <div className="flex justify-end">
+              <Link href="/auth/forgot-password" variant="plain" render={<NextLink href="/auth/forgot-password" />}>
+                <Text variant="secondary" size="xs">¿Olvidaste tu contraseña?</Text>
+              </Link>
+            </div>
+            <Button variant="primary" type="submit" className="w-full justify-center" loading={isLoading} disabled={isMicrosoftLoading}>
+              Iniciar sesión
+            </Button>
+          </form>
+
+          {/* ── Register link ── */}
+          <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
+            ¿No tienes cuenta?{' '}
+            <Link href="/auth/register" variant="inline" render={<NextLink href="/auth/register" />}>
+              Contacta a TI
+            </Link>
+          </Text>
+        </>
+      )}
+    </div>
   );
 }

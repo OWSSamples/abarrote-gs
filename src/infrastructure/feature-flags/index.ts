@@ -82,6 +82,9 @@ const CACHE_TTL_MS = 30_000; // 30 seconds
 let _allFlagsLastFetchAt = 0;
 const _ALL_FLAGS_TTL_MS = 60_000; // 1 minute
 
+// Dedup in-flight fetches to prevent cache stampede
+const pendingFetches = new Map<string, Promise<FeatureFlag | null>>();
+
 /**
  * Invalidate a specific flag from cache
  */
@@ -102,7 +105,9 @@ export function invalidateAllFlagsCache(): void {
 // ══════════════════════════════════════════════════════════════
 
 /**
- * Fetch a single flag from cache or database
+ * Fetch a single flag from cache or database.
+ * Uses Promise-based deduplication to prevent cache stampede when
+ * multiple concurrent requests expire the cache simultaneously.
  */
 async function getFlag(flagId: string): Promise<FeatureFlag | null> {
   // Check cache first
@@ -111,39 +116,54 @@ async function getFlag(flagId: string): Promise<FeatureFlag | null> {
     return cached.flag;
   }
 
-  // Fetch from DB
-  try {
-    const rows = await db.select().from(featureFlags).where(eq(featureFlags.id, flagId)).limit(1);
-
-    if (rows.length === 0) return null;
-
-    const row = rows[0];
-    const flag: FeatureFlag = {
-      id: row.id,
-      description: row.description,
-      enabled: row.enabled,
-      rolloutPercentage: row.rolloutPercentage,
-      targetUserIds: row.targetUserIds ?? [],
-      targetRoleIds: row.targetRoleIds ?? [],
-      activateAt: row.activateAt,
-      deactivateAt: row.deactivateAt,
-      createdBy: row.createdBy,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
-
-    // Update cache
-    FLAG_CACHE.set(flagId, { flag, expiresAt: Date.now() + CACHE_TTL_MS });
-
-    return flag;
-  } catch (err) {
-    logger.error('Failed to fetch feature flag', {
-      action: 'feature_flag_fetch_error',
-      flagId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
+  // Deduplicate: if another request is already fetching this flag, reuse its Promise
+  const pending = pendingFetches.get(flagId);
+  if (pending) {
+    return pending;
   }
+
+  // Fetch from DB
+  const fetchPromise = (async (): Promise<FeatureFlag | null> => {
+    try {
+      const rows = await db.select().from(featureFlags).where(eq(featureFlags.id, flagId)).limit(1);
+
+      if (rows.length === 0) return null;
+
+      const row = rows[0];
+      const flag: FeatureFlag = {
+        id: row.id,
+        description: row.description,
+        enabled: row.enabled,
+        rolloutPercentage: row.rolloutPercentage,
+        targetUserIds: row.targetUserIds ?? [],
+        targetRoleIds: row.targetRoleIds ?? [],
+        activateAt: row.activateAt,
+        deactivateAt: row.deactivateAt,
+        createdBy: row.createdBy,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+
+      // Update cache
+      FLAG_CACHE.set(flagId, { flag, expiresAt: Date.now() + CACHE_TTL_MS });
+
+      return flag;
+    } catch (err) {
+      logger.error('Failed to fetch feature flag', {
+        action: 'feature_flag_fetch_error',
+        flagId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Return stale cache entry if available (stale-while-error)
+      const stale = FLAG_CACHE.get(flagId);
+      return stale?.flag ?? null;
+    } finally {
+      pendingFetches.delete(flagId);
+    }
+  })();
+
+  pendingFetches.set(flagId, fetchPromise);
+  return fetchPromise;
 }
 
 /**

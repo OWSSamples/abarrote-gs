@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { Page, Badge } from '@shopify/polaris';
+import { Badge } from '@shopify/polaris';
+import { PageShell } from '@/components/patterns';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { AllProductsTable } from '@/components/inventory/AllProductsTable';
 import { RegisterProductModal } from '@/components/modals/RegisterProductModal';
@@ -50,8 +51,7 @@ export default function ProductsPage() {
 
   return (
     <>
-      <Page
-        fullWidth
+      <PageShell
         backAction={{ content: 'Dashboard', url: '/dashboard' }}
         title="Productos"
         titleMetadata={<Badge tone="info">{`${products.length}`}</Badge>}
@@ -86,7 +86,7 @@ export default function ProductsPage() {
           onImportClose={() => setImportOpen(false)}
           onImportSuccess={fetchDashboardData}
         />
-      </Page>
+      </PageShell>
 
       <RegisterProductModal open={registerProductOpen} onClose={() => setRegisterProductOpen(false)} />
 

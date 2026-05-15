@@ -63,7 +63,7 @@ async function getStripeClient(): Promise<Stripe> {
     throw new Error('Stripe no configurado. Agrega tu Secret Key en Configuración → Pagos.');
   }
 
-  return new Stripe(secretKey, { apiVersion: '2026-03-25.dahlia' });
+  return new Stripe(secretKey, { apiVersion: '2026-04-22.dahlia' });
 }
 
 // ── SPEI (mx_bank_transfer) ──
@@ -280,7 +280,7 @@ export async function connectStripe(params: {
 
   // Validate key by making a test request
   try {
-    const stripe = new Stripe(secretKey, { apiVersion: '2026-03-25.dahlia' });
+    const stripe = new Stripe(secretKey, { apiVersion: '2026-04-22.dahlia' });
     await stripe.balance.retrieve();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error desconocido';

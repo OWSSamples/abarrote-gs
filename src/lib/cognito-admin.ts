@@ -13,6 +13,7 @@ import {
   AdminListGroupsForUserCommand,
   AdminAddUserToGroupCommand,
   AdminRemoveUserFromGroupCommand,
+  AdminSetUserMFAPreferenceCommand,
   ListUsersCommand,
   ListGroupsCommand,
   type AdminCreateUserCommandOutput,
@@ -41,6 +42,7 @@ export interface CognitoDecodedToken {
   email_verified: boolean;
   iss: string;
   'custom:display_name'?: string;
+  name?: string;
 }
 
 /**
@@ -82,7 +84,7 @@ export async function createCognitoUser(params: {
       UserAttributes: [
         { Name: 'email', Value: params.email },
         { Name: 'email_verified', Value: 'true' },
-        { Name: 'custom:display_name', Value: params.displayName },
+        { Name: 'name', Value: params.displayName },
       ],
       MessageAction: 'SUPPRESS', // Don't send welcome email — the app handles onboarding
     }),
@@ -124,7 +126,7 @@ function toCognitoUserSummary(u: UserType): CognitoUserSummary {
     username: u.Username ?? '',
     email: find('email'),
     emailVerified: find('email_verified') === 'true',
-    displayName: find('custom:display_name') || find('name') || '',
+    displayName: find('name') || find('custom:display_name') || '',
     status: u.UserStatus ?? 'UNKNOWN',
     enabled: u.Enabled ?? false,
     createdAt: u.UserCreateDate?.toISOString() ?? '',
@@ -200,12 +202,12 @@ export async function getCognitoUser(usernameOrSub: string): Promise<CognitoUser
     username: result.Username ?? '',
     email: find('email'),
     emailVerified: find('email_verified') === 'true',
-    displayName: find('custom:display_name') || find('name') || '',
+    displayName: find('name') || find('custom:display_name') || '',
     status: result.UserStatus ?? 'UNKNOWN',
     enabled: result.Enabled ?? false,
     createdAt: result.UserCreateDate?.toISOString() ?? '',
     updatedAt: result.UserLastModifiedDate?.toISOString() ?? '',
-    mfaEnabled: (result.MFAOptions?.length ?? 0) > 0,
+    mfaEnabled: (result.UserMFASettingList?.length ?? 0) > 0 || (result.MFAOptions?.length ?? 0) > 0,
     phoneNumber: find('phone_number') || undefined,
     phoneVerified: find('phone_number_verified') === 'true' ? true : undefined,
   };
@@ -301,7 +303,7 @@ export async function updateCognitoUserAttributes(
   if (attrs.emailVerified !== undefined)
     userAttributes.push({ Name: 'email_verified', Value: String(attrs.emailVerified) });
   if (attrs.displayName !== undefined)
-    userAttributes.push({ Name: 'custom:display_name', Value: attrs.displayName });
+    userAttributes.push({ Name: 'name', Value: attrs.displayName });
   if (attrs.phoneNumber !== undefined)
     userAttributes.push({ Name: 'phone_number', Value: attrs.phoneNumber });
   if (attrs.phoneVerified !== undefined)
@@ -432,5 +434,26 @@ export async function bulkGlobalSignOut(usernames: string[]): Promise<BulkOperat
     }
   }
   return result;
+}
+
+// ══════════════════════════════════════════════════════════════
+// MFA MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+/** Enable or disable TOTP MFA for a Cognito user (admin operation). */
+export async function adminSetUserMfaPreference(
+  username: string,
+  enabled: boolean,
+): Promise<void> {
+  await cognitoClient.send(
+    new AdminSetUserMFAPreferenceCommand({
+      UserPoolId: userPoolId,
+      Username: username,
+      SoftwareTokenMfaSettings: {
+        Enabled: enabled,
+        PreferredMfa: enabled,
+      },
+    }),
+  );
 }
 

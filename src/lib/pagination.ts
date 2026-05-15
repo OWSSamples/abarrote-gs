@@ -87,7 +87,7 @@ export function encodeCursor(data: CursorData): string {
 
 /**
  * Decode cursor string back to data object.
- * Returns null if invalid.
+ * Returns null if invalid or if the decoded JSON is not a plain object.
  */
 export function decodeCursor(cursor: string): CursorData | null {
   try {
@@ -98,7 +98,21 @@ export function decodeCursor(cursor: string): CursorData | null {
 
     const json = Buffer.from(base64, 'base64').toString('utf-8');
 
-    return JSON.parse(json);
+    const parsed: unknown = JSON.parse(json);
+
+    // Validate: must be a non-null plain object with string/number/null values
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const record = parsed as Record<string, unknown>;
+    for (const value of Object.values(record)) {
+      if (value !== null && typeof value !== 'string' && typeof value !== 'number') {
+        return null;
+      }
+    }
+
+    return record as CursorData;
   } catch {
     return null;
   }

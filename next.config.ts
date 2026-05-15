@@ -43,7 +43,12 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
-  transpilePackages: ['@shopify/polaris', '@shopify/polaris-icons'],
+  transpilePackages: [
+    '@shopify/polaris',
+    '@shopify/polaris-icons',
+    '@shopify/polaris-viz',
+    '@shopify/polaris-viz-core',
+  ],
   serverExternalPackages: [
     // Cognito Admin (Node-only)
     '@aws-sdk/client-cognito-identity-provider',

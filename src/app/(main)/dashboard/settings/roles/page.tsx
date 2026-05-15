@@ -8,7 +8,7 @@ export default function RolesPage() {
     <Page
       fullWidth
       title="Usuarios y Accesos"
-      subtitle="Gestiona tu equipo, roles personalizados y permisos del sistema"
+      subtitle="Administra usuarios de AWS Cognito, roles y permisos de acceso"
     >
       <RolesManager />
     </Page>

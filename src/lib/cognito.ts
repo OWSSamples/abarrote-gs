@@ -12,6 +12,10 @@ import {
   fetchAuthSession,
   fetchUserAttributes,
   signInWithRedirect,
+  setUpTOTP,
+  verifyTOTPSetup,
+  updateMFAPreference,
+  fetchMFAPreference,
 } from 'aws-amplify/auth';
 
 // ══════════════════════════════════════════════════════════════
@@ -67,6 +71,10 @@ export {
   fetchAuthSession,
   fetchUserAttributes,
   signInWithRedirect,
+  setUpTOTP,
+  verifyTOTPSetup,
+  updateMFAPreference,
+  fetchMFAPreference,
   region,
   userPoolId,
   userPoolClientId,

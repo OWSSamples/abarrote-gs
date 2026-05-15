@@ -837,34 +837,25 @@ export function RolesManager() {
   // ── TABS ──
   const tabs = [
     {
-      id: 'equipo',
-      content: `Equipo (${userRoles.length})`,
-      panelID: 'equipo-panel',
+      id: 'cognito',
+      content: 'Gestión de Usuarios',
+      panelID: 'cognito-panel',
     },
     {
       id: 'roles',
-      content: `Roles (${roleDefinitions.length})`,
+      content: `Roles y Permisos (${roleDefinitions.length})`,
       panelID: 'roles-panel',
-    },
-    {
-      id: 'cognito',
-      content: 'Cognito Pool',
-      panelID: 'cognito-panel',
     },
   ];
 
   return (
     <BlockStack gap="400">
-      {/* KPI Summary */}
-      {kpiSection}
-
-      {/* Tabs: Equipo | Roles | Cognito Pool */}
+      {/* Tabs */}
       <Card padding="0">
         <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
           <Box padding="400">
-            {selectedTab === 0 && usersContent}
+            {selectedTab === 0 && <CognitoUsersManager />}
             {selectedTab === 1 && rolesContent}
-            {selectedTab === 2 && <CognitoUsersManager />}
           </Box>
         </Tabs>
       </Card>

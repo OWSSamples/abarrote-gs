@@ -19,13 +19,14 @@ import {
   bulkDisableUsers,
   bulkEnableUsers,
   bulkGlobalSignOut,
+  adminSetUserMfaPreference,
   type CognitoUserSummary,
   type CognitoGroup,
   type BulkOperationResult,
 } from '@/lib/cognito-admin';
 import { db } from '@/db';
 import { userRoles, auditLogs } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { withLogging } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 
@@ -218,6 +219,28 @@ async function _globalSignOutAction(username: string): Promise<void> {
   const target = await getCognitoUser(username);
   await db.insert(auditLogs).values(audit(admin, 'cognito.user.global_signout', target.sub, { email: target.email }));
   logger.info('cognito.user.global_signout', { target: target.sub });
+}
+
+// ══════════════════════════════════════════════════════════════
+// MFA OPS
+// ══════════════════════════════════════════════════════════════
+
+async function _setUserMfaAction(username: string, enabled: boolean): Promise<void> {
+  const admin = await requirePermission('roles.manage');
+  try {
+    await adminSetUserMfaPreference(username, enabled);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('delivery config')) {
+      throw new Error(
+        'Este usuario aún no ha configurado su app autenticadora (TOTP). ' +
+        'El usuario debe iniciar sesión y configurar MFA desde su perfil antes de que el admin pueda activarlo.',
+      );
+    }
+    throw err;
+  }
+  const target = await getCognitoUser(username);
+  await db.insert(auditLogs).values(audit(admin, enabled ? 'cognito.user.mfa_enabled' : 'cognito.user.mfa_disabled', target.sub, { email: target.email }));
+  logger.info(enabled ? 'cognito.user.mfa_enabled' : 'cognito.user.mfa_disabled', { target: target.sub });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -447,6 +470,132 @@ async function _getCognitoPoolStatsAction(): Promise<CognitoPoolStats> {
 }
 
 // ══════════════════════════════════════════════════════════════
+// RECONCILIATION — Detect & purge orphaned DB users (no Cognito match)
+// ══════════════════════════════════════════════════════════════
+
+export interface OrphanedUser {
+  id: string;
+  cognitoSub: string;
+  email: string;
+  displayName: string;
+  status: string;
+  createdAt: Date | null;
+}
+
+export interface ReconciliationResult {
+  orphanedUsers: OrphanedUser[];
+  validUsers: number;
+  cognitoTotal: number;
+}
+
+/**
+ * Detects DB users whose `cognitoSub` does NOT exist in the Cognito User Pool.
+ * These are typically legacy Firebase users that were never migrated.
+ */
+async function _reconcileUsersAction(): Promise<ReconciliationResult> {
+  await requireOwner();
+
+  // Fetch all Cognito users (source of truth)
+  const cognitoUsers = await listAllCognitoUsers();
+  const cognitoSubs = new Set(cognitoUsers.map((u) => u.sub));
+
+  // Fetch all DB user records
+  const dbUsers = await db.select().from(userRoles);
+
+  const orphaned: OrphanedUser[] = [];
+  let validCount = 0;
+
+  for (const row of dbUsers) {
+    if (cognitoSubs.has(row.cognitoSub)) {
+      validCount++;
+    } else {
+      orphaned.push({
+        id: row.id,
+        cognitoSub: row.cognitoSub,
+        email: row.email,
+        displayName: row.displayName,
+        status: row.status,
+        createdAt: row.createdAt,
+      });
+    }
+  }
+
+  logger.info('cognito.reconcile', {
+    total: dbUsers.length,
+    valid: validCount,
+    orphaned: orphaned.length,
+    cognitoTotal: cognitoUsers.length,
+  });
+
+  return {
+    orphanedUsers: orphaned,
+    validUsers: validCount,
+    cognitoTotal: cognitoUsers.length,
+  };
+}
+
+/**
+ * Permanently removes orphaned DB user records that have no corresponding Cognito account.
+ * This is irreversible — only the owner can execute this.
+ * Creates an audit log for each purged record.
+ */
+async function _purgeOrphanedUsersAction(userIds: string[]): Promise<{ purged: number; failed: string[] }> {
+  const admin = await requireOwner();
+
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    throw new Error('Debes proporcionar al menos un ID de usuario a purgar.');
+  }
+
+  if (userIds.length > 50) {
+    throw new Error('Máximo 50 usuarios por operación de purga.');
+  }
+
+  // Verify these are actually orphaned (double-check against Cognito)
+  const cognitoUsers = await listAllCognitoUsers();
+  const cognitoSubs = new Set(cognitoUsers.map((u) => u.sub));
+
+  // Fetch all target users by ID
+  const targets = await db.select().from(userRoles).where(inArray(userRoles.id, userIds));
+
+  let purged = 0;
+  const failed: string[] = [];
+
+  for (const target of targets) {
+    // Safety: refuse to delete if the user DOES exist in Cognito
+    if (cognitoSubs.has(target.cognitoSub)) {
+      failed.push(target.id);
+      logger.warn('cognito.purge.refused', {
+        reason: 'user_exists_in_cognito',
+        userId: target.id,
+        email: target.email,
+      });
+      continue;
+    }
+
+    // Safety: refuse to delete the current admin's own record
+    if (target.cognitoSub === admin.uid) {
+      failed.push(target.id);
+      continue;
+    }
+
+    // Hard delete the orphaned record
+    await db.delete(userRoles).where(eq(userRoles.id, target.id));
+
+    // Audit log
+    await db.insert(auditLogs).values(audit(admin, 'cognito.orphan.purge', target.id, {
+      email: target.email,
+      cognitoSub: target.cognitoSub,
+      reason: 'legacy_firebase_no_cognito_account',
+    }));
+
+    purged++;
+  }
+
+  logger.info('cognito.purge.complete', { purged, failed: failed.length, total: userIds.length });
+  return { purged, failed };
+}
+
+// ══════════════════════════════════════════════════════════════
 // EXPORTS
 // ══════════════════════════════════════════════════════════════
 
@@ -468,3 +617,6 @@ export const bulkGlobalSignOutAction = withLogging('cognito.bulkSignOut', _bulkG
 export const importCognitoUsersAction = withLogging('cognito.importUsers', _importCognitoUsersAction);
 export const exportCognitoUsersCSV = withLogging('cognito.exportCSV', _exportCognitoUsersCSV);
 export const getCognitoPoolStatsAction = withLogging('cognito.poolStats', _getCognitoPoolStatsAction);
+export const reconcileUsersAction = withLogging('cognito.reconcile', _reconcileUsersAction);
+export const purgeOrphanedUsersAction = withLogging('cognito.purgeOrphans', _purgeOrphanedUsersAction);
+export const setUserMfaAction = withLogging('cognito.setMfa', _setUserMfaAction);

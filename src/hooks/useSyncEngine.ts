@@ -55,12 +55,16 @@ export function useSyncEngine(enabled: boolean = true) {
 
     const queue = new OfflineQueue();
     let pendingInterval: ReturnType<typeof setInterval> | null = null;
+    let aborted = false;
 
     engineRef.current = engine;
     queueRef.current = queue;
 
     // Initialize IDB queue, then start engine
     queue.init().then(() => {
+      // If component unmounted before init completed, don't start engine
+      if (aborted) return;
+
       engine.start(
         async (domain) => { await fetchRef.current(); },
         (status) => { setSyncStatus(status); },
@@ -98,6 +102,7 @@ export function useSyncEngine(enabled: boolean = true) {
     window.addEventListener('online', handleOnline);
 
     return () => {
+      aborted = true;
       window.removeEventListener('online', handleOnline);
       if (pendingInterval) clearInterval(pendingInterval);
       engine.stop();

@@ -453,44 +453,36 @@ export function CrearOrdenDeCompra({ onBack }: { onBack: () => void }) {
                         <td style={{ padding: '10px 12px', fontWeight: 600, color: '#303030' }}>{item.productName}</td>
                         <td style={{ padding: '10px 12px', color: '#6d7175' }}>{item.sku}</td>
                         <td style={{ padding: '6px 4px', textAlign: 'right' }}>
-                          <input
-                            type="number"
-                            value={item.precio}
-                            onChange={(e) =>
-                              updateLineItem(idx, 'precio', Math.max(0, parseFloat(e.target.value) || 0))
-                            }
-                            style={{
-                              width: '100px',
-                              padding: '6px 8px',
-                              border: '1px solid #d2d5d8',
-                              borderRadius: '8px',
-                              textAlign: 'right',
-                              fontSize: '13px',
-                              outline: 'none',
-                            }}
-                            min={0}
-                            step={0.01}
-                          />
+                          <div style={{ width: '100px' }}>
+                            <TextField
+                              label="Precio"
+                              labelHidden
+                              type="number"
+                              value={String(item.precio)}
+                              onChange={(val) =>
+                                updateLineItem(idx, 'precio', Math.max(0, parseFloat(val) || 0))
+                              }
+                              min={0}
+                              step={0.01}
+                              autoComplete="off"
+                            />
+                          </div>
                         </td>
                         <td style={{ padding: '6px 4px', textAlign: 'right' }}>
-                          <input
-                            type="number"
-                            value={item.cantidad}
-                            onChange={(e) =>
-                              updateLineItem(idx, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))
-                            }
-                            style={{
-                              width: '80px',
-                              padding: '6px 8px',
-                              border: '1px solid #d2d5d8',
-                              borderRadius: '8px',
-                              textAlign: 'right',
-                              fontSize: '13px',
-                              outline: 'none',
-                            }}
-                            min={1}
-                            step={1}
-                          />
+                          <div style={{ width: '80px' }}>
+                            <TextField
+                              label="Cantidad"
+                              labelHidden
+                              type="number"
+                              value={String(item.cantidad)}
+                              onChange={(val) =>
+                                updateLineItem(idx, 'cantidad', Math.max(1, parseInt(val) || 1))
+                              }
+                              min={1}
+                              step={1}
+                              autoComplete="off"
+                            />
+                          </div>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#303030' }}>
                           ${(item.precio * item.cantidad).toFixed(2)}

@@ -1,13 +1,13 @@
 'use server';
 
 import { requireOwner, requirePermission, requireAuth, validateId } from '@/lib/auth/guard';
-import { createCognitoUser, deleteCognitoUser } from '@/lib/cognito-admin';
+import { createCognitoUser, deleteCognitoUser, disableCognitoUser, enableCognitoUser } from '@/lib/cognito-admin';
 import { db } from '@/db';
 import { userRoles, roleDefinitions, auditLogs } from '@/db/schema';
 import { eq, isNotNull } from 'drizzle-orm';
 import type { UserRoleRecord, RoleDefinition, PermissionKey } from '@/types';
 import { DEFAULT_SYSTEM_ROLES } from '@/types';
-import { randomBytes, scryptSync, scrypt, timingSafeEqual } from 'crypto';
+import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import { checkRateLimit } from '@/infrastructure/redis';
 import { withLogging } from '@/lib/errors';
@@ -407,8 +407,11 @@ async function _createCognitoUserWithRole(
 
     return newRole;
   } catch (err) {
+    let cognitoRemoved = false;
+
     try {
-      await deleteCognitoUser(normalizedEmail);
+      await deleteCognitoUser(userRecord.uid);
+      cognitoRemoved = true;
     } catch (cleanupErr) {
       logger.error('Failed to rollback Cognito user after DB role assignment error', {
         action: 'createCognitoUserWithRole.rollback_failed',
@@ -416,7 +419,38 @@ async function _createCognitoUserWithRole(
         userId: userRecord.uid,
         error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
       });
+
+      try {
+        await disableCognitoUser(userRecord.uid);
+      } catch (disableErr) {
+        logger.error('Failed to disable Cognito user after rollback deletion failed', {
+          action: 'createCognitoUserWithRole.rollback_disable_failed',
+          email: normalizedEmail,
+          userId: userRecord.uid,
+          error: disableErr instanceof Error ? disableErr.message : String(disableErr),
+        });
+      }
     }
+
+    try {
+      if (cognitoRemoved) {
+        await db.delete(userRoles).where(eq(userRoles.cognitoSub, userRecord.uid));
+      } else {
+        const now = new Date();
+        await db
+          .update(userRoles)
+          .set({ status: 'baja', deactivatedAt: now, updatedAt: now })
+          .where(eq(userRoles.cognitoSub, userRecord.uid));
+      }
+    } catch (dbCleanupErr) {
+      logger.error('Failed to cleanup DB role after Cognito user creation rollback', {
+        action: 'createCognitoUserWithRole.rollback_db_cleanup_failed',
+        email: normalizedEmail,
+        userId: userRecord.uid,
+        error: dbCleanupErr instanceof Error ? dbCleanupErr.message : String(dbCleanupErr),
+      });
+    }
+
     throw err;
   }
 }
@@ -551,6 +585,8 @@ async function _deactivateUser(cognitoSub: string): Promise<void> {
   if (rows.length === 0) throw new Error('Usuario no encontrado');
   if (rows[0].status === 'baja') throw new Error('Este usuario ya está dado de baja');
 
+  await disableCognitoUser(cognitoSub);
+
   const now = new Date();
   await db
     .update(userRoles)
@@ -575,6 +611,8 @@ async function _reactivateUser(cognitoSub: string): Promise<void> {
   const rows = await db.select().from(userRoles).where(eq(userRoles.cognitoSub, cognitoSub));
   if (rows.length === 0) throw new Error('Usuario no encontrado');
   if (rows[0].status === 'activo') throw new Error('Este usuario ya está activo');
+
+  await enableCognitoUser(cognitoSub);
 
   const now = new Date();
   await db

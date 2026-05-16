@@ -439,7 +439,7 @@ export function RolesManager() {
     if (!selectedUser) return;
     setSaving(true);
     try {
-      await disableCognitoUserAction(selectedUser.email);
+      await disableCognitoUserAction(selectedUser.cognitoSub);
       await fetchRoles();
       showSuccess(
         `${selectedUser.displayName || selectedUser.email} fue bloqueado en AWS Cognito y marcado como baja en PostgreSQL. Su Global ID queda reservado permanentemente.`,
@@ -457,7 +457,7 @@ export function RolesManager() {
     async (record: UserRoleRecord) => {
       setSaving(true);
       try {
-        await enableCognitoUserAction(record.email);
+        await enableCognitoUserAction(record.cognitoSub);
         await fetchRoles();
         showSuccess(`${record.displayName || record.email} fue reactivado en AWS Cognito y PostgreSQL`);
       } catch (e: unknown) {

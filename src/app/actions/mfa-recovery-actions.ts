@@ -297,10 +297,15 @@ export async function verifyRecoveryCodeAction(
   try {
     await adminSetUserMfaPreference(match.cognitoSub, false);
   } catch (err) {
+    await db
+      .update(mfaRecoveryCodes)
+      .set({ usedAt: null, usedIp: null })
+      .where(eq(mfaRecoveryCodes.id, match.id));
+
     console.error('[mfa-recovery] failed to disable MFA in Cognito', err);
     return {
       ok: false,
-      error: 'Código aceptado pero no se pudo desactivar MFA. Contacta al administrador.',
+      error: 'No se pudo desactivar MFA en AWS. El código no fue consumido; intenta de nuevo o contacta al administrador.',
     };
   }
 

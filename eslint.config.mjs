@@ -6,7 +6,13 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    settings: {
+      react: {
+        version: '19.2.6',
+      },
+    },
     rules: {
+      'react/display-name': 'off',
       '@typescript-eslint/no-unused-vars': [
         'warn',
         {
@@ -25,6 +31,9 @@ const eslintConfig = defineConfig([
     'out/**',
     'build/**',
     'next-env.d.ts',
+    '.agents/**',
+    'playwright-report/**',
+    'test-results/**',
   ]),
 ]);
 

@@ -16,25 +16,92 @@ import {
   AdminSetUserMFAPreferenceCommand,
   ListUsersCommand,
   ListGroupsCommand,
+  type AdminGetUserCommandOutput,
   type AdminCreateUserCommandOutput,
   type ListUsersCommandOutput,
   type UserType,
   type GroupType,
 } from '@aws-sdk/client-cognito-identity-provider';
 
-const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!;
-const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
 const region = process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-1';
+const cognitoClient = new CognitoIdentityProviderClient({ region });
+
+let lazyCognitoVerifier: ReturnType<typeof CognitoJwtVerifier.create> | null = null;
+
+function getCognitoConfig(): { userPoolId: string; clientId: string } {
+  const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
+  const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+
+  if (!userPoolId || !clientId) {
+    throw new Error(
+      'AWS Cognito no está configurado. Verifica NEXT_PUBLIC_COGNITO_USER_POOL_ID y NEXT_PUBLIC_COGNITO_CLIENT_ID.',
+    );
+  }
+
+  return { userPoolId, clientId };
+}
+
+function getUserPoolId(): string {
+  return getCognitoConfig().userPoolId;
+}
+
+function getCognitoVerifier(): ReturnType<typeof CognitoJwtVerifier.create> {
+  if (!lazyCognitoVerifier) {
+    const { userPoolId, clientId } = getCognitoConfig();
+    lazyCognitoVerifier = CognitoJwtVerifier.create({
+      userPoolId,
+      tokenUse: 'id',
+      clientId,
+    });
+  }
+
+  return lazyCognitoVerifier;
+}
+
+function isUserNotFoundError(err: unknown): boolean {
+  const error = err as { name?: string; message?: string };
+  return error.name === 'UserNotFoundException' || Boolean(error.message?.includes('User does not exist'));
+}
+
+async function adminGetUserRaw(username: string): Promise<AdminGetUserCommandOutput> {
+  return cognitoClient.send(
+    new AdminGetUserCommand({
+      UserPoolId: getUserPoolId(),
+      Username: username,
+    }),
+  );
+}
+
+async function resolveUsernameFromSub(cognitoSub: string): Promise<string> {
+  const result = await cognitoClient.send(
+    new ListUsersCommand({
+      UserPoolId: getUserPoolId(),
+      Limit: 1,
+      Filter: `sub = "${cognitoSub.replace(/"/g, '\\"')}"`,
+    }),
+  );
+
+  const username = result.Users?.[0]?.Username;
+  if (!username) {
+    throw new Error('Usuario Cognito no encontrado para el sub proporcionado.');
+  }
+
+  return username;
+}
+
+async function resolveCognitoUsername(usernameOrSub: string): Promise<string> {
+  try {
+    const user = await adminGetUserRaw(usernameOrSub);
+    return user.Username ?? usernameOrSub;
+  } catch (err) {
+    if (!isUserNotFoundError(err)) throw err;
+    return resolveUsernameFromSub(usernameOrSub);
+  }
+}
 
 /**
  * Verifies Cognito ID tokens on the server side using aws-jwt-verify.
  */
-export const cognitoVerifier = CognitoJwtVerifier.create({
-  userPoolId,
-  tokenUse: 'id',
-  clientId,
-});
-
 export interface CognitoDecodedToken {
   sub: string;
   email: string;
@@ -50,15 +117,13 @@ export interface CognitoDecodedToken {
  * @throws if the token is invalid or expired.
  */
 export async function verifyIdToken(token: string): Promise<CognitoDecodedToken> {
-  const payload = await cognitoVerifier.verify(token);
+  const payload = await getCognitoVerifier().verify(token);
   return payload as unknown as CognitoDecodedToken;
 }
 
 // ══════════════════════════════════════════════════════════════
 // ADMIN CLIENT — server-side user management
 // ══════════════════════════════════════════════════════════════
-
-const cognitoClient = new CognitoIdentityProviderClient({ region });
 
 export interface CreateCognitoUserResult {
   uid: string;
@@ -78,7 +143,7 @@ export async function createCognitoUser(params: {
 
   const result: AdminCreateUserCommandOutput = await cognitoClient.send(
     new AdminCreateUserCommand({
-      UserPoolId: userPoolId,
+      UserPoolId: getUserPoolId(),
       Username: params.email,
       TemporaryPassword: tempPassword,
       UserAttributes: [
@@ -145,11 +210,10 @@ export async function listAllCognitoUsers(filter?: string): Promise<CognitoUserS
   const allUsers: CognitoUserSummary[] = [];
   let paginationToken: string | undefined = undefined;
 
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const response: ListUsersCommandOutput = await cognitoClient.send(
       new ListUsersCommand({
-        UserPoolId: userPoolId,
+        UserPoolId: getUserPoolId(),
         Limit: 60,
         PaginationToken: paginationToken,
         Filter: filter || undefined,
@@ -173,7 +237,7 @@ export async function listCognitoUsers(params?: {
 }): Promise<{ users: CognitoUserSummary[]; nextToken?: string; totalEstimate?: number }> {
   const result = await cognitoClient.send(
     new ListUsersCommand({
-      UserPoolId: userPoolId,
+      UserPoolId: getUserPoolId(),
       Limit: Math.min(params?.limit ?? 60, 60),
       PaginationToken: params?.paginationToken,
       Filter: params?.filter,
@@ -189,12 +253,13 @@ export async function listCognitoUsers(params?: {
  * Get a single Cognito user with full detail.
  */
 export async function getCognitoUser(usernameOrSub: string): Promise<CognitoUserSummary> {
-  const result = await cognitoClient.send(
-    new AdminGetUserCommand({
-      UserPoolId: userPoolId,
-      Username: usernameOrSub,
-    }),
-  );
+  let result: AdminGetUserCommandOutput;
+  try {
+    result = await adminGetUserRaw(usernameOrSub);
+  } catch (err) {
+    if (!isUserNotFoundError(err)) throw err;
+    result = await adminGetUserRaw(await resolveUsernameFromSub(usernameOrSub));
+  }
   const attrs = result.UserAttributes ?? [];
   const find = (n: string) => attrs.find((a) => a.Name === n)?.Value ?? '';
   return {
@@ -215,22 +280,25 @@ export async function getCognitoUser(usernameOrSub: string): Promise<CognitoUser
 
 /** Disables sign-in for a Cognito user (reversible). */
 export async function disableCognitoUser(username: string): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
-    new AdminDisableUserCommand({ UserPoolId: userPoolId, Username: username }),
+    new AdminDisableUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }),
   );
 }
 
 /** Re-enables a previously disabled Cognito user. */
 export async function enableCognitoUser(username: string): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
-    new AdminEnableUserCommand({ UserPoolId: userPoolId, Username: username }),
+    new AdminEnableUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }),
   );
 }
 
 /** Permanently deletes a Cognito user. Irreversible. */
 export async function deleteCognitoUser(username: string): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
-    new AdminDeleteUserCommand({ UserPoolId: userPoolId, Username: username }),
+    new AdminDeleteUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }),
   );
 }
 
@@ -243,8 +311,9 @@ export async function deleteCognitoUser(username: string): Promise<void> {
  * sessions across all devices. They'll need to re-authenticate everywhere.
  */
 export async function globalSignOutUser(username: string): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
-    new AdminUserGlobalSignOutCommand({ UserPoolId: userPoolId, Username: username }),
+    new AdminUserGlobalSignOutCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }),
   );
 }
 
@@ -257,8 +326,9 @@ export async function globalSignOutUser(username: string): Promise<void> {
  * code which the user enters to set a new password.
  */
 export async function adminResetUserPassword(username: string): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
-    new AdminResetUserPasswordCommand({ UserPoolId: userPoolId, Username: username }),
+    new AdminResetUserPasswordCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }),
   );
 }
 
@@ -271,10 +341,11 @@ export async function adminSetUserPassword(
   password: string,
   permanent = false,
 ): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
     new AdminSetUserPasswordCommand({
-      UserPoolId: userPoolId,
-      Username: username,
+      UserPoolId: getUserPoolId(),
+      Username: resolvedUsername,
       Password: password,
       Permanent: permanent,
     }),
@@ -310,10 +381,11 @@ export async function updateCognitoUserAttributes(
     userAttributes.push({ Name: 'phone_number_verified', Value: String(attrs.phoneVerified) });
   if (userAttributes.length === 0) return;
 
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
     new AdminUpdateUserAttributesCommand({
-      UserPoolId: userPoolId,
-      Username: username,
+      UserPoolId: getUserPoolId(),
+      Username: resolvedUsername,
       UserAttributes: userAttributes,
     }),
   );
@@ -346,17 +418,18 @@ function toGroupSummary(g: GroupType): CognitoGroup {
 /** Lists all groups in the User Pool. */
 export async function listCognitoGroups(): Promise<CognitoGroup[]> {
   const result = await cognitoClient.send(
-    new ListGroupsCommand({ UserPoolId: userPoolId, Limit: 60 }),
+    new ListGroupsCommand({ UserPoolId: getUserPoolId(), Limit: 60 }),
   );
   return (result.Groups ?? []).map(toGroupSummary);
 }
 
 /** Lists groups a specific user belongs to. */
 export async function listUserGroups(username: string): Promise<CognitoGroup[]> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   const result = await cognitoClient.send(
     new AdminListGroupsForUserCommand({
-      UserPoolId: userPoolId,
-      Username: username,
+      UserPoolId: getUserPoolId(),
+      Username: resolvedUsername,
       Limit: 60,
     }),
   );
@@ -365,10 +438,11 @@ export async function listUserGroups(username: string): Promise<CognitoGroup[]> 
 
 /** Adds a user to a Cognito group. */
 export async function addUserToGroup(username: string, groupName: string): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
     new AdminAddUserToGroupCommand({
-      UserPoolId: userPoolId,
-      Username: username,
+      UserPoolId: getUserPoolId(),
+      Username: resolvedUsername,
       GroupName: groupName,
     }),
   );
@@ -376,10 +450,11 @@ export async function addUserToGroup(username: string, groupName: string): Promi
 
 /** Removes a user from a Cognito group. */
 export async function removeUserFromGroup(username: string, groupName: string): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
     new AdminRemoveUserFromGroupCommand({
-      UserPoolId: userPoolId,
-      Username: username,
+      UserPoolId: getUserPoolId(),
+      Username: resolvedUsername,
       GroupName: groupName,
     }),
   );
@@ -445,10 +520,11 @@ export async function adminSetUserMfaPreference(
   username: string,
   enabled: boolean,
 ): Promise<void> {
+  const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
     new AdminSetUserMFAPreferenceCommand({
-      UserPoolId: userPoolId,
-      Username: username,
+      UserPoolId: getUserPoolId(),
+      Username: resolvedUsername,
       SoftwareTokenMfaSettings: {
         Enabled: enabled,
         PreferredMfa: enabled,

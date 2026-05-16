@@ -33,6 +33,7 @@ import { EditUserModal } from './modals/EditUserModal';
 import { DeactivateUserModal } from './modals/DeactivateUserModal';
 import { PermissionsDetailModal } from './modals/PermissionsDetailModal';
 import { CognitoUsersManager } from '@/components/admin/CognitoUsersManager';
+import { disableCognitoUserAction, enableCognitoUserAction } from '@/app/actions/cognito-admin-actions';
 
 // Color tones cycled for badges
 const BADGE_TONES: Array<'info' | 'success' | 'warning' | 'critical' | 'attention' | 'new'> = [
@@ -46,6 +47,58 @@ const BADGE_TONES: Array<'info' | 'success' | 'warning' | 'critical' | 'attentio
 
 function getBadgeTone(index: number) {
   return BADGE_TONES[index % BADGE_TONES.length];
+}
+
+const PIN_REGEX = /^\d{4,6}$/;
+
+function AccessGovernanceHeader({
+  users,
+  roles,
+  activeUsers,
+}: {
+  users: number;
+  roles: number;
+  activeUsers: number;
+}) {
+  return (
+    <Card>
+      <InlineStack align="space-between" blockAlign="center" gap="400" wrap>
+        <BlockStack gap="150">
+          <InlineStack gap="200" blockAlign="center" wrap>
+            <Badge tone="info">AWS Cognito</Badge>
+            <Badge tone="success">PostgreSQL</Badge>
+            <Badge>RBAC</Badge>
+          </InlineStack>
+          <Text as="h2" variant="headingLg" fontWeight="bold">
+            Centro profesional de usuarios y accesos
+          </Text>
+          <Text as="p" variant="bodyMd" tone="subdued">
+            Administra identidades en AWS, roles locales, PIN de autorización y auditoría operativa desde un solo flujo sincronizado.
+          </Text>
+        </BlockStack>
+        <InlineStack gap="300" wrap>
+          <Box padding="300" background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" minWidth="140px">
+            <BlockStack gap="050">
+              <Text as="p" variant="bodyXs" tone="subdued">Usuarios locales</Text>
+              <Text as="p" variant="headingMd" fontWeight="bold">{users}</Text>
+            </BlockStack>
+          </Box>
+          <Box padding="300" background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" minWidth="140px">
+            <BlockStack gap="050">
+              <Text as="p" variant="bodyXs" tone="subdued">Activos</Text>
+              <Text as="p" variant="headingMd" fontWeight="bold">{activeUsers}</Text>
+            </BlockStack>
+          </Box>
+          <Box padding="300" background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" minWidth="140px">
+            <BlockStack gap="050">
+              <Text as="p" variant="bodyXs" tone="subdued">Roles</Text>
+              <Text as="p" variant="headingMd" fontWeight="bold">{roles}</Text>
+            </BlockStack>
+          </Box>
+        </InlineStack>
+      </InlineStack>
+    </Card>
+  );
 }
 
 // Avatar component — shows real profile image when available, initials as fallback
@@ -128,8 +181,6 @@ export function RolesManager() {
   const _removeRole = useDashboardStore((s) => s.removeRole);
   const ensureOwnerRole = useDashboardStore((s) => s.ensureOwnerRole);
   const generateGlobalId = useDashboardStore((s) => s.generateGlobalId);
-  const deactivateUser = useDashboardStore((s) => s.deactivateUser);
-  const reactivateUser = useDashboardStore((s) => s.reactivateUser);
   const { showSuccess, showError } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -301,12 +352,24 @@ export function RolesManager() {
   // ---- User handlers ----
   const handleAddUser = useCallback(
     async (data: { email: string; displayName: string; password: string; roleId: string; pinCode: string }) => {
-      if (!data.email.trim() || !data.password.trim()) {
+      const email = data.email.trim().toLowerCase();
+      const password = data.password.trim();
+      const pinCode = data.pinCode.trim();
+
+      if (!email || !password) {
         showError('El correo y la contraseña son obligatorios');
         return;
       }
-      if (data.password.trim().length < 6) {
-        showError('La contraseña debe tener al menos 6 caracteres');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showError('Ingresa un correo electrónico válido');
+        return;
+      }
+      if (password.length < 8) {
+        showError('La contraseña debe tener al menos 8 caracteres');
+        return;
+      }
+      if (pinCode && !PIN_REGEX.test(pinCode)) {
+        showError('El PIN debe tener de 4 a 6 dígitos numéricos');
         return;
       }
       if (!user || !data.roleId) return;
@@ -314,17 +377,17 @@ export function RolesManager() {
       try {
         await createUserWithRole(
           {
-            email: data.email.trim(),
-            password: data.password.trim(),
+            email,
+            password,
             displayName: data.displayName.trim(),
             roleId: data.roleId,
-            pinCode: data.pinCode.trim() || undefined,
+            pinCode: pinCode || undefined,
           },
           user.userId,
         );
 
         const roleName = roleMap.get(data.roleId)?.name ?? '';
-        showSuccess(`Usuario creado y Rol ${roleName} asignado a ${data.email}`);
+        showSuccess(`Usuario creado en AWS y rol ${roleName} asignado a ${email}`);
         setAddOpen(false);
       } catch (error: unknown) {
         console.error(error);
@@ -344,11 +407,20 @@ export function RolesManager() {
   const handleEditUser = useCallback(
     async (data: { roleId: string; pinCode: string }) => {
       if (!selectedUser || !user) return;
+      const pinCode = data.pinCode.trim();
+      if (!data.roleId) {
+        showError('Selecciona un rol válido');
+        return;
+      }
+      if (pinCode && !PIN_REGEX.test(pinCode)) {
+        showError('El PIN debe tener de 4 a 6 dígitos numéricos');
+        return;
+      }
       setSaving(true);
       try {
         await updateRole(selectedUser.cognitoSub, data.roleId, user.userId);
-        if (data.pinCode.trim()) {
-          await updateUserPin(selectedUser.cognitoSub, data.pinCode.trim());
+        if (pinCode) {
+          await updateUserPin(selectedUser.cognitoSub, pinCode);
         }
         const roleName = roleMap.get(data.roleId)?.name ?? '';
         showSuccess(`Rol y accesos actualizados a ${roleName}`);
@@ -367,9 +439,10 @@ export function RolesManager() {
     if (!selectedUser) return;
     setSaving(true);
     try {
-      await deactivateUser(selectedUser.cognitoSub);
+      await disableCognitoUserAction(selectedUser.email);
+      await fetchRoles();
       showSuccess(
-        `${selectedUser.displayName || selectedUser.email} ha sido dado de baja. Su Global ID queda reservado permanentemente.`,
+        `${selectedUser.displayName || selectedUser.email} fue bloqueado en AWS Cognito y marcado como baja en PostgreSQL. Su Global ID queda reservado permanentemente.`,
       );
       setDeleteOpen(false);
       setSelectedUser(null);
@@ -378,7 +451,36 @@ export function RolesManager() {
     } finally {
       setSaving(false);
     }
-  }, [selectedUser, deactivateUser, showSuccess, showError]);
+  }, [selectedUser, fetchRoles, showSuccess, showError]);
+
+  const handleReactivateUser = useCallback(
+    async (record: UserRoleRecord) => {
+      setSaving(true);
+      try {
+        await enableCognitoUserAction(record.email);
+        await fetchRoles();
+        showSuccess(`${record.displayName || record.email} fue reactivado en AWS Cognito y PostgreSQL`);
+      } catch (e: unknown) {
+        showError(e instanceof Error ? e.message : 'Error al reactivar');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchRoles, showSuccess, showError],
+  );
+
+  const handleGenerateGlobalId = useCallback(
+    async (record: UserRoleRecord) => {
+      try {
+        const gid = await generateGlobalId(record.cognitoSub);
+        await fetchRoles();
+        showSuccess(`Global ID generado: ${gid}`);
+      } catch (e: unknown) {
+        showError(e instanceof Error ? e.message : 'Error al generar Global ID');
+      }
+    },
+    [fetchRoles, generateGlobalId, showSuccess, showError],
+  );
 
   const openEditUser = (record: UserRoleRecord) => {
     setSelectedUser(record);
@@ -569,14 +671,7 @@ export function RolesManager() {
                   <Button
                     size="micro"
                     variant="primary"
-                    onClick={async () => {
-                      try {
-                        const gid = await generateGlobalId(record.cognitoSub);
-                        showSuccess(`Global ID generado: ${gid}`);
-                      } catch (e: unknown) {
-                        showError(e instanceof Error ? e.message : 'Error al generar Global ID');
-                      }
-                    }}
+                    onClick={() => void handleGenerateGlobalId(record)}
                   >
                     Generar ID
                   </Button>
@@ -592,14 +687,8 @@ export function RolesManager() {
             {!isOwnerUser && !isSelf && isBaja && (
               <Button
                 size="micro"
-                onClick={async () => {
-                  try {
-                    await reactivateUser(record.cognitoSub);
-                    showSuccess(`${record.displayName || record.email} ha sido reactivado`);
-                  } catch (e: unknown) {
-                    showError(e instanceof Error ? e.message : 'Error al reactivar');
-                  }
-                }}
+                loading={saving}
+                onClick={() => void handleReactivateUser(record)}
               >
                 Reactivar
               </Button>
@@ -610,14 +699,7 @@ export function RolesManager() {
                   <Button
                     size="micro"
                     variant="primary"
-                    onClick={async () => {
-                      try {
-                        const gid = await generateGlobalId(record.cognitoSub);
-                        showSuccess(`Global ID generado: ${gid}`);
-                      } catch (e: unknown) {
-                        showError(e instanceof Error ? e.message : 'Error al generar Global ID');
-                      }
-                    }}
+                    onClick={() => void handleGenerateGlobalId(record)}
                   >
                     Generar ID
                   </Button>
@@ -838,24 +920,33 @@ export function RolesManager() {
   const tabs = [
     {
       id: 'cognito',
-      content: 'Gestión de Usuarios',
+      content: 'AWS Cognito + Directorio',
       panelID: 'cognito-panel',
     },
     {
+      id: 'local-access',
+      content: `Accesos locales (${userRoles.length})`,
+      panelID: 'local-access-panel',
+    },
+    {
       id: 'roles',
-      content: `Roles y Permisos (${roleDefinitions.length})`,
+      content: `Roles y permisos locales (${roleDefinitions.length})`,
       panelID: 'roles-panel',
     },
   ];
 
   return (
     <BlockStack gap="400">
+      <AccessGovernanceHeader users={stats.total} roles={stats.roles} activeUsers={stats.active} />
+      {kpiSection}
+
       {/* Tabs */}
       <Card padding="0">
         <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
           <Box padding="400">
             {selectedTab === 0 && <CognitoUsersManager />}
-            {selectedTab === 1 && rolesContent}
+            {selectedTab === 1 && usersContent}
+            {selectedTab === 2 && rolesContent}
           </Box>
         </Tabs>
       </Card>

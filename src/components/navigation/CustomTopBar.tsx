@@ -2,7 +2,7 @@
 
 import './CustomTopBar.css';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Icon, Popover, Tooltip } from '@shopify/polaris';
+import { Icon, Tooltip } from '@shopify/polaris';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
 import {
   MenuIcon,
@@ -13,10 +13,6 @@ import {
   SettingsIcon,
   HomeIcon,
   InventoryIcon,
-  CalendarIcon,
-  CartIcon,
-  AlertCircleIcon,
-  XCircleIcon,
   SidekickIcon,
 } from '@shopify/polaris-icons';
 import Image from 'next/image';
@@ -63,19 +59,11 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const products = useDashboardStore((s) => s.products);
-  const inventoryAlerts = useDashboardStore((s) => s.inventoryAlerts);
   const _shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
-
-  const TelegramIcon = (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style={{ display: 'block' }}>
-      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.14-.257.257-.527.257l.215-3.048 5.548-5.013c.24-.213-.054-.334-.373-.121l-6.86 4.316-2.955-.924c-.642-.2-.654-.642.133-.949l11.55-4.45c.535-.194 1.003.125.768.96z" />
-    </svg>
-  );
 
   const filteredProducts = useMemo(() => {
     if (!query.trim() || query.length < 2) return [];
@@ -115,7 +103,6 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
       if (e.key === 'Escape') {
         inputRef.current?.blur();
         setIsFocused(false);
-        setIsNotificationsOpen(false);
       }
       // Open help with ? key (only when not typing in an input)
       if (e.key === '?' && !isFocused && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
@@ -149,50 +136,6 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
       });
     }
   }, [openLiveChat]);
-
-  const formatNotificationTime = useCallback((createdAt: string) => {
-    const date = new Date(createdAt);
-    if (Number.isNaN(date.getTime())) return '';
-    const now = Date.now();
-    const diff = Math.floor((now - date.getTime()) / 60000);
-    if (diff < 1) return 'ahora';
-    if (diff < 60) return `hace ${diff}m`;
-    if (diff < 1440) return `hace ${Math.floor(diff / 60)}h`;
-    return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
-  }, []);
-
-  const alertTypeLabel: Record<string, string> = {
-    low_stock: 'Stock bajo',
-    expiration: 'Por vencer',
-    expired: 'Vencido',
-    merma: 'Merma',
-  };
-
-  const alertIcon: Record<string, typeof InventoryIcon> = {
-    low_stock: InventoryIcon,
-    expiration: CalendarIcon,
-    expired: XCircleIcon,
-    merma: CartIcon,
-  };
-
-  const alertSeverityStyle: Record<string, { dot: string; bg: string; border: string }> = {
-    critical: { dot: '#ff4d4d', bg: 'rgba(255,77,77,0.08)', border: 'rgba(255,77,77,0.15)' },
-    warning: { dot: '#f5a623', bg: 'rgba(245,166,35,0.08)', border: 'rgba(245,166,35,0.15)' },
-    info: { dot: '#4a9eff', bg: 'rgba(74,158,255,0.08)', border: 'rgba(74,158,255,0.15)' },
-  };
-
-  const criticalCount = inventoryAlerts.filter((a) => a.severity === 'critical').length;
-  const warningCount = inventoryAlerts.filter((a) => a.severity === 'warning').length;
-
-  const buildAlertDescription = useCallback((alert: (typeof inventoryAlerts)[number]) => {
-    if (alert.alertType === 'low_stock') {
-      return `Stock: ${alert.product.currentStock} / Mínimo: ${alert.product.minStock}`;
-    }
-    if ((alert.alertType === 'expiration' || alert.alertType === 'expired') && alert.product.expirationDate) {
-      return `Caduca: ${new Date(alert.product.expirationDate).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}`;
-    }
-    return alert.message;
-  }, []);
 
   const handleSelect = useCallback(
     (type: 'product' | 'action', index: number) => {
@@ -372,103 +315,6 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
             <Icon source={SidekickIcon} tone="inherit" />
           </button>
         </Tooltip>
-
-        <div className="ctb-sep-v" />
-
-        <Popover
-          active={isNotificationsOpen}
-          onClose={() => setIsNotificationsOpen(false)}
-          preferredAlignment="right"
-          preferredPosition="below"
-          activator={
-            <Tooltip
-              content={`Alertas vía Telegram${inventoryAlerts.length > 0 ? ` (${inventoryAlerts.length})` : ''}`}
-              dismissOnMouseOut
-            >
-              <button
-                className={`ctb-icon-btn${isNotificationsOpen ? ' active' : ''}`}
-                onClick={() => setIsNotificationsOpen((p) => !p)}
-                aria-label="Alertas de Telegram"
-              >
-                <div style={{ color: 'inherit' }}>{TelegramIcon}</div>
-                {criticalCount > 0 && <span className="ctb-badge">{criticalCount > 9 ? '9+' : criticalCount}</span>}
-                {criticalCount === 0 && warningCount > 0 && (
-                  <span className="ctb-badge warn">{warningCount > 9 ? '9+' : warningCount}</span>
-                )}
-              </button>
-            </Tooltip>
-          }
-        >
-          <div className="ctb-notif-panel">
-            <div className="ctb-notif-header">
-              <span className="ctb-notif-title">Alertas de inventario</span>
-              <div className="ctb-notif-counters">
-                {criticalCount > 0 && (
-                  <span className="ctb-notif-count critical">
-                    <span className="ctb-notif-dot" style={{ background: '#f87171' }} />
-                    {criticalCount} crítica{criticalCount !== 1 ? 's' : ''}
-                  </span>
-                )}
-                {warningCount > 0 && (
-                  <span className="ctb-notif-count warning">
-                    <span className="ctb-notif-dot" style={{ background: '#fbbf24' }} />
-                    {warningCount} advertencia{warningCount !== 1 ? 's' : ''}
-                  </span>
-                )}
-                {inventoryAlerts.length === 0 && <span className="ctb-notif-count neutral">Sin alertas</span>}
-              </div>
-            </div>
-
-            <div className="ctb-notif-list">
-              {inventoryAlerts.length === 0 ? (
-                <div className="ctb-notif-empty">
-                  <div style={{ marginBottom: '8px', color: '#52525b', display: 'flex', justifyContent: 'center' }}>
-                    {TelegramIcon}
-                  </div>
-                  Todo en orden. No hay alertas activas en Telegram.
-                </div>
-              ) : (
-                inventoryAlerts.map((alert) => {
-                  const sev = alertSeverityStyle[alert.severity] ?? alertSeverityStyle.info;
-                  const AIcon = alertIcon[alert.alertType] ?? AlertCircleIcon;
-                  return (
-                    <div
-                      key={alert.id}
-                      className="ctb-notif-item"
-                      onClick={() => {
-                        setIsNotificationsOpen(false);
-                        onProductClick?.(alert.product);
-                      }}
-                    >
-                      <div
-                        className="ctb-notif-icon-wrap"
-                        style={{ background: sev.bg, border: `1px solid ${sev.border}` }}
-                      >
-                        <div style={{ color: sev.dot, display: 'flex' }}>
-                          <Icon source={AIcon} tone="inherit" />
-                        </div>
-                      </div>
-                      <div className="ctb-notif-body">
-                        <div className="ctb-notif-type" style={{ color: sev.dot }}>
-                          {alertTypeLabel[alert.alertType] ?? alert.alertType}
-                        </div>
-                        <div className="ctb-notif-name">{alert.product.name}</div>
-                        <div className="ctb-notif-desc">{buildAlertDescription(alert)}</div>
-                      </div>
-                      <div className="ctb-notif-time">{formatNotificationTime(alert.createdAt)}</div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {inventoryAlerts.length > 0 && (
-              <div className="ctb-notif-footer">
-                {inventoryAlerts.length} alerta{inventoryAlerts.length !== 1 ? 's' : ''} en total
-              </div>
-            )}
-          </div>
-        </Popover>
 
         <div className="ctb-sep-v" />
 

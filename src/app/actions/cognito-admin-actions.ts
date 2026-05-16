@@ -25,7 +25,7 @@ import {
   type BulkOperationResult,
 } from '@/lib/cognito-admin';
 import { db } from '@/db';
-import { userRoles, auditLogs } from '@/db/schema';
+import { userRoles, auditLogs, roleDefinitions } from '@/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { withLogging } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -89,23 +89,23 @@ async function _listCognitoUsersAction(params?: {
 }): Promise<CognitoUsersListResult> {
   await requirePermission('roles.manage');
 
-  const cognitoUsers = params?.loadAll
-    ? await listAllCognitoUsers(params?.filter)
-    : (await listCognitoUsers(params)).users;
-
-  const nextToken = params?.loadAll
-    ? undefined
-    : (await listCognitoUsers(params)).nextToken;
+  const usersResult = params?.loadAll
+    ? { users: await listAllCognitoUsers(params?.filter), nextToken: undefined }
+    : await listCognitoUsers(params);
+  const cognitoUsers = usersResult.users;
+  const nextToken = usersResult.nextToken;
 
   // Enrich with DB roles
   const dbData = await db
     .select({
       cognitoSub: userRoles.cognitoSub,
       roleId: userRoles.roleId,
+      roleName: roleDefinitions.name,
       status: userRoles.status,
       displayName: userRoles.displayName,
     })
-    .from(userRoles);
+    .from(userRoles)
+    .leftJoin(roleDefinitions, eq(userRoles.roleId, roleDefinitions.id));
   const dbMap = new Map(dbData.map((r) => [r.cognitoSub, r]));
 
   // Get groups for each user (batch)
@@ -123,6 +123,7 @@ async function _listCognitoUsersAction(params?: {
         ...u,
         hasDbRole: !!dbRow,
         dbRoleId: dbRow?.roleId,
+        dbRoleName: dbRow?.roleName ?? undefined,
         dbStatus: dbRow?.status,
         groups,
       };
@@ -140,8 +141,9 @@ async function _getCognitoUserDetailAction(usernameOrSub: string): Promise<Cogni
   await requirePermission('roles.manage');
   const user = await getCognitoUser(usernameOrSub);
   const dbRow = await db
-    .select({ roleId: userRoles.roleId, status: userRoles.status })
+    .select({ roleId: userRoles.roleId, roleName: roleDefinitions.name, status: userRoles.status })
     .from(userRoles)
+    .leftJoin(roleDefinitions, eq(userRoles.roleId, roleDefinitions.id))
     .where(eq(userRoles.cognitoSub, user.sub))
     .limit(1);
 
@@ -157,6 +159,7 @@ async function _getCognitoUserDetailAction(usernameOrSub: string): Promise<Cogni
     ...user,
     hasDbRole: dbRow.length > 0,
     dbRoleId: dbRow[0]?.roleId,
+    dbRoleName: dbRow[0]?.roleName ?? undefined,
     dbStatus: dbRow[0]?.status,
     groups,
   };

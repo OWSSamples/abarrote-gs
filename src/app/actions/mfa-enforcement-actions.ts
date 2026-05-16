@@ -14,6 +14,8 @@ const MFA_GRACE_PERIOD_DAYS = 15;
 
 export interface MfaEnforcementStatus {
   mfaEnabled: boolean;
+  totpEnabled?: boolean;
+  emailFactorEnabled?: boolean;
   daysRemaining: number | null; // null if MFA enabled
   graceExpired: boolean;
   noticeStartDate: string | null;
@@ -66,21 +68,25 @@ export async function checkMfaEnforcementAction(): Promise<MfaEnforcementStatus>
   // Check MFA status directly from Cognito Admin API (reliable source of truth).
   // Token claims (amr, cognito:preferred_mfa_setting) are NOT included in
   // standard Cognito ID tokens without a pre-token-generation Lambda.
-  let mfaEnabled = false;
+  let totpEnabled = false;
+  let emailFactorEnabled = false;
   try {
     const cognitoUser = await getCognitoUser(uid);
-    mfaEnabled = cognitoUser.mfaEnabled;
+    totpEnabled = cognitoUser.mfaEnabled;
+    emailFactorEnabled = Boolean(cognitoUser.email && cognitoUser.emailVerified);
   } catch {
     // If we can't reach Cognito, assume MFA is enabled to avoid false enforcement
     return { mfaEnabled: true, daysRemaining: null, graceExpired: false, noticeStartDate: null };
   }
+
+  const mfaEnabled = totpEnabled || emailFactorEnabled;
 
   if (mfaEnabled) {
     // User has MFA — clear notice if it was set
     if (user.mfaNoticeAt) {
       await db.update(userRoles).set({ mfaNoticeAt: null }).where(eq(userRoles.id, user.id));
     }
-    return { mfaEnabled: true, daysRemaining: null, graceExpired: false, noticeStartDate: null };
+    return { mfaEnabled: true, totpEnabled, emailFactorEnabled, daysRemaining: null, graceExpired: false, noticeStartDate: null };
   }
 
   // User does NOT have MFA — enforce grace period
@@ -100,6 +106,8 @@ export async function checkMfaEnforcementAction(): Promise<MfaEnforcementStatus>
 
   return {
     mfaEnabled: false,
+    totpEnabled,
+    emailFactorEnabled,
     daysRemaining,
     graceExpired,
     noticeStartDate: noticeAt.toISOString(),

@@ -39,7 +39,6 @@ import {
   CheckCircleIcon,
   PersonIcon,
   ShieldCheckMarkIcon,
-  ShieldNoneIcon,
 } from '@shopify/polaris-icons';
 import {
   listCognitoUsersAction,
@@ -328,7 +327,7 @@ function ReconciliationCard({
               )}
             </InlineStack>
             <Text as="p" variant="bodyXs" tone="subdued">
-              Verifica que cada registro en la DB tenga una cuenta válida en Cognito
+              Verifica que cada registro en PostgreSQL tenga una identidad válida en AWS Cognito antes de purgar datos.
             </Text>
           </BlockStack>
           <Button
@@ -338,7 +337,7 @@ function ReconciliationCard({
             variant={reconciliation ? 'secondary' : 'primary'}
             size="slim"
           >
-            {reconciliation ? 'Re-analizar' : 'Verificar'}
+            {reconciliation ? 'Re-analizar AWS ↔ DB' : 'Verificar AWS ↔ DB'}
           </Button>
         </InlineStack>
 
@@ -385,6 +384,7 @@ function ReconciliationCard({
                 {
                   content: `Eliminar ${selectedOrphans.length} registro(s)`,
                   onAction: onPurge,
+                  disabled: selectedOrphans.length === 0,
                 },
               ]}
             >
@@ -432,6 +432,71 @@ function ReconciliationCard({
             </Text>
           </InlineStack>
         )}
+      </BlockStack>
+    </Card>
+  );
+}
+
+function IdentityFlowCard({
+  stats,
+  rolesCount,
+  healthScore,
+}: {
+  stats: CognitoPoolStats | null;
+  rolesCount: number;
+  healthScore: number;
+}) {
+  return (
+    <Card>
+      <BlockStack gap="400">
+        <InlineStack align="space-between" blockAlign="start" gap="400" wrap>
+          <BlockStack gap="100">
+            <InlineStack gap="200" blockAlign="center" wrap>
+              <Badge tone="info">Fuente de identidad: AWS Cognito</Badge>
+              <Badge tone="success">Accesos: PostgreSQL</Badge>
+              <Badge>Auditoría activa</Badge>
+            </InlineStack>
+            <Text as="h2" variant="headingMd" fontWeight="bold">
+              Flujo operativo de usuarios
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Crear o bloquear usuarios impacta Cognito y se refleja en la tabla local de roles. Los permisos, PIN y Global ID viven en PostgreSQL para el control del punto de venta.
+            </Text>
+          </BlockStack>
+          <Box minWidth="220px">
+            <BlockStack gap="100">
+              <InlineStack align="space-between">
+                <Text as="p" variant="bodyXs" tone="subdued">Salud de identidad</Text>
+                <Text as="p" variant="bodyXs" fontWeight="bold">{healthScore}%</Text>
+              </InlineStack>
+              <ProgressBar progress={healthScore} size="small" tone={healthScore >= 80 ? 'success' : healthScore >= 50 ? 'highlight' : 'critical'} />
+            </BlockStack>
+          </Box>
+        </InlineStack>
+
+        <InlineGrid columns={{ xs: 1, md: 3 }} gap="300">
+          <Box background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" padding="300">
+            <BlockStack gap="100">
+              <Text as="p" variant="bodyXs" tone="subdued">1 · Identidad</Text>
+              <Text as="p" variant="bodyMd" fontWeight="semibold">AWS Cognito User Pool</Text>
+              <Text as="p" variant="bodySm" tone="subdued">{stats ? `${stats.total} usuarios · ${stats.confirmed} confirmados` : 'Consultando AWS...'}</Text>
+            </BlockStack>
+          </Box>
+          <Box background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" padding="300">
+            <BlockStack gap="100">
+              <Text as="p" variant="bodyXs" tone="subdued">2 · Vinculación</Text>
+              <Text as="p" variant="bodyMd" fontWeight="semibold">Registro local de acceso</Text>
+              <Text as="p" variant="bodySm" tone="subdued">{stats ? `${stats.withDbRole} vinculados · ${stats.withoutDbRole} pendientes` : 'Esperando métricas...'}</Text>
+            </BlockStack>
+          </Box>
+          <Box background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" padding="300">
+            <BlockStack gap="100">
+              <Text as="p" variant="bodyXs" tone="subdued">3 · Autorización</Text>
+              <Text as="p" variant="bodyMd" fontWeight="semibold">Roles, grupos y PIN</Text>
+              <Text as="p" variant="bodySm" tone="subdued">{rolesCount} roles disponibles para operación y auditoría.</Text>
+            </BlockStack>
+          </Box>
+        </InlineGrid>
       </BlockStack>
     </Card>
   );
@@ -603,6 +668,7 @@ export function CognitoUsersManager() {
     try {
       const result = await reconcileUsersAction();
       setReconciliation(result);
+      setSelectedOrphans([]);
       if (result.orphanedUsers.length === 0) showToast('Base de datos sincronizada.');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error al reconciliar', true);
@@ -687,9 +753,14 @@ export function CognitoUsersManager() {
             </IndexTable.Cell>
             <IndexTable.Cell>
               {u.hasDbRole ? (
-                <Badge tone={u.dbStatus === 'baja' ? 'critical' : 'success'} size="small">
-                  {u.dbStatus === 'baja' ? 'Baja' : 'Vinculado'}
-                </Badge>
+                <BlockStack gap="050">
+                  <Badge tone={u.dbStatus === 'baja' ? 'critical' : 'success'} size="small">
+                    {u.dbStatus === 'baja' ? 'Baja local' : 'Vinculado'}
+                  </Badge>
+                  <Text as="span" variant="bodyXs" tone="subdued">
+                    {u.dbRoleName ?? 'Rol local asignado'}
+                  </Text>
+                </BlockStack>
               ) : (
                 <Badge tone="warning" size="small">Sin vincular</Badge>
               )}
@@ -720,16 +791,21 @@ export function CognitoUsersManager() {
                 <Tooltip content="Cerrar sesiones">
                   <Button size="micro" icon={PersonExitIcon} accessibilityLabel="Cerrar sesiones" loading={busyKey === `signout-${u.sub}`} onClick={() => runAction(`signout-${u.sub}`, () => globalSignOutAction(u.username), 'Sesiones cerradas.')} />
                 </Tooltip>
-                <Tooltip content={u.mfaEnabled ? 'Desactivar MFA' : 'Activar MFA (TOTP)'}>
-                  <Button
-                    size="micro"
-                    icon={u.mfaEnabled ? ShieldCheckMarkIcon : ShieldNoneIcon}
-                    accessibilityLabel={u.mfaEnabled ? 'Desactivar MFA' : 'Activar MFA'}
-                    tone={u.mfaEnabled ? undefined : 'critical'}
-                    loading={busyKey === `mfa-${u.sub}`}
-                    onClick={() => runAction(`mfa-${u.sub}`, () => setUserMfaAction(u.username, !u.mfaEnabled), u.mfaEnabled ? 'MFA desactivado.' : 'MFA activado.')}
-                  />
-                </Tooltip>
+                {u.mfaEnabled ? (
+                  <Tooltip content="Desactivar MFA TOTP para recuperación administrativa">
+                    <Button
+                      size="micro"
+                      icon={ShieldCheckMarkIcon}
+                      accessibilityLabel="Desactivar MFA"
+                      loading={busyKey === `mfa-${u.sub}`}
+                      onClick={() => runAction(`mfa-${u.sub}`, () => setUserMfaAction(u.username, false), 'MFA desactivado.')}
+                    />
+                  </Tooltip>
+                ) : (
+                  <Tooltip content="El usuario debe activar TOTP desde su perfil; el administrador no puede generar el secreto por él.">
+                    <Badge tone="attention" size="small">MFA pendiente</Badge>
+                  </Tooltip>
+                )}
                 {u.enabled ? (
                   <Tooltip content="Bloquear acceso">
                     <Button size="micro" icon={LockIcon} tone="critical" accessibilityLabel="Bloquear" loading={busyKey === `disable-${u.sub}`} onClick={() => runAction(`disable-${u.sub}`, () => disableCognitoUserAction(u.username), 'Acceso bloqueado.')} />
@@ -833,6 +909,8 @@ export function CognitoUsersManager() {
             )}
           </BlockStack>
         </Card>
+
+        <IdentityFlowCard stats={stats} rolesCount={roles.length} healthScore={healthScore} />
 
         {/* ── Reconciliation ── */}
         <ReconciliationCard

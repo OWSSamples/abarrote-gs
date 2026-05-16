@@ -614,6 +614,28 @@ export const userRoles = pgTable(
   (t) => [index('user_roles_cognito_sub_idx').on(t.cognitoSub), index('user_roles_role_id_idx').on(t.roleId)],
 );
 
+// ==================== MFA RECOVERY CODES ====================
+// One-time-use recovery codes generated when a user activates TOTP MFA.
+// We store ONLY the SHA-256 hash of each code (never the plaintext) and
+// mark them as used once consumed. Used codes can never be re-redeemed.
+export const mfaRecoveryCodes = pgTable(
+  'mfa_recovery_codes',
+  {
+    id: text('id').primaryKey(),
+    cognitoSub: text('cognito_sub').notNull(),
+    email: text('email').notNull(),
+    codeHash: text('code_hash').notNull(), // sha256 hex of normalized code
+    usedAt: timestamp('used_at'), // null = unused
+    usedIp: text('used_ip'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('mfa_recovery_codes_sub_idx').on(t.cognitoSub),
+    index('mfa_recovery_codes_email_idx').on(t.email),
+    index('mfa_recovery_codes_hash_idx').on(t.codeHash),
+  ],
+);
+
 // ==================== AUDIT LOGS ====================
 export const auditLogs = pgTable(
   'audit_logs',

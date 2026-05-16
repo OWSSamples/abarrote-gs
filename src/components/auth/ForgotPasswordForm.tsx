@@ -1,16 +1,23 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import NextLink from 'next/link';
+import { useState, useCallback, type ReactNode } from 'react';
 import { resetPassword } from '@/lib/cognito';
 import { logAuthEvent } from '@/lib/auth/auth-logger';
 import { checkAuthRateLimit } from '@/app/actions/auth-rate-limit';
-import { Button } from '@cloudflare/kumo/components/button';
-import { Input } from '@cloudflare/kumo/components/input';
-import { Text } from '@cloudflare/kumo/components/text';
-import { Link } from '@cloudflare/kumo/components/link';
+import {
+  Badge,
+  BlockStack,
+  Box,
+  Button,
+  Divider,
+  Icon,
+  InlineStack,
+  Link,
+  Text,
+  TextField,
+} from '@shopify/polaris';
+import { ArrowLeftIcon, CheckCircleIcon, EmailIcon, LockIcon, RefreshIcon } from '@shopify/polaris-icons';
 import { useToast } from '@/components/notifications/ToastProvider';
-import { EnvelopeSimple } from '@phosphor-icons/react';
 
 export function ForgotPasswordForm() {
   const toast = useToast();
@@ -21,30 +28,32 @@ export function ForgotPasswordForm() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      const normalizedEmail = email.trim();
 
-      if (!email) {
+      if (!normalizedEmail) {
         toast.showError('Ingresa tu correo electrónico');
         return;
       }
 
       setIsLoading(true);
-      void logAuthEvent({ event: 'password_reset_request', email });
+      void logAuthEvent({ event: 'password_reset_request', email: normalizedEmail });
       try {
-        const limit = await checkAuthRateLimit('password_reset', email);
+        const limit = await checkAuthRateLimit('password_reset', normalizedEmail);
         if (!limit.allowed) {
           toast.showError(
             `Demasiados intentos. Vuelve a intentar en ${limit.retryAfterSeconds} segundos.`,
           );
           return;
         }
-        await resetPassword({ username: email });
-        void logAuthEvent({ event: 'password_reset_success', email });
+        await resetPassword({ username: normalizedEmail });
+        setEmail(normalizedEmail);
+        void logAuthEvent({ event: 'password_reset_success', email: normalizedEmail });
         setEmailSent(true);
         toast.showSuccess('Correo de recuperación enviado');
       } catch (err) {
         void logAuthEvent({
           event: 'password_reset_failure',
-          email,
+          email: normalizedEmail,
           errorCode: (err as { name?: string }).name,
         });
         toast.showError('Error al enviar el correo. Verifica que la dirección sea correcta.');
@@ -56,9 +65,16 @@ export function ForgotPasswordForm() {
   );
 
   const handleResend = useCallback(async () => {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      toast.showError('Ingresa tu correo electrónico');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      await resetPassword({ username: email });
+      await resetPassword({ username: normalizedEmail });
+      setEmail(normalizedEmail);
       toast.showSuccess('Correo reenviado exitosamente');
     } catch {
       toast.showError('Error al reenviar el correo');
@@ -69,60 +85,142 @@ export function ForgotPasswordForm() {
 
   if (emailSent) {
     return (
-      <div className="space-y-5">
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex size-12 items-center justify-center rounded-full bg-kumo-info-tint/30">
-            <EnvelopeSimple size={24} className="text-kumo-info" />
-          </div>
-          <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
-            Revisa tu correo
-          </Text>
-          <Text variant="secondary" as="p" DANGEROUS_className="text-center">
-            Hemos enviado un enlace de recuperación a:{' '}
-            <Text as="span" bold>{email}</Text>
-          </Text>
-        </div>
-        <Button variant="primary" className="w-full justify-center" size="lg" onClick={handleResend} loading={isLoading}>
-          Reenviar correo
-        </Button>
-        <div className="pt-2 text-center">
-          <Link href="/auth/login" variant="plain" render={<NextLink href="/auth/login" />}>
-            <Text variant="secondary" size="sm">← Volver al inicio de sesión</Text>
-          </Link>
-        </div>
-      </div>
+      <BlockStack gap="500">
+        <AuthPanelHeader
+          tone="success"
+          icon={CheckCircleIcon}
+          badge="Solicitud enviada"
+          title="Revisa tu correo"
+          description="Enviamos un enlace seguro para restablecer tu contraseña. Puede tardar unos minutos en llegar."
+        />
+
+        <Box background="bg-fill-success-secondary" borderColor="border-success" borderRadius="300" borderWidth="025" padding="400">
+          <BlockStack gap="200">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Enviado a
+            </Text>
+            <InlineStack gap="200" blockAlign="center" wrap={false}>
+              <Icon source={EmailIcon} tone="success" />
+              <Text as="p" variant="bodyMd" fontWeight="bold" breakWord>
+                {email}
+              </Text>
+            </InlineStack>
+          </BlockStack>
+        </Box>
+
+        <BlockStack gap="300">
+          <Button variant="primary" size="large" fullWidth icon={RefreshIcon} onClick={handleResend} loading={isLoading}>
+            Reenviar correo
+          </Button>
+        </BlockStack>
+      </BlockStack>
     );
   }
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-1 text-center">
-        <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
-          ¿Olvidaste tu contraseña?
-        </Text>
-        <Text variant="secondary" as="p" DANGEROUS_className="text-center">
-          No te preocupes, te enviaremos instrucciones para restablecerla.
-        </Text>
-      </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="Correo electrónico"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-          type="email"
-          disabled={isLoading}
-          placeholder="tu@empresa.com"
-        />
-        <Button variant="primary" type="submit" className="w-full justify-center" size="lg" loading={isLoading}>
-          Enviar instrucciones
-        </Button>
+    <BlockStack gap="500">
+      <AuthPanelHeader
+        tone="info"
+        icon={LockIcon}
+        badge="Recuperación segura"
+        title="¿Olvidaste tu contraseña?"
+        description="Te enviaremos un enlace temporal al correo asociado a tu cuenta para que puedas crear una nueva contraseña."
+      />
+
+      <Box background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" padding="400">
+        <BlockStack gap="300">
+          <RecoveryStep icon={EmailIcon} title="Verificamos tu correo" description="Usa el correo con el que inicias sesión en Kiosko." />
+          <Divider />
+          <RecoveryStep icon={LockIcon} title="Enlace privado" description="El enlace se genera en Cognito y expira por seguridad." />
+        </BlockStack>
+      </Box>
+
+      <form onSubmit={handleSubmit}>
+        <BlockStack gap="400">
+          <TextField
+            label="Correo electrónico"
+            value={email}
+            onChange={setEmail}
+            autoComplete="email"
+            type="email"
+            disabled={isLoading}
+            placeholder="GlobalID@Company.com"
+            prefix={<Icon source={EmailIcon} tone="subdued" />}
+            helpText="No compartiremos si el correo existe; esto protege las cuentas del negocio."
+          />
+          <Button variant="primary" submit size="large" fullWidth loading={isLoading}>
+            Enviar instrucciones
+          </Button>
+        </BlockStack>
       </form>
-      <div className="pt-2 text-center">
-        <Link href="/auth/login" variant="plain" render={<NextLink href="/auth/login" />}>
-          <Text variant="secondary" size="sm">← Volver al inicio de sesión</Text>
+
+      <Divider />
+
+      <InlineStack align="center">
+        <Link url="/auth/login" monochrome>
+          <InlineStack gap="100" blockAlign="center" wrap={false}>
+            <Icon source={ArrowLeftIcon} tone="subdued" />
+            <Text as="span" variant="bodySm" tone="subdued">
+              Volver al inicio de sesión
+            </Text>
+          </InlineStack>
         </Link>
-      </div>
-    </div>
+      </InlineStack>
+    </BlockStack>
+  );
+}
+
+type HeaderTone = 'info' | 'success';
+
+function AuthPanelHeader({
+  tone,
+  icon,
+  badge,
+  title,
+  description,
+}: {
+  tone: HeaderTone;
+  icon: typeof LockIcon;
+  badge: string;
+  title: string;
+  description: string;
+}) {
+  const iconTone = tone === 'success' ? 'success' : 'info';
+  const iconBackground = tone === 'success' ? 'bg-fill-success-secondary' : 'bg-fill-info-secondary';
+  const iconBorder = tone === 'success' ? 'border-success' : 'border-info';
+
+  return (
+    <BlockStack gap="300" inlineAlign="center">
+      <Box background={iconBackground} borderColor={iconBorder} borderRadius="500" borderWidth="025" padding="300">
+        <Icon source={icon} tone={iconTone} />
+      </Box>
+      <BlockStack gap="200" inlineAlign="center">
+        <Badge tone={tone}>{badge}</Badge>
+        <Text as="h1" variant="headingLg" fontWeight="bold" alignment="center">
+          {title}
+        </Text>
+        <Text as="p" variant="bodyMd" tone="subdued" alignment="center">
+          {description}
+        </Text>
+      </BlockStack>
+    </BlockStack>
+  );
+}
+
+function RecoveryStep({ icon, title, description }: { icon: typeof EmailIcon; title: string; description: ReactNode }) {
+  return (
+    <InlineStack gap="300" blockAlign="start" wrap={false}>
+      <Box background="bg-surface" borderColor="border" borderRadius="200" borderWidth="025" padding="200">
+        <Icon source={icon} tone="subdued" />
+      </Box>
+      <BlockStack gap="050">
+        <Text as="p" variant="bodySm" fontWeight="semibold">
+          {title}
+        </Text>
+        <Text as="p" variant="bodySm" tone="subdued">
+          {description}
+        </Text>
+      </BlockStack>
+    </InlineStack>
   );
 }

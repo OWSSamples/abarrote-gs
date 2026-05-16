@@ -1,7 +1,7 @@
 'use server';
 
 import { requireOwner, requirePermission, requireAuth, validateId } from '@/lib/auth/guard';
-import { createCognitoUser } from '@/lib/cognito-admin';
+import { createCognitoUser, deleteCognitoUser } from '@/lib/cognito-admin';
 import { db } from '@/db';
 import { userRoles, roleDefinitions, auditLogs } from '@/db/schema';
 import { eq, isNotNull } from 'drizzle-orm';
@@ -280,6 +280,16 @@ async function _assignUserRole(
   await requirePermission('roles.manage');
   validateSchema(assignUserRoleSchema, data, 'assignUserRole');
   validateSchema(idSchema, assignedByUid, 'assignUserRole.assignedByUid');
+
+  const roleRows = await db
+    .select({ id: roleDefinitions.id })
+    .from(roleDefinitions)
+    .where(eq(roleDefinitions.id, data.roleId))
+    .limit(1);
+  if (roleRows.length === 0) {
+    throw new Error('Rol no encontrado. Verifica el rol seleccionado antes de asignar accesos.');
+  }
+
   const existingRows = await db.select().from(userRoles).where(eq(userRoles.cognitoSub, data.cognitoSub));
 
   if (existingRows.length > 0) {
@@ -362,27 +372,53 @@ async function _createCognitoUserWithRole(
   validateSchema(createUserWithRoleSchema, data, 'createCognitoUserWithRole');
   validateSchema(idSchema, assignedByUid, 'createCognitoUserWithRole.assignedByUid');
 
-  const userRecord = await createCognitoUser({
-    email: data.email,
-    password: data.password || 'Temp1234!',
-    displayName: data.displayName,
-  });
-
-  const newRole = await assignUserRole(
-    {
-      cognitoSub: userRecord.uid,
-      email: data.email,
-      displayName: data.displayName,
-      roleId: data.roleId,
-    },
-    assignedByUid,
-  );
-
-  if (data.pinCode) {
-    await updateUserPin(userRecord.uid, data.pinCode);
+  const roleRows = await db
+    .select({ id: roleDefinitions.id })
+    .from(roleDefinitions)
+    .where(eq(roleDefinitions.id, data.roleId))
+    .limit(1);
+  if (roleRows.length === 0) {
+    throw new Error('Rol no encontrado. No se creó el usuario en AWS Cognito.');
   }
 
-  return newRole;
+  const normalizedEmail = data.email.trim().toLowerCase();
+  const displayName = data.displayName.trim();
+
+  const userRecord = await createCognitoUser({
+    email: normalizedEmail,
+    password: data.password || 'Temp1234!',
+    displayName,
+  });
+
+  try {
+    const newRole = await assignUserRole(
+      {
+        cognitoSub: userRecord.uid,
+        email: normalizedEmail,
+        displayName,
+        roleId: data.roleId,
+      },
+      assignedByUid,
+    );
+
+    if (data.pinCode) {
+      await updateUserPin(userRecord.uid, data.pinCode);
+    }
+
+    return newRole;
+  } catch (err) {
+    try {
+      await deleteCognitoUser(normalizedEmail);
+    } catch (cleanupErr) {
+      logger.error('Failed to rollback Cognito user after DB role assignment error', {
+        action: 'createCognitoUserWithRole.rollback_failed',
+        email: normalizedEmail,
+        userId: userRecord.uid,
+        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      });
+    }
+    throw err;
+  }
 }
 
 async function _updateUserPin(cognitoSub: string, pinCode: string): Promise<void> {
@@ -407,9 +443,23 @@ async function _updateUserPin(cognitoSub: string, pinCode: string): Promise<void
 
 async function _updateUserRole(cognitoSub: string, newRoleId: string, assignedByUid: string): Promise<void> {
   await requirePermission('roles.manage');
+  validateSchema(idSchema, newRoleId, 'updateUserRole.newRoleId');
+  validateSchema(idSchema, assignedByUid, 'updateUserRole.assignedByUid');
+
+  const roleRows = await db
+    .select({ id: roleDefinitions.id })
+    .from(roleDefinitions)
+    .where(eq(roleDefinitions.id, newRoleId))
+    .limit(1);
+  if (roleRows.length === 0) {
+    throw new Error('Rol no encontrado. No se actualizó el acceso del usuario.');
+  }
 
   // Capture previous state for audit trail
   const existing = await db.select().from(userRoles).where(eq(userRoles.cognitoSub, cognitoSub));
+  if (existing.length === 0) {
+    throw new Error('Usuario no encontrado en la base de datos.');
+  }
   const previousRoleId = existing.length > 0 ? existing[0].roleId : null;
 
   const now = new Date();

@@ -1,7 +1,5 @@
-'use client';
-
-import { MfaSetupPanel } from '@/components/settings/MfaSetupPanel';
+import { redirect } from 'next/navigation';
 
 export default function SecuritySettingsPage() {
-  return <MfaSetupPanel />;
+  redirect('/dashboard/profile/security');
 }

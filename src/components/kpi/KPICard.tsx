@@ -1,9 +1,7 @@
 'use client';
 
-import { Card, Text, Box, Icon } from '@shopify/polaris';
+import { Card, Text, Box, Icon, BlockStack, InlineStack, ProgressBar, Badge } from '@shopify/polaris';
 import { ArrowUpIcon, ArrowDownIcon } from '@shopify/polaris-icons';
-import { SparkLineChart } from '@shopify/polaris-viz';
-import '@shopify/polaris-viz/build/esm/styles.css';
 import type { ReactNode } from 'react';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 
@@ -33,67 +31,51 @@ export function KPICard({
 
   // Calculate percentage change from first to last entry
   const percentageChange = hasData ? getPercentageChange(Number(data[0]), Number(data.at(-1))) : (change ?? null);
-
-  const chartData = hasData ? [{ data: data.map((val, idx) => ({ key: idx, value: val })) }] : [];
+  const chartTone = Number(percentageChange) < 0 ? 'critical' : Number(percentageChange) > 0 ? 'success' : 'neutral';
+  const dataProgress = hasData ? getSeriesProgress(data) : 0;
 
   return (
-    <Card padding="0">
-      <Box paddingBlock="400" paddingInlineStart="400">
-        <div
-          style={{
-            height: 72,
-            position: 'relative',
-            width: '100%',
-            display: 'flex',
-            justifyContent: 'space-between',
-          }}
-        >
-          {/* Left side: title, value, change */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'flex-end',
-              minWidth: 80,
-              zIndex: 2,
-            }}
-          >
-            <div style={{ position: 'absolute', top: -4, left: 0, zIndex: 20 }}>
+    <Card>
+      <Box minHeight="72px">
+        <BlockStack gap="300">
+          <InlineStack align="space-between" blockAlign="start" gap="300">
+            <BlockStack gap="100">
               <Text as="p" variant="bodySm" fontWeight="medium" tone="subdued">
                 {title}
               </Text>
-            </div>
-            <span style={{ fontWeight: 'bold', fontSize: '22px', lineHeight: '28px', color: '#202223' }}>
-              {formattedValue}
-            </span>
+              <Text as="p" variant="headingLg" fontWeight="bold">
+                {formattedValue}
+              </Text>
+            </BlockStack>
             {percentageChange !== null && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginBottom: -2 }}>
-                {Number(percentageChange) > 0 ? (
-                  <Icon source={ArrowUpIcon} tone="success" />
-                ) : Number(percentageChange) < 0 ? (
-                  <Icon source={ArrowDownIcon} tone="critical" />
-                ) : null}
-                <span
-                  style={{
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    color:
-                      Number(percentageChange) > 0 ? '#008060' : Number(percentageChange) < 0 ? '#d72c0d' : '#6d7175',
-                  }}
-                >
-                  {Math.abs(Number(percentageChange))}%
-                </span>
-              </div>
+              <Badge tone={chartTone === 'neutral' ? undefined : chartTone}>
+                {`${Number(percentageChange) > 0 ? '+' : ''}${percentageChange}%`}
+              </Badge>
             )}
-          </div>
+          </InlineStack>
 
-          {/* Right side: sparkline chart */}
-          {chartData.length > 0 && (
-            <div style={{ flex: 1, width: '50%', height: '80%', alignSelf: 'flex-end' }}>
-              <SparkLineChart offsetLeft={4} offsetRight={0} data={chartData} />
-            </div>
+          {percentageChange !== null && (
+            <InlineStack gap="100" blockAlign="center">
+              {Number(percentageChange) > 0 ? (
+                <Icon source={ArrowUpIcon} tone="success" />
+              ) : Number(percentageChange) < 0 ? (
+                <Icon source={ArrowDownIcon} tone="critical" />
+              ) : null}
+              <Text as="p" variant="bodySm" tone={chartTone === 'critical' ? 'critical' : chartTone === 'success' ? 'success' : 'subdued'}>
+                {`${Math.abs(Number(percentageChange))}%`}
+              </Text>
+            </InlineStack>
           )}
-        </div>
+
+          {hasData && (
+            <BlockStack gap="100">
+              <ProgressBar progress={dataProgress} size="small" tone={chartTone === 'critical' ? 'critical' : 'success'} />
+              <Text as="p" variant="bodyXs" tone="subdued">
+                Tendencia del periodo
+              </Text>
+            </BlockStack>
+          )}
+        </BlockStack>
       </Box>
     </Card>
   );
@@ -108,4 +90,16 @@ function getPercentageChange(start: number, end: number): number | null {
   if (percentage < -999) return -999;
 
   return percentage;
+}
+
+function getSeriesProgress(data: number[]): number {
+  const values = data.map(Number).filter((value) => Number.isFinite(value));
+  if (values.length < 2) return 0;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+  if (range === 0) return 100;
+
+  return Math.max(0, Math.min(100, Math.round(((values.at(-1)! - min) / range) * 100)));
 }

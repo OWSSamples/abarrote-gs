@@ -30,11 +30,6 @@ import {
   CartIcon,
   PersonIcon,
 } from '@shopify/polaris-icons';
-import {
-  BarChart,
-  DonutChart,
-  SparkLineChart,
-} from '@shopify/polaris-viz';
 import { useI18n } from '@shopify/react-i18n';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
@@ -63,7 +58,7 @@ function KPICard({
   trendLabel,
   icon,
   sparkData,
-  color,
+  color: _color,
 }: {
   title: string;
   value: string;
@@ -79,19 +74,9 @@ function KPICard({
     <Card>
       <BlockStack gap="300">
         <InlineStack align="space-between" blockAlign="start">
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: `${color}14`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+          <Box padding="300" background="bg-surface-secondary" borderRadius="300">
             <Icon source={icon} tone="base" />
-          </div>
+          </Box>
           {trend !== undefined && (
             <Tooltip content={trendLabel ?? 'vs período anterior'}>
               <InlineStack gap="050" blockAlign="center">
@@ -119,15 +104,87 @@ function KPICard({
         </BlockStack>
 
         {sparkData && sparkData.length > 2 && (
-          <div style={{ height: 36 }}>
-            <SparkLineChart
-              data={[{ data: sparkData.map((d, i) => ({ key: String(i), value: d.value })) }]}
-              accessibilityLabel={`Tendencia de ${title}`}
-            />
-          </div>
+          <AnalyticsSparkline data={sparkData.map((d) => d.value)} />
         )}
       </BlockStack>
     </Card>
+  );
+}
+
+function AnalyticsSparkline({ data }: { data: number[] }) {
+  const values = data.map(Number).filter(Number.isFinite);
+  if (values.length < 2) return null;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+  const progress = range === 0 ? 100 : Math.round(((values.at(-1)! - min) / range) * 100);
+
+  return (
+    <BlockStack gap="100">
+      <ProgressBar progress={Math.max(0, Math.min(100, progress))} size="small" tone="primary" />
+      <Text as="p" variant="bodyXs" tone="subdued">Tendencia</Text>
+    </BlockStack>
+  );
+}
+
+function SimpleBarChart({
+  data,
+  color: _color,
+}: {
+  data: Array<{ key: string; label?: string; value: number }>;
+  color: string;
+}) {
+  const values = data.map((item) => Math.max(0, Number(item.value) || 0));
+  const max = Math.max(...values, 1);
+
+  return (
+    <BlockStack gap="200">
+      {data.map((item) => {
+        const value = Math.max(0, Number(item.value) || 0);
+        const progress = Math.max(0, Math.min(100, Math.round((value / max) * 100)));
+        return (
+          <BlockStack key={item.key} gap="100">
+            <InlineStack align="space-between" gap="200">
+              <Text as="p" variant="bodyXs" tone="subdued">{item.label ?? item.key}</Text>
+              <Text as="p" variant="bodyXs">{value.toLocaleString('es-MX')}</Text>
+            </InlineStack>
+            <ProgressBar progress={progress} size="small" tone="primary" />
+          </BlockStack>
+        );
+      })}
+    </BlockStack>
+  );
+}
+
+function SimpleDonutChart({
+  data,
+}: {
+  data: Array<{ name: string; data: Array<{ key: string; value: number }> }>;
+}) {
+  const items = data.map((item, index) => ({
+    name: item.name,
+    value: Number(item.data[0]?.value ?? 0),
+    index,
+  }));
+  const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
+
+  return (
+    <BlockStack gap="200">
+      {items.map((item) => {
+        const progress = Math.round((item.value / total) * 100);
+        const tone = item.index === 0 ? 'primary' : item.index === 1 ? 'success' : item.index === 2 ? 'critical' : 'highlight';
+        return (
+          <BlockStack key={item.name} gap="100">
+            <InlineStack align="space-between" gap="200">
+              <Text as="p" variant="bodySm">{item.name}</Text>
+              <Text as="p" variant="bodySm" fontWeight="bold">{progress}%</Text>
+            </InlineStack>
+            <ProgressBar progress={progress} size="small" tone={tone} />
+          </BlockStack>
+        );
+      })}
+    </BlockStack>
   );
 }
 
@@ -567,24 +624,18 @@ export function AnalyticsView() {
 
   if (!mounted) {
     return (
-      <div
-        style={{
-          background: 'var(--p-color-bg-surface-secondary)',
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text as="p" tone="subdued">
-          Cargando analíticas...
-        </Text>
-      </div>
+      <Box padding="800" background="bg-surface-secondary" minHeight="100vh">
+        <InlineStack align="center">
+          <Text as="p" tone="subdued">
+            Cargando analíticas...
+          </Text>
+        </InlineStack>
+      </Box>
     );
   }
 
   return (
-    <div style={{ background: 'var(--p-color-bg-surface-secondary)', minHeight: '100%', paddingBottom: '2rem' }}>
+    <Box background="bg-surface-secondary" minHeight="100%" paddingBlockEnd="800">
       <Page
         title="Análisis Integral"
         subtitle={`Período: ${periodoLabel} · Actualizado: ${i18n.formatDate(new Date(), { hour: 'numeric', minute: '2-digit' })}`}
@@ -768,29 +819,14 @@ export function AnalyticsView() {
                   <Text as="h3" variant="headingMd">Ventas por Día</Text>
                   <Badge tone="info">{`${salesEnPeriodo.length} transacciones`}</Badge>
                 </InlineStack>
-                <div style={{ height: 280 }}>
-                  <BarChart
-                    data={[
-                      {
-                        name: 'Ingresos',
-                        data: datosPorDia.map((d) => ({
-                          key: d.fecha.slice(5),
-                          value: d.total,
-                        })),
-                      },
-                    ]}
-                    theme="Light"
-                    xAxisOptions={{
-                      labelFormatter: (value) => {
-                        const parts = String(value ?? '').split('-');
-                        return parts.length === 2 ? `${parts[1]}/${parts[0]}` : String(value ?? '');
-                      },
-                    }}
-                    yAxisOptions={{
-                      labelFormatter: (value) => `$${Math.round(Number(value ?? 0)).toLocaleString('es-MX')}`,
-                    }}
-                  />
-                </div>
+                <SimpleBarChart
+                  color="#1a73e8"
+                  data={datosPorDia.map((d) => ({
+                    key: d.fecha.slice(5),
+                    label: d.fecha.slice(5).split('-').reverse().join('/'),
+                    value: d.total,
+                  }))}
+                />
               </BlockStack>
             </Card>
 
@@ -810,28 +846,11 @@ export function AnalyticsView() {
                     {ventasPorMetodo.map((metodo) => {
                       const val = metodo.data[0]?.value ?? 0;
                       const pct = totalVentas > 0 ? (val / totalVentas) * 100 : 0;
-                      const colors: Record<string, string> = {
-                        Efectivo: '#16a34a',
-                        Tarjeta: '#2563eb',
-                        Transferencia: '#7c3aed',
-                        Fiado: '#ea580c',
-                        Mixto: '#0891b2',
-                        Otros: '#6b7280',
-                      };
-                      const color = colors[metodo.name] || '#6b7280';
                       return (
-                        <div key={metodo.name}>
+                        <BlockStack key={metodo.name} gap="100">
                           <InlineStack align="space-between" blockAlign="center">
                             <InlineStack gap="200" blockAlign="center">
-                              <div
-                                style={{
-                                  width: 12,
-                                  height: 12,
-                                  borderRadius: 3,
-                                  background: color,
-                                  flexShrink: 0,
-                                }}
-                              />
+                              <Badge tone="info">Método</Badge>
                               <Text as="span" variant="bodySm" fontWeight="medium">
                                 {metodo.name}
                               </Text>
@@ -840,32 +859,11 @@ export function AnalyticsView() {
                               <Text as="span" variant="bodySm" fontWeight="semibold">
                                 {i18n.formatCurrency(val, { currency: 'MXN' })}
                               </Text>
-                              <div
-                                style={{
-                                  background: `${color}20`,
-                                  color,
-                                  padding: '2px 8px',
-                                  borderRadius: 20,
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {pct.toFixed(1)}%
-                              </div>
+                              <Badge>{`${pct.toFixed(1)}%`}</Badge>
                             </InlineStack>
                           </InlineStack>
-                          <div style={{ marginTop: 6, height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-                            <div
-                              style={{
-                                width: `${pct}%`,
-                                height: '100%',
-                                background: color,
-                                borderRadius: 3,
-                                transition: 'width 0.5s ease',
-                              }}
-                            />
-                          </div>
-                        </div>
+                          <ProgressBar progress={Math.max(0, Math.min(100, Math.round(pct)))} size="small" tone="primary" />
+                        </BlockStack>
                       );
                     })}
                   </BlockStack>
@@ -883,26 +881,14 @@ export function AnalyticsView() {
                   <Text as="h3" variant="headingMd">Distribución por Hora</Text>
                   {peakHour && peakHour.value > 0 && <Badge tone="info">{`Pico: ${peakHour.key}`}</Badge>}
                 </InlineStack>
-                <div style={{ height: 220 }}>
-                  <BarChart
-                    data={[
-                      {
-                        name: 'Ventas por hora',
-                        data: ventasPorHoraPeriodo.map((h) => ({
-                          key: h.key,
-                          value: h.value,
-                        })),
-                      },
-                    ]}
-                    theme="Light"
-                    xAxisOptions={{
-                      labelFormatter: (value) => String(value ?? '').slice(0, 2) + 'h',
-                    }}
-                    yAxisOptions={{
-                      labelFormatter: (value) => `$${Math.round(Number(value ?? 0))}`,
-                    }}
-                  />
-                </div>
+                <SimpleBarChart
+                  color="#7c3aed"
+                  data={ventasPorHoraPeriodo.map((h) => ({
+                    key: h.key,
+                    label: `${h.key.slice(0, 2)}h`,
+                    value: h.value,
+                  }))}
+                />
               </BlockStack>
             </Card>
 
@@ -1001,7 +987,7 @@ export function AnalyticsView() {
               {topProductos.length === 0 ? (
                 <Box padding="800">
                   <BlockStack gap="200" inlineAlign="center">
-                    <div style={{ opacity: 0.3, fontSize: 48 }}>📦</div>
+                    <Icon source={CartIcon} tone="subdued" />
                     <Text as="p" tone="subdued" alignment="center">No hay ventas en este período</Text>
                   </BlockStack>
                 </Box>
@@ -1009,80 +995,39 @@ export function AnalyticsView() {
                 <BlockStack gap="200">
                   {topProductos.map((producto, index) => {
                     const pct = topProductoMax > 0 ? (producto.total / topProductoMax) * 100 : 0;
-                    const medals = ['🥇', '🥈', '🥉'];
-                    const barColors = [
-                      'linear-gradient(90deg, #facc15 0%, #f59e0b 100%)',
-                      'linear-gradient(90deg, #cbd5e1 0%, #94a3b8 100%)',
-                      'linear-gradient(90deg, #fdba74 0%, #ea580c 100%)',
-                    ];
-                    const defaultBar = 'linear-gradient(90deg, #e0e7ff 0%, #818cf8 100%)';
 
                     return (
-                      <div
+                      <Box
                         key={producto.id}
-                        style={{
-                          position: 'relative',
-                          padding: '10px 14px',
-                          borderRadius: 10,
-                          background: index < 3 ? 'var(--p-color-bg-surface-secondary)' : 'transparent',
-                          transition: 'background 0.15s',
-                        }}
+                        padding="300"
+                        background={index < 3 ? 'bg-surface-secondary' : 'bg-surface'}
+                        borderRadius="200"
                       >
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            height: '100%',
-                            width: `${Math.max(pct, 4)}%`,
-                            borderRadius: 10,
-                            background: index < 3 ? barColors[index] : defaultBar,
-                            opacity: index < 3 ? 0.18 : 0.1,
-                            transition: 'width 0.6s cubic-bezier(0.22,1,0.36,1)',
-                          }}
-                        />
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <div
-                            style={{
-                              width: 30,
-                              textAlign: 'center',
-                              fontSize: index < 3 ? 18 : 13,
-                              fontWeight: 700,
-                              color: index < 3 ? undefined : '#9ca3af',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {index < 3 ? medals[index] : index + 1}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <Text
-                              as="span"
-                              variant="bodyMd"
-                              fontWeight={index < 3 ? 'semibold' : 'regular'}
-                              truncate
-                            >
-                              {producto.name}
-                            </Text>
-                          </div>
-                          <div
-                            style={{
-                              background: 'var(--p-color-bg-surface-secondary)',
-                              borderRadius: 6,
-                              padding: '2px 8px',
-                              fontSize: 12,
-                              color: '#6b7280',
-                              fontWeight: 500,
-                              whiteSpace: 'nowrap',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {producto.quantity.toLocaleString('es-MX')} uds
-                          </div>
-                          <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', flexShrink: 0, color: index < 3 ? '#1e293b' : '#374151' }}>
-                            {i18n.formatCurrency(producto.total, { currency: 'MXN' })}
-                          </div>
-                        </div>
-                      </div>
+                        <BlockStack gap="200">
+                          <InlineStack align="space-between" blockAlign="center" gap="300">
+                            <InlineStack gap="200" blockAlign="center">
+                              <Badge tone={index < 3 ? 'success' : undefined}>{`#${index + 1}`}</Badge>
+                              <Box minWidth="0">
+                                <Text
+                                  as="span"
+                                  variant="bodyMd"
+                                  fontWeight={index < 3 ? 'semibold' : 'regular'}
+                                  truncate
+                                >
+                                  {producto.name}
+                                </Text>
+                              </Box>
+                            </InlineStack>
+                            <InlineStack gap="200" blockAlign="center">
+                              <Badge>{`${producto.quantity.toLocaleString('es-MX')} uds`}</Badge>
+                              <Text as="span" variant="bodySm" fontWeight="bold">
+                                {i18n.formatCurrency(producto.total, { currency: 'MXN' })}
+                              </Text>
+                            </InlineStack>
+                          </InlineStack>
+                          <ProgressBar progress={Math.max(0, Math.min(100, Math.round(pct)))} size="small" tone={index < 3 ? 'success' : 'primary'} />
+                        </BlockStack>
+                      </Box>
                     );
                   })}
                 </BlockStack>
@@ -1224,15 +1169,13 @@ export function AnalyticsView() {
                     <Text as="h3" variant="headingMd">Gastos por Categoría</Text>
                     <Badge tone="critical">{i18n.formatCurrency(totalGastos, { currency: 'MXN' })}</Badge>
                   </InlineStack>
-                  <div style={{ height: 220 }}>
-                    {gastosPorCategoria.length === 0 ? (
-                      <Box padding="600">
-                        <Text as="p" tone="subdued" alignment="center">Sin gastos registrados</Text>
-                      </Box>
-                    ) : (
-                      <DonutChart data={gastosPorCategoria} theme="Light" legendPosition="bottom" />
-                    )}
-                  </div>
+                  {gastosPorCategoria.length === 0 ? (
+                    <Box padding="600">
+                      <Text as="p" tone="subdued" alignment="center">Sin gastos registrados</Text>
+                    </Box>
+                  ) : (
+                    <SimpleDonutChart data={gastosPorCategoria} />
+                  )}
                 </BlockStack>
               </Card>
 
@@ -1293,7 +1236,7 @@ export function AnalyticsView() {
                 ) : (
                   <BlockStack gap="200">
                     {mermasPorRazon.map((m) => (
-                      <div key={m.razon}>
+                      <BlockStack key={m.razon} gap="100">
                         <InlineStack align="space-between" blockAlign="center">
                           <BlockStack gap="050">
                             <Text as="span" variant="bodySm" fontWeight="medium">{m.razon}</Text>
@@ -1310,7 +1253,7 @@ export function AnalyticsView() {
                             tone="critical"
                           />
                         </Box>
-                      </div>
+                      </BlockStack>
                     ))}
                   </BlockStack>
                 )}
@@ -1591,6 +1534,6 @@ export function AnalyticsView() {
           </InlineGrid>
         </BlockStack>
       </Page>
-    </div>
+    </Box>
   );
 }

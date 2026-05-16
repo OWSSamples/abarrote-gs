@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Modal, FormLayout, TextField, Select, Text, Badge, Banner } from '@shopify/polaris';
 import type { RoleDefinition, UserRoleRecord } from '@/types';
 
@@ -31,10 +31,19 @@ export function EditUserModal({
   useEffect(() => {
     if (selectedUser) {
       setEditRoleId(selectedUser.roleId);
-      setEditPinCode(selectedUser.pinCode || '');
+      setEditPinCode('');
     }
   }, [selectedUser]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  const pinError = useMemo(() => {
+    if (!editPinCode) return undefined;
+    return /^\d{4,6}$/.test(editPinCode) ? undefined : 'El PIN debe tener de 4 a 6 dígitos numéricos.';
+  }, [editPinCode]);
+
+  const handlePinChange = useCallback((value: string) => {
+    setEditPinCode(value.replace(/\D/g, '').slice(0, 6));
+  }, []);
 
   const handleSave = useCallback(() => {
     return onSave({ roleId: editRoleId, pinCode: editPinCode });
@@ -49,6 +58,7 @@ export function EditUserModal({
         content: 'Guardar cambio',
         onAction: handleSave,
         loading: saving,
+        disabled: !editRoleId || Boolean(pinError),
       }}
       secondaryActions={[{ content: 'Cancelar', onAction: onClose }]}
     >
@@ -65,11 +75,12 @@ export function EditUserModal({
             label="Cambiar o Establecer PIN de Aprobación"
             type="password"
             value={editPinCode}
-            onChange={setEditPinCode}
+            onChange={handlePinChange}
             autoComplete="off"
             maxLength={6}
             placeholder="Ej: 1234"
-            helpText="Este usuario usará este PIN numérico para autorizar bloqueos, mermas o cortes."
+            helpText={selectedUser?.pinCode ? 'Déjalo vacío para conservar el PIN actual. Captura 4 a 6 dígitos si deseas reemplazarlo.' : 'Captura 4 a 6 dígitos si este usuario debe autorizar bloqueos, mermas o cortes.'}
+            error={pinError}
           />
           {editRoleId && roleMap.get(editRoleId) && (
             <Banner tone="info">

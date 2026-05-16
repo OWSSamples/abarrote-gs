@@ -1,8 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card, Text, BlockStack, InlineStack, DataTable, Divider, Badge, Box, InlineGrid } from '@shopify/polaris';
-import { BarChart } from '@shopify/polaris-viz';
+import { Card, Text, BlockStack, InlineStack, DataTable, Divider, Badge, Box, InlineGrid, ProgressBar } from '@shopify/polaris';
 import { formatCurrency } from '@/lib/utils';
 import type { FlujoMensualItem } from '@/hooks/useFinancialReports';
 
@@ -11,20 +10,6 @@ interface CashFlowCardProps {
 }
 
 export function CashFlowCard({ flujoMensual }: CashFlowCardProps) {
-  const chartData = useMemo(
-    () => [
-      {
-        name: 'Ingresos',
-        data: flujoMensual.map((m) => ({ key: m.label, value: m.ingresos })),
-      },
-      {
-        name: 'Egresos',
-        data: flujoMensual.map((m) => ({ key: m.label, value: m.egresos })),
-      },
-    ],
-    [flujoMensual],
-  );
-
   const totals = useMemo(() => {
     const ingresos = flujoMensual.reduce((s, m) => s + m.ingresos, 0);
     const egresos = flujoMensual.reduce((s, m) => s + m.egresos, 0);
@@ -82,16 +67,7 @@ export function CashFlowCard({ flujoMensual }: CashFlowCardProps) {
           </Box>
         </InlineGrid>
 
-        {/* BarChart */}
-        <div style={{ height: 260 }}>
-          <BarChart
-            data={chartData}
-            theme="Light"
-            yAxisOptions={{
-              labelFormatter: (value) => `$${Math.round(Number(value ?? 0) / 1000)}k`,
-            }}
-          />
-        </div>
+        <CashFlowBars data={flujoMensual} />
 
         <Divider />
 
@@ -110,5 +86,39 @@ export function CashFlowCard({ flujoMensual }: CashFlowCardProps) {
         />
       </BlockStack>
     </Card>
+  );
+}
+
+function CashFlowBars({ data }: { data: FlujoMensualItem[] }) {
+  const max = Math.max(...data.flatMap((m) => [m.ingresos, m.egresos]), 1);
+
+  return (
+    <InlineGrid columns={{ xs: 1, sm: 2, lg: 3 }} gap="300">
+      {data.map((month) => {
+        const ingresosProgress = Math.max(0, Math.min(100, Math.round((month.ingresos / max) * 100)));
+        const egresosProgress = Math.max(0, Math.min(100, Math.round((month.egresos / max) * 100)));
+        return (
+          <Box key={month.label} padding="300" background="bg-surface-secondary" borderRadius="200">
+            <BlockStack gap="200">
+              <Text as="p" variant="headingSm" fontWeight="bold">{month.label}</Text>
+              <BlockStack gap="100">
+                <InlineStack align="space-between">
+                  <Text as="p" variant="bodyXs" tone="subdued">Ingresos</Text>
+                  <Text as="p" variant="bodyXs" tone="success">{formatCurrency(month.ingresos)}</Text>
+                </InlineStack>
+                <ProgressBar progress={ingresosProgress} size="small" tone="success" />
+              </BlockStack>
+              <BlockStack gap="100">
+                <InlineStack align="space-between">
+                  <Text as="p" variant="bodyXs" tone="subdued">Egresos</Text>
+                  <Text as="p" variant="bodyXs" tone="critical">{formatCurrency(month.egresos)}</Text>
+                </InlineStack>
+                <ProgressBar progress={egresosProgress} size="small" tone="critical" />
+              </BlockStack>
+            </BlockStack>
+          </Box>
+        );
+      })}
+    </InlineGrid>
   );
 }

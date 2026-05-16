@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Modal,
   FormLayout,
@@ -16,16 +17,17 @@ import {
   Banner,
   Divider,
   Button,
+  Card,
   Icon,
 } from '@shopify/polaris';
 import {
   PersonIcon,
   LockIcon,
+  ShieldCheckMarkIcon,
   LinkIcon,
   ClockIcon,
   HashtagIcon,
   CameraIcon,
-  ChevronRightIcon,
 } from '@shopify/polaris-icons';
 import { uploadFile, getUserAvatarPath } from '@/lib/storage';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -43,6 +45,7 @@ interface ProfileModalProps {
 type ProfileView = 'overview' | 'edit-name' | 'edit-photo' | 'link-accounts';
 
 export function ProfileModal({ open, onClose }: ProfileModalProps) {
+  const router = useRouter();
   const { user } = useAuth();
   const currentUserRole = useDashboardStore((s) => s.currentUserRole);
   const updateUserProfile = useDashboardStore((s) => s.updateUserProfile);
@@ -169,6 +172,11 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
     setView('overview');
     onClose();
   }, [onClose]);
+
+  const handleOpenSecuritySettings = useCallback(() => {
+    handleClose();
+    router.push('/dashboard/profile/security');
+  }, [handleClose, router]);
 
   // ─── Sub-view: Edit Name ───
   if (view === 'edit-name') {
@@ -333,9 +341,9 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
 
         <Modal.Section>
           <Banner tone="info" title="Cambiar contraseña">
-            <p>
+            <Text as="p" variant="bodySm">
               Cierra sesión y selecciona &quot;Olvidé mi contraseña&quot; en la pantalla de inicio para restablecerla.
-            </p>
+            </Text>
           </Banner>
         </Modal.Section>
       </Modal>
@@ -345,230 +353,181 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
   // ─── Main overview view ───
   return (
     <Modal open={open} onClose={handleClose} title="Mi perfil">
-      {/* ── Hero: Avatar + Identity ── */}
       <Modal.Section>
         <BlockStack gap="400">
-          <InlineStack gap="400" blockAlign="center" wrap={false}>
-            <div
-              style={{ position: 'relative', flexShrink: 0, cursor: 'pointer' }}
-              onClick={() => setView('edit-photo')}
-            >
-              <Avatar size="xl" name={displayName} initials={initials} source={previewSource} />
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: -2,
-                  right: -2,
-                  width: 24,
-                  height: 24,
-                  borderRadius: '50%',
-                  background: 'var(--p-color-bg-fill-emphasis)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '2px solid var(--p-color-bg-surface)',
-                }}
-              >
-                <div style={{ display: 'flex', color: 'var(--p-color-text-inverse)' }}>
-                  <Icon source={CameraIcon} tone="inherit" />
-                </div>
-              </div>
-            </div>
-
-            <BlockStack gap="100">
-              <Text as="h2" variant="headingLg" fontWeight="bold">
-                {displayName || 'Sin nombre'}
-              </Text>
-              <Text as="p" variant="bodySm" tone="subdued">
-                {user?.email || ''}
-              </Text>
-              <InlineStack gap="200" blockAlign="center">
-                <Badge tone={getRoleTone()}>{roleName}</Badge>
-                {currentUserRole?.employeeNumber && <Badge tone="info">{currentUserRole.employeeNumber}</Badge>}
+          <Card>
+            <BlockStack gap="400">
+              <InlineStack align="space-between" blockAlign="center" gap="300" wrap>
+                <InlineStack gap="300" blockAlign="center" wrap={false}>
+                  <Box
+                    padding="150"
+                    background="bg-fill-info-secondary"
+                    borderRadius="300"
+                    borderColor="border-info"
+                    borderWidth="025"
+                  >
+                    <Avatar size="lg" name={displayName} initials={initials} source={previewSource} />
+                  </Box>
+                  <BlockStack gap="100">
+                    <Text as="h2" variant="headingMd" fontWeight="bold">
+                      {displayName || 'Sin nombre'}
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued" breakWord>
+                      {user?.email || 'Correo no disponible'}
+                    </Text>
+                    <InlineStack gap="100" wrap>
+                      <Badge tone={getRoleTone()}>{roleName}</Badge>
+                      <Badge tone="success">Correo verificado</Badge>
+                      {currentUserRole?.employeeNumber && <Badge tone="info">{currentUserRole.employeeNumber}</Badge>}
+                    </InlineStack>
+                  </BlockStack>
+                </InlineStack>
+                <InlineStack gap="200" wrap>
+                  <Button icon={CameraIcon} onClick={() => setView('edit-photo')}>
+                    Foto
+                  </Button>
+                  <Button variant="primary" icon={ShieldCheckMarkIcon} onClick={handleOpenSecuritySettings}>
+                    Seguridad
+                  </Button>
+                </InlineStack>
               </InlineStack>
             </BlockStack>
-          </InlineStack>
-        </BlockStack>
-      </Modal.Section>
+          </Card>
 
-      {/* ── Personal Information ── */}
-      <Modal.Section>
-        <BlockStack gap="300">
-          <Text variant="headingSm" as="h3">
-            Información personal
-          </Text>
+          <Card>
+            <BlockStack gap="400">
+              <BlockStack gap="100">
+                <Text variant="headingSm" as="h3">
+                  Información personal
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Datos visibles para auditoría, turnos y permisos internos.
+                </Text>
+              </BlockStack>
 
-          <Box borderStyle="solid" borderWidth="025" borderColor="border" borderRadius="300">
-            {/* Name row */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setView('edit-name')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setView('edit-name');
-              }}
-              style={{ cursor: 'pointer' }}
-            >
-              <Box padding="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <InlineStack gap="300" blockAlign="center">
-                    <Box padding="200" background="bg-fill-success-secondary" borderRadius="200">
-                      <Icon source={PersonIcon} tone="success" />
-                    </Box>
-                    <BlockStack gap="050">
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        Nombre completo
-                      </Text>
-                      <Text as="span" variant="bodyMd" fontWeight="semibold">
-                        {displayName || '—'}
-                      </Text>
-                    </BlockStack>
-                  </InlineStack>
-                  <Icon source={ChevronRightIcon} tone="subdued" />
-                </InlineStack>
-              </Box>
-            </div>
+              <Divider />
 
-            <Divider />
+              <BlockStack gap="200">
+                <ProfileInfoRow
+                  icon={PersonIcon}
+                  iconTone="success"
+                  title="Nombre completo"
+                  value={displayName || 'Sin nombre'}
+                  action={{ content: 'Editar', onAction: () => setView('edit-name') }}
+                />
+                <ProfileInfoRow
+                  icon={LockIcon}
+                  iconTone="success"
+                  title="Correo electrónico"
+                  value={user?.email || '—'}
+                  badge={{ content: 'Verificado', tone: 'success' }}
+                />
+                <ProfileInfoRow
+                  icon={HashtagIcon}
+                  iconTone={currentUserRole?.employeeNumber ? 'success' : 'subdued'}
+                  title="Número de empleado"
+                  value={currentUserRole?.employeeNumber || 'Sin asignar'}
+                />
+              </BlockStack>
+            </BlockStack>
+          </Card>
 
-            {/* Email row */}
-            <Box padding="300">
-              <InlineStack align="space-between" blockAlign="center">
-                <InlineStack gap="300" blockAlign="center">
-                  <Box padding="200" background="bg-fill-success-secondary" borderRadius="200">
-                    <Icon source={LockIcon} tone="success" />
-                  </Box>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      Correo electrónico
-                    </Text>
-                    <Text as="span" variant="bodyMd" fontWeight="semibold">
-                      {user?.email || '—'}
-                    </Text>
-                  </BlockStack>
-                </InlineStack>
-                <Badge tone="info">Verificado</Badge>
-              </InlineStack>
-            </Box>
+          <Card>
+            <BlockStack gap="400">
+              <BlockStack gap="100">
+                <Text variant="headingSm" as="h3">
+                  Cuenta y seguridad
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Controles personales de acceso, 2FA/MFA y proveedores vinculados.
+                </Text>
+              </BlockStack>
 
-            <Divider />
+              <Divider />
 
-            {/* Employee number */}
-            <Box padding="300">
-              <InlineStack align="space-between" blockAlign="center">
-                <InlineStack gap="300" blockAlign="center">
-                  <Box
-                    padding="200"
-                    background={currentUserRole?.employeeNumber ? 'bg-fill-success-secondary' : 'bg-surface-secondary'}
-                    borderRadius="200"
-                  >
-                    <Icon source={HashtagIcon} tone={currentUserRole?.employeeNumber ? 'success' : 'subdued'} />
-                  </Box>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      Número de empleado
-                    </Text>
-                    <Text as="span" variant="bodyMd" fontWeight="semibold">
-                      {currentUserRole?.employeeNumber || 'Sin asignar'}
-                    </Text>
-                  </BlockStack>
-                </InlineStack>
-              </InlineStack>
-            </Box>
-          </Box>
-        </BlockStack>
-      </Modal.Section>
-
-      {/* ── Account & Security ── */}
-      <Modal.Section>
-        <BlockStack gap="300">
-          <Text variant="headingSm" as="h3">
-            Cuenta y seguridad
-          </Text>
-
-          <Box borderStyle="solid" borderWidth="025" borderColor="border" borderRadius="300">
-            {/* Role */}
-            <Box padding="300">
-              <InlineStack align="space-between" blockAlign="center">
-                <InlineStack gap="300" blockAlign="center">
-                  <Box padding="200" background="bg-fill-success-secondary" borderRadius="200">
-                    <Icon source={PersonIcon} tone="success" />
-                  </Box>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      Rol en el sistema
-                    </Text>
-                    <Text as="span" variant="bodyMd" fontWeight="semibold">
-                      {roleName}
-                    </Text>
-                  </BlockStack>
-                </InlineStack>
-                <Badge tone={getRoleTone()}>{roleName}</Badge>
-              </InlineStack>
-            </Box>
-
-            <Divider />
-
-            {/* Auth / Linked accounts */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setView('link-accounts')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setView('link-accounts');
-              }}
-              style={{ cursor: 'pointer' }}
-            >
-              <Box padding="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <InlineStack gap="300" blockAlign="center">
-                    <Box
-                      padding="200"
-                      background={authProvider !== 'Email' ? 'bg-fill-success-secondary' : 'bg-surface-secondary'}
-                      borderRadius="200"
-                    >
-                      <Icon source={LinkIcon} tone={authProvider !== 'Email' ? 'success' : 'subdued'} />
-                    </Box>
-                    <BlockStack gap="050">
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        Cuentas vinculadas
-                      </Text>
-                      <Text as="span" variant="bodyMd" fontWeight="semibold">
-                        {authProvider}
-                      </Text>
-                    </BlockStack>
-                  </InlineStack>
-                  <InlineStack gap="200" blockAlign="center">
-                    <Badge tone="info">{authProvider}</Badge>
-                    <Icon source={ChevronRightIcon} tone="subdued" />
-                  </InlineStack>
-                </InlineStack>
-              </Box>
-            </div>
-
-            <Divider />
-
-            {/* Member since */}
-            <Box padding="300">
-              <InlineStack align="space-between" blockAlign="center">
-                <InlineStack gap="300" blockAlign="center">
-                  <Box padding="200" background="bg-fill-success-secondary" borderRadius="200">
-                    <Icon source={ClockIcon} tone="success" />
-                  </Box>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      Miembro desde
-                    </Text>
-                    <Text as="span" variant="bodyMd" fontWeight="semibold">
-                      {memberSince}
-                    </Text>
-                  </BlockStack>
-                </InlineStack>
-              </InlineStack>
-            </Box>
-          </Box>
+              <BlockStack gap="200">
+                <ProfileInfoRow
+                  icon={ShieldCheckMarkIcon}
+                  iconTone="success"
+                  title="Seguridad del perfil"
+                  value="2FA/MFA y recovery codes"
+                  badge={{ content: 'Personal', tone: 'info' }}
+                  action={{ content: 'Configurar', onAction: handleOpenSecuritySettings, primary: true }}
+                />
+                <ProfileInfoRow
+                  icon={LinkIcon}
+                  iconTone={authProvider !== 'Email' ? 'success' : 'subdued'}
+                  title="Cuentas vinculadas"
+                  value={authProvider}
+                  badge={{ content: authProvider, tone: authProvider !== 'Email' ? 'success' : 'info' }}
+                  action={{ content: 'Administrar', onAction: () => setView('link-accounts') }}
+                />
+                <ProfileInfoRow
+                  icon={ClockIcon}
+                  iconTone="success"
+                  title="Miembro desde"
+                  value={memberSince}
+                />
+              </BlockStack>
+            </BlockStack>
+          </Card>
         </BlockStack>
       </Modal.Section>
     </Modal>
+  );
+}
+
+type ProfileIconSource = typeof PersonIcon;
+type ProfileBadgeTone = 'success' | 'info' | 'attention' | 'warning' | 'critical';
+type ProfileIconTone = 'success' | 'info' | 'subdued' | 'base' | 'critical';
+
+function ProfileInfoRow({
+  icon,
+  iconTone,
+  title,
+  value,
+  badge,
+  action,
+}: {
+  icon: ProfileIconSource;
+  iconTone: ProfileIconTone;
+  title: string;
+  value: ReactNode;
+  badge?: { content: string; tone: ProfileBadgeTone };
+  action?: { content: string; onAction: () => void; primary?: boolean };
+}) {
+  return (
+    <Box background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" padding="300">
+      <InlineStack align="space-between" blockAlign="center" gap="300" wrap>
+        <InlineStack gap="300" blockAlign="center" wrap={false}>
+          <Box
+            padding="200"
+            background={iconTone === 'success' ? 'bg-fill-success-secondary' : 'bg-surface'}
+            borderRadius="200"
+            borderColor="border"
+            borderWidth="025"
+          >
+            <Icon source={icon} tone={iconTone} />
+          </Box>
+          <BlockStack gap="050">
+            <Text as="span" variant="bodySm" tone="subdued">
+              {title}
+            </Text>
+            <Text as="span" variant="bodyMd" fontWeight="semibold" breakWord>
+              {value}
+            </Text>
+          </BlockStack>
+        </InlineStack>
+
+        <InlineStack gap="200" blockAlign="center" wrap>
+          {badge && <Badge tone={badge.tone}>{badge.content}</Badge>}
+          {action && (
+            <Button size="slim" variant={action.primary ? 'primary' : undefined} onClick={action.onAction}>
+              {action.content}
+            </Button>
+          )}
+        </InlineStack>
+      </InlineStack>
+    </Box>
   );
 }

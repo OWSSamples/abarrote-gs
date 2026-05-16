@@ -24,6 +24,7 @@ export type AuthEvent =
   | 'oauth_callback_success'
   | 'oauth_callback_failure'
   | 'force_password_change'
+  | 'mfa_recovery_attempt'
   | 'unauthorized_access';
 
 export interface AuthLogContext {

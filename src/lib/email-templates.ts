@@ -73,6 +73,77 @@ function baseLayout(opts: {
 </html>`;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ══════════════════════════════════════════════════════════════
+// TEMPLATE: RECORDATORIO DE ACTIVACIÓN MFA
+// ══════════════════════════════════════════════════════════════
+
+export interface MfaActivationReminderEmailData {
+  storeName: string;
+  logoUrl?: string;
+  accentColor?: string;
+  displayName?: string;
+  email: string;
+  activatedAt: string;
+}
+
+export function mfaActivationReminderTemplate(data: MfaActivationReminderEmailData) {
+  const storeName = escapeHtml(data.storeName);
+  const displayName = escapeHtml(data.displayName?.trim() || 'Usuario');
+  const email = escapeHtml(data.email);
+  const activatedAt = escapeHtml(data.activatedAt);
+
+  const body = `
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;">Verificación en 2 pasos activada</h2>
+    <p style="margin:0 0 18px;font-size:14px;color:#374151;line-height:1.6;">
+      Hola ${displayName}, te confirmamos que se activó la autenticación de doble factor para la cuenta
+      <strong>${email}</strong>.
+    </p>
+
+    <div style="background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;padding:16px;margin:18px 0;">
+      <p style="margin:0;font-size:14px;color:#1f2937;line-height:1.6;">
+        Guarda tus códigos de recuperación en un lugar seguro. No se adjuntan ni se muestran por correo; solo están visibles una vez dentro de Kiosko POS.
+      </p>
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;">
+      <tr>
+        <td style="padding:6px 0;font-size:13px;color:#6b7280;">Método activo</td>
+        <td style="padding:6px 0;font-size:13px;color:#111827;text-align:right;font-weight:600;">App autenticadora (TOTP)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;font-size:13px;color:#6b7280;">Fecha de activación</td>
+        <td style="padding:6px 0;font-size:13px;color:#111827;text-align:right;font-weight:600;">${activatedAt}</td>
+      </tr>
+    </table>
+
+    <p style="margin:22px 0 0;font-size:13px;color:#6b7280;line-height:1.6;">
+      Si tú no realizaste esta activación, inicia sesión de inmediato, cambia tu contraseña y contacta al administrador.
+    </p>
+  `;
+
+  return {
+    subject: `🔐 MFA activado — ${storeName}`,
+    html: baseLayout({
+      storeName,
+      logoUrl: data.logoUrl,
+      accentColor: data.accentColor,
+      title: 'MFA activado',
+      body,
+      footer: `Este correo fue enviado automáticamente por ${storeName}. No contiene códigos de recuperación.`,
+    }),
+    text: `MFA activado para ${data.email} el ${data.activatedAt}. Guarda tus códigos de recuperación en un lugar seguro.`,
+  };
+}
+
 // ══════════════════════════════════════════════════════════════
 // TEMPLATE: TICKET DE VENTA (DIGITAL RECEIPT)
 // ══════════════════════════════════════════════════════════════

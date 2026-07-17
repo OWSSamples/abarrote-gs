@@ -48,7 +48,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const stripe = new Stripe(decrypt(connection.accessTokenEnc), {
-      apiVersion: '2026-04-22.dahlia',
+      apiVersion: '2026-06-24.dahlia',
     });
     const webhookSecret = decrypt(connection.webhookSecretEnc);
 

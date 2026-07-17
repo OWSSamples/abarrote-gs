@@ -60,7 +60,7 @@ async function getStripeClient(storeId: string): Promise<Stripe> {
 
   secretKey = decrypt(connection.accessTokenEnc);
 
-  return new Stripe(secretKey, { apiVersion: '2026-04-22.dahlia' });
+  return new Stripe(secretKey, { apiVersion: '2026-06-24.dahlia' });
 }
 
 // ── SPEI (mx_bank_transfer) ──
@@ -277,7 +277,7 @@ export async function connectStripe(params: {
 
   // Validate key by making a test request
   try {
-    const stripe = new Stripe(secretKey, { apiVersion: '2026-04-22.dahlia' });
+    const stripe = new Stripe(secretKey, { apiVersion: '2026-06-24.dahlia' });
     await stripe.balance.retrieve();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error desconocido';

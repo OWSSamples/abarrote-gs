@@ -11,7 +11,7 @@ import { stockAlertPayloadSchema, parseJobPayload } from '@/infrastructure/jobs/
 // Offloaded from the sale flow so the cashier doesn't wait
 // for Telegram API latency.
 //
-// Payload: { productName: string, currentStock: number, minStock: number }
+// Payload: { storeId: string, productName: string, currentStock: number, minStock: number }
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
         `Producto: ${escapeHTML(payload.productName)}\n` +
         `Stock actual: ${payload.currentStock}\n` +
         `Mínimo sugerido: ${payload.minStock}`,
+      payload.storeId,
     );
 
     return NextResponse.json({ success: true });

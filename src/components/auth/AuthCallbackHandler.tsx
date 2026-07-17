@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCurrentUser, fetchAuthSession } from '@/lib/cognito';
+import { getCurrentUser } from '@/lib/cognito';
+import { synchronizeServerSession } from '@/lib/auth/session-client';
 import { logAuthEvent } from '@/lib/auth/auth-logger';
+import { getCurrentTenantRegistrationStatus } from '@/app/actions/register-tenant-actions';
 import { Card, BlockStack, Text, Spinner, Box } from '@shopify/polaris';
 
 /**
@@ -21,16 +23,26 @@ export function AuthCallbackHandler() {
         // Amplify auto-handles the code exchange from the URL params.
         // We just need to wait for the user to be available.
         const user = await getCurrentUser();
-        const session = await fetchAuthSession({ forceRefresh: true });
-        const idToken = session.tokens?.idToken?.toString();
-
-        if (idToken) {
-          const isHttps = window.location.protocol === 'https:';
-          document.cookie = `__session=${idToken}; path=/; max-age=3600; SameSite=Strict${isHttps ? '; Secure' : ''}`;
-        }
+        const syncStatus = await synchronizeServerSession(false);
+        if (syncStatus !== 'established') throw new Error('Server session could not be established');
 
         void logAuthEvent({ event: 'oauth_callback_success', userId: user.userId, provider: 'microsoft' });
-        router.replace('/');
+        const pendingReturnTo = window.sessionStorage.getItem('opendex.authReturnTo');
+        window.sessionStorage.removeItem('opendex.authReturnTo');
+        const safeReturnTo = pendingReturnTo?.startsWith('/') && !pendingReturnTo.startsWith('//')
+          ? pendingReturnTo
+          : '/';
+        if (safeReturnTo.startsWith('/auth/accept-invitation?')) {
+          router.replace(safeReturnTo);
+          return;
+        }
+        const tenantStatus = await getCurrentTenantRegistrationStatus();
+        if (!tenantStatus.hasTenant) {
+          window.sessionStorage.setItem('opendex.pendingSignupEmail', tenantStatus.email);
+          router.replace('/auth/register?mode=verify');
+          return;
+        }
+        router.replace(safeReturnTo);
       } catch (err) {
         console.error('OAuth callback error:', err);
         void logAuthEvent({

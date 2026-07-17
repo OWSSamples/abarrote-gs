@@ -1,38 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db } from '@/db';
-import { paymentCharges } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { paymentCharges, paymentProviderConnections } from '@/db/schema';
+import { and, eq, ne } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
-import { idempotencyCheck } from '@/infrastructure/redis';
-import { env } from '@/lib/env';
+import { decrypt } from '@/lib/crypto';
+import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
+
+const MAX_WEBHOOK_BYTES = 64 * 1024;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
 
   try {
-    const body = await request.text();
+    const storeId = new URL(request.url).searchParams.get('store');
+    if (!storeId || !/^(?:main|[a-f0-9]{32})$/.test(storeId)) {
+      return NextResponse.json({ error: 'Store scope required' }, { status: 400 });
+    }
+    const body = await readTextBodyWithLimit(request, MAX_WEBHOOK_BYTES);
+    if (body === null) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
+    }
     const signature = request.headers.get('stripe-signature');
 
     if (!signature) {
       return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
     }
 
-    const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret) {
+    const [connection] = await db
+      .select({
+        accessTokenEnc: paymentProviderConnections.accessTokenEnc,
+        webhookSecretEnc: paymentProviderConnections.webhookSecretEnc,
+      })
+      .from(paymentProviderConnections)
+      .where(
+        and(
+          eq(paymentProviderConnections.provider, 'stripe'),
+          eq(paymentProviderConnections.storeId, storeId),
+          eq(paymentProviderConnections.status, 'connected'),
+        ),
+      )
+      .limit(1);
+
+    if (!connection?.accessTokenEnc || !connection.webhookSecretEnc) {
       logger.warn('Stripe webhook secret not configured', { action: 'stripe_webhook_no_secret' });
-      return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
     }
 
-    // Verify signature
-    const stripeSecretKey = env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey) {
-      logger.error('Stripe secret key not configured', { action: 'stripe_webhook_no_key' });
-      return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
-    }
-    const stripe = new Stripe(stripeSecretKey, {
+    const stripe = new Stripe(decrypt(connection.accessTokenEnc), {
       apiVersion: '2026-04-22.dahlia',
     });
+    const webhookSecret = decrypt(connection.webhookSecretEnc);
 
     let event: Stripe.Event;
     try {
@@ -48,26 +66,54 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       eventId: event.id,
     });
 
-    // Idempotency: prevent duplicate processing on webhook retries
-    const isNew = await idempotencyCheck(`stripe_webhook:${event.id}`, { ttlMs: 86_400_000 });
-    if (!isNew) {
-      logger.info('Stripe webhook duplicate skipped', { action: 'stripe_webhook_duplicate', eventId: event.id });
-      return NextResponse.json({ received: true, duplicate: true });
-    }
-
     switch (event.type) {
       case 'payment_intent.succeeded': {
         const pi = event.data.object as Stripe.PaymentIntent;
-        await db
+        const [existing] = await db
+          .select({ id: paymentCharges.id, amount: paymentCharges.amount, currency: paymentCharges.currency })
+          .from(paymentCharges)
+          .where(
+            and(
+              eq(paymentCharges.storeId, storeId),
+              eq(paymentCharges.provider, 'stripe'),
+              eq(paymentCharges.providerChargeId, pi.id),
+            ),
+          )
+          .limit(1);
+        if (!existing) {
+          return NextResponse.json({ received: true, handled: false }, { status: 202 });
+        }
+
+        const amountMatches = Math.round(Number(existing.amount) * 100) === pi.amount_received;
+        const currencyMatches = existing.currency.toLowerCase() === pi.currency.toLowerCase();
+        if (!amountMatches || !currencyMatches) {
+          logger.warn('Stripe payment reconciliation mismatch', {
+            action: 'stripe_payment_reconciliation_mismatch',
+            chargeId: existing.id,
+            amountMatches,
+            currencyMatches,
+          });
+          return NextResponse.json({ error: 'Charge reconciliation failed' }, { status: 409 });
+        }
+
+        const [updated] = await db
           .update(paymentCharges)
           .set({
             status: 'paid',
             paidAt: new Date(),
             updatedAt: new Date(),
           })
-          .where(eq(paymentCharges.providerChargeId, pi.id));
+          .where(
+            and(
+              eq(paymentCharges.id, existing.id),
+              eq(paymentCharges.storeId, storeId),
+              eq(paymentCharges.provider, 'stripe'),
+              ne(paymentCharges.status, 'paid'),
+            ),
+          )
+          .returning({ id: paymentCharges.id });
 
-        logger.info('Stripe payment confirmed', {
+        if (updated) logger.info('Stripe payment confirmed', {
           action: 'stripe_payment_confirmed',
           paymentIntentId: pi.id,
           duration: Date.now() - startTime,
@@ -83,7 +129,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             status: 'failed',
             updatedAt: new Date(),
           })
-          .where(eq(paymentCharges.providerChargeId, pi.id));
+          .where(
+            and(
+              eq(paymentCharges.provider, 'stripe'),
+              eq(paymentCharges.storeId, storeId),
+              eq(paymentCharges.providerChargeId, pi.id),
+              eq(paymentCharges.status, 'pending'),
+            ),
+          );
         break;
       }
 
@@ -95,7 +148,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             status: 'expired',
             updatedAt: new Date(),
           })
-          .where(eq(paymentCharges.providerChargeId, pi.id));
+          .where(
+            and(
+              eq(paymentCharges.provider, 'stripe'),
+              eq(paymentCharges.storeId, storeId),
+              eq(paymentCharges.providerChargeId, pi.id),
+              eq(paymentCharges.status, 'pending'),
+            ),
+          );
         break;
       }
 

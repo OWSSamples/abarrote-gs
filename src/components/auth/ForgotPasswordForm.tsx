@@ -1,226 +1,477 @@
 'use client';
 
-import { useState, useCallback, type ReactNode } from 'react';
-import { resetPassword } from '@/lib/cognito';
+import { useCallback, useEffect, useState } from 'react';
+import NextLink from 'next/link';
+import { useRouter } from 'next/navigation';
+import { confirmResetPassword, resetPassword, resendSignUpCode } from '@/lib/cognito';
 import { logAuthEvent } from '@/lib/auth/auth-logger';
+import { evaluatePassword } from '@/lib/auth/password-policy';
 import { checkAuthRateLimit } from '@/app/actions/auth-rate-limit';
-import {
-  Badge,
-  BlockStack,
-  Box,
-  Button,
-  Divider,
-  Icon,
-  InlineStack,
-  Link,
-  Text,
-  TextField,
-} from '@shopify/polaris';
-import { ArrowLeftIcon, CheckCircleIcon, EmailIcon, LockIcon, RefreshIcon } from '@shopify/polaris-icons';
+import { preparePendingSignupVerification } from '@/app/actions/register-tenant-actions';
+import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
 import { useToast } from '@/components/notifications/ToastProvider';
+import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/security/redaction';
+import { Banner } from '@cloudflare/kumo/components/banner';
+import { Button, buttonVariants } from '@cloudflare/kumo/components/button';
+import { Input } from '@cloudflare/kumo/components/input';
+import { LayerCard } from '@cloudflare/kumo/components/layer-card';
+import { Link } from '@cloudflare/kumo/components/link';
+import { SensitiveInput } from '@cloudflare/kumo/components/sensitive-input';
+import { Text } from '@cloudflare/kumo/components/text';
+import {
+  ArrowClockwise16Filled,
+  ArrowLeft16Filled,
+  CheckmarkCircle24Filled,
+  LockClosedKey24Filled,
+  Mail20Filled,
+} from '@fluentui/react-icons';
+
+type RecoveryStep = 'request' | 'confirm' | 'success';
+type RecoveryField = 'email' | 'confirmationCode' | 'password' | 'confirmPassword';
+type RecoveryFieldErrors = Partial<Record<RecoveryField, string>>;
+
+const RESEND_COOLDOWN_SECONDS = 45;
+const PENDING_SIGNUP_EMAIL_STORAGE_KEY = 'opendex.pendingSignupEmail';
+
+function isUnconfirmedSignUpError(error: unknown): boolean {
+  const err = error as { name?: string; message?: string };
+  const message = err.message?.toLowerCase() ?? '';
+  return (
+    err.name === 'UserNotConfirmedException' ||
+    (err.name === 'InvalidParameterException' && message.includes('confirm')) ||
+    message.includes('not confirmed')
+  );
+}
+
+function getDeliveryMessage(delivery: { deliveryMedium?: string; destination?: string } | undefined): string {
+  const destination = delivery?.destination;
+  const recoveryHint =
+    'Puede tardar unos minutos. Revisa la bandeja principal y correo no deseado antes de reenviar.';
+
+  if (delivery?.deliveryMedium === 'EMAIL') {
+    const message = destination
+      ? `Si la cuenta existe y el correo está verificado, recibirás un código en ${destination}.`
+      : 'Si la cuenta existe y el correo está verificado, recibirás un código de recuperación.';
+    return `${message} ${recoveryHint}`;
+  }
+
+  if (delivery?.deliveryMedium === 'SMS' || delivery?.deliveryMedium === 'PHONE') {
+    const message = destination
+      ? `Si la cuenta existe y el teléfono está verificado, recibirás un código en ${destination}.`
+      : 'Si la cuenta existe y el teléfono está verificado, recibirás un código de recuperación.';
+    return `${message} ${recoveryHint}`;
+  }
+
+  return `Si la cuenta puede recuperarse, recibirás un código temporal en el medio verificado. ${recoveryHint}`;
+}
 
 export function ForgotPasswordForm() {
+  const router = useRouter();
   const toast = useToast();
+  const [step, setStep] = useState<RecoveryStep>('request');
   const [email, setEmail] = useState('');
+  const [confirmationCode, setConfirmationCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [deliveryMessage, setDeliveryMessage] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<RecoveryFieldErrors>({});
+  const [formError, setFormError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
+  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
 
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      const normalizedEmail = email.trim();
+  const passwordEvaluation = evaluatePassword(password);
+  const passwordsMatch = password.length > 0 && password === confirmPassword;
+  const resendCooldownSeconds = resendAvailableAt
+    ? Math.max(0, Math.ceil((resendAvailableAt - clock) / 1000))
+    : 0;
 
-      if (!normalizedEmail) {
-        toast.showError('Ingresa tu correo electrónico');
-        return;
+  useEffect(() => {
+    if (!resendAvailableAt || resendAvailableAt <= clock) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setClock(Date.now());
+    }, 1000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [clock, resendAvailableAt]);
+
+  const clearFieldError = useCallback((field: RecoveryField) => {
+    setFormError('');
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }, []);
+
+  const requestResetCode = useCallback(
+    async (rawEmail: string, isResend = false) => {
+      const normalizedEmail = normalizeEmailAddress(rawEmail);
+
+      if (!isValidEmailAddress(normalizedEmail)) {
+        setFieldErrors({ email: 'Ingresa un correo electrónico válido.' });
+        setFormError('');
+        return false;
       }
 
       setIsLoading(true);
+      setFormError('');
+      setFieldErrors({});
       void logAuthEvent({ event: 'password_reset_request', email: normalizedEmail });
+
       try {
         const limit = await checkAuthRateLimit('password_reset', normalizedEmail);
         if (!limit.allowed) {
-          toast.showError(
-            `Demasiados intentos. Vuelve a intentar en ${limit.retryAfterSeconds} segundos.`,
-          );
-          return;
+          setFormError(`Demasiados intentos. Vuelve a intentar en ${limit.retryAfterSeconds ?? 60} segundos.`);
+          return false;
         }
-        await resetPassword({ username: normalizedEmail });
+
+        const result = await resetPassword({ username: normalizedEmail });
+
+        if (result.nextStep.resetPasswordStep !== 'CONFIRM_RESET_PASSWORD_WITH_CODE') {
+          setFormError('No fue posible iniciar la recuperación. Intenta de nuevo.');
+          return false;
+        }
+
         setEmail(normalizedEmail);
-        void logAuthEvent({ event: 'password_reset_success', email: normalizedEmail });
-        setEmailSent(true);
-        toast.showSuccess('Correo de recuperación enviado');
-      } catch (err) {
+        setDeliveryMessage(getDeliveryMessage(result.nextStep.codeDeliveryDetails));
+        const now = Date.now();
+        setClock(now);
+        setResendAvailableAt(now + RESEND_COOLDOWN_SECONDS * 1000);
+        setStep('confirm');
+        void logAuthEvent({ event: 'password_reset_request_accepted', email: normalizedEmail });
+        toast.showSuccess(isResend ? 'Solicitud de reenvío procesada' : 'Solicitud de recuperación procesada');
+        return true;
+      } catch (error) {
+        const errorName = (error as { name?: string }).name;
         void logAuthEvent({
           event: 'password_reset_failure',
           email: normalizedEmail,
-          errorCode: (err as { name?: string }).name,
+          errorCode: errorName,
         });
-        toast.showError('Error al enviar el correo. Verifica que la dirección sea correcta.');
+
+        if (isUnconfirmedSignUpError(error)) {
+          window.sessionStorage.setItem(PENDING_SIGNUP_EMAIL_STORAGE_KEY, normalizedEmail);
+          try {
+            const pending = await preparePendingSignupVerification({ email: normalizedEmail });
+            if (pending.status === 'pending' && pending.username) {
+              await resendSignUpCode({ username: pending.username });
+              toast.showSuccess('Te reenviamos el código para completar tu registro.');
+            } else if (pending.status === 'rate_limited') {
+              toast.showError(`Demasiadas solicitudes. Intenta de nuevo en ${pending.retryAfterSeconds ?? 60} segundos.`);
+            } else {
+              toast.showError('Completa la verificación pendiente para poder recuperar tu cuenta.');
+            }
+          } catch (resendError) {
+            const resendName = (resendError as { name?: string }).name;
+            if (resendName === 'LimitExceededException' || resendName === 'TooManyRequestsException') {
+              toast.showError('AWS limitó temporalmente el reenvío. Continúa con el último código recibido o espera unos minutos.');
+            }
+          }
+          router.push('/auth/register?mode=verify');
+          return false;
+        }
+
+        if (errorName === 'LimitExceededException' || errorName === 'TooManyRequestsException') {
+          setFormError('Se alcanzó el límite de solicitudes. Espera unos minutos antes de intentar de nuevo.');
+        } else {
+          setFormError('No fue posible iniciar la recuperación. Espera unos minutos e intenta de nuevo.');
+        }
+        return false;
       } finally {
         setIsLoading(false);
       }
     },
-    [email, toast],
+    [router, toast],
+  );
+
+  const handleRequest = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      await requestResetCode(email);
+    },
+    [email, requestResetCode],
+  );
+
+  const handleConfirm = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+
+      const normalizedCode = confirmationCode.trim();
+      const errors: RecoveryFieldErrors = {};
+
+      if (!/^\d{6}$/.test(normalizedCode)) {
+        errors.confirmationCode = 'Ingresa el código de 6 dígitos que recibiste.';
+      }
+      if (!passwordEvaluation.isValid) {
+        errors.password = 'La contraseña no cumple la política de seguridad.';
+      }
+      if (!passwordsMatch) {
+        errors.confirmPassword = 'Las contraseñas no coinciden.';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setFormError('');
+        return;
+      }
+
+      setIsLoading(true);
+      setFormError('');
+      setFieldErrors({});
+
+      try {
+        await confirmResetPassword({
+          username: email,
+          confirmationCode: normalizedCode,
+          newPassword: password,
+        });
+        setStep('success');
+        void logAuthEvent({ event: 'password_reset_success', email });
+        toast.showSuccess('Contraseña actualizada correctamente');
+      } catch (error) {
+        const errorName = (error as { name?: string }).name;
+        void logAuthEvent({
+          event: 'password_reset_failure',
+          email,
+          errorCode: errorName,
+        });
+
+        if (errorName === 'CodeMismatchException') {
+          setFieldErrors({ confirmationCode: 'El código de recuperación no coincide. Verifícalo e intenta de nuevo.' });
+        } else if (errorName === 'ExpiredCodeException') {
+          setFieldErrors({ confirmationCode: 'El código expiró. Solicita uno nuevo.' });
+        } else if (errorName === 'InvalidPasswordException') {
+          setFieldErrors({ password: 'La contraseña no cumple la política configurada en Cognito.' });
+        } else if (errorName === 'LimitExceededException' || errorName === 'TooManyFailedAttemptsException') {
+          setFormError('Se alcanzó el límite de intentos. Espera unos minutos antes de volver a intentarlo.');
+        } else {
+          setFormError('No fue posible validar el código. Solicita uno nuevo e intenta otra vez.');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [confirmationCode, email, password, passwordEvaluation.isValid, passwordsMatch, toast],
   );
 
   const handleResend = useCallback(async () => {
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail) {
-      toast.showError('Ingresa tu correo electrónico');
+    if (resendCooldownSeconds > 0) {
+      setFormError(`Espera ${resendCooldownSeconds} segundos antes de reenviar el código.`);
       return;
     }
 
-    setIsLoading(true);
-    try {
-      await resetPassword({ username: normalizedEmail });
-      setEmail(normalizedEmail);
-      toast.showSuccess('Correo reenviado exitosamente');
-    } catch {
-      toast.showError('Error al reenviar el correo');
-    } finally {
-      setIsLoading(false);
+    const sent = await requestResetCode(email, true);
+    if (sent) {
+      setConfirmationCode('');
+      setFieldErrors({});
     }
-  }, [email, toast]);
+  }, [email, requestResetCode, resendCooldownSeconds]);
 
-  if (emailSent) {
+  const handleChangeEmail = useCallback(() => {
+    setStep('request');
+    setConfirmationCode('');
+    setPassword('');
+    setConfirmPassword('');
+    setDeliveryMessage('');
+    setResendAvailableAt(null);
+    setFieldErrors({});
+    setFormError('');
+  }, []);
+
+  if (step === 'success') {
     return (
-      <BlockStack gap="500">
-        <AuthPanelHeader
-          tone="success"
-          icon={CheckCircleIcon}
-          badge="Solicitud enviada"
-          title="Revisa tu correo"
-          description="Enviamos un enlace seguro para restablecer tu contraseña. Puede tardar unos minutos en llegar."
-        />
-
-        <Box background="bg-fill-success-secondary" borderColor="border-success" borderRadius="300" borderWidth="025" padding="400">
-          <BlockStack gap="200">
-            <Text as="p" variant="bodySm" tone="subdued">
-              Enviado a
-            </Text>
-            <InlineStack gap="200" blockAlign="center" wrap={false}>
-              <Icon source={EmailIcon} tone="success" />
-              <Text as="p" variant="bodyMd" fontWeight="bold" breakWord>
-                {email}
+      <>
+        <LayerCard.Secondary data-auth-layout="compact">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-kumo-success-tint/70">
+              <CheckmarkCircle24Filled className="text-kumo-success" />
+            </div>
+            <div className="space-y-1">
+              <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
+                Contraseña actualizada
               </Text>
-            </InlineStack>
-          </BlockStack>
-        </Box>
+              <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
+                Ya puedes iniciar sesión con tu nueva contraseña.
+              </Text>
+            </div>
+          </div>
+        </LayerCard.Secondary>
 
-        <BlockStack gap="300">
-          <Button variant="primary" size="large" fullWidth icon={RefreshIcon} onClick={handleResend} loading={isLoading}>
-            Reenviar correo
-          </Button>
-        </BlockStack>
-      </BlockStack>
+        <LayerCard.Primary>
+          <NextLink
+            href="/auth/login"
+            className={`${buttonVariants({ variant: 'primary', size: 'lg' })} w-full justify-center`}
+          >
+            Ir al inicio de sesión
+          </NextLink>
+        </LayerCard.Primary>
+      </>
+    );
+  }
+
+  if (step === 'confirm') {
+    return (
+      <>
+        <LayerCard.Secondary data-auth-layout="compact">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-kumo-recessed">
+              <LockClosedKey24Filled className="text-kumo-secondary" />
+            </div>
+            <div className="space-y-1">
+              <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
+                Crea una nueva contraseña
+              </Text>
+              <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
+                Confirma tu identidad con el código temporal que recibiste.
+              </Text>
+            </div>
+          </div>
+        </LayerCard.Secondary>
+
+        <LayerCard.Primary className="gap-4">
+          <div aria-live="polite" className="sr-only">
+            {isLoading ? 'Procesando solicitud de recuperación' : deliveryMessage}
+          </div>
+
+          {formError && <Banner variant="error" description={formError} />}
+
+          <Banner
+            variant="secondary"
+            icon={<Mail20Filled />}
+            title="Código de recuperación"
+            description={deliveryMessage}
+          />
+
+          <form onSubmit={handleConfirm} className="space-y-4">
+            <Input
+              label="Código de confirmación"
+              value={confirmationCode}
+              onChange={(event) => {
+                setConfirmationCode(event.target.value.replace(/\D/g, '').slice(0, 6));
+                clearFieldError('confirmationCode');
+              }}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              disabled={isLoading}
+              error={fieldErrors.confirmationCode}
+              placeholder="123456"
+              autoFocus
+            />
+
+            <SensitiveInput
+              label="Nueva contraseña"
+              value={password}
+              onValueChange={(value) => {
+                setPassword(value);
+                clearFieldError('password');
+              }}
+              autoComplete="new-password"
+              disabled={isLoading}
+              error={fieldErrors.password}
+            />
+            <PasswordStrengthMeter password={password} />
+            <SensitiveInput
+              label="Confirmar contraseña"
+              value={confirmPassword}
+              onValueChange={(value) => {
+                setConfirmPassword(value);
+                clearFieldError('confirmPassword');
+              }}
+              autoComplete="new-password"
+              disabled={isLoading}
+              error={fieldErrors.confirmPassword}
+            />
+
+            <Button variant="primary" type="submit" className="w-full justify-center" size="lg" loading={isLoading}>
+              Restablecer contraseña
+            </Button>
+            <Button
+              variant="secondary"
+              type="button"
+              className="w-full justify-center"
+              icon={<ArrowClockwise16Filled />}
+              loading={isLoading}
+              onClick={handleResend}
+              disabled={isLoading || resendCooldownSeconds > 0}
+            >
+              {resendCooldownSeconds > 0 ? `Reenviar en ${resendCooldownSeconds}s` : 'Reenviar código'}
+            </Button>
+          </form>
+
+          <div className="h-px w-full bg-kumo-hairline" />
+          <div className="text-center">
+            <Button variant="ghost" type="button" size="sm" onClick={handleChangeEmail} disabled={isLoading}>
+              Usar otro correo
+            </Button>
+          </div>
+        </LayerCard.Primary>
+      </>
     );
   }
 
   return (
-    <BlockStack gap="500">
-      <AuthPanelHeader
-        tone="info"
-        icon={LockIcon}
-        badge="Recuperación segura"
-        title="¿Olvidaste tu contraseña?"
-        description="Te enviaremos un enlace temporal al correo asociado a tu cuenta para que puedas crear una nueva contraseña."
-      />
+    <>
+      <LayerCard.Secondary data-auth-layout="compact">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-kumo-recessed">
+            <LockClosedKey24Filled className="text-kumo-secondary" />
+          </div>
+          <div className="space-y-1">
+            <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
+              Recuperar contraseña
+            </Text>
+            <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
+              Solicita un código para recuperar el acceso a tu cuenta.
+            </Text>
+          </div>
+        </div>
+      </LayerCard.Secondary>
 
-      <Box background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" padding="400">
-        <BlockStack gap="300">
-          <RecoveryStep icon={EmailIcon} title="Verificamos tu correo" description="Usa el correo con el que inicias sesión en Kiosko." />
-          <Divider />
-          <RecoveryStep icon={LockIcon} title="Enlace privado" description="El enlace se genera en Cognito y expira por seguridad." />
-        </BlockStack>
-      </Box>
+      <LayerCard.Primary className="gap-4">
+        {formError && <Banner variant="error" description={formError} />}
 
-      <form onSubmit={handleSubmit}>
-        <BlockStack gap="400">
-          <TextField
+        <Banner
+          variant="secondary"
+          icon={<Mail20Filled />}
+          title="Recuperación segura"
+          description="Si la cuenta está registrada, enviaremos un código al correo o teléfono verificado. Revisa cuidadosamente el dato antes de continuar."
+        />
+
+        <form onSubmit={handleRequest} className="space-y-4">
+          <Input
             label="Correo electrónico"
             value={email}
-            onChange={setEmail}
-            autoComplete="email"
+            onChange={(event) => {
+              setEmail(event.target.value);
+              clearFieldError('email');
+            }}
             type="email"
+            autoComplete="email"
             disabled={isLoading}
-            placeholder="GlobalID@Company.com"
-            prefix={<Icon source={EmailIcon} tone="subdued" />}
-            helpText="No compartiremos si el correo existe; esto protege las cuentas del negocio."
+            error={fieldErrors.email}
+            placeholder="propietario@negocio.com"
+            autoFocus
           />
-          <Button variant="primary" submit size="large" fullWidth loading={isLoading}>
-            Enviar instrucciones
+          <Button variant="primary" type="submit" className="w-full justify-center" size="lg" loading={isLoading}>
+            Enviar código
           </Button>
-        </BlockStack>
-      </form>
+        </form>
 
-      <Divider />
-
-      <InlineStack align="center">
-        <Link url="/auth/login" monochrome>
-          <InlineStack gap="100" blockAlign="center" wrap={false}>
-            <Icon source={ArrowLeftIcon} tone="subdued" />
-            <Text as="span" variant="bodySm" tone="subdued">
-              Volver al inicio de sesión
-            </Text>
-          </InlineStack>
-        </Link>
-      </InlineStack>
-    </BlockStack>
-  );
-}
-
-type HeaderTone = 'info' | 'success';
-
-function AuthPanelHeader({
-  tone,
-  icon,
-  badge,
-  title,
-  description,
-}: {
-  tone: HeaderTone;
-  icon: typeof LockIcon;
-  badge: string;
-  title: string;
-  description: string;
-}) {
-  const iconTone = tone === 'success' ? 'success' : 'info';
-  const iconBackground = tone === 'success' ? 'bg-fill-success-secondary' : 'bg-fill-info-secondary';
-  const iconBorder = tone === 'success' ? 'border-success' : 'border-info';
-
-  return (
-    <BlockStack gap="300" inlineAlign="center">
-      <Box background={iconBackground} borderColor={iconBorder} borderRadius="500" borderWidth="025" padding="300">
-        <Icon source={icon} tone={iconTone} />
-      </Box>
-      <BlockStack gap="200" inlineAlign="center">
-        <Badge tone={tone}>{badge}</Badge>
-        <Text as="h1" variant="headingLg" fontWeight="bold" alignment="center">
-          {title}
-        </Text>
-        <Text as="p" variant="bodyMd" tone="subdued" alignment="center">
-          {description}
-        </Text>
-      </BlockStack>
-    </BlockStack>
-  );
-}
-
-function RecoveryStep({ icon, title, description }: { icon: typeof EmailIcon; title: string; description: ReactNode }) {
-  return (
-    <InlineStack gap="300" blockAlign="start" wrap={false}>
-      <Box background="bg-surface" borderColor="border" borderRadius="200" borderWidth="025" padding="200">
-        <Icon source={icon} tone="subdued" />
-      </Box>
-      <BlockStack gap="050">
-        <Text as="p" variant="bodySm" fontWeight="semibold">
-          {title}
-        </Text>
-        <Text as="p" variant="bodySm" tone="subdued">
-          {description}
-        </Text>
-      </BlockStack>
-    </InlineStack>
+        <div className="h-px w-full bg-kumo-hairline" />
+        <div className="text-center">
+          <Link href="/auth/login" variant="plain" render={<NextLink href="/auth/login" />}>
+            <span className="inline-flex items-center gap-1.5">
+              <ArrowLeft16Filled />
+              <Text variant="secondary" size="sm" as="span">
+                Volver al inicio de sesión
+              </Text>
+            </span>
+          </Link>
+        </div>
+      </LayerCard.Primary>
+    </>
   );
 }

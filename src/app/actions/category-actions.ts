@@ -1,34 +1,37 @@
 'use server';
 
-import { requireAuth, requirePermission, sanitize } from '@/lib/auth/guard';
+import { requirePermission, sanitize } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { db } from '@/db';
 import { productCategories } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { withLogging, AppError } from '@/lib/errors';
 import { validateSchema, createCategorySchema, updateCategorySchema, idSchema } from '@/lib/validation/schemas';
-import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
+import { isNotDeleted } from '@/infrastructure/soft-delete';
 import { withRateLimit, cache } from '@/infrastructure/redis';
 
 async function _fetchCategories() {
-  await requireAuth();
+  const { storeId } = await requireStoreScope();
+  const cacheKey = `categories:${storeId}:all`;
 
-  const cached = await cache.get<(typeof productCategories.$inferSelect)[]>('categories:all');
+  const cached = await cache.get<(typeof productCategories.$inferSelect)[]>(cacheKey);
   if (cached) return cached;
 
   const result = await db
     .select()
     .from(productCategories)
-    .where(isNotDeleted(productCategories))
+    .where(and(eq(productCategories.storeId, storeId), isNotDeleted(productCategories)))
     .orderBy(desc(productCategories.createdAt));
 
-  await cache.set('categories:all', result, { ttlMs: 60_000 });
+  await cache.set(cacheKey, result, { ttlMs: 60_000 });
 
   return result;
 }
 
 async function _createCategory(data: { id?: string; name: string; description: string | null; icon: string | null }) {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(
     createCategorySchema,
     { name: data.name, description: data.description ?? undefined, icon: data.icon ?? undefined },
@@ -44,13 +47,14 @@ async function _createCategory(data: { id?: string; name: string; description: s
         name: safeName,
         description: data.description ? sanitize(data.description) : null,
         icon: data.icon ? sanitize(data.icon) : null,
+        storeId,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .returning();
 
     revalidatePath('/dashboard');
-    await cache.invalidatePattern('categories:');
+    await cache.invalidate(`categories:${storeId}:all`);
     return newCategory;
   } catch (error: unknown) {
     const err = error as Record<string, unknown>;
@@ -69,6 +73,7 @@ async function _updateCategory(
   data: Partial<{ name: string; description: string | null; icon: string | null }>,
 ): Promise<typeof productCategories.$inferSelect> {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'updateCategory:id');
   validateSchema(
     updateCategorySchema,
@@ -81,18 +86,39 @@ async function _updateCategory(
   if (data.description !== undefined) safeData.description = data.description ? sanitize(data.description) : null;
   if (data.icon !== undefined) safeData.icon = data.icon ? sanitize(data.icon) : null;
 
-  const [updated] = await db.update(productCategories).set(safeData).where(eq(productCategories.id, id)).returning();
+  const [updated] = await db
+    .update(productCategories)
+    .set(safeData)
+    .where(and(eq(productCategories.id, id), eq(productCategories.storeId, storeId)))
+    .returning();
+  if (!updated) {
+    throw new AppError('CATEGORY_NOT_FOUND', 'Categoría no encontrada en tu negocio', 404);
+  }
 
   revalidatePath('/dashboard');
-  await cache.invalidatePattern('categories:');
+  await cache.invalidate(`categories:${storeId}:all`);
   return updated;
 }
 
 async function _deleteCategory(id: string): Promise<void> {
   await requirePermission('inventory.delete');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'deleteCategory:id');
-  await softDelete(productCategories, id);
-  await cache.invalidatePattern('categories:');
+  const deleted = await db
+    .update(productCategories)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(productCategories.id, id),
+        eq(productCategories.storeId, storeId),
+        isNotDeleted(productCategories),
+      ),
+    )
+    .returning({ id: productCategories.id });
+  if (deleted.length === 0) {
+    throw new AppError('CATEGORY_NOT_FOUND', 'Categoría no encontrada en tu negocio', 404);
+  }
+  await cache.invalidate(`categories:${storeId}:all`);
   revalidatePath('/dashboard');
 }
 

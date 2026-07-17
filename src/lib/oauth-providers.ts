@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 import crypto from 'crypto';
 import { db } from '@/db';
@@ -41,7 +41,7 @@ function generateCodeChallenge(verifier: string): string {
  * Generates the OAuth authorization URL for MercadoPago.
  * Stores PKCE code_verifier in DB for later exchange.
  */
-export async function generateMPAuthorizationUrl(): Promise<{ url: string; state: string }> {
+export async function generateMPAuthorizationUrl(storeId: string): Promise<{ url: string; state: string }> {
   const appId = env.MP_APP_ID;
   const baseUrl = getBaseUrl();
 
@@ -59,6 +59,7 @@ export async function generateMPAuthorizationUrl(): Promise<{ url: string; state
   await db.insert(oauthStates).values({
     id: `oas-${crypto.randomUUID()}`,
     provider: 'mercadopago',
+    storeId,
     codeVerifier,
     state,
     redirectUri,
@@ -149,6 +150,7 @@ export async function exchangeMPAuthorizationCode(
     const refreshTokenEnc = encrypt(tokens.refresh_token);
 
     const now = new Date();
+    const storeId = oauthState.storeId;
     const expiresAt = new Date(now.getTime() + tokens.expires_in * 1000);
     const connectionId = `ppc-${crypto.randomUUID()}`;
 
@@ -171,7 +173,7 @@ export async function exchangeMPAuthorizationCode(
       .select({ id: paymentProviderConnections.id })
       .from(paymentProviderConnections)
       .where(
-        and(eq(paymentProviderConnections.provider, 'mercadopago'), eq(paymentProviderConnections.storeId, 'main')),
+        and(eq(paymentProviderConnections.provider, 'mercadopago'), eq(paymentProviderConnections.storeId, storeId)),
       )
       .limit(1);
 
@@ -197,7 +199,7 @@ export async function exchangeMPAuthorizationCode(
       await db.insert(paymentProviderConnections).values({
         id: connectionId,
         provider: 'mercadopago',
-        storeId: 'main',
+        storeId,
         status: 'connected',
         accessTokenEnc,
         refreshTokenEnc,
@@ -220,11 +222,11 @@ export async function exchangeMPAuthorizationCode(
         mpEnabled: true,
         updatedAt: now,
       })
-      .where(eq(storeConfigTable.id, 'main'));
+      .where(eq(storeConfigTable.id, storeId));
 
     // Invalidate Redis cache so POS dropdown picks up mpEnabled: true
     const { cache } = await import('@/infrastructure/redis');
-    await cache.invalidatePattern('config:');
+    await cache.invalidate(`config:${storeId}`);
 
     // Cleanup used state
     await db.delete(oauthStates).where(eq(oauthStates.id, oauthState.id));
@@ -304,21 +306,19 @@ export async function refreshMPAccessToken(connectionId: string, refreshTokenEnc
 /**
  * Gets the decrypted access token for MercadoPago.
  * Auto-refreshes if within 24h of expiry.
- * Falls back to env MP_ACCESS_TOKEN if no OAuth connection exists.
  */
-export async function getMPAccessToken(): Promise<string | null> {
+export async function getMPAccessToken(storeId: string): Promise<string | null> {
   try {
     const [connection] = await db
       .select()
       .from(paymentProviderConnections)
       .where(
-        and(eq(paymentProviderConnections.provider, 'mercadopago'), eq(paymentProviderConnections.storeId, 'main')),
+        and(eq(paymentProviderConnections.provider, 'mercadopago'), eq(paymentProviderConnections.storeId, storeId)),
       )
       .limit(1);
 
     if (!connection || connection.status === 'disconnected' || !connection.accessTokenEnc) {
-      // Fallback to env variable (legacy / dev mode)
-      return env.MP_ACCESS_TOKEN ?? null;
+      return null;
     }
 
     // Check if token needs refresh (within 24 hours of expiry)
@@ -343,26 +343,25 @@ export async function getMPAccessToken(): Promise<string | null> {
       if (connection.tokenExpiresAt && connection.tokenExpiresAt > new Date()) {
         return decrypt(connection.accessTokenEnc);
       }
-      // Token fully expired and refresh failed — fall back to env
-      return env.MP_ACCESS_TOKEN ?? null;
+      return null;
     }
 
     // Token is still valid
     if (connection.status === 'expired') {
-      return env.MP_ACCESS_TOKEN ?? null;
+      return null;
     }
 
     return decrypt(connection.accessTokenEnc);
   } catch (err) {
     logger.error('getMPAccessToken error', { error: err instanceof Error ? err.message : 'Unknown' });
-    return env.MP_ACCESS_TOKEN ?? null;
+    return null;
   }
 }
 
 /**
  * Disconnects MercadoPago OAuth. Clears encrypted tokens.
  */
-export async function disconnectProvider(provider: ProviderType): Promise<void> {
+export async function disconnectProvider(provider: ProviderType, storeId: string): Promise<void> {
   const now = new Date();
 
   await db
@@ -374,14 +373,14 @@ export async function disconnectProvider(provider: ProviderType): Promise<void> 
       disconnectedAt: now,
       updatedAt: now,
     })
-    .where(and(eq(paymentProviderConnections.provider, provider), eq(paymentProviderConnections.storeId, 'main')));
+    .where(and(eq(paymentProviderConnections.provider, provider), eq(paymentProviderConnections.storeId, storeId)));
 
   // Disable MP in storeConfig
   if (provider === 'mercadopago') {
     const { storeConfig: storeConfigTable } = await import('@/db/schema');
-    await db.update(storeConfigTable).set({ mpEnabled: false, updatedAt: now }).where(eq(storeConfigTable.id, 'main'));
+    await db.update(storeConfigTable).set({ mpEnabled: false, updatedAt: now }).where(eq(storeConfigTable.id, storeId));
     const { cache } = await import('@/infrastructure/redis');
-    await cache.invalidatePattern('config:');
+    await cache.invalidate(`config:${storeId}`);
   }
 
   logger.info(`${provider} disconnected`);
@@ -390,7 +389,7 @@ export async function disconnectProvider(provider: ProviderType): Promise<void> 
 /**
  * Gets the connection status for display in the UI.
  */
-export async function getProviderConnectionStatus(provider: ProviderType): Promise<{
+export async function getProviderConnectionStatus(provider: ProviderType, storeId: string): Promise<{
   connected: boolean;
   email: string | null;
   expiresAt: string | null;
@@ -401,7 +400,7 @@ export async function getProviderConnectionStatus(provider: ProviderType): Promi
     const [connection] = await db
       .select()
       .from(paymentProviderConnections)
-      .where(and(eq(paymentProviderConnections.provider, provider), eq(paymentProviderConnections.storeId, 'main')))
+      .where(and(eq(paymentProviderConnections.provider, provider), eq(paymentProviderConnections.storeId, storeId)))
       .limit(1);
 
     if (!connection || connection.status === 'disconnected') {

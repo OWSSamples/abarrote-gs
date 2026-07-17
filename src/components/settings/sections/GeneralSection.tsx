@@ -167,6 +167,19 @@ export function GeneralSection({
       >
         <Card>
           <BlockStack gap="400">
+            <TextField
+              label="Capacidad de usuarios activos"
+              type="number"
+              value={String(config.estimatedUsers ?? 1)}
+              onChange={(value) => {
+                const parsed = Number.parseInt(value, 10);
+                updateField('estimatedUsers', Number.isFinite(parsed) ? Math.min(500, Math.max(1, parsed)) : 1);
+              }}
+              min={1}
+              max={500}
+              autoComplete="off"
+              helpText="Incluye al propietario. Si el valor es 1, no podrás agregar colaboradores activos."
+            />
             <Checkbox
               label="Respaldos automatizados"
               helpText="Crea instantáneas de tu base de datos y ventas diariamente para tu tranquilidad."

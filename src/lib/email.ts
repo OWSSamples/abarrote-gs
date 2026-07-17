@@ -28,16 +28,65 @@ import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
+import {
+  getEmailDomain,
+  hashIdentifierForLog,
+  isValidEmailAddress,
+  normalizeEmailAddress,
+  redactEmailLikeValues,
+} from '@/lib/security/redaction';
 
 // ══════════════════════════════════════════════════════════════
 // TRANSPORT SELECTION
 // ══════════════════════════════════════════════════════════════
 
+type EmailTransport = 'smtp' | 'ses';
+
 /**
- * Returns the active email transport: 'smtp' if SMTP_HOST is set, else 'ses'.
+ * Returns the active email transport.
+ *
+ * SMTP is explicit: if SMTP_HOST exists, the app must use that transport and
+ * report configuration issues instead of silently falling back to SES.
  */
-function getActiveTransport(): 'smtp' | 'ses' {
+function getActiveTransport(): EmailTransport {
   return env.SMTP_HOST ? 'smtp' : 'ses';
+}
+
+function getTransportConfigurationIssue(transport: EmailTransport, resolvedFrom: string): string | null {
+  if (transport === 'smtp') {
+    if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD || !resolvedFrom) {
+      return 'Configuración SMTP incompleta';
+    }
+    return null;
+  }
+
+  if (!resolvedFrom) {
+    return 'Configuración SES incompleta';
+  }
+
+  return null;
+}
+
+async function getRecipientLogMetadata(email: string) {
+  return {
+    to_hash: await hashIdentifierForLog(email),
+    to_domain: getEmailDomain(email),
+  };
+}
+
+function toPublicEmailError(message: string): string {
+  const safeMessage = redactEmailLikeValues(message);
+  if (/configuration|configuraci[oó]n|missing|required|credentials?/i.test(safeMessage)) {
+    return 'La configuración de correo está incompleta.';
+  }
+  if (/throttl|rate|limit|quota/i.test(safeMessage)) {
+    return 'El proveedor limitó temporalmente el envío. Intenta más tarde.';
+  }
+  return 'No fue posible enviar el correo en este momento.';
+}
+
+function sanitizeHeaderText(value: string): string {
+  return value.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
 }
 
 // ── SMTP (nodemailer) singleton ──
@@ -66,7 +115,7 @@ let sesClient: SESv2Client | null = null;
 function getSESClient(): SESv2Client {
   if (!sesClient) {
     sesClient = new SESv2Client({
-      region: env.AWS_REGION || 'us-east-2',
+      region: env.AWS_SES_REGION || env.AWS_REGION || 'us-east-1',
       ...(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY
         ? {
             credentials: {
@@ -102,7 +151,7 @@ export interface EmailResult {
   messageId?: string;
   error?: string;
   /** Which transport was used */
-  transport?: 'smtp' | 'ses';
+  transport?: EmailTransport;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -125,45 +174,77 @@ export async function sendEmail(
   fromName?: string,
 ): Promise<EmailResult> {
   const transport = getActiveTransport();
+  const normalizedRecipient = normalizeEmailAddress(payload.to);
+  const normalizedReplyTo = payload.replyTo ? normalizeEmailAddress(payload.replyTo) : undefined;
+  const recipientLog = await getRecipientLogMetadata(normalizedRecipient);
 
   // Resolver from según transporte si no se pasó explícito
   const resolvedFrom =
     fromEmail || (transport === 'smtp' ? env.SMTP_FROM_EMAIL : env.SES_FROM_EMAIL) || '';
   const resolvedName = fromName || env.SMTP_FROM_NAME || undefined;
+  const safeSubject = sanitizeHeaderText(payload.subject);
+  const safeFromName = resolvedName ? sanitizeHeaderText(resolvedName) : undefined;
+  const configIssue = getTransportConfigurationIssue(transport, resolvedFrom);
 
-  if (!resolvedFrom) {
-    logger.warn('Email send skipped: no fromEmail configured');
-    return { success: false, error: 'Correo remitente no configurado', transport };
+  if (configIssue) {
+    logger.warn('Email send skipped: transport not configured', {
+      action: 'email_configuration_error',
+      transport,
+      ...recipientLog,
+      reason: configIssue,
+    });
+    return { success: false, error: configIssue, transport };
   }
 
-  if (!payload.to || !payload.subject || !payload.html) {
-    logger.warn('Email send skipped: missing required fields');
+  if (!isValidEmailAddress(resolvedFrom)) {
+    logger.warn('Email send skipped: invalid fromEmail configured', {
+      action: 'email_configuration_error',
+      transport,
+      ...recipientLog,
+    });
+    return { success: false, error: 'Correo remitente inválido', transport };
+  }
+
+  if (
+    !isValidEmailAddress(normalizedRecipient) ||
+    (normalizedReplyTo && !isValidEmailAddress(normalizedReplyTo)) ||
+    !safeSubject ||
+    !payload.html.trim()
+  ) {
+    logger.warn('Email send skipped: invalid payload', {
+      action: 'email_validation_error',
+      transport,
+      ...recipientLog,
+      hasSubject: Boolean(safeSubject),
+      hasHtml: Boolean(payload.html.trim()),
+      hasInvalidReplyTo: Boolean(normalizedReplyTo && !isValidEmailAddress(normalizedReplyTo)),
+    });
     return {
       success: false,
-      error: 'Faltan campos requeridos (to, subject, html)',
+      error: 'Datos inválidos para enviar correo',
       transport,
     };
   }
 
-  const fromAddress = resolvedName ? `${resolvedName} <${resolvedFrom}>` : resolvedFrom;
+  const fromAddress = safeFromName ? `${safeFromName} <${resolvedFrom}>` : resolvedFrom;
 
   try {
     if (transport === 'smtp') {
       const tx = getSMTPTransporter();
       const info = await tx.sendMail({
         from: fromAddress,
-        to: payload.to,
-        subject: payload.subject,
+        to: normalizedRecipient,
+        subject: safeSubject,
         html: payload.html,
-        text: payload.text || payload.subject,
-        replyTo: payload.replyTo,
+        text: payload.text || safeSubject,
+        replyTo: normalizedReplyTo,
       });
 
       logger.info('Email sent successfully (SMTP)', {
         action: 'email_sent',
         transport: 'smtp',
         messageId: info.messageId,
-        to: payload.to,
+        ...recipientLog,
       });
 
       return { success: true, messageId: info.messageId, transport: 'smtp' };
@@ -173,14 +254,14 @@ export async function sendEmail(
     const client = getSESClient();
     const command = new SendEmailCommand({
       FromEmailAddress: fromAddress,
-      Destination: { ToAddresses: [payload.to] },
-      ReplyToAddresses: payload.replyTo ? [payload.replyTo] : undefined,
+      Destination: { ToAddresses: [normalizedRecipient] },
+      ReplyToAddresses: normalizedReplyTo ? [normalizedReplyTo] : undefined,
       Content: {
         Simple: {
-          Subject: { Data: payload.subject, Charset: 'UTF-8' },
+          Subject: { Data: safeSubject, Charset: 'UTF-8' },
           Body: {
             Html: { Data: payload.html, Charset: 'UTF-8' },
-            Text: { Data: payload.text || payload.subject, Charset: 'UTF-8' },
+            Text: { Data: payload.text || safeSubject, Charset: 'UTF-8' },
           },
         },
       },
@@ -192,7 +273,7 @@ export async function sendEmail(
       action: 'email_sent',
       transport: 'ses',
       messageId: response.MessageId,
-      to: payload.to,
+      ...recipientLog,
     });
 
     return { success: true, messageId: response.MessageId, transport: 'ses' };
@@ -201,10 +282,10 @@ export async function sendEmail(
     logger.error('Failed to send email', {
       action: 'email_send_error',
       transport,
-      error: message,
-      to: payload.to,
+      error: redactEmailLikeValues(message),
+      ...recipientLog,
     });
-    return { success: false, error: message, transport };
+    return { success: false, error: toPublicEmailError(message), transport };
   }
 }
 
@@ -259,7 +340,7 @@ export function getEmailTransportInfo(): {
   }
   return {
     transport: 'ses',
-    configured: Boolean(env.AWS_ACCESS_KEY_ID && env.SES_FROM_EMAIL),
+    configured: Boolean(env.SES_FROM_EMAIL),
     fromEmail: env.SES_FROM_EMAIL,
   };
 }

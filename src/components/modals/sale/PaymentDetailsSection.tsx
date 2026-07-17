@@ -103,21 +103,11 @@ const ALL_PAYMENT_METHOD_OPTIONS: ReadonlyArray<{
     | 'cobrarQrUrl';
 }> = [
   { label: 'Efectivo', value: 'efectivo' },
-  { label: 'Tarjeta (Terminal Mercado Pago)', value: 'tarjeta', requires: 'mpEnabled' },
-  { label: 'Mercado Pago Web (Lector Blando / QR)', value: 'tarjeta_web', requires: 'mpEnabled' },
   { label: 'Tarjeta (manual sin terminal)', value: 'tarjeta_manual' },
   { label: 'Transferencia bancaria', value: 'transferencia' },
   { label: 'SPEI (CLABE manual)', value: 'spei', requires: 'clabeNumber' },
-  { label: 'SPEI automático (Conekta)', value: 'spei_conekta', requires: 'conektaEnabled' },
-  { label: 'SPEI automático (Stripe)', value: 'spei_stripe', requires: 'stripeEnabled' },
-  { label: 'OXXO (Conekta)', value: 'oxxo_conekta', requires: 'conektaEnabled' },
-  { label: 'OXXO (Stripe)', value: 'oxxo_stripe', requires: 'stripeEnabled' },
-  { label: 'Clip Checkout (link de pago)', value: 'tarjeta_clip', requires: 'clipEnabled' },
-  { label: 'Clip Terminal (PinPad)', value: 'clip_terminal', requires: 'clipEnabled' },
   { label: 'PayPal', value: 'paypal', requires: 'paypalConfigured' },
-  { label: 'QR de Cobro (CoDi / Banco)', value: 'qr_cobro', requires: 'cobrarQrUrl' },
   { label: 'Fiado (crédito a cliente)', value: 'fiado' },
-  { label: 'Puntos de Lealtad (Monedero)', value: 'puntos' },
 ];
 
 import type { Field } from '@shopify/react-form';

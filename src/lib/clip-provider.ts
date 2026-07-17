@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 import crypto from 'crypto';
 import { db } from '@/db';
@@ -7,7 +7,7 @@ import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 import { clipBreaker } from '@/infrastructure/circuit-breaker';
-import { env, getAppUrl } from '@/lib/env';
+import { getAppUrl } from '@/lib/env';
 
 // ── Constants ──
 
@@ -71,14 +71,14 @@ interface ClipPinpadStatusResponse {
 
 // ── Auth Token Factory ──
 
-async function getClipAuthToken(): Promise<string> {
+async function getClipAuthToken(storeId: string): Promise<string> {
   const [connection] = await db
     .select()
     .from(paymentProviderConnections)
     .where(
       and(
         eq(paymentProviderConnections.provider, 'clip'),
-        eq(paymentProviderConnections.storeId, 'main'),
+        eq(paymentProviderConnections.storeId, storeId),
         eq(paymentProviderConnections.status, 'connected'),
       ),
     )
@@ -87,42 +87,40 @@ async function getClipAuthToken(): Promise<string> {
   let apiKey: string;
   let secretKey: string;
 
-  if (connection?.accessTokenEnc && connection?.publicKey) {
-    // accessTokenEnc stores the encrypted secret key; publicKey stores the API key
-    secretKey = decrypt(connection.accessTokenEnc);
-    apiKey = connection.publicKey;
-  } else if (env.CLIP_API_KEY && env.CLIP_SECRET_KEY) {
-    apiKey = env.CLIP_API_KEY;
-    secretKey = env.CLIP_SECRET_KEY;
-  } else {
+  if (!connection?.accessTokenEnc || !connection.publicKey) {
     throw new Error('Clip no configurado. Agrega tus credenciales en Configuración → Pagos.');
   }
+
+  // accessTokenEnc stores the encrypted secret key; publicKey stores the API key
+  secretKey = decrypt(connection.accessTokenEnc);
+  apiKey = connection.publicKey;
 
   // Clip requires Basic auth: base64(apiKey:secretKey)
   const token = Buffer.from(`${apiKey}:${secretKey}`).toString('base64');
   return `Basic ${token}`;
 }
 
-async function getClipSerialNumber(): Promise<string | null> {
+async function getClipSerialNumber(storeId: string): Promise<string | null> {
   const [connection] = await db
     .select()
     .from(paymentProviderConnections)
     .where(
       and(
         eq(paymentProviderConnections.provider, 'clip'),
-        eq(paymentProviderConnections.storeId, 'main'),
+        eq(paymentProviderConnections.storeId, storeId),
         eq(paymentProviderConnections.status, 'connected'),
       ),
     )
     .limit(1);
 
   const metadata = connection?.providerMetadata as Record<string, unknown> | null;
-  return (metadata?.serialNumber as string) ?? env.CLIP_SERIAL_NUMBER ?? null;
+  return (metadata?.serialNumber as string) ?? null;
 }
 
 // ── Checkout (Payment Link) ──
 
 export async function createClipCheckoutCharge(params: {
+  storeId: string;
   amount: number;
   description: string;
   saleReference: string;
@@ -130,8 +128,8 @@ export async function createClipCheckoutCharge(params: {
   errorUrl?: string;
 }): Promise<ClipCheckoutResult> {
   return clipBreaker.execute(async () => {
-    const { amount, description, saleReference } = params;
-    const authToken = await getClipAuthToken();
+    const { storeId, amount, description, saleReference } = params;
+    const authToken = await getClipAuthToken(storeId);
 
     const appBaseUrl = getAppUrl();
 
@@ -153,7 +151,7 @@ export async function createClipCheckoutCharge(params: {
         external_reference: saleReference,
         customer_info: { source: 'kiosko-pos' },
       },
-      webhook_url: `${appBaseUrl}/api/webhooks/clip`,
+      webhook_url: `${appBaseUrl}/api/webhooks/clip?store=${encodeURIComponent(storeId)}`,
     };
 
     const response = await fetch(CLIP_CHECKOUT_BASE, {
@@ -185,7 +183,7 @@ export async function createClipCheckoutCharge(params: {
       provider: 'clip',
       providerChargeId: data.payment_request_id,
       saleId: null,
-      storeId: 'main',
+      storeId,
       amount: amount.toFixed(2),
       currency: 'MXN',
       paymentMethod: 'tarjeta_clip',
@@ -217,16 +215,17 @@ export async function createClipCheckoutCharge(params: {
 // ── PinPad Terminal Payment ──
 
 export async function createClipTerminalCharge(params: {
+  storeId: string;
   amount: number;
   saleReference: string;
   serialNumber?: string;
   webhookUrl?: string;
 }): Promise<ClipTerminalResult> {
   return clipBreaker.execute(async () => {
-    const { amount, saleReference } = params;
-    const authToken = await getClipAuthToken();
+    const { storeId, amount, saleReference } = params;
+    const authToken = await getClipAuthToken(storeId);
 
-    const serialNumber = params.serialNumber ?? (await getClipSerialNumber());
+    const serialNumber = params.serialNumber ?? (await getClipSerialNumber(storeId));
     if (!serialNumber) {
       throw new Error(
         'No se configuró el número de serie del lector Clip. ' + 'Configúralo en Configuración → Pagos → Clip.',
@@ -239,7 +238,7 @@ export async function createClipTerminalCharge(params: {
       amount: Number(amount.toFixed(2)),
       reference: saleReference,
       serial_number_pos: serialNumber,
-      webhook_url: params.webhookUrl ?? `${appBaseUrl}/api/webhooks/clip`,
+      webhook_url: params.webhookUrl ?? `${appBaseUrl}/api/webhooks/clip?store=${encodeURIComponent(storeId)}`,
       preferences: {
         is_auto_return_enabled: true,
         is_tip_enabled: false,
@@ -282,7 +281,7 @@ export async function createClipTerminalCharge(params: {
       provider: 'clip',
       providerChargeId: data.pinpad_request_id,
       saleId: null,
-      storeId: 'main',
+      storeId,
       amount: amount.toFixed(2),
       currency: 'MXN',
       paymentMethod: 'clip_terminal',
@@ -314,9 +313,9 @@ export async function createClipTerminalCharge(params: {
 
 // ── Charge Status ──
 
-export async function getClipCheckoutStatus(paymentRequestId: string): Promise<ClipChargeStatus> {
+export async function getClipCheckoutStatus(paymentRequestId: string, storeId: string): Promise<ClipChargeStatus> {
   return clipBreaker.execute(async () => {
-    const authToken = await getClipAuthToken();
+    const authToken = await getClipAuthToken(storeId);
 
     const response = await fetch(`${CLIP_CHECKOUT_BASE}/${encodeURIComponent(paymentRequestId)}`, {
       method: 'GET',
@@ -342,9 +341,9 @@ export async function getClipCheckoutStatus(paymentRequestId: string): Promise<C
   }); // clipBreaker.execute end
 }
 
-export async function getClipTerminalStatus(pinpadRequestId: string): Promise<ClipChargeStatus> {
+export async function getClipTerminalStatus(pinpadRequestId: string, storeId: string): Promise<ClipChargeStatus> {
   return clipBreaker.execute(async () => {
-    const authToken = await getClipAuthToken();
+    const authToken = await getClipAuthToken(storeId);
 
     const response = await fetch(`${CLIP_PINPAD_BASE}/payment?pinpadRequestId=${encodeURIComponent(pinpadRequestId)}`, {
       method: 'GET',
@@ -378,7 +377,7 @@ export async function connectClip(params: {
   secretKey: string;
   serialNumber?: string;
   environment: 'sandbox' | 'production';
-}): Promise<{ success: boolean; message: string }> {
+}, storeId: string): Promise<{ success: boolean; message: string }> {
   const { apiKey, secretKey, serialNumber, environment } = params;
 
   // Validate by making a "health check" — attempt to list devices
@@ -405,12 +404,12 @@ export async function connectClip(params: {
   const existing = await db
     .select()
     .from(paymentProviderConnections)
-    .where(and(eq(paymentProviderConnections.provider, 'clip'), eq(paymentProviderConnections.storeId, 'main')))
+    .where(and(eq(paymentProviderConnections.provider, 'clip'), eq(paymentProviderConnections.storeId, storeId)))
     .limit(1);
 
   const connectionData = {
     provider: 'clip' as const,
-    storeId: 'main',
+    storeId,
     status: 'connected',
     accessTokenEnc: encrypt(secretKey),
     publicKey: apiKey,
@@ -435,14 +434,14 @@ export async function connectClip(params: {
   logger.info('Clip connected', { action: 'clip_connect', environment, hasSerialNumber: !!serialNumber });
 
   // Update storeConfig flag + invalidate cache
-  await db.update(storeConfigTable).set({ clipEnabled: true, updatedAt: new Date() }).where(eq(storeConfigTable.id, 'main'));
+  await db.update(storeConfigTable).set({ clipEnabled: true, updatedAt: new Date() }).where(eq(storeConfigTable.id, storeId));
   const { cache } = await import('@/infrastructure/redis');
-  await cache.invalidatePattern('config:');
+  await cache.invalidate(`config:${storeId}`);
 
   return { success: true, message: `Clip conectado en modo ${environment}` };
 }
 
-export async function disconnectClip(): Promise<void> {
+export async function disconnectClip(storeId: string): Promise<void> {
   const now = new Date();
   await db
     .update(paymentProviderConnections)
@@ -454,17 +453,17 @@ export async function disconnectClip(): Promise<void> {
       disconnectedAt: now,
       updatedAt: now,
     })
-    .where(and(eq(paymentProviderConnections.provider, 'clip'), eq(paymentProviderConnections.storeId, 'main')));
+    .where(and(eq(paymentProviderConnections.provider, 'clip'), eq(paymentProviderConnections.storeId, storeId)));
 
   // Clear storeConfig flag + invalidate cache
-  await db.update(storeConfigTable).set({ clipEnabled: false, updatedAt: now }).where(eq(storeConfigTable.id, 'main'));
+  await db.update(storeConfigTable).set({ clipEnabled: false, updatedAt: now }).where(eq(storeConfigTable.id, storeId));
   const { cache } = await import('@/infrastructure/redis');
-  await cache.invalidatePattern('config:');
+  await cache.invalidate(`config:${storeId}`);
 
   logger.info('Clip disconnected', { action: 'clip_disconnect' });
 }
 
-export async function getClipConnectionStatus(): Promise<{
+export async function getClipConnectionStatus(storeId: string): Promise<{
   connected: boolean;
   environment: string | null;
   apiKey: string | null;
@@ -473,7 +472,7 @@ export async function getClipConnectionStatus(): Promise<{
   const [connection] = await db
     .select()
     .from(paymentProviderConnections)
-    .where(and(eq(paymentProviderConnections.provider, 'clip'), eq(paymentProviderConnections.storeId, 'main')))
+    .where(and(eq(paymentProviderConnections.provider, 'clip'), eq(paymentProviderConnections.storeId, storeId)))
     .limit(1);
 
   if (!connection || connection.status !== 'connected') {
@@ -493,9 +492,13 @@ export async function getClipConnectionStatus(): Promise<{
 
 function mapClipStatus(status: string): 'pending' | 'paid' | 'expired' | 'failed' {
   const normalized = status.toUpperCase();
-  if (normalized === 'APPROVED' || normalized === 'PAID' || normalized === 'COMPLETED') return 'paid';
-  if (normalized === 'EXPIRED' || normalized === 'CANCELED' || normalized === 'CANCELLED') return 'expired';
-  if (normalized === 'DECLINED' || normalized === 'REJECTED' || normalized === 'FAILED') return 'failed';
+  if (['APPROVED', 'PAID', 'COMPLETED', 'CHECKOUT_COMPLETED'].includes(normalized)) return 'paid';
+  if (['EXPIRED', 'CANCELED', 'CANCELLED', 'CHECKOUT_EXPIRED', 'CHECKOUT_CANCELLED'].includes(normalized)) {
+    return 'expired';
+  }
+  if (['DECLINED', 'REJECTED', 'FAILED', 'CHECKOUT_FAILED', 'CHECKOUT_REJECTED'].includes(normalized)) {
+    return 'failed';
+  }
   return 'pending';
 }
 

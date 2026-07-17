@@ -1,13 +1,15 @@
 'use server';
 
 import { requirePermission } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { withLogging } from '@/lib/errors';
 import { db } from '@/db';
 import { loyaltyTransactions, clientes } from '@/db/schema';
-import { eq, desc, sql } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import type { LoyaltyTransaction } from '@/types';
 import { numVal } from './_helpers';
 import { validateSchema, createLoyaltyTransactionSchema } from '@/lib/validation/schemas';
+import { expireStalePointsForStore } from '@/server/loyalty-expiration-service';
 
 function mapTransaction(row: typeof loyaltyTransactions.$inferSelect): LoyaltyTransaction {
   return {
@@ -28,13 +30,20 @@ function mapTransaction(row: typeof loyaltyTransactions.$inferSelect): LoyaltyTr
 
 async function _fetchLoyaltyTransactions(clienteId?: string): Promise<LoyaltyTransaction[]> {
   await requirePermission('customers.view');
+  const { storeId } = await requireStoreScope();
   const rows = clienteId
     ? await db
         .select()
         .from(loyaltyTransactions)
-        .where(eq(loyaltyTransactions.clienteId, clienteId))
+        .where(
+          and(eq(loyaltyTransactions.clienteId, clienteId), eq(loyaltyTransactions.storeId, storeId)),
+        )
         .orderBy(desc(loyaltyTransactions.fecha))
-    : await db.select().from(loyaltyTransactions).orderBy(desc(loyaltyTransactions.fecha));
+    : await db
+        .select()
+        .from(loyaltyTransactions)
+        .where(eq(loyaltyTransactions.storeId, storeId))
+        .orderBy(desc(loyaltyTransactions.fecha));
   return rows.map(mapTransaction);
 }
 
@@ -51,6 +60,7 @@ async function _createLoyaltyTransaction(data: {
   cajero: string;
 }): Promise<LoyaltyTransaction> {
   await requirePermission('sales.create');
+  const { storeId } = await requireStoreScope();
   const _validated = validateSchema(createLoyaltyTransactionSchema, data, 'createLoyaltyTransaction');
 
   const id = `lt-${crypto.randomUUID()}`;
@@ -69,9 +79,14 @@ async function _createLoyaltyTransaction(data: {
     notas: data.notas,
     cajero: data.cajero,
     fecha: now,
+    storeId,
   });
 
-  const [row] = await db.select().from(loyaltyTransactions).where(eq(loyaltyTransactions.id, id)).limit(1);
+  const [row] = await db
+    .select()
+    .from(loyaltyTransactions)
+    .where(and(eq(loyaltyTransactions.id, id), eq(loyaltyTransactions.storeId, storeId)))
+    .limit(1);
   return mapTransaction(row);
 }
 
@@ -84,53 +99,8 @@ async function _createLoyaltyTransaction(data: {
  */
 async function _expireStalePoints(expirationDays = 365): Promise<{ expired: number }> {
   await requirePermission('customers.edit');
-
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - expirationDays);
-
-  // Find customers with points > 0 and last transaction before cutoff
-  const staleClientes = await db
-    .select({
-      id: clientes.id,
-      name: clientes.name,
-      points: clientes.points,
-      lastTransaction: clientes.lastTransaction,
-    })
-    .from(clientes)
-    .where(sql`${clientes.points}::numeric > 0 AND ${clientes.lastTransaction} < ${cutoffDate}`);
-
-  let expired = 0;
-
-  for (const cliente of staleClientes) {
-    const currentPoints = numVal(cliente.points);
-    if (currentPoints <= 0) continue;
-
-    // Zero out points
-    await db
-      .update(clientes)
-      .set({ points: sql`0` })
-      .where(eq(clientes.id, cliente.id));
-
-    // Record expiration transaction
-    await db.insert(loyaltyTransactions).values({
-      id: `lt-exp-${crypto.randomUUID()}`,
-      clienteId: cliente.id,
-      clienteName: cliente.name,
-      tipo: 'expiracion',
-      puntos: String(-currentPoints),
-      saldoAnterior: String(currentPoints),
-      saldoNuevo: '0',
-      saleId: null,
-      saleFolio: null,
-      notas: `Expiración por inactividad (${expirationDays} días sin transacciones)`,
-      cajero: 'sistema',
-      fecha: new Date(),
-    });
-
-    expired++;
-  }
-
-  return { expired };
+  const { storeId } = await requireStoreScope();
+  return expireStalePointsForStore(storeId, expirationDays);
 }
 
 // ==================== EXPORTS ====================

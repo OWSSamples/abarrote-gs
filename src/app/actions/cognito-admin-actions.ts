@@ -1,32 +1,24 @@
 'use server';
 
-import { requirePermission, requireOwner } from '@/lib/auth/guard';
+import { AuthError, requirePermission, requireOwner } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import {
-  listCognitoUsers,
   listAllCognitoUsers,
   getCognitoUser,
-  disableCognitoUser,
-  enableCognitoUser,
-  deleteCognitoUser,
   adminResetUserPassword,
   adminSetUserPassword,
   updateCognitoUserAttributes,
   globalSignOutUser,
-  listCognitoGroups,
-  listUserGroups,
-  addUserToGroup,
-  removeUserFromGroup,
-  bulkDisableUsers,
-  bulkEnableUsers,
   bulkGlobalSignOut,
   adminSetUserMfaPreference,
   type CognitoUserSummary,
   type CognitoGroup,
   type BulkOperationResult,
 } from '@/lib/cognito-admin';
+import { deactivateUser, reactivateUser } from '@/app/actions/role-actions';
 import { db } from '@/db';
-import { userRoles, auditLogs, roleDefinitions } from '@/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { userIdentities, userRoles, auditLogs, roleDefinitions, userStoreAccess } from '@/db/schema';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { withLogging } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 
@@ -48,8 +40,33 @@ export interface CognitoUsersListResult {
   total: number;
 }
 
+async function hasActiveMembershipOutside(cognitoSub: string, storeId: string): Promise<boolean> {
+  const [membership] = await db
+    .select({ id: userRoles.id })
+    .from(userRoles)
+    .where(
+      and(
+        eq(userRoles.cognitoSub, cognitoSub),
+        eq(userRoles.status, 'activo'),
+        ne(userRoles.storeId, storeId),
+      ),
+    )
+    .limit(1);
+  return Boolean(membership);
+}
+
+async function assertIdentityIsTenantExclusive(cognitoSub: string, storeId: string): Promise<void> {
+  if (await hasActiveMembershipOutside(cognitoSub, storeId)) {
+    throw new AuthError(
+      'Esta identidad pertenece a varios negocios. La seguridad global de la cuenta solo puede modificarla el propio usuario.',
+      409,
+    );
+  }
+}
+
 interface AuditEntry {
   id: string;
+  storeId: string;
   userId: string;
   userEmail: string;
   action: string;
@@ -59,14 +76,20 @@ interface AuditEntry {
   timestamp: Date;
 }
 
+interface TenantCognitoUser extends CognitoUserSummary {
+  tenantRoleName?: string;
+}
+
 function audit(
   admin: { uid: string; email: string },
+  storeId: string,
   action: string,
   entityId: string,
   changes: Record<string, unknown>,
 ): AuditEntry {
   return {
     id: crypto.randomUUID(),
+    storeId,
     userId: admin.uid,
     userEmail: admin.email,
     action,
@@ -75,6 +98,54 @@ function audit(
     changes,
     timestamp: new Date(),
   };
+}
+
+async function requireTenantCognitoUser(
+  usernameOrSub: string,
+  storeId: string,
+): Promise<TenantCognitoUser> {
+  let target: CognitoUserSummary;
+  try {
+    target = await getCognitoUser(usernameOrSub);
+  } catch {
+    throw new AuthError('Usuario no encontrado en tu negocio.', 404);
+  }
+
+  const [membership] = await db
+    .select({ id: userRoles.id, roleName: roleDefinitions.name })
+    .from(userRoles)
+    .leftJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
+    .where(
+      and(
+        eq(userRoles.cognitoSub, target.sub),
+        eq(userRoles.storeId, storeId),
+      ),
+    )
+    .limit(1);
+
+  if (!membership) {
+    throw new AuthError('Usuario no encontrado en tu negocio.', 404);
+  }
+
+  return { ...target, tenantRoleName: membership.roleName ?? undefined };
+}
+
+function assertOwnerAccountProtected(admin: { uid: string }, target: TenantCognitoUser): void {
+  if (target.tenantRoleName === 'Propietario' && target.sub !== admin.uid) {
+    throw new AuthError('La cuenta del propietario no puede administrarse desde otro usuario.', 403);
+  }
+}
+
+async function listTenantCognitoUsers(storeId: string, filter?: string): Promise<CognitoUserSummary[]> {
+  const tenantUsers = await db
+    .select({ cognitoSub: userRoles.cognitoSub })
+    .from(userRoles)
+    .where(eq(userRoles.storeId, storeId));
+  const allowedSubs = new Set(tenantUsers.map((user) => user.cognitoSub));
+  if (allowedSubs.size === 0) return [];
+
+  const cognitoUsers = await listAllCognitoUsers(filter);
+  return cognitoUsers.filter((user) => allowedSubs.has(user.sub));
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -88,12 +159,11 @@ async function _listCognitoUsersAction(params?: {
   loadAll?: boolean;
 }): Promise<CognitoUsersListResult> {
   await requirePermission('roles.manage');
+  const { storeId } = await requireStoreScope();
 
-  const usersResult = params?.loadAll
-    ? { users: await listAllCognitoUsers(params?.filter), nextToken: undefined }
-    : await listCognitoUsers(params);
-  const cognitoUsers = usersResult.users;
-  const nextToken = usersResult.nextToken;
+  const cognitoUsers = await listTenantCognitoUsers(storeId, params?.filter);
+  const requestedLimit = params?.loadAll ? cognitoUsers.length : Math.min(params?.limit ?? 60, 60);
+  const visibleUsers = cognitoUsers.slice(0, requestedLimit);
 
   // Enrich with DB roles
   const dbData = await db
@@ -105,55 +175,47 @@ async function _listCognitoUsersAction(params?: {
       displayName: userRoles.displayName,
     })
     .from(userRoles)
-    .leftJoin(roleDefinitions, eq(userRoles.roleId, roleDefinitions.id));
+    .leftJoin(roleDefinitions, eq(userRoles.roleId, roleDefinitions.id))
+    .where(eq(userRoles.storeId, storeId));
   const dbMap = new Map(dbData.map((r) => [r.cognitoSub, r]));
 
   // Get groups for each user (batch)
   const enrichedUsers: CognitoUserEnriched[] = await Promise.all(
-    cognitoUsers.map(async (u) => {
+    visibleUsers.map(async (u) => {
       const dbRow = dbMap.get(u.sub);
-      let groups: string[] = [];
-      try {
-        const userGroups = await listUserGroups(u.username);
-        groups = userGroups.map((g) => g.name);
-      } catch {
-        // User may not have groups — continue
-      }
       return {
         ...u,
         hasDbRole: !!dbRow,
         dbRoleId: dbRow?.roleId,
         dbRoleName: dbRow?.roleName ?? undefined,
         dbStatus: dbRow?.status,
-        groups,
+        groups: [],
       };
     }),
   );
 
   return {
     users: enrichedUsers,
-    nextToken,
-    total: enrichedUsers.length,
+    nextToken: undefined,
+    total: cognitoUsers.length,
   };
 }
 
 async function _getCognitoUserDetailAction(usernameOrSub: string): Promise<CognitoUserEnriched> {
   await requirePermission('roles.manage');
-  const user = await getCognitoUser(usernameOrSub);
+  const { storeId } = await requireStoreScope();
+  const user = await requireTenantCognitoUser(usernameOrSub, storeId);
   const dbRow = await db
     .select({ roleId: userRoles.roleId, roleName: roleDefinitions.name, status: userRoles.status })
     .from(userRoles)
     .leftJoin(roleDefinitions, eq(userRoles.roleId, roleDefinitions.id))
-    .where(eq(userRoles.cognitoSub, user.sub))
+    .where(
+      and(
+        eq(userRoles.cognitoSub, user.sub),
+        eq(userRoles.storeId, storeId),
+      ),
+    )
     .limit(1);
-
-  let groups: string[] = [];
-  try {
-    const userGroups = await listUserGroups(user.username);
-    groups = userGroups.map((g) => g.name);
-  } catch {
-    // OK
-  }
 
   return {
     ...user,
@@ -161,7 +223,7 @@ async function _getCognitoUserDetailAction(usernameOrSub: string): Promise<Cogni
     dbRoleId: dbRow[0]?.roleId,
     dbRoleName: dbRow[0]?.roleName ?? undefined,
     dbStatus: dbRow[0]?.status,
-    groups,
+    groups: [],
   };
 }
 
@@ -171,45 +233,31 @@ async function _getCognitoUserDetailAction(usernameOrSub: string): Promise<Cogni
 
 async function _disableCognitoUserAction(username: string): Promise<void> {
   const admin = await requirePermission('roles.manage');
-  await disableCognitoUser(username);
-
-  const target = await getCognitoUser(username);
-  await db
-    .update(userRoles)
-    .set({ status: 'baja', deactivatedAt: new Date(), updatedAt: new Date() })
-    .where(eq(userRoles.cognitoSub, target.sub));
-
-  await db.insert(auditLogs).values(audit(admin, 'cognito.user.disable', target.sub, { email: target.email }));
-  logger.info('cognito.user.disable', { target: target.sub, email: target.email });
+  const { storeId } = await requireStoreScope();
+  const target = await requireTenantCognitoUser(username, storeId);
+  assertOwnerAccountProtected(admin, target);
+  await deactivateUser(target.sub);
+  logger.info('cognito.user.disable', { target: target.sub, storeId });
 }
 
 async function _enableCognitoUserAction(username: string): Promise<void> {
   const admin = await requirePermission('roles.manage');
-  await enableCognitoUser(username);
-
-  const target = await getCognitoUser(username);
-  await db
-    .update(userRoles)
-    .set({ status: 'activo', deactivatedAt: null, updatedAt: new Date() })
-    .where(eq(userRoles.cognitoSub, target.sub));
-
-  await db.insert(auditLogs).values(audit(admin, 'cognito.user.enable', target.sub, { email: target.email }));
-  logger.info('cognito.user.enable', { target: target.sub, email: target.email });
+  const { storeId } = await requireStoreScope();
+  const target = await requireTenantCognitoUser(username, storeId);
+  assertOwnerAccountProtected(admin, target);
+  await reactivateUser(target.sub);
+  logger.info('cognito.user.enable', { target: target.sub, storeId });
 }
 
 async function _deleteCognitoUserAction(username: string): Promise<void> {
-  const admin = await requireOwner();
-  const target = await getCognitoUser(username);
-
-  if (target.sub === admin.uid) {
-    throw new Error('No puedes eliminar tu propia cuenta.');
-  }
-
-  await deleteCognitoUser(username);
-  await db.delete(userRoles).where(eq(userRoles.cognitoSub, target.sub));
-
-  await db.insert(auditLogs).values(audit(admin, 'cognito.user.delete', target.sub, { email: target.email }));
-  logger.warn('cognito.user.delete', { target: target.sub, email: target.email });
+  await requireOwner();
+  const { storeId } = await requireStoreScope();
+  const target = await requireTenantCognitoUser(username, storeId);
+  void target;
+  throw new AuthError(
+    'La eliminación permanente de identidades está deshabilitada. Usa Dar de baja para conservar auditoría y accesos de otros negocios.',
+    403,
+  );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -218,9 +266,17 @@ async function _deleteCognitoUserAction(username: string): Promise<void> {
 
 async function _globalSignOutAction(username: string): Promise<void> {
   const admin = await requirePermission('roles.manage');
+  const { storeId } = await requireStoreScope();
+  const target = await requireTenantCognitoUser(username, storeId);
+  assertOwnerAccountProtected(admin, target);
+  if (await hasActiveMembershipOutside(target.sub, storeId)) {
+    throw new AuthError(
+      'No se puede cerrar globalmente la sesión de una identidad que pertenece a otros negocios.',
+      409,
+    );
+  }
   await globalSignOutUser(username);
-  const target = await getCognitoUser(username);
-  await db.insert(auditLogs).values(audit(admin, 'cognito.user.global_signout', target.sub, { email: target.email }));
+  await db.insert(auditLogs).values(audit(admin, storeId, 'cognito.user.global_signout', target.sub, {}));
   logger.info('cognito.user.global_signout', { target: target.sub });
 }
 
@@ -230,6 +286,10 @@ async function _globalSignOutAction(username: string): Promise<void> {
 
 async function _setUserMfaAction(username: string, enabled: boolean): Promise<void> {
   const admin = await requirePermission('roles.manage');
+  const { storeId } = await requireStoreScope();
+  const target = await requireTenantCognitoUser(username, storeId);
+  assertOwnerAccountProtected(admin, target);
+  await assertIdentityIsTenantExclusive(target.sub, storeId);
   try {
     await adminSetUserMfaPreference(username, enabled);
   } catch (err) {
@@ -241,8 +301,9 @@ async function _setUserMfaAction(username: string, enabled: boolean): Promise<vo
     }
     throw err;
   }
-  const target = await getCognitoUser(username);
-  await db.insert(auditLogs).values(audit(admin, enabled ? 'cognito.user.mfa_enabled' : 'cognito.user.mfa_disabled', target.sub, { email: target.email }));
+  await db.insert(auditLogs).values(
+    audit(admin, storeId, enabled ? 'cognito.user.mfa_enabled' : 'cognito.user.mfa_disabled', target.sub, {}),
+  );
   logger.info(enabled ? 'cognito.user.mfa_enabled' : 'cognito.user.mfa_disabled', { target: target.sub });
 }
 
@@ -252,9 +313,12 @@ async function _setUserMfaAction(username: string, enabled: boolean): Promise<vo
 
 async function _resetCognitoPasswordAction(username: string): Promise<void> {
   const admin = await requirePermission('roles.manage');
+  const { storeId } = await requireStoreScope();
+  const target = await requireTenantCognitoUser(username, storeId);
+  assertOwnerAccountProtected(admin, target);
+  await assertIdentityIsTenantExclusive(target.sub, storeId);
   await adminResetUserPassword(username);
-  const target = await getCognitoUser(username);
-  await db.insert(auditLogs).values(audit(admin, 'cognito.user.reset_password', target.sub, { email: target.email }));
+  await db.insert(auditLogs).values(audit(admin, storeId, 'cognito.user.reset_password', target.sub, {}));
 }
 
 async function _setCognitoPasswordAction(
@@ -263,17 +327,24 @@ async function _setCognitoPasswordAction(
   permanent: boolean,
 ): Promise<void> {
   const admin = await requireOwner();
+  const { storeId } = await requireStoreScope();
+  const target = await requireTenantCognitoUser(username, storeId);
+  assertOwnerAccountProtected(admin, target);
+  await assertIdentityIsTenantExclusive(target.sub, storeId);
 
   if (newPassword.length < 8) {
     throw new Error('La contraseña debe tener al menos 8 caracteres.');
   }
 
   await adminSetUserPassword(username, newPassword, permanent);
-  const target = await getCognitoUser(username);
   await db.insert(auditLogs).values(
-    audit(admin, permanent ? 'cognito.user.set_password_permanent' : 'cognito.user.set_password_temp', target.sub, {
-      email: target.email,
-    }),
+    audit(
+      admin,
+      storeId,
+      permanent ? 'cognito.user.set_password_permanent' : 'cognito.user.set_password_temp',
+      target.sub,
+      {},
+    ),
   );
   logger.warn('cognito.user.set_password', { target: target.sub, permanent });
 }
@@ -287,19 +358,36 @@ async function _updateCognitoUserAttributesAction(
   attrs: { email?: string; displayName?: string; emailVerified?: boolean; phoneNumber?: string },
 ): Promise<void> {
   const admin = await requirePermission('roles.manage');
+  const { storeId } = await requireStoreScope();
+  const target = await requireTenantCognitoUser(username, storeId);
+  assertOwnerAccountProtected(admin, target);
+  await assertIdentityIsTenantExclusive(target.sub, storeId);
   await updateCognitoUserAttributes(username, attrs);
-
-  const target = await getCognitoUser(username);
 
   // Mirror in DB
   const updates: Partial<typeof userRoles.$inferInsert> = { updatedAt: new Date() };
   if (attrs.displayName !== undefined) updates.displayName = attrs.displayName;
   if (attrs.email !== undefined) updates.email = attrs.email;
   if (Object.keys(updates).length > 1) {
-    await db.update(userRoles).set(updates).where(eq(userRoles.cognitoSub, target.sub));
+    await db
+      .update(userRoles)
+      .set(updates)
+      .where(and(eq(userRoles.cognitoSub, target.sub), eq(userRoles.storeId, storeId)));
   }
+  await db
+    .update(userIdentities)
+    .set({
+      ...(attrs.displayName !== undefined ? { displayName: attrs.displayName } : {}),
+      ...(attrs.email !== undefined ? { email: attrs.email.trim().toLowerCase() } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(userIdentities.cognitoSub, target.sub));
 
-  await db.insert(auditLogs).values(audit(admin, 'cognito.user.update_attributes', target.sub, attrs));
+  await db.insert(auditLogs).values(
+    audit(admin, storeId, 'cognito.user.update_attributes', target.sub, {
+      fields: Object.keys(attrs),
+    }),
+  );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -308,25 +396,20 @@ async function _updateCognitoUserAttributesAction(
 
 async function _listGroupsAction(): Promise<CognitoGroup[]> {
   await requirePermission('roles.manage');
-  return listCognitoGroups();
+  await requireStoreScope();
+  return [];
 }
 
-async function _addUserToGroupAction(username: string, groupName: string): Promise<void> {
-  const admin = await requirePermission('roles.manage');
-  await addUserToGroup(username, groupName);
-  const target = await getCognitoUser(username);
-  await db.insert(auditLogs).values(
-    audit(admin, 'cognito.user.add_to_group', target.sub, { groupName, email: target.email }),
-  );
+async function _addUserToGroupAction(_username: string, _groupName: string): Promise<void> {
+  await requirePermission('roles.manage');
+  await requireStoreScope();
+  throw new AuthError('Usa los roles del negocio; los grupos globales de Cognito están deshabilitados.', 403);
 }
 
-async function _removeUserFromGroupAction(username: string, groupName: string): Promise<void> {
-  const admin = await requirePermission('roles.manage');
-  await removeUserFromGroup(username, groupName);
-  const target = await getCognitoUser(username);
-  await db.insert(auditLogs).values(
-    audit(admin, 'cognito.user.remove_from_group', target.sub, { groupName, email: target.email }),
-  );
+async function _removeUserFromGroupAction(_username: string, _groupName: string): Promise<void> {
+  await requirePermission('roles.manage');
+  await requireStoreScope();
+  throw new AuthError('Usa los roles del negocio; los grupos globales de Cognito están deshabilitados.', 403);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -335,14 +418,29 @@ async function _removeUserFromGroupAction(username: string, groupName: string): 
 
 async function _bulkDisableAction(usernames: string[]): Promise<BulkOperationResult> {
   const admin = await requireOwner();
-  const result = await bulkDisableUsers(usernames);
-  // Sync DB
-  for (const u of result.success) {
-    const target = await getCognitoUser(u);
-    await db.update(userRoles).set({ status: 'baja', deactivatedAt: new Date(), updatedAt: new Date() }).where(eq(userRoles.cognitoSub, target.sub));
+  const { storeId } = await requireStoreScope();
+  const targets = await Promise.all(usernames.map((username) => requireTenantCognitoUser(username, storeId)));
+  targets.forEach((target) => assertOwnerAccountProtected(admin, target));
+  if (targets.some((target) => target.sub === admin.uid)) {
+    throw new AuthError('No puedes incluir tu propia cuenta en esta operación.', 403);
+  }
+  const result: BulkOperationResult = { success: [], failed: [] };
+  for (const target of targets) {
+    try {
+      await deactivateUser(target.sub);
+      result.success.push(target.username);
+    } catch (error) {
+      result.failed.push({
+        username: target.username,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
   await db.insert(auditLogs).values(
-    audit(admin, 'cognito.bulk.disable', 'bulk', { count: result.success.length, failed: result.failed.length }),
+    audit(admin, storeId, 'cognito.bulk.disable', 'bulk', {
+      count: result.success.length,
+      failed: result.failed.length,
+    }),
   );
   logger.info('cognito.bulk.disable', { success: result.success.length, failed: result.failed.length });
   return result;
@@ -350,22 +448,49 @@ async function _bulkDisableAction(usernames: string[]): Promise<BulkOperationRes
 
 async function _bulkEnableAction(usernames: string[]): Promise<BulkOperationResult> {
   const admin = await requireOwner();
-  const result = await bulkEnableUsers(usernames);
-  for (const u of result.success) {
-    const target = await getCognitoUser(u);
-    await db.update(userRoles).set({ status: 'activo', deactivatedAt: null, updatedAt: new Date() }).where(eq(userRoles.cognitoSub, target.sub));
+  const { storeId } = await requireStoreScope();
+  const targets = await Promise.all(usernames.map((username) => requireTenantCognitoUser(username, storeId)));
+  targets.forEach((target) => assertOwnerAccountProtected(admin, target));
+  const result: BulkOperationResult = { success: [], failed: [] };
+  for (const target of targets) {
+    try {
+      await reactivateUser(target.sub);
+      result.success.push(target.username);
+    } catch (error) {
+      result.failed.push({
+        username: target.username,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
   await db.insert(auditLogs).values(
-    audit(admin, 'cognito.bulk.enable', 'bulk', { count: result.success.length, failed: result.failed.length }),
+    audit(admin, storeId, 'cognito.bulk.enable', 'bulk', {
+      count: result.success.length,
+      failed: result.failed.length,
+    }),
   );
   return result;
 }
 
 async function _bulkGlobalSignOutAction(usernames: string[]): Promise<BulkOperationResult> {
   const admin = await requirePermission('roles.manage');
-  const result = await bulkGlobalSignOut(usernames);
+  const { storeId } = await requireStoreScope();
+  const targets = await Promise.all(usernames.map((username) => requireTenantCognitoUser(username, storeId)));
+  targets.forEach((target) => assertOwnerAccountProtected(admin, target));
+  for (const target of targets) {
+    if (await hasActiveMembershipOutside(target.sub, storeId)) {
+      throw new AuthError(
+        'La operación incluye una identidad que pertenece a otros negocios y no puede cerrar sesiones globales.',
+        409,
+      );
+    }
+  }
+  const result = await bulkGlobalSignOut(targets.map((target) => target.username));
   await db.insert(auditLogs).values(
-    audit(admin, 'cognito.bulk.global_signout', 'bulk', { count: result.success.length, failed: result.failed.length }),
+    audit(admin, storeId, 'cognito.bulk.global_signout', 'bulk', {
+      count: result.success.length,
+      failed: result.failed.length,
+    }),
   );
   return result;
 }
@@ -375,42 +500,13 @@ async function _bulkGlobalSignOutAction(usernames: string[]): Promise<BulkOperat
 // ══════════════════════════════════════════════════════════════
 
 async function _importCognitoUsersAction(roleId: string): Promise<{ imported: number; skipped: number }> {
-  const admin = await requireOwner();
-  const allUsers = await listAllCognitoUsers();
-  const dbSubs = new Set(
-    (await db.select({ cognitoSub: userRoles.cognitoSub }).from(userRoles)).map((r) => r.cognitoSub),
+  await requireOwner();
+  await requireStoreScope();
+  void roleId;
+  throw new AuthError(
+    'La importación global de Cognito está deshabilitada. Crea los usuarios desde Roles para vincularlos al negocio de forma segura.',
+    403,
   );
-
-  let imported = 0;
-  let skipped = 0;
-  const existingCount = dbSubs.size;
-
-  for (const user of allUsers) {
-    if (!user.sub || !user.email || dbSubs.has(user.sub)) {
-      skipped++;
-      continue;
-    }
-
-    const empNum = `3226${String(existingCount + imported + 1).padStart(2, '0')}`;
-    const now = new Date();
-    await db.insert(userRoles).values({
-      id: crypto.randomUUID(),
-      cognitoSub: user.sub,
-      email: user.email,
-      displayName: user.displayName || '',
-      employeeNumber: empNum,
-      roleId,
-      assignedBy: admin.uid,
-      createdAt: now,
-      updatedAt: now,
-    });
-    imported++;
-    dbSubs.add(user.sub); // prevent duplicates in same batch
-  }
-
-  await db.insert(auditLogs).values(audit(admin, 'cognito.users.import', 'bulk', { roleId, imported, skipped }));
-  logger.info('cognito.users.import', { imported, skipped, roleId });
-  return { imported, skipped };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -419,7 +515,8 @@ async function _importCognitoUsersAction(roleId: string): Promise<{ imported: nu
 
 async function _exportCognitoUsersCSV(): Promise<string> {
   await requirePermission('roles.manage');
-  const users = await listAllCognitoUsers();
+  const { storeId } = await requireStoreScope();
+  const users = await listTenantCognitoUsers(storeId);
 
   // Escape CSV values to prevent formula injection (=, +, -, @, \t, \r)
   const escapeCsv = (val: string): string => {
@@ -455,9 +552,15 @@ export interface CognitoPoolStats {
 
 async function _getCognitoPoolStatsAction(): Promise<CognitoPoolStats> {
   await requirePermission('roles.manage');
-  const users = await listAllCognitoUsers();
+  const { storeId } = await requireStoreScope();
+  const users = await listTenantCognitoUsers(storeId);
   const dbSubs = new Set(
-    (await db.select({ cognitoSub: userRoles.cognitoSub }).from(userRoles)).map((r) => r.cognitoSub),
+    (
+      await db
+        .select({ cognitoSub: userRoles.cognitoSub })
+        .from(userRoles)
+        .where(eq(userRoles.storeId, storeId))
+    ).map((r) => r.cognitoSub),
   );
 
   return {
@@ -497,13 +600,17 @@ export interface ReconciliationResult {
  */
 async function _reconcileUsersAction(): Promise<ReconciliationResult> {
   await requireOwner();
+  const { storeId } = await requireStoreScope();
 
   // Fetch all Cognito users (source of truth)
-  const cognitoUsers = await listAllCognitoUsers();
+  const cognitoUsers = await listTenantCognitoUsers(storeId);
   const cognitoSubs = new Set(cognitoUsers.map((u) => u.sub));
 
   // Fetch all DB user records
-  const dbUsers = await db.select().from(userRoles);
+  const dbUsers = await db
+    .select()
+    .from(userRoles)
+    .where(eq(userRoles.storeId, storeId));
 
   const orphaned: OrphanedUser[] = [];
   let validCount = 0;
@@ -528,6 +635,7 @@ async function _reconcileUsersAction(): Promise<ReconciliationResult> {
     valid: validCount,
     orphaned: orphaned.length,
     cognitoTotal: cognitoUsers.length,
+    storeId,
   });
 
   return {
@@ -544,6 +652,7 @@ async function _reconcileUsersAction(): Promise<ReconciliationResult> {
  */
 async function _purgeOrphanedUsersAction(userIds: string[]): Promise<{ purged: number; failed: string[] }> {
   const admin = await requireOwner();
+  const { storeId } = await requireStoreScope();
 
   if (!Array.isArray(userIds) || userIds.length === 0) {
     throw new Error('Debes proporcionar al menos un ID de usuario a purgar.');
@@ -554,11 +663,19 @@ async function _purgeOrphanedUsersAction(userIds: string[]): Promise<{ purged: n
   }
 
   // Verify these are actually orphaned (double-check against Cognito)
-  const cognitoUsers = await listAllCognitoUsers();
+  const cognitoUsers = await listTenantCognitoUsers(storeId);
   const cognitoSubs = new Set(cognitoUsers.map((u) => u.sub));
 
   // Fetch all target users by ID
-  const targets = await db.select().from(userRoles).where(inArray(userRoles.id, userIds));
+  const targets = await db
+    .select()
+    .from(userRoles)
+    .where(
+      and(
+        eq(userRoles.storeId, storeId),
+        inArray(userRoles.id, userIds),
+      ),
+    );
 
   let purged = 0;
   const failed: string[] = [];
@@ -570,7 +687,7 @@ async function _purgeOrphanedUsersAction(userIds: string[]): Promise<{ purged: n
       logger.warn('cognito.purge.refused', {
         reason: 'user_exists_in_cognito',
         userId: target.id,
-        email: target.email,
+        storeId,
       });
       continue;
     }
@@ -582,11 +699,17 @@ async function _purgeOrphanedUsersAction(userIds: string[]): Promise<{ purged: n
     }
 
     // Hard delete the orphaned record
-    await db.delete(userRoles).where(eq(userRoles.id, target.id));
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(userStoreAccess)
+        .where(and(eq(userStoreAccess.userId, target.cognitoSub), eq(userStoreAccess.storeId, storeId)));
+      await tx
+        .delete(userRoles)
+        .where(and(eq(userRoles.id, target.id), eq(userRoles.storeId, storeId)));
+    });
 
     // Audit log
-    await db.insert(auditLogs).values(audit(admin, 'cognito.orphan.purge', target.id, {
-      email: target.email,
+    await db.insert(auditLogs).values(audit(admin, storeId, 'cognito.orphan.purge', target.id, {
       cognitoSub: target.cognitoSub,
       reason: 'legacy_firebase_no_cognito_account',
     }));

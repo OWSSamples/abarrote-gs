@@ -21,7 +21,13 @@ import { ReceiptIcon, XCircleIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/components/notifications/ToastProvider';
-import { printWithIframe, posTicketCSS, applyTicketTemplate, generateTicketHtml } from '@/lib/printTicket';
+import {
+  printWithIframe,
+  posTicketCSS,
+  applyTicketTemplate,
+  generateTicketHtml,
+  escapeTicketHtml,
+} from '@/lib/printTicket';
 import { DevolucionModal } from '@/components/modals/DevolucionModal';
 import { SaleDetailModal } from '@/components/sales/SaleDetailModal';
 import { DateRangeFilter } from '@/components/sales/DateRangeFilter';
@@ -152,6 +158,7 @@ export function SalesHistory() {
 
   const handlePrint = useCallback(() => {
     if (!selectedSale) return;
+    const escape = escapeTicketHtml;
     const saleDate = new Date(selectedSale.date);
     const dateStr = saleDate.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const timeStr = saleDate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
@@ -170,7 +177,7 @@ export function SalesHistory() {
     const itemsHtml = selectedSale.items
       .map(
         (item) => `
-      <div class="item-name">${item.productName}</div>
+      <div class="item-name">${escape(item.productName)}</div>
       <div class="item-detail">
         <span>${item.quantity} pza × $${item.unitPrice.toFixed(2)}</span>
         <span>$${item.subtotal.toFixed(2)}</span>
@@ -179,22 +186,22 @@ export function SalesHistory() {
       .join('');
 
     const logoHtml = storeConfig.logoUrl
-      ? `<div class="logo-area"><img src="${storeConfig.logoUrl}" alt="${storeConfig.storeName}"/></div>`
-      : `<div class="logo-area"><div class="logo-placeholder">${(storeConfig.storeName || 'T').charAt(0)}</div></div>`;
+      ? `<div class="logo-area"><img src="${escape(storeConfig.logoUrl)}" alt="${escape(storeConfig.storeName)}"/></div>`
+      : `<div class="logo-area"><div class="logo-placeholder">${escape((storeConfig.storeName || 'T').charAt(0))}</div></div>`;
 
     const html = `<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"/><title>Ticket ${selectedSale.folio}</title><style>${posTicketCSS}</style></head>
+<html lang="es"><head><meta charset="UTF-8"/><title>Ticket ${escape(selectedSale.folio)}</title><style>${posTicketCSS}</style></head>
 <body><div class="ticket">
   ${logoHtml}
-  <div class="store-name">${storeConfig.storeName || storeConfig.legalName || 'Tienda'}</div>
-  ${storeConfig.address ? `<div class="store-sub">${storeConfig.address}</div>` : ''}
+  <div class="store-name">${escape(storeConfig.storeName || storeConfig.legalName || 'Tienda')}</div>
+  ${storeConfig.address ? `<div class="store-sub">${escape(storeConfig.address)}</div>` : ''}
   <hr class="line"/>
   <div class="doc-type">Ticket de Venta</div>
-  <div class="folio">Folio: ${selectedSale.folio}</div>
+  <div class="folio">Folio: ${escape(selectedSale.folio)}</div>
   <div class="fecha">${dateStr} · ${timeStr}</div>
   <hr class="line-thin"/>
-  <div class="row"><span class="label">Cajero</span><span class="val">${selectedSale.cajero || '—'}</span></div>
-  <div class="row"><span class="label">Pago</span><span class="val">${paymentLabels[selectedSale.paymentMethod] || selectedSale.paymentMethod}</span></div>
+  <div class="row"><span class="label">Cajero</span><span class="val">${escape(selectedSale.cajero || '—')}</span></div>
+  <div class="row"><span class="label">Pago</span><span class="val">${escape(paymentLabels[selectedSale.paymentMethod] || selectedSale.paymentMethod)}</span></div>
   <hr class="line"/>
   ${itemsHtml}
   <hr class="line-double"/>
@@ -214,7 +221,7 @@ export function SalesHistory() {
       items: selectedSale.items
         .map(
           (item) =>
-            `<div class="item-name">${item.productName}</div><div class="item-detail"><span>${item.quantity} pza × $${item.unitPrice.toFixed(2)}</span><span>$${item.subtotal.toFixed(2)}</span></div>`,
+            `<div class="item-name">${escape(item.productName)}</div><div class="item-detail"><span>${item.quantity} pza × $${item.unitPrice.toFixed(2)}</span><span>$${item.subtotal.toFixed(2)}</span></div>`,
         )
         .join(''),
       total: `$${selectedSale.total.toFixed(2)}`,
@@ -223,7 +230,7 @@ export function SalesHistory() {
 
     // Priority: 1) Custom HTML template, 2) Design config, 3) Hardcoded fallback
     if (storeConfig.ticketTemplateVenta) {
-      printWithIframe(applyTicketTemplate(storeConfig.ticketTemplateVenta, templateVars, html));
+      printWithIframe(applyTicketTemplate(storeConfig.ticketTemplateVenta, templateVars, html, ['items']));
     } else if (storeConfig.ticketDesignVenta) {
       const subtotal = selectedSale.items.reduce((s, i) => s + i.subtotal, 0);
       const ivaRate = parseFloat(storeConfig.ivaRate || '16');

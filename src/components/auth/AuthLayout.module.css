@@ -1,0 +1,25 @@
+.shell {
+  width: 100%;
+  max-width: 420px;
+  transition: max-width 180ms ease;
+}
+
+@media (min-width: 64rem) {
+  .wide {
+    max-width: 860px;
+  }
+
+  .wide:has([data-auth-layout='compact']) {
+    max-width: 420px;
+  }
+}
+
+@media (min-width: 80rem) {
+  .wide {
+    max-width: 920px;
+  }
+
+  .wide:has([data-auth-layout='compact']) {
+    max-width: 420px;
+  }
+}

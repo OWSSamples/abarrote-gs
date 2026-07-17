@@ -15,16 +15,22 @@ import {
   Spinner,
   Tabs,
   InlineGrid,
-  ProgressBar,
   TextField,
   Divider,
 } from '@shopify/polaris';
-import { PersonAddIcon, DeleteIcon, EditIcon, PlusIcon, SearchIcon } from '@shopify/polaris-icons';
+import {
+  PersonAddIcon,
+  DeleteIcon,
+  EditIcon,
+  PlusIcon,
+  SearchIcon,
+} from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { useAuth } from '@/lib/auth/AuthContext';
-import type { RoleDefinition, UserRoleRecord, PermissionKey } from '@/types';
+import type { RoleDefinition, UserRoleRecord, PermissionKey, TenantInvitation } from '@/types';
 import { PERMISSION_GROUPS } from '@/types';
+import styles from './RolesManager.module.css';
 
 import { RoleDefinitionFormModal } from './modals/RoleDefinitionFormModal';
 import { DeleteRoleDefinitionModal } from './modals/DeleteRoleDefinitionModal';
@@ -32,8 +38,14 @@ import { AddUserModal } from './modals/AddUserModal';
 import { EditUserModal } from './modals/EditUserModal';
 import { DeactivateUserModal } from './modals/DeactivateUserModal';
 import { PermissionsDetailModal } from './modals/PermissionsDetailModal';
-import { CognitoUsersManager } from '@/components/admin/CognitoUsersManager';
-import { disableCognitoUserAction, enableCognitoUserAction } from '@/app/actions/cognito-admin-actions';
+import { TransferOwnershipModal } from './modals/TransferOwnershipModal';
+import { PolarisOptionDropdown } from './PolarisOptionDropdown';
+import {
+  createTenantInvitation,
+  listTenantInvitations,
+  revokeTenantInvitation,
+} from '@/app/actions/tenant-invitation-actions';
+import { transferTenantOwnership } from '@/app/actions/tenant-lifecycle-actions';
 
 // Color tones cycled for badges
 const BADGE_TONES: Array<'info' | 'success' | 'warning' | 'critical' | 'attention' | 'new'> = [
@@ -50,56 +62,7 @@ function getBadgeTone(index: number) {
 }
 
 const PIN_REGEX = /^\d{4,6}$/;
-
-function AccessGovernanceHeader({
-  users,
-  roles,
-  activeUsers,
-}: {
-  users: number;
-  roles: number;
-  activeUsers: number;
-}) {
-  return (
-    <Card>
-      <InlineStack align="space-between" blockAlign="center" gap="400" wrap>
-        <BlockStack gap="150">
-          <InlineStack gap="200" blockAlign="center" wrap>
-            <Badge tone="info">AWS Cognito</Badge>
-            <Badge tone="success">PostgreSQL</Badge>
-            <Badge>RBAC</Badge>
-          </InlineStack>
-          <Text as="h2" variant="headingLg" fontWeight="bold">
-            Centro profesional de usuarios y accesos
-          </Text>
-          <Text as="p" variant="bodyMd" tone="subdued">
-            Administra identidades en AWS, roles locales, PIN de autorización y auditoría operativa desde un solo flujo sincronizado.
-          </Text>
-        </BlockStack>
-        <InlineStack gap="300" wrap>
-          <Box padding="300" background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" minWidth="140px">
-            <BlockStack gap="050">
-              <Text as="p" variant="bodyXs" tone="subdued">Usuarios locales</Text>
-              <Text as="p" variant="headingMd" fontWeight="bold">{users}</Text>
-            </BlockStack>
-          </Box>
-          <Box padding="300" background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" minWidth="140px">
-            <BlockStack gap="050">
-              <Text as="p" variant="bodyXs" tone="subdued">Activos</Text>
-              <Text as="p" variant="headingMd" fontWeight="bold">{activeUsers}</Text>
-            </BlockStack>
-          </Box>
-          <Box padding="300" background="bg-surface-secondary" borderColor="border" borderRadius="300" borderWidth="025" minWidth="140px">
-            <BlockStack gap="050">
-              <Text as="p" variant="bodyXs" tone="subdued">Roles</Text>
-              <Text as="p" variant="headingMd" fontWeight="bold">{roles}</Text>
-            </BlockStack>
-          </Box>
-        </InlineStack>
-      </InlineStack>
-    </Card>
-  );
-}
+type UserStatusFilter = 'all' | 'active' | 'inactive' | 'pin' | 'missingGlobalId';
 
 // Avatar component — shows real profile image when available, initials as fallback
 function UserAvatar({ name, status, avatarUrl }: { name: string; status: string; avatarUrl?: string }) {
@@ -175,11 +138,11 @@ export function RolesManager() {
   const updateRoleDefinition = useDashboardStore((s) => s.updateRoleDefinition);
   const deleteRoleDefinition = useDashboardStore((s) => s.deleteRoleDefinition);
   const fetchRoles = useDashboardStore((s) => s.fetchRoles);
-  const createUserWithRole = useDashboardStore((s) => s.createUserWithRole);
   const updateRole = useDashboardStore((s) => s.updateRole);
   const updateUserPin = useDashboardStore((s) => s.updateUserPin);
-  const _removeRole = useDashboardStore((s) => s.removeRole);
-  const ensureOwnerRole = useDashboardStore((s) => s.ensureOwnerRole);
+  const deactivateUser = useDashboardStore((s) => s.deactivateUser);
+  const reactivateUser = useDashboardStore((s) => s.reactivateUser);
+  const getUserRole = useDashboardStore((s) => s.getUserRole);
   const generateGlobalId = useDashboardStore((s) => s.generateGlobalId);
   const { showSuccess, showError } = useToast();
 
@@ -187,6 +150,9 @@ export function RolesManager() {
   const [saving, setSaving] = useState(false);
   const [selectedTab, setSelectedTab] = useState(0);
   const [userSearch, setUserSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('all');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [invitations, setInvitations] = useState<TenantInvitation[]>([]);
 
   // Role definition modal flags
   const [roleDefOpen, setRoleDefOpen] = useState(false);
@@ -199,6 +165,7 @@ export function RolesManager() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserRoleRecord | null>(null);
+  const [transferOwnershipOpen, setTransferOwnershipOpen] = useState(false);
 
   // Permissions detail modal
   const [permDetailOpen, setPermDetailOpen] = useState(false);
@@ -227,51 +194,64 @@ export function RolesManager() {
     return currentRoleDef.permissions.includes('roles.manage');
   }, [currentRoleDef, roleDefinitions.length]);
 
-  // Build role select options for user assignment (exclude owner for non-owners)
+  // The tenant owner is created only during self-service provisioning.
   const roleSelectOptions = useMemo(() => {
     return roleDefinitions
-      .filter((d) => {
-        if (currentRoleDef?.name === 'Propietario') return true;
-        return d.name !== 'Propietario';
-      })
+      .filter((d) => d.name !== 'Propietario')
       .map((d) => ({ label: d.name, value: d.id }));
-  }, [roleDefinitions, currentRoleDef]);
+  }, [roleDefinitions]);
 
   // Default role ID for new user form
   const defaultRoleId = useMemo(() => {
-    const defaultRole = roleDefinitions.find((d) => d.name === 'Cajero') ?? roleDefinitions[0];
+    const assignableRoles = roleDefinitions.filter((d) => d.name !== 'Propietario');
+    const defaultRole = assignableRoles.find((d) => d.name === 'Cajero') ?? assignableRoles[0];
     return defaultRole?.id ?? '';
   }, [roleDefinitions]);
 
-  // KPI stats
-  const stats = useMemo(() => {
-    const active = userRoles.filter((u) => u.status !== 'baja').length;
-    const baja = userRoles.filter((u) => u.status === 'baja').length;
-    const withPin = userRoles.filter((u) => u.pinCode).length;
-    const withGlobalId = userRoles.filter((u) => u.globalId).length;
-    return { total: userRoles.length, active, baja, roles: roleDefinitions.length, withPin, withGlobalId };
-  }, [userRoles, roleDefinitions]);
-
   // Filtered users
   const filteredUsers = useMemo(() => {
-    if (!userSearch.trim()) return userRoles;
-    const q = userSearch.toLowerCase();
-    return userRoles.filter(
-      (u) =>
+    const q = userSearch.trim().toLowerCase();
+    return userRoles.filter((u) => {
+      const roleName = roleMap.get(u.roleId)?.name.toLowerCase() ?? '';
+      const matchesSearch =
+        q.length === 0 ||
         u.displayName.toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q) ||
-        (u.globalId && u.globalId.toLowerCase().includes(q)) ||
-        roleMap.get(u.roleId)?.name.toLowerCase().includes(q),
-    );
-  }, [userRoles, userSearch, roleMap]);
+        Boolean(u.globalId?.toLowerCase().includes(q)) ||
+        roleName.includes(q);
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' && u.status !== 'baja') ||
+        (statusFilter === 'inactive' && u.status === 'baja') ||
+        (statusFilter === 'pin' && Boolean(u.pinCode)) ||
+        (statusFilter === 'missingGlobalId' && !u.globalId);
+      const matchesRole = roleFilter === 'all' || u.roleId === roleFilter;
+      return matchesSearch && matchesStatus && matchesRole;
+    });
+  }, [userRoles, userSearch, roleMap, statusFilter, roleFilter]);
+
+  const roleFilterOptions = useMemo(
+    () => [
+      { label: 'Todos los roles', value: 'all' },
+      ...roleDefinitions.map((role) => ({ label: role.name, value: role.id })),
+    ],
+    [roleDefinitions],
+  );
+
+  const hasUserFilters = Boolean(userSearch.trim()) || statusFilter !== 'all' || roleFilter !== 'all';
+
+  const refreshInvitations = useCallback(async () => {
+    const rows = await listTenantInvitations();
+    setInvitations(rows);
+  }, []);
 
   useEffect(() => {
     const init = async () => {
       try {
         if (user) {
-          await ensureOwnerRole(user.userId, user.email || '', user.displayName || '');
+          await getUserRole(user.userId);
         }
-        await Promise.all([fetchRoleDefinitions(), fetchRoles()]);
+        await Promise.all([fetchRoleDefinitions(), fetchRoles(), refreshInvitations()]);
       } catch (err) {
         console.error('Error initializing roles:', err);
       } finally {
@@ -279,7 +259,7 @@ export function RolesManager() {
       }
     };
     init();
-  }, [user, ensureOwnerRole, fetchRoleDefinitions, fetchRoles]);
+  }, [user, getUserRole, fetchRoleDefinitions, fetchRoles, refreshInvitations]);
 
   // ---- Role Definition handlers ----
   const openNewRoleDef = () => {
@@ -295,6 +275,13 @@ export function RolesManager() {
   const openDeleteRoleDef = (def: RoleDefinition) => {
     setDeletingRoleDef(def);
     setDeleteRoleDefOpen(true);
+  };
+
+  const openCreateRoleFromUserFlow = () => {
+    setAddOpen(false);
+    setSelectedTab(1);
+    setEditingRoleDef(null);
+    setRoleDefOpen(true);
   };
 
   const handleSaveRoleDef = useCallback(
@@ -351,57 +338,66 @@ export function RolesManager() {
 
   // ---- User handlers ----
   const handleAddUser = useCallback(
-    async (data: { email: string; displayName: string; password: string; roleId: string; pinCode: string }) => {
+    async (data: { email: string; roleId: string }) => {
       const email = data.email.trim().toLowerCase();
-      const password = data.password.trim();
-      const pinCode = data.pinCode.trim();
 
-      if (!email || !password) {
-        showError('El correo y la contraseña son obligatorios');
+      if (!email) {
+        showError('El correo es obligatorio');
         return;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         showError('Ingresa un correo electrónico válido');
         return;
       }
-      if (password.length < 8) {
-        showError('La contraseña debe tener al menos 8 caracteres');
-        return;
-      }
-      if (pinCode && !PIN_REGEX.test(pinCode)) {
-        showError('El PIN debe tener de 4 a 6 dígitos numéricos');
-        return;
-      }
-      if (!user || !data.roleId) return;
+      if (!data.roleId) return;
       setSaving(true);
       try {
-        await createUserWithRole(
-          {
-            email,
-            password,
-            displayName: data.displayName.trim(),
-            roleId: data.roleId,
-            pinCode: pinCode || undefined,
-          },
-          user.userId,
-        );
+        await createTenantInvitation({ email, roleId: data.roleId });
+        await refreshInvitations();
 
         const roleName = roleMap.get(data.roleId)?.name ?? '';
-        showSuccess(`Usuario creado en AWS y rol ${roleName} asignado a ${email}`);
+        showSuccess(`Invitación enviada a ${email} con el rol ${roleName}`);
         setAddOpen(false);
       } catch (error: unknown) {
-        console.error(error);
-        const err = error as { message?: string; name?: string };
-        if (err.name === 'UsernameExistsException' || err.message?.includes('already exists')) {
-          showError('Error: El correo electrónico ya está registrado en la base de datos.');
-        } else {
-          showError('Error al crear el usuario y asignar el rol');
-        }
+        showError(error instanceof Error ? error.message : 'No fue posible enviar la invitación');
       } finally {
         setSaving(false);
       }
     },
-    [user, createUserWithRole, roleMap, showSuccess, showError],
+    [roleMap, showSuccess, showError, refreshInvitations],
+  );
+
+  const handleRevokeInvitation = useCallback(
+    async (invitation: TenantInvitation) => {
+      setSaving(true);
+      try {
+        await revokeTenantInvitation(invitation.id);
+        await refreshInvitations();
+        showSuccess(`Invitación para ${invitation.email} revocada`);
+      } catch (error: unknown) {
+        showError(error instanceof Error ? error.message : 'No fue posible revocar la invitación');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [refreshInvitations, showError, showSuccess],
+  );
+
+  const handleTransferOwnership = useCallback(
+    async (data: { targetCognitoSub: string; previousOwnerRoleId: string }) => {
+      setSaving(true);
+      try {
+        await transferTenantOwnership(data);
+        await fetchRoles();
+        setTransferOwnershipOpen(false);
+        showSuccess('La propiedad del negocio se transfirió correctamente');
+      } catch (error: unknown) {
+        showError(error instanceof Error ? error.message : 'No fue posible transferir la propiedad');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchRoles, showError, showSuccess],
   );
 
   const handleEditUser = useCallback(
@@ -439,10 +435,10 @@ export function RolesManager() {
     if (!selectedUser) return;
     setSaving(true);
     try {
-      await disableCognitoUserAction(selectedUser.cognitoSub);
+      await deactivateUser(selectedUser.cognitoSub);
       await fetchRoles();
       showSuccess(
-        `${selectedUser.displayName || selectedUser.email} fue bloqueado en AWS Cognito y marcado como baja en PostgreSQL. Su Global ID queda reservado permanentemente.`,
+        `${selectedUser.displayName || selectedUser.email} fue bloqueado y marcado como baja. Su ID interno queda reservado permanentemente.`,
       );
       setDeleteOpen(false);
       setSelectedUser(null);
@@ -451,22 +447,22 @@ export function RolesManager() {
     } finally {
       setSaving(false);
     }
-  }, [selectedUser, fetchRoles, showSuccess, showError]);
+  }, [selectedUser, deactivateUser, fetchRoles, showSuccess, showError]);
 
   const handleReactivateUser = useCallback(
     async (record: UserRoleRecord) => {
       setSaving(true);
       try {
-        await enableCognitoUserAction(record.cognitoSub);
+        await reactivateUser(record.cognitoSub);
         await fetchRoles();
-        showSuccess(`${record.displayName || record.email} fue reactivado en AWS Cognito y PostgreSQL`);
+        showSuccess(`${record.displayName || record.email} fue reactivado correctamente`);
       } catch (e: unknown) {
         showError(e instanceof Error ? e.message : 'Error al reactivar');
       } finally {
         setSaving(false);
       }
     },
-    [fetchRoles, showSuccess, showError],
+    [reactivateUser, fetchRoles, showSuccess, showError],
   );
 
   const handleGenerateGlobalId = useCallback(
@@ -474,9 +470,9 @@ export function RolesManager() {
       try {
         const gid = await generateGlobalId(record.cognitoSub);
         await fetchRoles();
-        showSuccess(`Global ID generado: ${gid}`);
+        showSuccess(`ID interno generado: ${gid}`);
       } catch (e: unknown) {
-        showError(e instanceof Error ? e.message : 'Error al generar Global ID');
+        showError(e instanceof Error ? e.message : 'Error al generar el ID interno');
       }
     },
     [fetchRoles, generateGlobalId, showSuccess, showError],
@@ -526,90 +522,6 @@ export function RolesManager() {
       </Card>
     );
   }
-
-  // ── KPI Summary Cards ──
-  const kpiSection = (
-    <InlineGrid columns={{ xs: 2, sm: 4 }} gap="300">
-      <Card>
-        <BlockStack gap="200">
-          <Text as="p" variant="bodySm" tone="subdued">
-            Total Usuarios
-          </Text>
-          <Text as="p" variant="headingLg" fontWeight="bold">
-            {stats.total}
-          </Text>
-          <ProgressBar
-            progress={stats.total > 0 ? 100 : 0}
-            size="small"
-            tone="primary"
-          />
-          <Text as="p" variant="bodyXs" tone="subdued">
-            {stats.withGlobalId} con Global ID
-          </Text>
-        </BlockStack>
-      </Card>
-      <Card>
-        <BlockStack gap="200">
-          <Text as="p" variant="bodySm" tone="subdued">
-            Activos
-          </Text>
-          <InlineStack gap="200" blockAlign="center">
-            <Text as="p" variant="headingLg" fontWeight="bold">
-              {stats.active}
-            </Text>
-            <Badge tone="success">En línea</Badge>
-          </InlineStack>
-          <ProgressBar
-            progress={stats.total > 0 ? (stats.active / stats.total) * 100 : 0}
-            size="small"
-            tone="success"
-          />
-          <Text as="p" variant="bodyXs" tone="subdued">
-            {stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0}% del equipo
-          </Text>
-        </BlockStack>
-      </Card>
-      <Card>
-        <BlockStack gap="200">
-          <Text as="p" variant="bodySm" tone="subdued">
-            Dados de Baja
-          </Text>
-          <InlineStack gap="200" blockAlign="center">
-            <Text as="p" variant="headingLg" fontWeight="bold">
-              {stats.baja}
-            </Text>
-            {stats.baja > 0 && <Badge tone="critical">Inactivos</Badge>}
-          </InlineStack>
-          <ProgressBar
-            progress={stats.total > 0 ? (stats.baja / stats.total) * 100 : 0}
-            size="small"
-            tone="critical"
-          />
-          <Text as="p" variant="bodyXs" tone="subdued">
-            {stats.withPin} con PIN de autorización
-          </Text>
-        </BlockStack>
-      </Card>
-      <Card>
-        <BlockStack gap="200">
-          <Text as="p" variant="bodySm" tone="subdued">
-            Roles Definidos
-          </Text>
-          <Text as="p" variant="headingLg" fontWeight="bold">
-            {stats.roles}
-          </Text>
-          <ProgressBar
-            progress={stats.roles > 0 ? 100 : 0}
-            size="small"
-            tone="highlight"
-          />
-          <Text as="p" variant="bodyXs" tone="subdued">
-            {roleDefinitions.filter((d) => d.isSystem).length} de sistema · {roleDefinitions.filter((d) => !d.isSystem).length} personalizados
-          </Text>
-        </BlockStack>
-      </Card>
-    </InlineGrid>
-  );
 
   // ── USERS TAB CONTENT ──
   const userRows = filteredUsers.map((record, index) => {
@@ -722,30 +634,80 @@ export function RolesManager() {
 
   const usersContent = (
     <BlockStack gap="400">
-      {/* Search + Add */}
-      <InlineStack align="space-between" blockAlign="end" gap="300">
-        <Box minWidth="280px" maxWidth="400px">
-          <TextField
-            label=""
-            labelHidden
-            value={userSearch}
-            onChange={setUserSearch}
-            placeholder="Buscar por nombre, correo, ID o rol..."
-            prefix={<span><SearchIcon /></span>}
-            autoComplete="off"
-            clearButton
-            onClearButtonClick={() => setUserSearch('')}
-          />
-        </Box>
-        <Button variant="primary" icon={PersonAddIcon} onClick={() => setAddOpen(true)}>
-          Agregar usuario
-        </Button>
-      </InlineStack>
+      <div className={styles.tableToolbar}>
+        <div className={styles.toolbarIntro}>
+          <Text as="h3" variant="headingMd" fontWeight="bold">
+            Directorio del negocio
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Mostrando {filteredUsers.length} de {userRoles.length} usuario{userRoles.length !== 1 ? 's' : ''}
+          </Text>
+        </div>
 
-      {filteredUsers.length === 0 && userSearch ? (
+        <div className={styles.toolbarControls}>
+          <div className={styles.searchControl}>
+            <TextField
+              label=""
+              labelHidden
+              value={userSearch}
+              onChange={setUserSearch}
+              placeholder="Buscar usuario, correo, ID o rol"
+              prefix={<span><SearchIcon /></span>}
+              autoComplete="off"
+              clearButton
+              onClearButtonClick={() => setUserSearch('')}
+            />
+          </div>
+          <div className={styles.filterControl}>
+            <PolarisOptionDropdown
+              label="Estado"
+              labelHidden
+              options={[
+                { label: 'Todos los estados', value: 'all' },
+                { label: 'Activos', value: 'active' },
+                { label: 'Dados de baja', value: 'inactive' },
+                { label: 'Con PIN', value: 'pin' },
+                { label: 'Sin ID interno', value: 'missingGlobalId' },
+              ]}
+              value={statusFilter}
+              onChange={(value) => setStatusFilter(value as UserStatusFilter)}
+            />
+          </div>
+          <div className={styles.filterControl}>
+            <PolarisOptionDropdown
+              label="Rol"
+              labelHidden
+              options={roleFilterOptions}
+              value={roleFilter}
+              onChange={setRoleFilter}
+            />
+          </div>
+          {hasUserFilters && (
+            <Button
+              onClick={() => {
+                setUserSearch('');
+                setStatusFilter('all');
+                setRoleFilter('all');
+              }}
+            >
+              Limpiar
+            </Button>
+          )}
+          {currentRoleDef?.name === 'Propietario' && (
+            <Button tone="critical" onClick={() => setTransferOwnershipOpen(true)}>
+              Transferir propiedad
+            </Button>
+          )}
+          <Button variant="primary" icon={PersonAddIcon} onClick={() => setAddOpen(true)}>
+            Agregar usuario
+          </Button>
+        </div>
+      </div>
+
+      {filteredUsers.length === 0 && hasUserFilters ? (
         <Card>
-          <EmptyState heading={`Sin resultados para "${userSearch}"`} image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
-            <p>Intenta con otro término de búsqueda.</p>
+          <EmptyState heading="Sin resultados con los filtros actuales" image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg">
+            <p>Ajusta la búsqueda, el estado o el rol para ampliar los resultados.</p>
           </EmptyState>
         </Card>
       ) : userRoles.length === 0 ? (
@@ -755,14 +717,14 @@ export function RolesManager() {
           </EmptyState>
         </Card>
       ) : (
-        <Card>
+        <div className={styles.tableSurface}>
           <IndexTable
             resourceName={{ singular: 'usuario', plural: 'usuarios' }}
             itemCount={filteredUsers.length}
             headings={[
               { title: 'Usuario' },
               { title: 'Rol' },
-              { title: 'Global ID' },
+              { title: 'ID interno' },
               { title: 'Estado' },
               { title: 'Desde' },
               { title: 'Acciones' },
@@ -771,7 +733,7 @@ export function RolesManager() {
           >
             {userRows}
           </IndexTable>
-        </Card>
+        </div>
       )}
     </BlockStack>
   );
@@ -799,10 +761,13 @@ export function RolesManager() {
             const tone = getBadgeTone(index);
             const usersInRole = userRoles.filter((u) => u.roleId === def.id);
             const activeInRole = usersInRole.filter((u) => u.status !== 'baja').length;
-            const permPct = totalPermissions > 0 ? (def.permissions.length / totalPermissions) * 100 : 0;
+            const visiblePermissionGroups = PERMISSION_GROUPS.map((group) => {
+              const active = group.permissions.filter((p) => def.permissions.includes(p)).length;
+              return { title: group.title, active, total: group.permissions.length };
+            }).filter((group) => group.active > 0);
 
             return (
-              <Card key={def.id}>
+              <div className={styles.roleCard} key={def.id}>
                 <BlockStack gap="300">
                   {/* Header */}
                   <InlineStack align="space-between" blockAlign="center">
@@ -841,27 +806,23 @@ export function RolesManager() {
                         {`${def.permissions.length} de ${totalPermissions}`}
                       </Button>
                     </InlineStack>
-                    <ProgressBar
-                      progress={permPct}
-                      size="small"
-                      tone={permPct >= 80 ? 'success' : permPct >= 40 ? 'highlight' : 'primary'}
-                    />
-                    {/* Groups summary chips */}
-                    <InlineStack gap="100" wrap>
-                      {PERMISSION_GROUPS.map((group) => {
-                        const active = group.permissions.filter((p) => def.permissions.includes(p)).length;
-                        if (active === 0) return null;
-                        return (
+                    {visiblePermissionGroups.length > 0 ? (
+                      <InlineStack gap="100" wrap>
+                        {visiblePermissionGroups.map((group) => (
                           <Badge
                             key={group.title}
                             size="small"
-                            tone={active === group.permissions.length ? 'success' : undefined}
+                            tone={group.active === group.total ? 'success' : undefined}
                           >
-                            {`${group.title} ${active}/${group.permissions.length}`}
+                            {`${group.title} ${group.active}/${group.total}`}
                           </Badge>
-                        );
-                      })}
-                    </InlineStack>
+                        ))}
+                      </InlineStack>
+                    ) : (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Sin permisos asignados
+                      </Text>
+                    )}
                   </BlockStack>
 
                   <Divider />
@@ -896,19 +857,14 @@ export function RolesManager() {
                         </Button>
                       </>
                     )}
-                    {def.isSystem && def.name !== 'Propietario' && (
-                      <Button size="micro" icon={EditIcon} onClick={() => openEditRoleDef(def)}>
-                        Editar permisos
-                      </Button>
-                    )}
-                    {def.isSystem && def.name === 'Propietario' && (
+                    {def.isSystem && (
                       <Text variant="bodySm" as="span" tone="subdued">
                         Protegido
                       </Text>
                     )}
                   </InlineStack>
                 </BlockStack>
-              </Card>
+              </div>
             );
           })}
         </InlineGrid>
@@ -916,37 +872,129 @@ export function RolesManager() {
     </BlockStack>
   );
 
+  const invitationRows = invitations.map((invitation, index) => {
+    const roleName = roleMap.get(invitation.roleId)?.name ?? 'Rol no disponible';
+    const statusPresentation: Record<
+      TenantInvitation['status'],
+      { label: string; tone: 'attention' | 'success' | 'critical' | 'info' }
+    > = {
+      pending: { label: 'Pendiente', tone: 'attention' },
+      accepted: { label: 'Aceptada', tone: 'success' },
+      revoked: { label: 'Revocada', tone: 'critical' },
+      expired: { label: 'Vencida', tone: 'info' },
+    };
+    const status = statusPresentation[invitation.status];
+
+    return (
+      <IndexTable.Row id={invitation.id} key={invitation.id} position={index}>
+        <IndexTable.Cell>
+          <Text as="span" variant="bodyMd" fontWeight="semibold">
+            {invitation.email}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Badge>{roleName}</Badge>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Badge tone={status.tone}>{status.label}</Badge>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {formatDate(invitation.expiresAt)}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {invitation.status === 'pending' ? (
+            <Button
+              size="micro"
+              tone="critical"
+              loading={saving}
+              onClick={() => void handleRevokeInvitation(invitation)}
+            >
+              Revocar
+            </Button>
+          ) : (
+            <Text as="span" variant="bodySm" tone="subdued">
+              Sin acciones
+            </Text>
+          )}
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
+
+  const invitationsContent = (
+    <BlockStack gap="400">
+      <InlineStack align="space-between" blockAlign="center">
+        <BlockStack gap="100">
+          <Text as="h3" variant="headingMd" fontWeight="bold">
+            Invitaciones del negocio
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            Cada invitación vence automáticamente y solo puede aceptarla el correo destinatario.
+          </Text>
+        </BlockStack>
+        <Button variant="primary" icon={PersonAddIcon} onClick={() => setAddOpen(true)}>
+          Invitar usuario
+        </Button>
+      </InlineStack>
+
+      {invitations.length === 0 ? (
+        <EmptyState
+          heading="No hay invitaciones"
+          image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-data.svg"
+        >
+          <p>Las invitaciones enviadas aparecerán aquí con su estado y vencimiento.</p>
+        </EmptyState>
+      ) : (
+        <div className={styles.tableSurface}>
+          <IndexTable
+            resourceName={{ singular: 'invitación', plural: 'invitaciones' }}
+            itemCount={invitations.length}
+            headings={[
+              { title: 'Correo' },
+              { title: 'Rol' },
+              { title: 'Estado' },
+              { title: 'Vence' },
+              { title: 'Acciones' },
+            ]}
+            selectable={false}
+          >
+            {invitationRows}
+          </IndexTable>
+        </div>
+      )}
+    </BlockStack>
+  );
+
   // ── TABS ──
   const tabs = [
     {
-      id: 'cognito',
-      content: 'AWS Cognito + Directorio',
-      panelID: 'cognito-panel',
-    },
-    {
       id: 'local-access',
-      content: `Accesos locales (${userRoles.length})`,
+      content: `Usuarios (${userRoles.length})`,
       panelID: 'local-access-panel',
     },
     {
       id: 'roles',
-      content: `Roles y permisos locales (${roleDefinitions.length})`,
+      content: `Roles y permisos (${roleDefinitions.length})`,
       panelID: 'roles-panel',
+    },
+    {
+      id: 'invitations',
+      content: `Invitaciones (${invitations.filter((invitation) => invitation.status === 'pending').length})`,
+      panelID: 'invitations-panel',
     },
   ];
 
   return (
     <BlockStack gap="400">
-      <AccessGovernanceHeader users={stats.total} roles={stats.roles} activeUsers={stats.active} />
-      {kpiSection}
-
       {/* Tabs */}
       <Card padding="0">
         <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
-          <Box padding="400">
-            {selectedTab === 0 && <CognitoUsersManager />}
-            {selectedTab === 1 && usersContent}
-            {selectedTab === 2 && rolesContent}
+          <Box padding="500">
+            {selectedTab === 0 && usersContent}
+            {selectedTab === 1 && rolesContent}
+            {selectedTab === 2 && invitationsContent}
           </Box>
         </Tabs>
       </Card>
@@ -979,6 +1027,7 @@ export function RolesManager() {
         roleSelectOptions={roleSelectOptions}
         roleMap={roleMap}
         defaultRoleId={defaultRoleId}
+        onCreateRole={openCreateRoleFromUserFlow}
       />
 
       <EditUserModal
@@ -1012,6 +1061,16 @@ export function RolesManager() {
           setPermDetailRole(null);
         }}
         roleDef={permDetailRole}
+      />
+
+      <TransferOwnershipModal
+        open={transferOwnershipOpen}
+        onClose={() => setTransferOwnershipOpen(false)}
+        onTransfer={handleTransferOwnership}
+        saving={saving}
+        currentUserId={user?.userId ?? ''}
+        users={userRoles}
+        roles={roleDefinitions}
       />
     </BlockStack>
   );

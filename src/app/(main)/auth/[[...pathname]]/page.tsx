@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { AuthLayout, LoginForm, RegisterForm, ForgotPasswordForm, ResetPasswordForm, MfaRecoveryForm } from '@/components/auth';
+import { AuthLayout, LoginForm, RegisterForm, ForgotPasswordForm, ResetPasswordForm, MfaRecoveryForm, AcceptInvitationForm } from '@/components/auth';
 import { AuthCallbackHandler } from '@/components/auth/AuthCallbackHandler';
 import { Toaster } from 'sileo';
 import 'sileo/styles.css';
@@ -10,6 +10,7 @@ export default function AuthPage() {
   const params = useParams();
   const pathname = params.pathname as string[] | undefined;
   const route = pathname?.[0] || 'login';
+  const usesLayeredCard = route !== 'callback';
 
   const renderAuthForm = () => {
     switch (route) {
@@ -23,6 +24,8 @@ export default function AuthPage() {
         return <ResetPasswordForm />;
       case 'mfa-recovery':
         return <MfaRecoveryForm />;
+      case 'accept-invitation':
+        return <AcceptInvitationForm />;
       case 'callback':
         return <AuthCallbackHandler />;
       default:
@@ -33,7 +36,7 @@ export default function AuthPage() {
   return (
     <>
       <Toaster position="top-right" theme="light" />
-      <AuthLayout>{renderAuthForm()}</AuthLayout>
+      <AuthLayout layered={usesLayeredCard} wide={route === 'register'}>{renderAuthForm()}</AuthLayout>
     </>
   );
 }

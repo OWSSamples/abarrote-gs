@@ -1,6 +1,7 @@
 'use server';
 
 import { requirePermission, requireAuth, validateId } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { db } from '@/db';
 import { products, mermaRecords, inventoryAudits, inventoryAuditItems } from '@/db/schema';
 import { eq, gte, lte, and, desc, sql } from 'drizzle-orm';
@@ -77,7 +78,7 @@ async function _fetchInventoryAlerts(): Promise<InventoryAlert[]> {
 // ==================== KPI (computed) ====================
 
 async function _fetchKPIData(): Promise<KPIData> {
-  await requireAuth();
+  const { storeId } = await requireStoreScope();
   const now = new Date();
   const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(now);
   const yesterday = new Date(now);
@@ -96,20 +97,21 @@ async function _fetchKPIData(): Promise<KPIData> {
       db
         .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
         .from(saleRecords)
-        .where(sql`date::date = ${todayStr}`),
+        .where(and(eq(saleRecords.storeId, storeId), sql`date::date = ${todayStr}`)),
       db
         .select({ total: sql<string>`coalesce(sum(total::numeric), 0)` })
         .from(saleRecords)
-        .where(sql`date::date = ${yesterdayStr}`),
+        .where(and(eq(saleRecords.storeId, storeId), sql`date::date = ${yesterdayStr}`)),
       db
         .select({ count: sql<number>`count(*)` })
         .from(products)
-        .where(sql`current_stock < min_stock`),
+        .where(and(eq(products.storeId, storeId), sql`current_stock < min_stock`)),
       db
         .select({ count: sql<number>`count(*)` })
         .from(products)
         .where(
           and(
+            eq(products.storeId, storeId),
             sql`expiration_date is not null`,
             lte(products.expirationDate, sevenDaysLater.toISOString().split('T')[0]),
             gte(products.expirationDate, todayStr),
@@ -118,8 +120,11 @@ async function _fetchKPIData(): Promise<KPIData> {
       db
         .select({ total: sql<string>`coalesce(sum(value::numeric), 0)` })
         .from(mermaRecords)
-        .where(gte(mermaRecords.date, thirtyDaysAgo)),
-      db.select({ total: sql<string>`coalesce(sum(unit_price::numeric * current_stock), 0)` }).from(products),
+        .where(and(eq(mermaRecords.storeId, storeId), gte(mermaRecords.date, thirtyDaysAgo))),
+      db
+        .select({ total: sql<string>`coalesce(sum(unit_price::numeric * current_stock), 0)` })
+        .from(products)
+        .where(eq(products.storeId, storeId)),
     ]);
 
   const dailySales = numVal(todaySalesResult[0]?.total);
@@ -146,7 +151,12 @@ async function _fetchKPIData(): Promise<KPIData> {
 
 async function _fetchMermaRecords(): Promise<MermaRecord[]> {
   await requirePermission('inventory.edit');
-  const rows = await db.select().from(mermaRecords).orderBy(desc(mermaRecords.date));
+  const { storeId } = await requireStoreScope();
+  const rows = await db
+    .select()
+    .from(mermaRecords)
+    .where(eq(mermaRecords.storeId, storeId))
+    .orderBy(desc(mermaRecords.date));
   return rows.map((r) => ({
     id: r.id,
     productId: r.productId,
@@ -160,6 +170,7 @@ async function _fetchMermaRecords(): Promise<MermaRecord[]> {
 
 async function _createMerma(data: Omit<MermaRecord, 'id'>): Promise<MermaRecord> {
   const user = await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(createMermaSchema, data, 'createMerma');
   const id = `merma-${crypto.randomUUID()}`;
   await db.insert(mermaRecords).values({
@@ -170,6 +181,7 @@ async function _createMerma(data: Omit<MermaRecord, 'id'>): Promise<MermaRecord>
     reason: data.reason,
     date: new Date(data.date),
     value: String(data.value),
+    storeId,
   });
 
   const unitCost = data.quantity > 0 ? data.value / data.quantity : null;
@@ -183,6 +195,7 @@ async function _createMerma(data: Omit<MermaRecord, 'id'>): Promise<MermaRecord>
       notes: `Merma · ${data.reason}`,
       userId: user.uid,
       userName: user.email ?? null,
+      storeId,
     },
   });
 
@@ -193,7 +206,12 @@ async function _createMerma(data: Omit<MermaRecord, 'id'>): Promise<MermaRecord>
 
 async function _fetchInventoryAudits(): Promise<InventoryAudit[]> {
   await requirePermission('inventory.edit');
-  const rows = await db.select().from(inventoryAudits).orderBy(desc(inventoryAudits.date));
+  const { storeId } = await requireStoreScope();
+  const rows = await db
+    .select()
+    .from(inventoryAudits)
+    .where(eq(inventoryAudits.storeId, storeId))
+    .orderBy(desc(inventoryAudits.date));
   return rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -206,6 +224,7 @@ async function _fetchInventoryAudits(): Promise<InventoryAudit[]> {
 
 async function _createInventoryAudit(data: { title: string; auditor: string; notes: string }): Promise<string> {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(createInventoryAuditSchema, data, 'createInventoryAudit');
   const id = `audit-${crypto.randomUUID()}`;
   await db.insert(inventoryAudits).values({
@@ -215,17 +234,25 @@ async function _createInventoryAudit(data: { title: string; auditor: string; not
     notes: data.notes,
     date: new Date(),
     status: 'draft',
+    storeId,
   });
   return id;
 }
 
 async function _getInventoryAudit(id: string): Promise<InventoryAudit | null> {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateId(id, 'Audit ID');
-  const rows = await db.select().from(inventoryAudits).where(eq(inventoryAudits.id, id));
+  const rows = await db
+    .select()
+    .from(inventoryAudits)
+    .where(and(eq(inventoryAudits.id, id), eq(inventoryAudits.storeId, storeId)));
   if (rows.length === 0) return null;
   const audit = rows[0];
-  const items = await db.select().from(inventoryAuditItems).where(eq(inventoryAuditItems.auditId, id));
+  const items = await db
+    .select()
+    .from(inventoryAuditItems)
+    .where(and(eq(inventoryAuditItems.auditId, id), eq(inventoryAuditItems.storeId, storeId)));
 
   return {
     id: audit.id,
@@ -249,12 +276,33 @@ async function _getInventoryAudit(id: string): Promise<InventoryAudit | null> {
 
 async function _saveAuditItem(data: Omit<InventoryAuditItem, 'id'>): Promise<void> {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(saveAuditItemSchema, data, 'saveAuditItem');
+
+  const [audit] = await db
+    .select({ id: inventoryAudits.id })
+    .from(inventoryAudits)
+    .where(and(eq(inventoryAudits.id, data.auditId), eq(inventoryAudits.storeId, storeId)))
+    .limit(1);
+  const [product] = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.id, data.productId), eq(products.storeId, storeId)))
+    .limit(1);
+  if (!audit || !product) {
+    throw new Error('La auditoría o el producto no pertenece a tu negocio.');
+  }
 
   // Upsert: remove existing entry for this product in this audit, then insert
   await db
     .delete(inventoryAuditItems)
-    .where(and(eq(inventoryAuditItems.auditId, data.auditId), eq(inventoryAuditItems.productId, data.productId)));
+    .where(
+      and(
+        eq(inventoryAuditItems.auditId, data.auditId),
+        eq(inventoryAuditItems.productId, data.productId),
+        eq(inventoryAuditItems.storeId, storeId),
+      ),
+    );
 
   const id = `ai-${crypto.randomUUID()}`;
   await db.insert(inventoryAuditItems).values({
@@ -266,11 +314,13 @@ async function _saveAuditItem(data: Omit<InventoryAuditItem, 'id'>): Promise<voi
     countedStock: data.countedStock,
     difference: data.difference,
     adjustmentValue: String(data.adjustmentValue),
+    storeId,
   });
 }
 
 async function _completeInventoryAudit(id: string): Promise<void> {
   const user = await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'completeInventoryAudit:id');
   const audit = await getInventoryAudit(id);
   if (!audit || audit.status === 'completed') return;
@@ -284,7 +334,7 @@ async function _completeInventoryAudit(id: string): Promise<void> {
       await db
         .update(products)
         .set({ currentStock: item.countedStock, updatedAt: new Date() })
-        .where(eq(products.id, item.productId));
+        .where(and(eq(products.id, item.productId), eq(products.storeId, storeId)));
 
       // Kardex entry for the adjustment
       const unitCost =
@@ -306,6 +356,7 @@ async function _completeInventoryAudit(id: string): Promise<void> {
               : `Sobrante encontrado en auditoría (${audit.auditor})`,
           userId: user.uid,
           userName: audit.auditor || user.email || null,
+          storeId,
         },
       );
 
@@ -322,6 +373,7 @@ async function _completeInventoryAudit(id: string): Promise<void> {
           reason: 'audit_adjustment',
           date: new Date(),
           value: String(Math.abs(item.adjustmentValue)),
+          storeId,
         });
       } else {
         // Surplus found — stock already adjusted above, log it
@@ -330,7 +382,10 @@ async function _completeInventoryAudit(id: string): Promise<void> {
     }
   }
 
-  await db.update(inventoryAudits).set({ status: 'completed' }).where(eq(inventoryAudits.id, id));
+  await db
+    .update(inventoryAudits)
+    .set({ status: 'completed' })
+    .where(and(eq(inventoryAudits.id, id), eq(inventoryAudits.storeId, storeId)));
 
   // Import escapeHTML for the notification message
   const { escapeHTML } = await import('./_notifications');

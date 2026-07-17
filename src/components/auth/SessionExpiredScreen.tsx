@@ -7,13 +7,12 @@ import {
   InlineStack,
   Text,
   Button,
-  Icon,
   Box,
   Badge,
   ProgressBar,
   Divider,
 } from '@shopify/polaris';
-import { LockIcon, ArrowRightIcon } from '@shopify/polaris-icons';
+import { ArrowRight24Filled, LockClosedKey24Filled } from '@fluentui/react-icons';
 
 interface SessionExpiredScreenProps {
   loginPath?: string;
@@ -83,7 +82,7 @@ export function SessionExpiredScreen({
               aria-hidden="true"
             >
               <div style={{ width: '28px', height: '28px' }}>
-                <Icon source={LockIcon} tone="caution" />
+                <LockClosedKey24Filled style={{ color: 'var(--p-color-icon-caution, #8a6116)' }} />
               </div>
             </div>
 
@@ -119,8 +118,11 @@ export function SessionExpiredScreen({
 
             <div style={{ width: '100%' }}>
               <BlockStack gap="200">
-                <Button variant="primary" size="large" fullWidth url={loginPath} icon={ArrowRightIcon}>
-                  Iniciar sesión
+                <Button variant="primary" size="large" fullWidth url={loginPath}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                    <ArrowRight24Filled />
+                    Iniciar sesión
+                  </span>
                 </Button>
                 <Button variant="tertiary" size="large" fullWidth url="/dashboard">
                   Ir al inicio

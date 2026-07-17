@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Popover, ActionList, Icon, InlineStack, Text, Box } from '@shopify/polaris';
-import { StoreIcon, PlusCircleIcon, CheckSmallIcon } from '@shopify/polaris-icons';
+import { Popover, ActionList, Icon, Spinner, UnstyledButton } from '@shopify/polaris';
+import { StoreIcon, CheckSmallIcon, ChevronDownIcon, PlusIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
+import { selectActiveStore } from '@/app/actions/store-scope-actions';
 
 export interface StoreInfo {
   id: string;
@@ -15,44 +16,44 @@ export function StoreSelector() {
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const activeStoreId = useDashboardStore((s) => s.activeStoreId);
   const stores = useDashboardStore((s) => s.stores);
-  const switchStore = useDashboardStore((s) => s.switchStore);
+  const [changing, setChanging] = useState(false);
 
   const toggleActive = useCallback(() => setActive((p) => !p), []);
 
   const handleSelect = useCallback(
-    (storeId: string) => {
-      switchStore(storeId);
-      setActive(false);
+    async (storeId: string) => {
+      if (changing || storeId === activeStoreId) return;
+      setChanging(true);
+      try {
+        await selectActiveStore(storeId);
+        // A full reload clears every tenant-bound slice and any in-flight response.
+        window.location.reload();
+      } catch {
+        setChanging(false);
+        const { sileo } = await import('sileo');
+        sileo.error({
+          title: 'No se pudo cambiar de negocio',
+          description: 'Verifica tu acceso e inténtalo nuevamente.',
+        });
+      }
     },
-    [switchStore],
+    [activeStoreId, changing],
   );
 
   const currentStoreName = stores.find((s) => s.id === activeStoreId)?.name || storeConfig.storeName;
 
-  // If only one store, show it as static label
-  if (stores.length <= 1) {
-    return (
-      <Box paddingInlineStart="400" paddingInlineEnd="400" paddingBlockStart="300" paddingBlockEnd="300">
-        <InlineStack gap="200" blockAlign="center">
-          <Icon source={StoreIcon} tone="base" />
-          <Text as="span" variant="bodySm" fontWeight="semibold" truncate>
-            {currentStoreName}
-          </Text>
-        </InlineStack>
-      </Box>
-    );
-  }
-
   const activator = (
-    <div style={{ padding: '8px 16px', cursor: 'pointer' }} onClick={toggleActive}>
-      <InlineStack gap="200" blockAlign="center">
-        <Icon source={StoreIcon} tone="base" />
-        <Text as="span" variant="bodySm" fontWeight="semibold" truncate>
-          {currentStoreName}
-        </Text>
-        <span style={{ fontSize: '10px', color: '#6d7175' }}>▼</span>
-      </InlineStack>
-    </div>
+    <UnstyledButton
+      className="ctb-store-selector"
+      onClick={toggleActive}
+      accessibilityLabel={`Negocio activo: ${currentStoreName}`}
+      ariaExpanded={active}
+      disabled={changing}
+    >
+      <Icon source={StoreIcon} tone="inherit" />
+      <span>{currentStoreName}</span>
+      {changing ? <Spinner size="small" /> : <Icon source={ChevronDownIcon} tone="inherit" />}
+    </UnstyledButton>
   );
 
   return (
@@ -64,12 +65,13 @@ export function StoreSelector() {
             prefix: store.id === activeStoreId ? <Icon source={CheckSmallIcon} tone="success" /> : undefined,
             onAction: () => handleSelect(store.id),
             active: store.id === activeStoreId,
+            disabled: changing,
           })),
           {
-            content: 'Agregar sucursal',
-            prefix: <Icon source={PlusCircleIcon} />,
-            disabled: true,
-            helpText: 'Próximamente',
+            content: 'Crear otro negocio',
+            prefix: <Icon source={PlusIcon} />,
+            onAction: () => window.location.assign('/auth/register?mode=additional'),
+            disabled: changing,
           },
         ]}
       />

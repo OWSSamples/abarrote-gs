@@ -1,139 +1,135 @@
-'use server';
-
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { and, eq, ne } from 'drizzle-orm';
 import { db } from '@/db';
 import { paymentCharges } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { checkRateLimitAsync, getClientIp } from '@/infrastructure/redis';
+import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
-import { idempotencyCheck } from '@/infrastructure/redis';
+import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
 
-/**
- * Cobrar.io Webhook Handler
- *
- * Receives payment status notifications from Cobrar.io.
- * Supports HMAC-SHA256 signature verification.
- *
- * Events: charge.paid, charge.expired, charge.cancelled
- */
+const MAX_WEBHOOK_BYTES = 64 * 1024;
 
-const COBRAR_WEBHOOK_SECRET = process.env.COBRAR_WEBHOOK_SECRET;
+const cobrarEventSchema = z.object({
+  id: z.string().min(1).max(200),
+  type: z.string().min(1).max(100),
+  data: z.object({
+    id: z.string().min(1).max(200),
+    amount: z.number().positive().max(99_999_999.99),
+    currency: z.string().length(3).transform((value) => value.toUpperCase()),
+    status: z.string().min(1).max(50),
+    reference: z.string().min(1).max(200),
+    payment_method: z.string().max(100).optional(),
+    paid_at: z.string().datetime({ offset: true }).optional(),
+  }),
+});
 
-async function verifySignature(body: string, signature: string | null): Promise<boolean> {
-  if (!COBRAR_WEBHOOK_SECRET || !signature) return false;
+const VALID_TRANSITIONS: Record<string, ReadonlySet<string>> = {
+  pending: new Set(['paid', 'expired', 'failed']),
+  paid: new Set(),
+  expired: new Set(['paid']),
+  failed: new Set(['paid']),
+};
 
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(COBRAR_WEBHOOK_SECRET),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
-  const expected = Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+function verifySignature(body: string, signatureHeader: string | null, secret: string): boolean {
+  if (!signatureHeader) return false;
 
-  // Constant-time comparison
-  if (expected.length !== signature.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < expected.length; i++) {
-    mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
-  }
-  return mismatch === 0;
+  const signature = signatureHeader.startsWith('sha256=') ? signatureHeader.slice(7) : signatureHeader;
+  if (!/^[a-f0-9]{64}$/i.test(signature)) return false;
+
+  const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
 }
-
-type CobrarEvent = {
-  id: string;
-  type: 'charge.paid' | 'charge.expired' | 'charge.cancelled';
-  data: {
-    id: string;
-    amount: number;
-    currency: string;
-    status: string;
-    reference: string;
-    payment_method?: string;
-    paid_at?: string;
-    metadata?: Record<string, unknown>;
-  };
-};
-
-// Valid status transitions to prevent downgrade attacks
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  pending: ['paid', 'expired', 'cancelled', 'failed'],
-  paid: [], // Terminal state
-  expired: [], // Terminal state
-  cancelled: [], // Terminal state
-  failed: [], // Terminal state
-};
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
+  const secret = env.COBRAR_WEBHOOK_SECRET;
+
+  if (!secret) {
+    logger.error('Cobrar.io webhook rejected because its signing secret is not configured', {
+      action: 'cobrar_webhook_no_secret',
+    });
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
+  }
+
+  const ip = getClientIp(request);
+  const rateLimit = await checkRateLimitAsync(`cobrar_webhook:${ip}`, { limit: 30, windowMs: 60_000 });
+  if (rateLimit.isRateLimited) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
 
   try {
-    const body = await request.text();
-    const signature = request.headers.get('x-cobrar-signature');
-
-    // Verify webhook signature
-    if (COBRAR_WEBHOOK_SECRET) {
-      const valid = await verifySignature(body, signature);
-      if (!valid) {
-        logger.warn('Cobrar.io webhook signature verification failed', {
-          action: 'cobrar_webhook_invalid_sig',
-        });
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-      }
+    const storeId = new URL(request.url).searchParams.get('store');
+    if (!storeId || !/^(?:main|[a-f0-9]{32})$/.test(storeId)) {
+      return NextResponse.json({ error: 'Store scope required' }, { status: 400 });
+    }
+    const body = await readTextBodyWithLimit(request, MAX_WEBHOOK_BYTES);
+    if (body === null) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
 
-    let event: CobrarEvent;
+    if (!verifySignature(body, request.headers.get('x-cobrar-signature'), secret)) {
+      logger.warn('Cobrar.io webhook signature verification failed', {
+        action: 'cobrar_webhook_invalid_sig',
+        ip,
+      });
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
+    let json: unknown;
     try {
-      event = JSON.parse(body);
+      json = JSON.parse(body);
     } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
     }
 
-    if (!event.id || !event.type || !event.data?.id) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    const parsed = cobrarEventSchema.safeParse(json);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
+    const event = parsed.data;
 
-    logger.info('Cobrar.io webhook received', {
-      action: 'cobrar_webhook',
-      eventType: event.type,
-      eventId: event.id,
-      chargeId: event.data.id,
-    });
-
-    // Idempotency
-    const isNew = await idempotencyCheck(`cobrar_webhook:${event.id}`, { ttlMs: 86_400_000 });
-    if (!isNew) {
-      logger.info('Cobrar.io webhook duplicate skipped', {
-        action: 'cobrar_webhook_duplicate',
-        eventId: event.id,
-      });
-      return NextResponse.json({ received: true, duplicate: true });
-    }
-
-    // Map Cobrar.io event to internal status
-    const statusMap: Record<string, string> = {
+    const statusMap: Record<string, 'paid' | 'expired' | 'failed'> = {
       'charge.paid': 'paid',
       'charge.expired': 'expired',
       'charge.cancelled': 'failed',
     };
     const newStatus = statusMap[event.type];
-
     if (!newStatus) {
-      logger.info('Cobrar.io webhook unhandled event type', {
-        action: 'cobrar_webhook_unhandled',
-        eventType: event.type,
-      });
       return NextResponse.json({ received: true, handled: false });
     }
 
-    // Find the charge in our DB
+    const reportedStatusMap: Record<string, 'paid' | 'expired' | 'failed'> = {
+      paid: 'paid',
+      succeeded: 'paid',
+      completed: 'paid',
+      expired: 'expired',
+      cancelled: 'failed',
+      canceled: 'failed',
+      failed: 'failed',
+    };
+    const reportedStatus = reportedStatusMap[event.data.status.trim().toLowerCase()];
+    if (reportedStatus !== newStatus) {
+      logger.warn('Cobrar.io webhook event and data status mismatch', {
+        action: 'cobrar_webhook_status_mismatch',
+        eventId: event.id,
+        eventType: event.type,
+        reportedStatus: event.data.status,
+      });
+      return NextResponse.json({ error: 'Inconsistent payment status' }, { status: 409 });
+    }
+
     const [existing] = await db
       .select()
       .from(paymentCharges)
-      .where(and(eq(paymentCharges.provider, 'cobrar'), eq(paymentCharges.providerChargeId, event.data.id)))
+      .where(
+        and(
+          eq(paymentCharges.storeId, storeId),
+          eq(paymentCharges.provider, 'cobrar'),
+          eq(paymentCharges.providerChargeId, event.data.id),
+        ),
+      )
       .limit(1);
 
     if (!existing) {
@@ -141,36 +137,69 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         action: 'cobrar_webhook_not_found',
         chargeId: event.data.id,
       });
-      return NextResponse.json({ received: true, handled: false });
+      return NextResponse.json({ received: true, handled: false }, { status: 202 });
     }
 
-    // Validate state transition
-    const allowed = VALID_TRANSITIONS[existing.status] ?? [];
-    if (!allowed.includes(newStatus)) {
+    const amountMatches = Math.abs(Number(existing.amount) - event.data.amount) < 0.005;
+    const currencyMatches = existing.currency.toUpperCase() === event.data.currency;
+    const referenceMatches = existing.referenceNumber === event.data.reference;
+    if (!amountMatches || !currencyMatches || !referenceMatches) {
+      logger.warn('Cobrar.io webhook reconciliation mismatch', {
+        action: 'cobrar_webhook_reconciliation_mismatch',
+        chargeId: existing.id,
+        amountMatches,
+        currencyMatches,
+        referenceMatches,
+      });
+      return NextResponse.json({ error: 'Charge reconciliation failed' }, { status: 409 });
+    }
+
+    if (existing.status === newStatus) {
+      return NextResponse.json({ received: true, handled: true, duplicate: true });
+    }
+
+    const allowed = VALID_TRANSITIONS[existing.status];
+    if (!allowed?.has(newStatus)) {
       logger.warn('Cobrar.io invalid status transition blocked', {
         action: 'cobrar_webhook_invalid_transition',
-        chargeId: event.data.id,
+        chargeId: existing.id,
         currentStatus: existing.status,
         attemptedStatus: newStatus,
       });
       return NextResponse.json({ received: true, handled: false });
     }
 
-    // Update charge status
-    await db
+    const [updated] = await db
       .update(paymentCharges)
       .set({
         status: newStatus,
-        paidAt: event.data.paid_at ? new Date(event.data.paid_at) : undefined,
-        providerMetadata: event.data.metadata ?? {},
+        paidAt: newStatus === 'paid' ? (event.data.paid_at ? new Date(event.data.paid_at) : new Date()) : undefined,
+        providerMetadata: {
+          eventId: event.id,
+          providerStatus: event.data.status,
+          paymentMethod: event.data.payment_method,
+        },
         updatedAt: new Date(),
       })
-      .where(eq(paymentCharges.id, existing.id));
+      .where(
+        and(
+          eq(paymentCharges.id, existing.id),
+          eq(paymentCharges.storeId, storeId),
+          eq(paymentCharges.provider, 'cobrar'),
+          newStatus === 'paid'
+            ? ne(paymentCharges.status, 'paid')
+            : eq(paymentCharges.status, 'pending'),
+        ),
+      )
+      .returning({ status: paymentCharges.status });
 
-    logger.info('Cobrar.io charge status updated', {
-      action: 'cobrar_webhook_updated',
+    if (!updated) {
+      return NextResponse.json({ received: true, handled: true, duplicate: true });
+    }
+
+    logger.info('Cobrar.io charge status reconciled', {
+      action: 'cobrar_webhook_reconciled',
       chargeId: existing.id,
-      provider: 'cobrar',
       oldStatus: existing.status,
       newStatus,
       durationMs: Date.now() - startTime,
@@ -183,6 +212,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       error: error instanceof Error ? error.message : 'Unknown error',
       durationMs: Date.now() - startTime,
     });
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
   }
 }

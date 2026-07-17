@@ -1,189 +1,143 @@
-# ADR-001: Estrategia de Multi-Tenancy (Multi-Tienda)
+# ADR-001: Multi-tenancy por negocio
 
-- **Estado:** Propuesta — pendiente de aprobación
-- **Fecha:** 2026-04-22
-- **Decisores:** Owner del producto + arquitecto
-- **Contexto técnico:** Next.js 16, Drizzle + Neon Postgres, AWS Cognito, ~30 tablas operativas
+- **Estado:** Aceptada, despliegue por fases
+- **Fecha original:** 2026-04-22
+- **Última actualización:** 2026-07-16
+- **Contexto técnico:** Next.js 16, Drizzle, PostgreSQL/Neon y AWS Cognito
 
----
+## Contexto
 
-## 1. Contexto
+Opendex opera como SaaS para negocios independientes. Cada negocio debe mantener aislados su catálogo, inventario, ventas, clientes, proveedores, equipo, roles, configuración, archivos e integraciones.
 
-Hoy el sistema es **single-tenant** en la práctica:
+`stores.id` es actualmente la frontera de tenant. El nombre histórico `store_id` se conserva para evitar una migración destructiva. Una sucursal futura requerirá una entidad distinta y no debe modelarse concediendo acceso cruzado entre negocios.
 
-- `store_config` es una tabla de **una sola fila** con `id = 'main'` hardcodeado (~12 lugares: [src/lib/ai.ts](src/lib/ai.ts), [src/lib/oauth-providers.ts](src/lib/oauth-providers.ts), entre otros).
-- `AuthenticatedUser` solo expone `uid, email, roleId, permissions` — no hay `storeId`/`tenantId`.
-- Existe un **placeholder de UI** para multi-tienda en [src/store/dashboardStore.ts](src/store/dashboardStore.ts) (`activeStoreId: 'main'`, `stores: [...]`) y un [`StoreSelector`](src/components/navigation/StoreSelector.tsx) con etiqueta "Agregar sucursal — Próximamente".
-- `payment_provider_connections.storeId` ya tiene la columna pero siempre se usa con valor `'main'`.
+## Decisión
 
-Llegamos al momento de escalar a clientes con **varias sucursales** o de ofrecer la app como **SaaS multi-cliente**. Antes de tocar código necesitamos definir el modelo.
+Se usa una base PostgreSQL compartida con aislamiento por fila y autorización derivada en servidor:
 
----
+- El cliente nunca decide un `store_id` confiable para una operación de negocio.
+- `requireStoreScope()` resuelve el tenant activo desde una membresía válida.
+- La cookie `__store_id` solo selecciona entre negocios activos a los que la identidad pertenece.
+- Una identidad autenticada sin membresía activa falla de forma cerrada.
+- Las acciones, caches, folios, archivos, trabajos e integraciones incluyen el tenant explícitamente.
 
-## 2. Decisores que necesitamos aclarar (BLOQUEANTE)
+## Identidad y membresías
 
-Antes de elegir, el owner del producto debe responder:
+AWS Cognito es el proveedor global de autenticación. PostgreSQL es la fuente de autorización de negocio.
 
-| #   | Pregunta                                                                                                                               | Impacto                                                    |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Q1  | ¿Una "instancia de Kiosko" sirve a una sola **empresa/dueño** que tiene varias sucursales, o sirve a **varios dueños** independientes? | Define si la frontera es **store** o **tenant**            |
-| Q2  | ¿Productos, proveedores y precios se comparten entre sucursales o cada una tiene los suyos?                                            | Define si los catálogos son **globales** o **por-tienda**  |
-| Q3  | ¿El inventario es **por sucursal** (Sucursal A tiene 10 unidades, B tiene 5) o **agregado** (hay 15 unidades en algún lugar)?          | Crítico — implica nueva tabla `product_stock_by_store`     |
-| Q4  | ¿Un usuario puede operar en **una** sucursal o en **varias**?                                                                          | Define si `userId→storeId` es 1:1 (FK) o N:N (tabla pivot) |
-| Q5  | ¿Configuración de impuestos, CFDI, métodos de pago e integraciones (MP, Stripe…) es por sucursal o global?                             | Define si `store_config` se duplica por tienda             |
-| Q6  | ¿Reportes y analítica son siempre por sucursal o el dueño los ve consolidados?                                                         | Afecta queries y permisos                                  |
+- `user_identities` contiene el perfil global de la identidad y no concede acceso a ningún tenant.
+- `user_roles` es la membresía autoritativa, con unicidad por `cognito_sub + store_id`.
+- Una misma identidad puede pertenecer a varios negocios con roles diferentes.
+- `is_default` solo define el negocio inicial cuando no existe una selección válida.
+- `user_store_access` se conserva temporalmente como proyección de compatibilidad; no participa en la decisión de acceso.
+- Los roles de sistema son compartidos. Los roles personalizados solo son válidos dentro de su tenant.
+- El rol `Propietario` no se puede asignar desde formularios comunes.
 
-**Recomendación de defaults para PYMEs mexicanas (caso típico de abarrote):**
+El perfil global puede reflejarse en membresías heredadas para compatibilidad, pero los identificadores globales se generan y aseguran en `user_identities`.
 
-- Q1: 1 dueño → N sucursales (no SaaS multi-cliente todavía)
-- Q2: Catálogo de productos global, precios pueden ser globales con override por tienda
-- Q3: Inventario por sucursal
-- Q4: Un usuario opera en una sucursal a la vez (con switch para owner/admin)
-- Q5: `store_config` por sucursal (ticket, dirección, terminales) + `tenant_config` global (CFDI, IA, OAuth)
-- Q6: Owner ve consolidado, cajero solo ve su sucursal
+## Registro e invitaciones
 
----
+El registro de autoservicio crea en una transacción:
 
-## 3. Opciones consideradas
+1. Un tenant de 32 caracteres hexadecimales.
+2. Un nombre de negocio único sin distinguir mayúsculas y minúsculas.
+3. Su configuración fiscal y comercial.
+4. Una membresía `Propietario` activa para la identidad registrada.
+5. Un evento de auditoría dentro del tenant.
 
-### Opción A — **Schema-per-store** (separación física)
+Una identidad ya autenticada puede crear otro negocio desde el selector de negocio. Ese flujo reutiliza la identidad global, vuelve a validar la sesión y la capacidad de aprovisionamiento en el servidor, crea una nueva membresía `Propietario` y selecciona el tenant recién creado. No vuelve a registrar al usuario en Cognito ni solicita otra contraseña.
 
-Una base de datos lógica por sucursal. Drizzle conecta dinámicamente.
+Los colaboradores no se crean con una contraseña elegida por el administrador. El alta usa `tenant_invitations`:
 
-- ✅ Aislamiento total. Fácil de cumplir con regulaciones tipo "datos no se mezclan".
-- ✅ Backups y borrado por tienda son triviales.
-- ❌ Costoso en Neon (cada DB = un branch o instancia)
-- ❌ Migraciones se vuelven N veces más lentas
-- ❌ No permite consolidación cross-store sin un proceso ETL externo
-- ❌ Nuestro placeholder UI ya asume DB compartida — habría que reescribir
+- El token aleatorio solo se entrega por correo; en base se almacena SHA-256.
+- La invitación vence, es de un solo uso y está limitada por tenant y correo.
+- El destinatario debe autenticarse con el mismo correo antes de aceptarla.
+- La aceptación aplica el límite de usuarios bajo bloqueo transaccional.
+- Una identidad existente puede aceptar acceso a otro negocio sin duplicarse en Cognito.
 
-### Opción B — **Row-level multi-tenancy con `store_id`** (compartido, columna discriminadora)
+## Propiedad y administración de plataforma
 
-Una sola DB; cada tabla operativa lleva `store_id` y todas las queries lo filtran.
+- El propietario no puede darse de baja, eliminarse ni perder su rol por el flujo genérico.
+- La transferencia de propiedad es una transacción explícita: primero promueve al nuevo propietario y luego asigna un rol no propietario al anterior.
+- Un trigger impide dejar un tenant sin al menos un propietario activo.
+- `platform_administrators` está separado del RBAC de negocio. No se infiere por correo, dominio o rol de tenant.
+- Suspender, reactivar o archivar un negocio requiere administración de plataforma y deja auditoría.
+- Un negocio archivado no se reactiva desde el flujo normal.
 
-- ✅ Mínimo costo en Neon (1 DB)
-- ✅ Reportes consolidados son trivialmente `SUM(...) GROUP BY store_id`
-- ✅ Compatible con la UI placeholder y `paymentProviderConnections.storeId` ya existente
-- ✅ Migración incremental — añadimos columna sin romper nada
-- ❌ Riesgo de **data leak** si alguna query se olvida de filtrar → necesitamos disciplina (tests + helper centralizado)
-- ❌ Backup/restore selectivo por tienda requiere `pg_dump --where`
+Las filas de `platform_administrators` deben aprovisionarse mediante un procedimiento operativo auditado. El registro de usuarios nunca crea administradores de plataforma.
 
-### Opción C — **Híbrido: tenant compartido + store_id por sucursal**
+## Integridad de datos
 
-Si en el futuro Q1 cambia a multi-cliente: añadir `tenant_id` por encima de `store_id`. Hoy todo el mundo es `tenant_id = 'default'`.
+Las relaciones críticas usan claves compuestas `store_id + id` además de los IDs históricos. Esto impide que una fila hija apunte a un padre de otro tenant aunque exista un error en la capa de aplicación.
 
-- ✅ Permite crecer sin re-migrar
-- ✅ Mismo modelo operativo que Opción B hoy
-- ❌ Doble columna en muchas tablas (overhead de claridad mental)
+Se cubren, entre otras:
 
----
+- Categorías, productos y movimientos de inventario.
+- Ventas, partidas, devoluciones y CFDI.
+- Pedidos, partidas de pedido y auditorías de inventario.
+- Clientes, fiado, lealtad y movimientos de caja.
+- Registros asociados a pagos externos.
 
-## 4. Recomendación
+Los folios de ventas y servicios usan `tenant_sequences`, con reserva atómica e independiente por negocio. Los índices únicos de folio también incluyen `store_id`.
 
-**Opción B con preparación para Opción C.**
+## Archivos
 
-Razones:
+`tenant_assets` es el catálogo autoritativo de objetos subidos:
 
-1. La UI placeholder, `payment_provider_connections.storeId` y el `StoreSelector` ya apuntan a este modelo.
-2. Coste cero en Neon vs. branches por sucursal.
-3. Permite migración **incremental** sin romper datos existentes (todo va a `store_id = 'main'`).
-4. Si en 1 año llega multi-tenant SaaS, añadir `tenant_id` es una migración aditiva.
+- El servidor genera la clave `tenants/{storeId}/{kind}/{assetId}`.
+- El cliente no puede elegir claves de S3 ni borrar objetos arbitrarios.
+- La eliminación busca el activo por ID o URL dentro del tenant activo.
+- Se valida firma binaria, tamaño, categoría y permiso antes de subir.
+- Los avatares solo los elimina su propietario o un administrador autorizado.
+- Los SVG de entrada no confiable se rechazan.
 
----
+## Procesos en segundo plano
 
-## 5. Plan de implementación (5 fases, reversibles)
+Los trabajos reciben o enumeran un tenant explícito. Antes de enviar notificaciones, consultar proveedores o procesar expiraciones, verifican que el negocio siga activo. Los caches y locks de dominio incluyen `storeId`.
 
-### Fase 1 — Fundación (1 PR, ~2 h)
+## Row-Level Security
 
-- Crear tabla `stores`:
-  ```sql
-  CREATE TABLE stores (
-    id          text PRIMARY KEY,
-    name        text NOT NULL,
-    created_at  timestamp DEFAULT now() NOT NULL,
-    deleted_at  timestamp
-  );
-  INSERT INTO stores (id, name) VALUES ('main', 'Tienda Principal');
-  ```
-- Crear tabla `user_store_access` (Q4 = N:N, permite owner switch):
-  ```sql
-  CREATE TABLE user_store_access (
-    user_id    text NOT NULL,
-    store_id   text NOT NULL REFERENCES stores(id),
-    is_default boolean DEFAULT false NOT NULL,
-    PRIMARY KEY (user_id, store_id)
-  );
-  ```
-- Backfill: cada usuario existente recibe acceso a `'main'`.
-- Sin cambios funcionales todavía.
+La migración `0033_platform_admin_and_tenant_rls_policies.sql` instala funciones de contexto y políticas RLS, pero no activa RLS automáticamente.
 
-### Fase 2 — Scoping en auth (1 PR, ~3 h)
+La activación requiere primero:
 
-- Añadir `storeId` a `AuthenticatedUser`:
-  - Lee de cookie `__store_id` o, si no existe, del default en `user_store_access`.
-- Nuevo helper: `requireStoreScope(): { user, storeId }` (NO toca `requireAuth`).
-- Tests: 1 con un solo store (default), 1 con múltiples + cookie selectora.
+1. Un rol de conexión de aplicación que no sea propietario de las tablas ni tenga `BYPASSRLS`.
+2. Ejecutar cada operación tenant dentro de una transacción.
+3. Establecer `app.current_tenant_id` y `app.current_user_id` con `set_config(..., true)`.
+4. Resolver el tenant inicial mediante un mecanismo seguro que no dependa de consultar tablas ya bloqueadas sin contexto.
+5. Adaptar y probar trabajos, webhooks y operaciones globales de plataforma.
+6. Validar dos tenants reales en una copia de producción antes de usar `ENABLE ROW LEVEL SECURITY` o `FORCE ROW LEVEL SECURITY`.
 
-### Fase 3 — Añadir `store_id` a tablas operativas (1 PR por dominio, ~5 h)
+`src/db/tenant-context.ts` es la única utilidad autorizada para preparar ese contexto en conexiones agrupadas. El valor es local a la transacción para impedir fugas entre solicitudes.
 
-Tablas afectadas (~15):
-`products`, `product_categories`, `sale_records`, `sale_items`, `cortes_caja`, `cash_movements`, `clientes`, `fiado_*`, `pedidos`, `gastos`, `merma_records`, `loyalty_transactions`, `devoluciones*`, `inventory_audits`, `proveedores`.
+## Despliegue y migración
 
-Para cada una:
+Las migraciones `0032` y `0033` no deben ejecutarse automáticamente desde una sesión de desarrollo.
 
-1. Migración aditiva: `ALTER TABLE ... ADD COLUMN store_id text NOT NULL DEFAULT 'main' REFERENCES stores(id);`
-2. Drop default después del backfill (en una segunda migración, una semana después).
-3. Reescribir queries en el module action correspondiente para filtrar por `storeId` del scope.
-4. Test de regresión: la query devuelve solo filas de la tienda actual.
+Antes de producción:
 
-### Fase 4 — `store_config` por sucursal (1 PR, ~3 h)
+- Ejecutar contra una copia reciente de la base.
+- Resolver cualquier error de referencias cruzadas u accesos huérfanos; la migración aborta en vez de corregirlos silenciosamente.
+- Confirmar que todas las membresías tienen una identidad global.
+- Revisar que cada tenant conserve propietario y configuración.
+- Validar los índices compuestos y el backfill de `tenant_sequences`.
+- Verificar que folios de fiado, cargos y reembolsos existentes correspondan a ventas o pagos del mismo tenant.
+- Desplegar primero el esquema y después el código que lo consume.
 
-- Cambiar PK de `store_config` de "fila única" a `store_id` FK.
-- Backfill: la fila `'main'` queda asociada a `store_id = 'main'`.
-- Eliminar todos los `eq(storeConfig.id, 'main')` hardcodeados (usar `storeId` del scope).
-- `oauth-providers.ts` y `ai.ts` ya reciben `storeId` por parámetro.
+## Limitaciones vigentes
 
-### Fase 5 — UI funcional (1 PR, ~4 h)
+- Las políticas RLS están preparadas, no activadas. El aislamiento efectivo actual combina scope de aplicación, constraints y autorización del servidor.
+- `store_id` representa un negocio, no una sucursal.
+- `user_store_access` sigue presente por compatibilidad y se retirará después de una ventana de migración.
+- Falta ejecutar una suite automatizada completa de aislamiento, concurrencia e integración sobre una base de prueba migrada.
+- Las credenciales globales de plataforma y las credenciales configuradas por negocio requieren procedimientos operativos separados.
 
-- Habilitar el "Agregar sucursal" del [`StoreSelector`](src/components/navigation/StoreSelector.tsx).
-- Página `/dashboard/settings/sucursales` para CRUD de stores (solo owner).
-- Switcher en topbar persiste en cookie `__store_id`.
-- Reportes consolidados con tabs "Esta sucursal" / "Todas".
+## Criterios de aceptación
 
----
-
-## 6. Riesgos y mitigaciones
-
-| Riesgo                                                | Mitigación                                                                                                                                                                                                                                                                            |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Olvidar filtrar `store_id` en una query → leak        | (a) Helper `scopedDb(storeId)` que envuelve queries de tablas marcadas como tenant. (b) Test de "smoke" que crea 2 tiendas con datos distintos y verifica aislamiento por endpoint. (c) Lint custom que prohíbe `db.select().from(productsTable)` sin `.where(eq(... store_id, ...))` |
-| Migración rompe datos existentes                      | Todas las migraciones de Fase 3 son **aditivas** con DEFAULT 'main'. Reversible con `ALTER TABLE DROP COLUMN`                                                                                                                                                                         |
-| Cajero ve datos de otra sucursal                      | Cookie de scope se valida en `requireStoreScope`; si no existe acceso → fallback a su default + log                                                                                                                                                                                   |
-| Cache de Redis mezcla datos                           | Prefijar TODAS las claves de cache con `storeId:`. Bonus: invalidación por sucursal                                                                                                                                                                                                   |
-| Reportes se vuelven más lentos                        | Index compuesto `(store_id, created_at)` en cada tabla nueva                                                                                                                                                                                                                          |
-| Inventario por sucursal (Q3) requiere migración mayor | Si Q3 = "agregado", saltarlo y dejar `products.current_stock` global. Si Q3 = "por sucursal", crear `product_stock_by_store(productId, storeId, qty)` en una sub-fase                                                                                                                 |
-
----
-
-## 7. Lo que **no** vamos a hacer (alcance explícito)
-
-- **No** vamos a soportar multi-cliente SaaS hoy (eso es Opción C — preparado, no implementado).
-- **No** vamos a fragmentar la DB (Opción A descartada).
-- **No** vamos a tocar AWS Cognito — los usuarios siguen siendo globales, el acceso a sucursales se controla en `user_store_access`.
-- **No** vamos a duplicar OAuth tokens por sucursal en Fase 1 — hoy MercadoPago/Stripe es único por instalación.
-
----
-
-## 8. Decisión
-
-> **Pendiente.** Necesitamos respuestas a Q1–Q6 (sección 2) antes de empezar Fase 1.
-> Una vez aprobadas las respuestas, el plan completo de 5 fases tiene un esfuerzo estimado de **~17 h de implementación** + 1 semana de soak/migración progresiva.
-
----
-
-## 9. Métricas de éxito
-
-- 0 queries de tablas operativas sin filtro `store_id` (verificado por lint).
-- 0 escapes de datos cross-store en suite de tests de aislamiento.
-- Reportes "todas las sucursales" se computan con la misma query + `GROUP BY store_id`.
-- Owner puede crear una nueva sucursal y empezar a vender en <2 minutos sin tocar DB.
+- Un usuario solo puede consultar y modificar filas del tenant activo.
+- Cambiar la cookie no concede acceso a otro negocio.
+- Una identidad puede tener roles distintos en varios tenants sin efectos globales inesperados.
+- Ningún flujo común puede dejar un tenant sin propietario.
+- Una baja de un tenant no desactiva la identidad si conserva otra membresía activa.
+- Los trabajos, caches, webhooks, folios y archivos no comparten estado entre tenants.
+- Las referencias cruzadas entre padres e hijos de tenants distintos son rechazadas por PostgreSQL.

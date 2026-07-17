@@ -20,12 +20,14 @@ const sanitizedString = z
   .transform((s) => s.replace(/[<>&"']/g, ''));
 
 const positiveInt = z.number().int().nonnegative();
+const storeId = z.string().regex(/^(?:main|[a-f0-9]{32})$/);
 
 // ══════════════════════════════════════════════════════════════
 // Stock Alert Job
 // ══════════════════════════════════════════════════════════════
 
 export const stockAlertPayloadSchema = z.object({
+  storeId,
   productName: sanitizedString,
   currentStock: positiveInt,
   minStock: positiveInt,
@@ -38,6 +40,7 @@ export type StockAlertPayload = z.infer<typeof stockAlertPayloadSchema>;
 // ══════════════════════════════════════════════════════════════
 
 export const notificationPayloadSchema = z.object({
+  storeId,
   message: sanitizedString,
 });
 
@@ -48,6 +51,7 @@ export type NotificationPayload = z.infer<typeof notificationPayloadSchema>;
 // ══════════════════════════════════════════════════════════════
 
 export const paymentPollPayloadSchema = z.object({
+  storeId,
   chargeId: z
     .string()
     .trim()

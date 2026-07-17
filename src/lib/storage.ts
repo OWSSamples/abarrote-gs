@@ -7,13 +7,31 @@
 /**
  * Uploads a file via the server API route and returns the public URL.
  * @param file  The file to upload.
- * @param path  The desired storage path (e.g., 'products/product-1.jpg').
+ * @param path  A local classification hint. The server never uses it as the S3 key.
  * @returns     Promise with the public URL of the uploaded file.
  */
 export async function uploadFile(file: File, path: string): Promise<string> {
+  const [rawKind = '', rawResource = ''] = path.replace(/^\/+/, '').split('/');
+  const kindAliases: Record<string, string> = {
+    products: 'products',
+    avatars: 'avatars',
+    logos: 'logos',
+    receipts: 'receipts',
+    mermas: 'evidence',
+    evidence: 'evidence',
+    promo: 'promo',
+    display: 'display',
+  };
+  const kind = kindAliases[rawKind];
+  if (!kind) throw new Error('La categoría del archivo no está permitida.');
+  const resourceId = rawResource
+    .replace(/\.[a-zA-Z0-9]+$/, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '-')
+    .slice(0, 128);
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('path', path);
+  formData.append('kind', kind);
+  if (resourceId) formData.append('resourceId', resourceId);
 
   const res = await fetch('/api/upload', {
     method: 'POST',
@@ -34,14 +52,17 @@ export async function uploadFile(file: File, path: string): Promise<string> {
  * @param fullUrl The full URL of the file to delete.
  */
 export async function deleteFileFromUrl(fullUrl: string): Promise<void> {
-  try {
-    await fetch('/api/upload', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: fullUrl }),
-    });
-  } catch (error) {
-    console.warn('Could not delete file:', error);
+  const response = await fetch('/api/upload', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: fullUrl }),
+  });
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    const message = payload && typeof payload === 'object' && 'error' in payload
+      ? String(payload.error)
+      : 'No se pudo eliminar el archivo.';
+    throw new Error(message);
   }
 }
 

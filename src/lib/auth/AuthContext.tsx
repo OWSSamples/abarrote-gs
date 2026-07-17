@@ -5,6 +5,11 @@ import { fetchAuthSession, getCurrentUser, signOut as cognitoSignOut } from '@/l
 import { useRouter } from 'next/navigation';
 import { Hub } from 'aws-amplify/utils';
 import { logAuthEvent } from '@/lib/auth/auth-logger';
+import {
+  clearServerSession,
+  synchronizeServerSession,
+  type SessionSyncStatus,
+} from '@/lib/auth/session-client';
 
 // Cross-tab broadcast channel name. All app tabs receiving the same `signOut`/`signIn`
 // message will react accordingly so the user is never left in an inconsistent state.
@@ -24,42 +29,18 @@ interface AuthContextType {
   user: CognitoUser | null;
   loading: boolean;
   signOut: () => Promise<void>;
-  getIdToken: () => Promise<string | null>;
+  refreshSession: (forceRefresh?: boolean) => Promise<SessionSyncStatus>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   signOut: async () => {},
-  getIdToken: async () => null,
+  refreshSession: async () => 'unauthenticated',
 });
 
 export function useAuth() {
   return useContext(AuthContext);
-}
-
-function buildSessionCookie(token: string): string {
-  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  return `__session=${token}; path=/; max-age=3600; SameSite=Strict${isHttps ? '; Secure' : ''}`;
-}
-
-function clearSessionCookie(): void {
-  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  document.cookie = `__session=; path=/; max-age=0; SameSite=Strict${isHttps ? '; Secure' : ''}`;
-}
-
-async function syncSessionCookie(forceRefresh = false): Promise<string | null> {
-  try {
-    const session = await fetchAuthSession({ forceRefresh });
-    const idToken = session.tokens?.idToken?.toString();
-    if (idToken) {
-      document.cookie = buildSessionCookie(idToken);
-      return idToken;
-    }
-  } catch (error) {
-    console.error('Error syncing session cookie:', error);
-  }
-  return null;
 }
 
 async function resolveUser(): Promise<CognitoUser | null> {
@@ -96,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (msg.type === 'signOut') {
         // Another tab signed out — clear local state and redirect.
         setUser(null);
-        clearSessionCookie();
+        void clearServerSession();
         localStorage.removeItem(AUTH_LOGIN_TIME_KEY);
         void logAuthEvent({ event: 'sign_out', reason: 'cross_tab_broadcast' });
         router.push('/auth/login');
@@ -105,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void resolveUser().then((resolved) => {
           if (resolved) {
             setUser(resolved);
-            void syncSessionCookie(true);
+            void synchronizeServerSession(false);
           }
         });
       }
@@ -119,9 +100,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Initial auth check
   useEffect(() => {
     async function checkAuth() {
-      const resolved = await resolveUser();
+      let resolved = await resolveUser();
       if (resolved) {
-        await syncSessionCookie(true);
+        const syncStatus = await synchronizeServerSession(false);
+        if (syncStatus === 'unauthenticated') resolved = null;
       }
       setUser(resolved);
       setLoading(false);
@@ -140,7 +122,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         case 'signedIn': {
           const resolved = await resolveUser();
           if (resolved) {
-            await syncSessionCookie(true);
+            const syncStatus = await synchronizeServerSession(false);
+            if (syncStatus === 'unauthenticated') {
+              setUser(null);
+              setLoading(false);
+              break;
+            }
             localStorage.setItem(AUTH_LOGIN_TIME_KEY, Date.now().toString());
             channelRef.current?.postMessage({ type: 'signIn', userId: resolved.userId } satisfies AuthBroadcast);
           }
@@ -150,39 +137,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         case 'signedOut':
           setUser(null);
-          clearSessionCookie();
+          await clearServerSession();
           localStorage.removeItem(AUTH_LOGIN_TIME_KEY);
           channelRef.current?.postMessage({ type: 'signOut' } satisfies AuthBroadcast);
           break;
-        case 'tokenRefresh':
-          await syncSessionCookie(true);
-          void logAuthEvent({ event: 'session_refresh' });
+        case 'tokenRefresh': {
+          // Amplify already refreshed the token before emitting this event.
+          // Forcing another refresh here creates a tokenRefresh feedback loop.
+          const syncStatus = await synchronizeServerSession(false);
+          if (syncStatus === 'established') {
+            void logAuthEvent({ event: 'session_refresh' });
+          }
           break;
+        }
       }
     });
     return unsubscribe;
   }, []);
 
-  // Refresh token/cookie every 50 min (Cognito tokens expire at 60 min)
-  useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(
-      async () => {
-        await syncSessionCookie(true);
-      },
-      50 * 60 * 1000,
-    );
-    return () => clearInterval(interval);
-  }, [user]);
-
   const handleSignOut = useCallback(async () => {
     void logAuthEvent({ event: 'sign_out', userId: user?.userId, email: user?.email });
-    clearSessionCookie();
+    await clearServerSession();
     localStorage.removeItem(AUTH_LOGIN_TIME_KEY);
     channelRef.current?.postMessage({ type: 'signOut' } satisfies AuthBroadcast);
     await cognitoSignOut();
     router.push('/auth/login');
   }, [router, user]);
+
+  // Refresh token/cookie every 50 min (Cognito tokens expire at 60 min).
+  // Temporary network or rate-limit failures preserve the current session.
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(
+      async () => {
+        const syncStatus = await synchronizeServerSession(true);
+        if (syncStatus === 'unauthenticated') await handleSignOut();
+      },
+      50 * 60 * 1000,
+    );
+    return () => clearInterval(interval);
+  }, [user, handleSignOut]);
 
   // Session expiration check (6 hours)
   useEffect(() => {
@@ -209,16 +203,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(expInterval);
   }, [user, handleSignOut]);
 
-  const getIdToken = useCallback(
-    async (forceRefresh = false): Promise<string | null> => {
-      if (!user) return null;
-      return syncSessionCookie(forceRefresh);
+  const refreshSession = useCallback(
+    async (forceRefresh = false): Promise<SessionSyncStatus> => {
+      if (!user) return 'unauthenticated';
+      return synchronizeServerSession(forceRefresh);
     },
     [user],
   );
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, getIdToken }}>
+    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );

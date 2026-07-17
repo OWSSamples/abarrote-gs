@@ -2,9 +2,10 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { db } from '@/db';
 import { storeConfig, aiProviderConfigs } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 
 // ── Per-provider base URLs (all use OpenAI-compatible protocol) ──────────
 export const PROVIDER_BASE_URLS: Record<string, string> = {
@@ -70,6 +71,7 @@ export function createModelForProvider(providerId: string, apiKey: string, model
  */
 export async function getAIModel() {
   try {
+    const { storeId } = await requireStoreScope();
     const [config] = await db
       .select({
         aiEnabled: storeConfig.aiEnabled,
@@ -78,7 +80,7 @@ export async function getAIModel() {
         aiModel: storeConfig.aiModel,
       })
       .from(storeConfig)
-      .where(eq(storeConfig.id, 'main'))
+      .where(eq(storeConfig.id, storeId))
       .limit(1);
 
     if (!config?.aiEnabled) {
@@ -91,7 +93,7 @@ export async function getAIModel() {
     const [providerRow] = await db
       .select()
       .from(aiProviderConfigs)
-      .where(eq(aiProviderConfigs.id, providerId))
+      .where(and(eq(aiProviderConfigs.id, providerId), eq(aiProviderConfigs.storeId, storeId)))
       .limit(1);
 
     if (providerRow?.apiKeyEnc) {
@@ -116,13 +118,14 @@ export async function getAIModel() {
           .insert(aiProviderConfigs)
           .values({
             id: 'openrouter',
+            storeId,
             apiKeyEnc: config.aiApiKeyEnc,
             enabled: true,
             selectedModel: legacyModel,
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
-            target: aiProviderConfigs.id,
+            target: [aiProviderConfigs.storeId, aiProviderConfigs.id],
             set: {
               apiKeyEnc: config.aiApiKeyEnc,
               selectedModel: legacyModel,
@@ -159,4 +162,3 @@ export async function getAIModel() {
     return null;
   }
 }
-

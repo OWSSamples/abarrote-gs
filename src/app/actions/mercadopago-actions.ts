@@ -3,14 +3,28 @@
 import { requirePermission, sanitize, validateNumber } from '@/lib/auth/guard';
 import { withLogging } from '@/lib/errors';
 import { db } from '@/db';
-import { mercadopagoPayments, mercadopagoRefunds } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { auditLogs, mercadopagoPayments, mercadopagoRefunds } from '@/db/schema';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
-import { logAudit } from '@/lib/audit';
 import type { MercadoPagoRefund } from '@/types';
-import crypto from 'crypto';
-import { validateSchema, createMPRefundSchema } from '@/lib/validation/schemas';
-import { getBaseUrl } from '@/lib/env';
+import { randomUUID } from 'node:crypto';
+import { requireStoreScope } from '@/lib/auth/store-scope';
+import {
+  validateSchema,
+  createMPRefundSchema,
+  searchMPPaymentsSchema,
+} from '@/lib/validation/schemas';
+import {
+  createMPRefund,
+  fetchMPAccountBalanceFromProvider,
+  fetchMPDevicesFromProvider,
+  searchMPPaymentsFromProvider,
+  type MPAccountBalance,
+  type MPDevice,
+  type MPSearchResult,
+} from '@/server/mercadopago-service';
+
+export type { MPAccountBalance, MPDevice, MPSearchResult } from '@/server/mercadopago-service';
 
 // ==================== QUERIES ====================
 
@@ -34,9 +48,15 @@ async function _fetchMercadoPagoPayments(): Promise<
     createdAt: string;
   }[]
 > {
-  const _user = await requirePermission('sales.view');
+  await requirePermission('sales.refund', 'settings.view');
+  const { storeId } = await requireStoreScope();
 
-  const rows = await db.select().from(mercadopagoPayments).orderBy(desc(mercadopagoPayments.createdAt)).limit(200);
+  const rows = await db
+    .select()
+    .from(mercadopagoPayments)
+    .where(eq(mercadopagoPayments.storeId, storeId))
+    .orderBy(desc(mercadopagoPayments.createdAt))
+    .limit(200);
 
   return rows.map((r) => ({
     id: r.id,
@@ -59,9 +79,15 @@ async function _fetchMercadoPagoPayments(): Promise<
  * Fetch all refunds (most recent first).
  */
 async function _fetchMercadoPagoRefunds(): Promise<MercadoPagoRefund[]> {
-  const _user = await requirePermission('sales.view');
+  await requirePermission('sales.refund', 'settings.view');
+  const { storeId } = await requireStoreScope();
 
-  const rows = await db.select().from(mercadopagoRefunds).orderBy(desc(mercadopagoRefunds.createdAt)).limit(200);
+  const rows = await db
+    .select()
+    .from(mercadopagoRefunds)
+    .where(eq(mercadopagoRefunds.storeId, storeId))
+    .orderBy(desc(mercadopagoRefunds.createdAt))
+    .limit(200);
 
   return rows.map((r) => ({
     id: r.id,
@@ -85,7 +111,7 @@ async function _fetchMercadoPagoRefunds(): Promise<MercadoPagoRefund[]> {
  * Flow:
  *   1. Validate permissions and input
  *   2. Verify the MP payment exists and is approved
- *   3. Call MP Refund API via the backend route
+ *   3. Call MP Refund API through the server-only provider service
  *   4. Record refund in our DB
  *   5. Audit log
  */
@@ -93,121 +119,178 @@ async function _createMercadoPagoRefund(input: {
   mpPaymentId: string;
   amount: number;
   reason: string;
+  clientRequestId: string;
 }): Promise<MercadoPagoRefund> {
   const user = await requirePermission('sales.refund');
-  validateSchema(createMPRefundSchema, input, 'createMercadoPagoRefund');
+  const { storeId } = await requireStoreScope();
+  const validated = validateSchema(createMPRefundSchema, input, 'createMercadoPagoRefund');
 
-  const sanitizedReason = sanitize(input.reason);
-  const amount = validateNumber(input.amount, { min: 0.01, max: 999_999 });
-
-  // 1. Find the original payment in our DB
-  const [mpPayment] = await db
-    .select()
-    .from(mercadopagoPayments)
-    .where(eq(mercadopagoPayments.paymentId, input.mpPaymentId))
-    .limit(1);
-
-  if (!mpPayment) {
-    throw new Error('Pago de MercadoPago no encontrado en el sistema.');
+  const sanitizedReason = sanitize(validated.reason);
+  if (!sanitizedReason) {
+    throw new Error('El motivo del reembolso no contiene texto válido.');
   }
+  const validatedAmount = validateNumber(validated.amount, { min: 0.01, max: 999_999 });
+  const amountCents = Math.round(validatedAmount * 100);
+  const amount = amountCents / 100;
+  const refundId = `ref-${validated.clientRequestId}`;
 
-  if (mpPayment.status !== 'approved') {
-    throw new Error(`No se puede reembolsar un pago con status "${mpPayment.status}".`);
-  }
+  const outcome = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`mercadopago-refund:${storeId}:${validated.mpPaymentId}`}))`,
+    );
 
-  const paymentAmount = Number(mpPayment.amount) || 0;
-  if (amount > paymentAmount) {
-    throw new Error(`El monto del reembolso ($${amount}) excede el monto del pago ($${paymentAmount}).`);
-  }
+    const [existingRequest] = await tx
+      .select()
+      .from(mercadopagoRefunds)
+      .where(and(eq(mercadopagoRefunds.id, refundId), eq(mercadopagoRefunds.storeId, storeId)))
+      .limit(1);
 
-  // 2. Call MP Refund API (via our internal API route)
-  const refundResponse = await fetch(`${getBaseUrl()}/api/mercadopago`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'create_refund',
-      paymentId: input.mpPaymentId,
+    if (existingRequest) {
+      const samePayment = existingRequest.mpPaymentId === validated.mpPaymentId;
+      const sameAmount = Math.round(Number(existingRequest.amount) * 100) === amountCents;
+      const sameReason = existingRequest.reason === sanitizedReason;
+      if (!samePayment || !sameAmount || !sameReason) {
+        throw new Error('La solicitud de reembolso ya fue utilizada con otros datos.');
+      }
+
+      return {
+        created: false,
+        record: {
+          id: existingRequest.id,
+          mpPaymentId: existingRequest.mpPaymentId,
+          mpRefundId: existingRequest.mpRefundId,
+          saleId: existingRequest.saleId,
+          amount: Number(existingRequest.amount),
+          status: existingRequest.status as MercadoPagoRefund['status'],
+          reason: existingRequest.reason,
+          initiatedBy: existingRequest.initiatedBy,
+          createdAt: existingRequest.createdAt.toISOString(),
+          resolvedAt: existingRequest.resolvedAt?.toISOString() ?? null,
+        } satisfies MercadoPagoRefund,
+      };
+    }
+
+    const [mpPayment] = await tx
+      .select()
+      .from(mercadopagoPayments)
+      .where(
+        and(
+          eq(mercadopagoPayments.paymentId, validated.mpPaymentId),
+          eq(mercadopagoPayments.storeId, storeId),
+        ),
+      )
+      .limit(1);
+
+    if (!mpPayment) {
+      throw new Error('Pago de MercadoPago no encontrado en el sistema.');
+    }
+
+    if (!['approved', 'partially_refunded'].includes(mpPayment.status)) {
+      throw new Error('El pago ya no admite reembolsos. Actualiza la información e intenta de nuevo.');
+    }
+
+    const paymentAmountCents = Math.round((Number(mpPayment.amount) || 0) * 100);
+    const [summary] = await tx
+      .select({
+        reservedAmount: sql<string>`COALESCE(SUM(${mercadopagoRefunds.amount}), 0)`,
+        approvedAmount: sql<string>`COALESCE(SUM(CASE WHEN ${mercadopagoRefunds.status} = 'approved' THEN ${mercadopagoRefunds.amount} ELSE 0 END), 0)`,
+      })
+      .from(mercadopagoRefunds)
+      .where(
+        and(
+          eq(mercadopagoRefunds.mpPaymentId, validated.mpPaymentId),
+          eq(mercadopagoRefunds.storeId, storeId),
+          inArray(mercadopagoRefunds.status, ['approved', 'pending']),
+        ),
+      );
+    const reservedCents = Math.round((Number(summary?.reservedAmount) || 0) * 100);
+    const approvedCents = Math.round((Number(summary?.approvedAmount) || 0) * 100);
+    const remainingCents = Math.max(0, paymentAmountCents - reservedCents);
+
+    if (amountCents > remainingCents) {
+      throw new Error(`El monto supera el saldo reembolsable de $${(remainingCents / 100).toFixed(2)}.`);
+    }
+
+    const refundData = await createMPRefund(
+      validated.mpPaymentId,
       amount,
-    }),
-  });
+      validated.clientRequestId,
+      storeId,
+    );
+    if (Math.round(refundData.amount * 100) !== amountCents) {
+      throw new Error('MercadoPago devolvió un monto de reembolso inconsistente.');
+    }
 
-  if (!refundResponse.ok) {
-    const errorData = await refundResponse.json().catch(() => ({}));
-    const msg = (errorData as Record<string, string>).error || 'Error al procesar reembolso en MercadoPago';
-    logger.error('MP refund API error', { mpPaymentId: input.mpPaymentId, error: msg });
-    throw new Error(msg);
-  }
+    const now = new Date();
+    const resolvedAt = refundData.status === 'pending' ? null : now;
+    const refundRecord: MercadoPagoRefund = {
+      id: refundId,
+      mpPaymentId: validated.mpPaymentId,
+      mpRefundId: refundData.id,
+      saleId: mpPayment.saleId,
+      amount,
+      status: refundData.status,
+      reason: sanitizedReason,
+      initiatedBy: user.email,
+      createdAt: now.toISOString(),
+      resolvedAt: resolvedAt?.toISOString() ?? null,
+    };
 
-  const refundData = (await refundResponse.json()) as {
-    id: number;
-    status: string;
-    amount: number;
-  };
+    await tx.insert(mercadopagoRefunds).values({
+      id: refundId,
+      storeId,
+      mpPaymentId: validated.mpPaymentId,
+      mpRefundId: refundData.id,
+      saleId: mpPayment.saleId,
+      amount: String(amount),
+      status: refundData.status,
+      reason: sanitizedReason,
+      initiatedBy: user.email,
+      createdAt: now,
+      resolvedAt,
+    });
 
-  // 3. Record in our DB
-  const refundId = `ref-${crypto.randomUUID()}`;
-  const now = new Date();
+    if (refundData.status !== 'rejected') {
+      const approvedAfterCents =
+        approvedCents + (refundData.status === 'approved' ? amountCents : 0);
+      const nextPaymentStatus =
+        approvedAfterCents >= paymentAmountCents
+          ? 'refunded'
+          : 'partially_refunded';
+      await tx
+        .update(mercadopagoPayments)
+        .set({ status: nextPaymentStatus, updatedAt: now })
+        .where(and(eq(mercadopagoPayments.id, mpPayment.id), eq(mercadopagoPayments.storeId, storeId)));
+    }
 
-  const refundRecord: MercadoPagoRefund = {
-    id: refundId,
-    mpPaymentId: input.mpPaymentId,
-    mpRefundId: String(refundData.id),
-    saleId: mpPayment.saleId,
-    amount,
-    status: refundData.status === 'approved' ? 'approved' : 'pending',
-    reason: sanitizedReason,
-    initiatedBy: user.email,
-    createdAt: now.toISOString(),
-    resolvedAt: refundData.status === 'approved' ? now.toISOString() : null,
-  };
-
-  await db.insert(mercadopagoRefunds).values({
-    id: refundId,
-    mpPaymentId: input.mpPaymentId,
-    mpRefundId: String(refundData.id),
-    saleId: mpPayment.saleId,
-    amount: String(amount),
-    status: refundRecord.status,
-    reason: sanitizedReason,
-    initiatedBy: user.email,
-    createdAt: now,
-    resolvedAt: refundData.status === 'approved' ? now : null,
-  });
-
-  // 4. Update the MP payment status if fully refunded
-  if (amount >= paymentAmount) {
-    await db
-      .update(mercadopagoPayments)
-      .set({ status: 'refunded', updatedAt: now })
-      .where(eq(mercadopagoPayments.paymentId, input.mpPaymentId));
-  } else {
-    await db
-      .update(mercadopagoPayments)
-      .set({ status: 'partially_refunded', updatedAt: now })
-      .where(eq(mercadopagoPayments.paymentId, input.mpPaymentId));
-  }
-
-  // 5. Audit
-  await logAudit({
-    userId: user.uid,
-    userEmail: user.email,
-    action: 'create',
-    entity: 'mercadopago_refund',
-    entityId: refundId,
-    changes: {
-      after: {
-        mpPaymentId: input.mpPaymentId,
-        amount,
-        reason: sanitizedReason,
-        mpRefundId: refundData.id,
-        status: refundRecord.status,
+    await tx.insert(auditLogs).values({
+      id: randomUUID(),
+      storeId,
+      userId: user.uid,
+      userEmail: user.email,
+      action: 'create',
+      entity: 'mercadopago_refund',
+      entityId: refundId,
+      changes: {
+        after: {
+          mpPaymentId: validated.mpPaymentId,
+          amount,
+          reason: sanitizedReason,
+          mpRefundId: refundRecord.mpRefundId,
+          status: refundRecord.status,
+        },
       },
-    },
+    });
+
+    return { created: true, record: refundRecord };
   });
+
+  if (!outcome.created) return outcome.record;
+  const refundRecord = outcome.record;
 
   logger.info('MP refund created', {
     refundId,
-    mpPaymentId: input.mpPaymentId,
+    mpPaymentId: validated.mpPaymentId,
     amount,
     status: refundRecord.status,
   });
@@ -217,152 +300,21 @@ async function _createMercadoPagoRefund(input: {
 
 // ==================== ACCOUNT & BALANCE ====================
 
-export interface MPAccountBalance {
-  userId: number;
-  nickname: string;
-  email: string;
-  balance: {
-    available_balance: number;
-    unavailable_balance: number;
-    total_amount: number;
-    currency_id: string;
-  };
-}
-
 async function _fetchMPAccountBalance(): Promise<MPAccountBalance> {
-  await requirePermission('sales.view');
-
-  const baseUrl = getBaseUrl();
-  const response = await fetch(`${baseUrl}/api/mercadopago`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'get_balance' }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error((errorData as Record<string, string>).error || 'Error al consultar saldo de MercadoPago');
-  }
-
-  return response.json() as Promise<MPAccountBalance>;
-}
-
-// ==================== PAYMENT LINKS (PREFERENCES) ====================
-
-export interface MPPaymentLink {
-  preferenceId: string;
-  initPoint: string;
-  sandboxInitPoint: string;
-  externalReference: string;
-}
-
-async function _generateMPPaymentLink(input: {
-  amount: number;
-  description: string;
-  externalReference?: string;
-}): Promise<MPPaymentLink> {
-  const user = await requirePermission('sales.create');
-
-  const amount = validateNumber(input.amount, { min: 1, max: 999_999 });
-  const description = sanitize(input.description);
-  const externalReference = input.externalReference
-    ? sanitize(input.externalReference)
-    : `link-${crypto.randomUUID().slice(0, 8)}`;
-
-  const baseUrl = getBaseUrl();
-  const response = await fetch(`${baseUrl}/api/mercadopago`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'create_preference',
-      amount,
-      description,
-      external_reference: externalReference,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error((errorData as Record<string, string>).error || 'Error al crear link de pago');
-  }
-
-  const data = (await response.json()) as {
-    id: string;
-    init_point: string;
-    sandbox_init_point: string;
-  };
-
-  await logAudit({
-    userId: user.uid,
-    userEmail: user.email,
-    action: 'create',
-    entity: 'mp_payment_link',
-    entityId: data.id,
-    changes: { after: { amount, description, externalReference } },
-  });
-
-  logger.info('MP payment link created', {
-    preferenceId: data.id,
-    amount,
-    description,
-  });
-
-  return {
-    preferenceId: data.id,
-    initPoint: data.init_point,
-    sandboxInitPoint: data.sandbox_init_point,
-    externalReference,
-  };
+  await requirePermission('sales.refund', 'settings.view');
+  const { storeId } = await requireStoreScope();
+  return fetchMPAccountBalanceFromProvider(storeId);
 }
 
 // ==================== DEVICES (POINT TERMINALS) ====================
 
-export interface MPDevice {
-  id: string;
-  pos_id: number;
-  store_id: string;
-  external_pos_id: string;
-  operating_mode: string;
-}
-
 async function _fetchMPDevices(): Promise<MPDevice[]> {
-  await requirePermission('sales.view');
-
-  const baseUrl = getBaseUrl();
-  const response = await fetch(`${baseUrl}/api/mercadopago`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'get_devices' }),
-  });
-
-  if (!response.ok) {
-    return [];
-  }
-
-  const data = (await response.json()) as { devices?: MPDevice[] };
-  return data.devices ?? [];
+  await requirePermission('sales.refund', 'settings.view');
+  const { storeId } = await requireStoreScope();
+  return fetchMPDevicesFromProvider(storeId);
 }
 
 // ==================== SEARCH PAYMENTS (MP API) ====================
-
-export interface MPSearchResult {
-  results: Array<{
-    id: number;
-    status: string;
-    status_detail: string;
-    date_created: string;
-    date_approved: string | null;
-    transaction_amount: number;
-    currency_id: string;
-    payment_method_id: string;
-    payment_type_id: string;
-    description: string | null;
-    external_reference: string | null;
-    payer: { email: string | null };
-    fee_details: Array<{ amount: number; type: string }>;
-  }>;
-  paging: { total: number; limit: number; offset: number };
-}
 
 async function _searchMPPayments(input: {
   status?: string;
@@ -372,29 +324,18 @@ async function _searchMPPayments(input: {
   offset?: number;
   limit?: number;
 }): Promise<MPSearchResult> {
-  await requirePermission('sales.view');
+  await requirePermission('sales.refund', 'settings.view');
+  const { storeId } = await requireStoreScope();
+  const validated = validateSchema(searchMPPaymentsSchema, input, 'searchMPPayments');
 
-  const baseUrl = getBaseUrl();
-  const response = await fetch(`${baseUrl}/api/mercadopago`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'search_payments',
-      status: input.status || undefined,
-      beginDate: input.beginDate || undefined,
-      endDate: input.endDate || undefined,
-      externalReference: input.externalReference ? sanitize(input.externalReference) : undefined,
-      offset: input.offset ?? 0,
-      limit: input.limit ?? 30,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error((errorData as Record<string, string>).error || 'Error al buscar pagos en MercadoPago');
-  }
-
-  return response.json() as Promise<MPSearchResult>;
+  return searchMPPaymentsFromProvider({
+    status: validated.status,
+    beginDate: validated.beginDate,
+    endDate: validated.endDate,
+    externalReference: validated.externalReference ? sanitize(validated.externalReference) : undefined,
+    offset: validated.offset,
+    limit: validated.limit,
+  }, storeId);
 }
 
 // ==================== EXPORTS WITH LOGGING ====================
@@ -403,6 +344,5 @@ export const fetchMercadoPagoPayments = withLogging('mercadopago.fetchMercadoPag
 export const fetchMercadoPagoRefunds = withLogging('mercadopago.fetchMercadoPagoRefunds', _fetchMercadoPagoRefunds);
 export const createMercadoPagoRefund = withLogging('mercadopago.createMercadoPagoRefund', _createMercadoPagoRefund);
 export const fetchMPAccountBalance = withLogging('mercadopago.fetchMPAccountBalance', _fetchMPAccountBalance);
-export const generateMPPaymentLink = withLogging('mercadopago.generateMPPaymentLink', _generateMPPaymentLink);
 export const fetchMPDevices = withLogging('mercadopago.fetchMPDevices', _fetchMPDevices);
 export const searchMPPayments = withLogging('mercadopago.searchMPPayments', _searchMPPayments);

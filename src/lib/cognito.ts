@@ -4,6 +4,8 @@ import { Amplify } from 'aws-amplify';
 import {
   signIn,
   signUp,
+  confirmSignUp,
+  resendSignUpCode,
   signOut,
   confirmSignIn,
   resetPassword,
@@ -22,10 +24,47 @@ import {
 // AMPLIFY CONFIGURATION
 // ══════════════════════════════════════════════════════════════
 
-const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!;
-const userPoolClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
-const region = process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-1';
-const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN || '';
+const userPoolId = process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
+const userPoolClientId = process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+const region = process.env.COGNITO_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-1';
+const cognitoDomain = (
+  process.env.COGNITO_DOMAIN ||
+  process.env.NEXT_PUBLIC_COGNITO_DOMAIN ||
+  ''
+)
+  .replace(/^https?:\/\//i, '')
+  .replace(/\/+$/, '');
+const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const parseList = (value: string | undefined): string[] =>
+  value
+    ? value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+
+if (!userPoolId || !userPoolClientId) {
+  throw new Error(
+    'AWS Cognito no está configurado. Define COGNITO_USER_POOL_ID y COGNITO_CLIENT_ID antes de iniciar la aplicación.',
+  );
+}
+
+if (!userPoolId.startsWith(`${region}_`)) {
+  throw new Error('COGNITO_REGION no coincide con la región incluida en COGNITO_USER_POOL_ID.');
+}
+
+const redirectSignIn = Array.from(
+  new Set([
+    `${appUrl}/auth/callback`,
+    `${appUrl}/auth/callback/`,
+    ...parseList(process.env.COGNITO_REDIRECT_SIGN_IN || process.env.NEXT_PUBLIC_COGNITO_REDIRECT_SIGN_IN),
+  ]),
+);
+const redirectSignOut = Array.from(
+  new Set([`${appUrl}/auth/login`, ...parseList(process.env.COGNITO_REDIRECT_SIGN_OUT || process.env.NEXT_PUBLIC_COGNITO_REDIRECT_SIGN_OUT)]),
+);
+const oauthProviders = parseList(process.env.COGNITO_OAUTH_PROVIDERS || process.env.NEXT_PUBLIC_COGNITO_OAUTH_PROVIDERS).map((provider) => ({ custom: provider }));
+const oauthScopes = parseList(process.env.COGNITO_OAUTH_SCOPES || process.env.NEXT_PUBLIC_COGNITO_OAUTH_SCOPES);
 
 Amplify.configure(
   {
@@ -33,23 +72,20 @@ Amplify.configure(
       Cognito: {
         userPoolId,
         userPoolClientId,
-        loginWith: {
-          oauth: {
-            domain: cognitoDomain,
-            scopes: ['openid', 'email', 'phone', 'aws.cognito.signin.user.admin'],
-            redirectSignIn: [
-              'http://localhost:3000/auth/callback',
-              'https://guzman.opendex.dev/auth/callback',
-              'https://guzman.opendex.dev/auth/callback/',
-            ],
-            redirectSignOut: [
-              'http://localhost:3000/auth/login',
-              'https://guzman.opendex.dev/auth/login',
-            ],
-            responseType: 'code',
-            providers: [{ custom: 'Microsoft' }],
-          },
-        },
+        ...(cognitoDomain
+          ? {
+              loginWith: {
+                oauth: {
+                  domain: cognitoDomain,
+                  scopes: oauthScopes.length ? oauthScopes : ['openid', 'email', 'phone'],
+                  redirectSignIn,
+                  redirectSignOut,
+                  responseType: 'code' as const,
+                  ...(oauthProviders.length ? { providers: oauthProviders } : {}),
+                },
+              },
+            }
+          : {}),
       },
     },
   },
@@ -63,6 +99,8 @@ Amplify.configure(
 export {
   signIn,
   signUp,
+  confirmSignUp,
+  resendSignUpCode,
   signOut,
   confirmSignIn,
   resetPassword,

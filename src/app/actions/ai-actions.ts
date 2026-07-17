@@ -2,9 +2,10 @@
 
 import { db } from '@/db';
 import { aiProviderConfigs } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { encrypt, decrypt } from '@/lib/crypto';
-import { requireAuth } from '@/lib/auth/guard';
+import { requireOwner, requirePermission } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { logger } from '@/lib/logger';
 import { cache } from '@/infrastructure/redis';
 import { z } from 'zod';
@@ -15,9 +16,10 @@ import { generateText } from 'ai';
 export async function getAIProvidersAction(): Promise<
   { id: string; hasKey: boolean; enabled: boolean; selectedModel: string }[]
 > {
-  await requireAuth();
+  await requirePermission('settings.view');
+  const { storeId } = await requireStoreScope();
 
-  const rows = await db.select().from(aiProviderConfigs);
+  const rows = await db.select().from(aiProviderConfigs).where(eq(aiProviderConfigs.storeId, storeId));
   return rows.map((r) => ({
     id: r.id,
     hasKey: !!r.apiKeyEnc,
@@ -27,8 +29,10 @@ export async function getAIProvidersAction(): Promise<
 }
 
 // ── Save / update a specific provider's config ───────────────────────────
+const providerIdSchema = z.string().trim().min(1).max(32).regex(/^[a-z0-9_-]+$/);
+
 const saveProviderSchema = z.object({
-  providerId: z.string().min(1).max(32),
+  providerId: providerIdSchema,
   apiKey: z.string().optional(),
   selectedModel: z.string().min(1).max(256),
 });
@@ -36,14 +40,15 @@ const saveProviderSchema = z.object({
 export async function saveProviderConfigAction(
   input: z.infer<typeof saveProviderSchema>
 ): Promise<{ success: boolean; error?: string }> {
-  await requireAuth();
+  await requireOwner();
+  const { storeId } = await requireStoreScope();
 
   const parsed = saveProviderSchema.parse(input);
 
   const [existing] = await db
     .select({ apiKeyEnc: aiProviderConfigs.apiKeyEnc })
     .from(aiProviderConfigs)
-    .where(eq(aiProviderConfigs.id, parsed.providerId))
+    .where(and(eq(aiProviderConfigs.id, parsed.providerId), eq(aiProviderConfigs.storeId, storeId)))
     .limit(1);
 
   const now = new Date();
@@ -57,13 +62,17 @@ export async function saveProviderConfigAction(
     };
     if (parsed.apiKey) patch.apiKeyEnc = encrypt(parsed.apiKey);
 
-    await db.update(aiProviderConfigs).set(patch).where(eq(aiProviderConfigs.id, parsed.providerId));
+    await db
+      .update(aiProviderConfigs)
+      .set(patch)
+      .where(and(eq(aiProviderConfigs.id, parsed.providerId), eq(aiProviderConfigs.storeId, storeId)));
   } else {
     if (!parsed.apiKey) {
       return { success: false, error: 'Se requiere una API key para configurar este proveedor.' };
     }
     await db.insert(aiProviderConfigs).values({
       id: parsed.providerId,
+      storeId,
       apiKeyEnc: encrypt(parsed.apiKey),
       enabled: true,
       selectedModel: parsed.selectedModel,
@@ -72,7 +81,7 @@ export async function saveProviderConfigAction(
   }
 
   // Invalidate cached store config in case the active provider points here.
-  await cache.invalidatePattern('config:');
+  await cache.invalidate(`config:${storeId}`);
 
   logger.info('AI provider config saved', { action: 'ai_provider_saved', providerId: parsed.providerId });
   return { success: true };
@@ -82,13 +91,15 @@ export async function saveProviderConfigAction(
 export async function testProviderAction(
   providerId: string
 ): Promise<{ success: boolean; message: string }> {
-  await requireAuth();
+  await requireOwner();
+  const { storeId } = await requireStoreScope();
+  const parsedProviderId = providerIdSchema.parse(providerId);
 
   try {
     const [row] = await db
       .select()
       .from(aiProviderConfigs)
-      .where(eq(aiProviderConfigs.id, providerId))
+      .where(and(eq(aiProviderConfigs.id, parsedProviderId), eq(aiProviderConfigs.storeId, storeId)))
       .limit(1);
 
     if (!row?.apiKeyEnc) {
@@ -96,8 +107,8 @@ export async function testProviderAction(
     }
 
     const apiKey = decrypt(row.apiKeyEnc);
-    const model = row.selectedModel || PROVIDER_DEFAULT_MODELS[providerId] || 'gpt-4o-mini';
-    const modelInstance = createModelForProvider(providerId, apiKey, model);
+    const model = row.selectedModel || PROVIDER_DEFAULT_MODELS[parsedProviderId] || 'gpt-4o-mini';
+    const modelInstance = createModelForProvider(parsedProviderId, apiKey, model);
 
     const { text } = await generateText({
       model: modelInstance,
@@ -112,7 +123,7 @@ export async function testProviderAction(
   } catch (error) {
     logger.error('AI provider test failed', {
       action: 'ai_provider_test_failed',
-      providerId,
+      providerId: parsedProviderId,
       error: error instanceof Error ? error.message : 'unknown',
     });
     return {
@@ -126,16 +137,18 @@ export async function testProviderAction(
 export async function deleteProviderConfigAction(
   providerId: string
 ): Promise<{ success: boolean }> {
-  await requireAuth();
+  await requireOwner();
+  const { storeId } = await requireStoreScope();
+  const parsedProviderId = providerIdSchema.parse(providerId);
 
   await db
     .update(aiProviderConfigs)
     .set({ apiKeyEnc: null, enabled: false, updatedAt: new Date() })
-    .where(eq(aiProviderConfigs.id, providerId));
+    .where(and(eq(aiProviderConfigs.id, parsedProviderId), eq(aiProviderConfigs.storeId, storeId)));
 
-  await cache.invalidatePattern('config:');
+  await cache.invalidate(`config:${storeId}`);
 
-  logger.info('AI provider config removed', { action: 'ai_provider_removed', providerId });
+  logger.info('AI provider config removed', { action: 'ai_provider_removed', providerId: parsedProviderId });
   return { success: true };
 }
 
@@ -155,16 +168,18 @@ const PROVIDER_MODELS_ENDPOINT: Record<string, string> = {
 export async function listProviderModelsAction(
   providerId: string
 ): Promise<{ success: boolean; models: ModelOption[]; error?: string }> {
-  await requireAuth();
+  await requirePermission('settings.view');
+  const { storeId } = await requireStoreScope();
+  const parsedProviderId = providerIdSchema.parse(providerId);
 
-  const endpoint = PROVIDER_MODELS_ENDPOINT[providerId];
+  const endpoint = PROVIDER_MODELS_ENDPOINT[parsedProviderId];
   if (!endpoint) return { success: true, models: [] };
 
   try {
     const [row] = await db
       .select()
       .from(aiProviderConfigs)
-      .where(eq(aiProviderConfigs.id, providerId))
+      .where(and(eq(aiProviderConfigs.id, parsedProviderId), eq(aiProviderConfigs.storeId, storeId)))
       .limit(1);
     if (!row?.apiKeyEnc) {
       return { success: false, models: [], error: 'Configura primero la API key.' };
@@ -201,7 +216,7 @@ export async function listProviderModelsAction(
   } catch (error) {
     logger.error('Failed to fetch provider model catalogue', {
       action: 'ai_provider_models_fetch_failed',
-      providerId,
+      providerId: parsedProviderId,
       error: error instanceof Error ? error.message : 'unknown',
     });
     return {

@@ -7,7 +7,7 @@
 import crypto from 'crypto';
 import { db } from '@/db';
 import { products, stockMovements } from '@/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 export type StockMovementType =
   | 'restock'
@@ -35,7 +35,7 @@ export interface StockMovementMeta {
   notes?: string;
   userId?: string | null;
   userName?: string | null;
-  storeId?: string;
+  storeId: string;
 }
 
 type DbExecutor = Parameters<Parameters<typeof db.transaction>[0]>[0] | typeof db;
@@ -53,10 +53,10 @@ type DbExecutor = Parameters<Parameters<typeof db.transaction>[0]>[0] | typeof d
 export async function adjustStock(
   productId: string,
   delta: number,
-  opts?: { tx?: DbExecutor; now?: Date; meta?: StockMovementMeta },
+  opts: { tx?: DbExecutor; now?: Date; meta: StockMovementMeta },
 ) {
-  const executor = opts?.tx ?? db;
-  const now = opts?.now ?? new Date();
+  const executor = opts.tx ?? db;
+  const now = opts.now ?? new Date();
 
   const [updated] = await executor
     .update(products)
@@ -64,14 +64,14 @@ export async function adjustStock(
       currentStock: delta >= 0 ? sql`current_stock + ${delta}` : sql`greatest(0, current_stock + ${delta})`,
       updatedAt: now,
     })
-    .where(eq(products.id, productId))
+    .where(and(eq(products.id, productId), eq(products.storeId, opts.meta.storeId)))
     .returning({
       name: products.name,
       currentStock: products.currentStock,
       minStock: products.minStock,
     });
 
-  if (updated && opts?.meta) {
+  if (updated) {
     await recordStockMovement(productId, updated.name, delta, updated.currentStock, opts.meta, {
       tx: executor,
       now,
@@ -116,7 +116,7 @@ export async function recordStockMovement(
     notes: meta.notes ?? '',
     userId: meta.userId ?? null,
     userName: meta.userName ?? null,
-    storeId: meta.storeId ?? 'main',
+    storeId: meta.storeId,
     createdAt: now,
   });
 }

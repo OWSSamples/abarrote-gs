@@ -11,11 +11,14 @@ import { logger } from '@/lib/logger';
  * Sends a Telegram notification directly.
  * Used by job handlers to avoid circular imports with server actions.
  */
-export async function sendNotificationDirect(message: string): Promise<void> {
+export async function sendNotificationDirect(message: string, storeId: string): Promise<void> {
   // Lazy import to avoid pulling DB at module level
-  const { fetchStoreConfig } = await import('@/app/actions/store-config-actions');
-  const config = await fetchStoreConfig();
+  const { isTenantActive } = await import('@/server/tenant-status-service');
+  if (!(await isTenantActive(storeId))) return;
+  const { getStoreConfigForStore } = await import('@/server/store-config-service');
+  const config = await getStoreConfigForStore(storeId);
 
+  if (!config) return;
   if (!config.enableNotifications) return;
   if (!config.telegramToken || !config.telegramChatId) {
     logger.warn('Telegram not configured — skipping notification', {

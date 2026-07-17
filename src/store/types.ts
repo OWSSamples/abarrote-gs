@@ -124,18 +124,8 @@ export interface RoleSlice {
   ) => Promise<void>;
   deleteRoleDefinition: (id: string) => Promise<void>;
   fetchRoles: () => Promise<void>;
-  ensureOwnerRole: (cognitoSub: string, email: string, displayName: string) => Promise<UserRoleRecord>;
-  assignRole: (
-    data: { cognitoSub: string; email: string; displayName: string; roleId: string },
-    assignedByUid: string,
-  ) => Promise<void>;
-  createUserWithRole: (
-    data: { email: string; password?: string; displayName: string; roleId: string; pinCode?: string },
-    assignedByUid: string,
-  ) => Promise<void>;
   updateRole: (cognitoSub: string, newRoleId: string, assignedByUid: string) => Promise<void>;
   updateUserPin: (cognitoSub: string, pinCode: string) => Promise<void>;
-  removeRole: (cognitoSub: string) => Promise<void>;
   getUserRole: (cognitoSub: string) => Promise<UserRoleRecord | null>;
   generateGlobalId: (cognitoSub: string) => Promise<string>;
   deactivateUser: (cognitoSub: string) => Promise<void>;
@@ -147,7 +137,14 @@ export interface RoleSlice {
   authorizePin: (
     pinCode: string,
     requiredPermission: PermissionKey,
-  ) => Promise<{ success: boolean; authorizedByUid?: string; userDisplayName?: string; error?: string }>;
+    approvalContext?: import('@/lib/validation/schemas').SaleDiscountApprovalContext,
+  ) => Promise<{
+    success: boolean;
+    authorizedByUid?: string;
+    userDisplayName?: string;
+    approvalToken?: string;
+    error?: string;
+  }>;
 }
 
 export interface CoreSlice extends DashboardState {
@@ -159,7 +156,6 @@ export interface CoreSlice extends DashboardState {
   // Multi-tienda
   activeStoreId: string;
   stores: Array<{ id: string; name: string }>;
-  switchStore: (storeId: string) => void;
   setKPIData: (data: KPIData) => void;
   setInventoryAlerts: (alerts: InventoryAlert[]) => void;
   setSalesData: (data: SalesData[]) => void;

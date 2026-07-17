@@ -91,10 +91,6 @@
 }
 .ctb-search-input-row.focused {
   border-color: #71717a;
-  border-radius: 20px 20px 0 0; /* aplana la parte inferior cuando el dropdown está abierto */
-}
-.ctb-search-input-row.open-dd {
-  border-radius: 20px 20px 0 0;
 }
 
 /* Ícono de lupa */
@@ -140,95 +136,43 @@
   letter-spacing: 0.4px;
 }
 
-/* ============================================================
-   DROPDOWN DE BÚSQUEDA — resultados de acciones y productos
-   ============================================================ */
-.ctb-dropdown {
-  position: absolute;
-  top: 36px;
-  left: 0;
-  right: 0;
-  background: #1c1c1f;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-top: none;
-  border-radius: 0 0 12px 12px;
-  overflow: hidden;
-  z-index: 999;
-  box-shadow:
-    0 16px 48px rgba(0, 0, 0, 0.6),
-    0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-/* Etiqueta de sección dentro del dropdown */
-.ctb-dd-section-label {
-  padding: 8px 12px 4px;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #52525b;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-
-/* Fila de resultado (acción o producto) */
-.ctb-dd-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 7px 12px;
-  border: none;
-  background: transparent;
-  color: #d4d4d8;
-  cursor: pointer;
-  text-align: left;
-  font-size: 13px;
-  transition: background 0.08s;
-}
-.ctb-dd-item:hover,
-.ctb-dd-item.active {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-/* Ícono del item */
-.ctb-dd-item-icon {
-  color: #52525b;
-  display: flex;
-  flex-shrink: 0;
-}
-.ctb-dd-item.active .ctb-dd-item-icon {
-  color: #a78bfa;
-}
-
-/* Flecha indicadora de selección */
-.ctb-dd-item-arrow {
-  margin-left: auto;
-  font-size: 11px;
-  color: #3f3f46;
-}
-
-/* Separador entre secciones del dropdown */
-.ctb-dd-sep {
-  height: 1px;
-  background: rgba(255, 255, 255, 0.05);
-  margin: 3px 12px;
-}
-
-/* Pie del dropdown con atajos de navegación */
+/* Pie del menú de búsqueda con atajos de navegación */
 .ctb-dd-footer {
-  padding: 5px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   gap: 14px;
 }
 .ctb-dd-footer span {
   font-size: 10.5px;
-  color: #3f3f46;
+  color: #6b7280;
 }
 
 /* Mensaje sin resultados */
 .ctb-dd-empty {
-  padding: 20px;
   text-align: center;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.ctb-result-suffix {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ctb-result-suffix strong {
+  color: #047857;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ctb-result-suffix span {
+  color: #6b7280;
+  font-size: 10.5px;
+}
+
+.ctb-result-suffix span.critical {
+  color: #b42318;
 }
 
 /* ============================================================
@@ -239,6 +183,78 @@
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.ctb-store-selector,
+.ctb-store-label {
+  min-width: 0;
+  max-width: 220px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #d4d4d8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ctb-store-selector {
+  cursor: pointer;
+}
+
+.ctb-store-selector:hover,
+.ctb-store-selector[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.ctb-store-selector:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.ctb-store-selector:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.ctb-store-selector span,
+.ctb-store-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctb-user-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.ctb-user-menu-trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.ctb-user-menu-trigger[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ctb-user-menu-trigger:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
 }
 
 /* Botón de ícono genérico (globo, notificaciones, etc.) */
@@ -334,6 +350,18 @@
 
   .ctb-actions {
     gap: 2px;
+  }
+
+  .ctb-store-selector,
+  .ctb-store-label {
+    width: 34px;
+    padding: 0 7px;
+  }
+
+  .ctb-store-selector span,
+  .ctb-store-label span,
+  .ctb-store-selector > :last-child {
+    display: none;
   }
 
   .ctb-sep-v {

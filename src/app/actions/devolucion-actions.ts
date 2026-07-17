@@ -1,9 +1,10 @@
 'use server';
 
 import { requirePermission } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { db } from '@/db';
-import { devoluciones, devolucionItems, clientes, saleItems, auditLogs } from '@/db/schema';
-import { eq, desc, sql, inArray } from 'drizzle-orm';
+import { devoluciones, devolucionItems, clientes, saleItems, saleRecords, auditLogs } from '@/db/schema';
+import { and, eq, desc, sql, inArray } from 'drizzle-orm';
 import type { Devolucion, DevolucionItem } from '@/types';
 import { numVal } from './_helpers';
 import { adjustStock } from './_stock';
@@ -31,12 +32,20 @@ function mapDevolucion(row: typeof devoluciones.$inferSelect, items: DevolucionI
 
 async function _fetchDevoluciones(): Promise<Devolucion[]> {
   await requirePermission('sales.view');
-  const rows = await db.select().from(devoluciones).orderBy(desc(devoluciones.fecha));
+  const { storeId } = await requireStoreScope();
+  const rows = await db
+    .select()
+    .from(devoluciones)
+    .where(eq(devoluciones.storeId, storeId))
+    .orderBy(desc(devoluciones.fecha));
   if (rows.length === 0) return [];
 
   // Batch-fetch all items in one query instead of N+1
   const devIds = rows.map((r) => r.id);
-  const allItemRows = await db.select().from(devolucionItems).where(inArray(devolucionItems.devolucionId, devIds));
+  const allItemRows = await db
+    .select()
+    .from(devolucionItems)
+    .where(and(eq(devolucionItems.storeId, storeId), inArray(devolucionItems.devolucionId, devIds)));
 
   // Group items by devolucionId
   const itemsByDevId = new Map<string, DevolucionItem[]>();
@@ -71,10 +80,20 @@ async function _createDevolucion(data: {
   items: Omit<DevolucionItem, 'id'>[];
 }): Promise<Devolucion> {
   const authUser = await requirePermission('sales.cancel');
+  const { storeId } = await requireStoreScope();
   const _validated = validateSchema(createDevolucionSchema, data, 'createDevolucion');
 
   const id = `dev-${crypto.randomUUID()}`;
   const now = new Date();
+
+  const [sale] = await db
+    .select({ id: saleRecords.id })
+    .from(saleRecords)
+    .where(and(eq(saleRecords.id, data.saleId), eq(saleRecords.storeId, storeId)))
+    .limit(1);
+  if (!sale) {
+    throw new Error('La venta no pertenece a tu negocio.');
+  }
 
   await db.insert(devoluciones).values({
     id,
@@ -88,6 +107,7 @@ async function _createDevolucion(data: {
     cajero: data.cajero,
     clienteId: data.clienteId ?? null,
     fecha: now,
+    storeId,
   });
 
   const savedItems: DevolucionItem[] = [];
@@ -103,6 +123,7 @@ async function _createDevolucion(data: {
       unitPrice: String(item.unitPrice),
       subtotal: String(item.subtotal),
       regresoInventario: item.regresoInventario,
+      storeId,
     });
 
     // Regresar al inventario si aplica
@@ -118,6 +139,7 @@ async function _createDevolucion(data: {
           notes: 'Producto devuelto por cliente',
           userId: authUser.uid,
           userName: authUser.email ?? null,
+          storeId,
         },
       });
     }
@@ -130,12 +152,13 @@ async function _createDevolucion(data: {
     await db
       .update(clientes)
       .set({ balance: sql`balance::numeric - ${data.montoDevuelto}`, lastTransaction: now })
-      .where(eq(clientes.id, data.clienteId));
+      .where(and(eq(clientes.id, data.clienteId), eq(clientes.storeId, storeId)));
   }
 
   // Audit trail
   await db.insert(auditLogs).values({
     id: `audit-${crypto.randomUUID()}`,
+    storeId,
     userId: authUser.uid,
     userEmail: authUser.email ?? 'unknown',
     action: 'create',
@@ -149,6 +172,7 @@ async function _createDevolucion(data: {
       montoDevuelto: data.montoDevuelto,
       metodoDev: data.metodoDev,
       itemCount: data.items.length,
+      storeId,
     },
     timestamp: now,
   });
@@ -167,23 +191,43 @@ async function _createDevolucion(data: {
     }),
   );
 
-  const [row] = await db.select().from(devoluciones).where(eq(devoluciones.id, id)).limit(1);
+  const [row] = await db
+    .select()
+    .from(devoluciones)
+    .where(and(eq(devoluciones.id, id), eq(devoluciones.storeId, storeId)))
+    .limit(1);
   return mapDevolucion(row, savedItems);
 }
 
 // Precarga los items de una venta para poblar el formulario de devolución
 async function _getSaleItemsForDevolucion(saleId: string) {
   await requirePermission('sales.view');
+  const { storeId } = await requireStoreScope();
 
   // 1. Obtener todos los items de la venta original
-  const sItems = await db.select().from(saleItems).where(eq(saleItems.saleId, saleId));
+  const sItems = await db
+    .select()
+    .from(saleItems)
+    .where(and(eq(saleItems.saleId, saleId), eq(saleItems.storeId, storeId)));
 
   // 2. Obtener todas las devoluciones previas de esta venta
   const prevDevs = await db
     .select()
     .from(devolucionItems)
-    .innerJoin(devoluciones, eq(devolucionItems.devolucionId, devoluciones.id))
-    .where(eq(devoluciones.saleId, saleId));
+    .innerJoin(
+      devoluciones,
+      and(
+        eq(devolucionItems.devolucionId, devoluciones.id),
+        eq(devolucionItems.storeId, devoluciones.storeId),
+      ),
+    )
+    .where(
+      and(
+        eq(devoluciones.saleId, saleId),
+        eq(devoluciones.storeId, storeId),
+        eq(devolucionItems.storeId, storeId),
+      ),
+    );
 
   // 3. Calcular cantidades ya devueltas por producto
   const returnedQtyMap = new Map<string, number>();

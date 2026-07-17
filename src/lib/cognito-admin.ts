@@ -23,18 +23,18 @@ import {
   type GroupType,
 } from '@aws-sdk/client-cognito-identity-provider';
 
-const region = process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-1';
+const region = process.env.COGNITO_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-1';
 const cognitoClient = new CognitoIdentityProviderClient({ region });
 
 let lazyCognitoVerifier: ReturnType<typeof CognitoJwtVerifier.create> | null = null;
 
 function getCognitoConfig(): { userPoolId: string; clientId: string } {
-  const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
-  const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+  const userPoolId = process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
+  const clientId = process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
 
   if (!userPoolId || !clientId) {
     throw new Error(
-      'AWS Cognito no está configurado. Verifica NEXT_PUBLIC_COGNITO_USER_POOL_ID y NEXT_PUBLIC_COGNITO_CLIENT_ID.',
+      'AWS Cognito no está configurado. Verifica COGNITO_USER_POOL_ID y COGNITO_CLIENT_ID.',
     );
   }
 
@@ -108,6 +108,9 @@ export interface CognitoDecodedToken {
   'cognito:username': string;
   email_verified: boolean;
   iss: string;
+  exp: number;
+  iat: number;
+  auth_time?: number;
   'custom:display_name'?: string;
   name?: string;
 }
@@ -136,16 +139,14 @@ export interface CreateCognitoUserResult {
  */
 export async function createCognitoUser(params: {
   email: string;
-  password?: string;
+  password: string;
   displayName: string;
 }): Promise<CreateCognitoUserResult> {
-  const tempPassword = params.password || 'Temp1234!';
-
   const result: AdminCreateUserCommandOutput = await cognitoClient.send(
     new AdminCreateUserCommand({
       UserPoolId: getUserPoolId(),
       Username: params.email,
-      TemporaryPassword: tempPassword,
+      TemporaryPassword: params.password,
       UserAttributes: [
         { Name: 'email', Value: params.email },
         { Name: 'email_verified', Value: 'true' },
@@ -532,4 +533,3 @@ export async function adminSetUserMfaPreference(
     }),
   );
 }
-

@@ -1,8 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
-import { getBrandLogoUrl } from '@/lib/brand-logos';
+import { getBrandLogo } from '@/lib/brand-logos';
 
 interface BrandLogoProps {
   /** Nombre de la marca (e.g. "Stripe", "Mercado Pago") */
@@ -13,20 +12,18 @@ interface BrandLogoProps {
   alt?: string;
   /** Borde redondeado del fallback */
   rounded?: boolean;
+  /** Variante visual del logo cuando la librería la provee. */
+  variant?: 'default' | 'light' | 'dark' | 'wordmark';
 }
 
 /**
- * Componente cliente que renderiza el logo de una marca
- * resuelto vía `getBrandLogoUrl` (simpleicons CDN o S3 self-hosted).
- *
- * Resolución 100% síncrona — sin fetch, sin estado de loading.
- * Si la imagen falla en cargar (404 / network), muestra placeholder.
+ * Renderiza logos de marcas desde `thesvg`.
+ * No usa archivos locales ni CDNs para logos de empresas o servicios.
  */
-export function BrandLogo({ name, size = 24, alt, rounded = true }: BrandLogoProps) {
-  const url = getBrandLogoUrl(name);
-  const [errored, setErrored] = useState(false);
+export function BrandLogo({ name, size = 24, alt, rounded = true, variant = 'light' }: BrandLogoProps) {
+  const logo = getBrandLogo(name);
 
-  if (!url || errored) {
+  if (!logo) {
     return (
       <div
         aria-hidden
@@ -50,21 +47,70 @@ export function BrandLogo({ name, size = 24, alt, rounded = true }: BrandLogoPro
     );
   }
 
+  const label = alt ?? logo.title ?? name;
+
+  if (logo.svg) {
+    const svgSource = logo.variants?.[variant] ?? logo.variants?.default ?? logo.svg;
+    const svg = svgSource
+      .replace(/\s(width|height)="[^"]*"/g, '')
+      .replace(
+        '<svg ',
+        `<svg width="${size}" height="${size}" style="width:${size}px;height:${size}px;display:block;object-fit:contain;flex-shrink:0" `,
+      );
+
+    return (
+      <span
+        aria-label={label}
+        role="img"
+        style={{
+          width: size,
+          height: size,
+          display: 'block',
+          flexShrink: 0,
+        }}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+    );
+  }
+
+  if (logo.url?.startsWith('/')) {
+    return (
+      <Image
+        src={logo.url}
+        alt={label}
+        width={size}
+        height={size}
+        unoptimized
+        style={{
+          width: size,
+          height: size,
+          objectFit: 'contain',
+          flexShrink: 0,
+          display: 'block',
+        }}
+      />
+    );
+  }
+
   return (
-    <Image
-      src={url}
-      alt={alt ?? name}
-      width={size}
-      height={size}
-      unoptimized
-      onError={() => setErrored(true)}
+    <div
+      aria-hidden
+      title={label}
       style={{
         width: size,
         height: size,
-        objectFit: 'contain',
+        background: '#F4F0FF',
+        borderRadius: rounded ? 4 : 0,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: Math.max(8, Math.floor(size * 0.4)),
+        fontWeight: 600,
+        color: '#5B3FB8',
         flexShrink: 0,
-        display: 'block',
       }}
-    />
+    >
+      {label.slice(0, 2).toUpperCase()}
+    </div>
   );
 }

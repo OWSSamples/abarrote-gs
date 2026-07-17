@@ -13,6 +13,7 @@
  */
 
 import { logger } from '@/lib/logger';
+import { constantTimeStringEqual } from '@/lib/constant-time';
 import type {
   ServiciosProvider,
   TopupRequest,
@@ -282,12 +283,7 @@ export class BillpocketProvider implements ServiciosProvider {
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
 
-    if (expected.length !== signature.length) return false;
-    let mismatch = 0;
-    for (let i = 0; i < expected.length; i++) {
-      mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
-    }
-    return mismatch === 0;
+    return constantTimeStringEqual(expected, signature);
   }
 
   async parseWebhook(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   Text,
@@ -117,9 +117,11 @@ export function PagosReembolsosPanel() {
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
   const [refundType, setRefundType] = useState<'full' | 'partial'>('full');
+  const [refundMaxAmount, setRefundMaxAmount] = useState(0);
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const refundRequestRef = useRef<{ id: string; payloadKey: string } | null>(null);
 
   // ── Data Loading ──
 
@@ -147,27 +149,58 @@ export function PagosReembolsosPanel() {
 
   // ── Refund Handlers ──
 
-  const openRefundModal = useCallback((payment: MPPaymentRow) => {
-    setSelectedPayment(payment);
-    setRefundAmount(String(payment.amount));
-    setRefundReason('');
-    setRefundType('full');
-    setRefundError(null);
-    setRefundModalOpen(true);
-  }, []);
+  const getRefundableAmount = useCallback(
+    (payment: MPPaymentRow) => {
+      const reserved = refunds
+        .filter(
+          (refund) =>
+            refund.mpPaymentId === payment.paymentId && ['approved', 'pending'].includes(refund.status),
+        )
+        .reduce((sum, refund) => sum + refund.amount, 0);
+      return Math.max(0, Math.round((payment.amount - reserved) * 100) / 100);
+    },
+    [refunds],
+  );
+
+  const openRefundModal = useCallback(
+    (payment: MPPaymentRow) => {
+      const refundableAmount = getRefundableAmount(payment);
+      setSelectedPayment(payment);
+      setRefundMaxAmount(refundableAmount);
+      setRefundAmount(String(refundableAmount));
+      setRefundReason('');
+      setRefundType('full');
+      setRefundError(null);
+      refundRequestRef.current = null;
+      setRefundModalOpen(true);
+    },
+    [getRefundableAmount],
+  );
+
+  const closeRefundModal = useCallback(() => {
+    if (refundSubmitting) return;
+    refundRequestRef.current = null;
+    setRefundModalOpen(false);
+  }, [refundSubmitting]);
 
   const handleRefundSubmit = useCallback(async () => {
     if (!selectedPayment) return;
 
-    const amount = parseFloat(refundAmount);
-    if (isNaN(amount) || amount <= 0) {
+    const parsedAmount = Number(refundAmount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setRefundError('Ingresa un monto válido mayor a $0');
       return;
     }
-    if (amount > selectedPayment.amount) {
-      setRefundError(`El monto no puede exceder $${selectedPayment.amount.toFixed(2)}`);
+    const amountCents = Math.round(parsedAmount * 100);
+    if (Math.abs(parsedAmount * 100 - amountCents) >= 1e-8) {
+      setRefundError('El monto debe tener como máximo dos decimales');
       return;
     }
+    if (amountCents > Math.round(refundMaxAmount * 100)) {
+      setRefundError(`El monto no puede exceder $${refundMaxAmount.toFixed(2)}`);
+      return;
+    }
+    const amount = amountCents / 100;
     if (!refundReason.trim()) {
       setRefundError('Ingresa un motivo para el reembolso');
       return;
@@ -177,21 +210,37 @@ export function PagosReembolsosPanel() {
     setRefundError(null);
 
     try {
-      await createMercadoPagoRefund({
+      const payloadKey = `${selectedPayment.paymentId}:${amount.toFixed(2)}:${refundReason.trim()}`;
+      let request = refundRequestRef.current;
+      if (!request || request.payloadKey !== payloadKey) {
+        request = { id: crypto.randomUUID(), payloadKey };
+        refundRequestRef.current = request;
+      }
+      const result = await createMercadoPagoRefund({
         mpPaymentId: selectedPayment.paymentId,
         amount,
         reason: refundReason.trim(),
+        clientRequestId: request.id,
       });
+      if (result.status === 'rejected') {
+        setRefundError('MercadoPago rechazó el reembolso. Cierra esta ventana y actualiza los datos antes de reintentar.');
+        return;
+      }
+      refundRequestRef.current = null;
       setRefundModalOpen(false);
-      setSuccessMessage('Reembolso procesado exitosamente');
+      setSuccessMessage(
+        result.status === 'pending'
+          ? 'Reembolso solicitado y pendiente de confirmación en MercadoPago'
+          : 'Reembolso aprobado por MercadoPago',
+      );
       setTimeout(() => setSuccessMessage(null), 5000);
       await loadData();
-    } catch (err) {
-      setRefundError(err instanceof Error ? err.message : 'Error al procesar reembolso');
+    } catch {
+      setRefundError('No fue posible procesar el reembolso. Actualiza los datos antes de volver a intentarlo.');
     } finally {
       setRefundSubmitting(false);
     }
-  }, [selectedPayment, refundAmount, refundReason, loadData]);
+  }, [selectedPayment, refundAmount, refundMaxAmount, refundReason, loadData]);
 
   // ── Refund Type Change ──
 
@@ -200,10 +249,10 @@ export function PagosReembolsosPanel() {
       const type = value as 'full' | 'partial';
       setRefundType(type);
       if (type === 'full' && selectedPayment) {
-        setRefundAmount(String(selectedPayment.amount));
+        setRefundAmount(String(refundMaxAmount));
       }
     },
-    [selectedPayment],
+    [refundMaxAmount, selectedPayment],
   );
 
   // ── Tabs ──
@@ -319,7 +368,7 @@ export function PagosReembolsosPanel() {
               )}
             </IndexTable.Cell>
             <IndexTable.Cell>
-              {refundableStatuses.includes(payment.status) && (
+              {refundableStatuses.includes(payment.status) && getRefundableAmount(payment) > 0 && (
                 <Button size="slim" tone="critical" onClick={() => openRefundModal(payment)}>
                   Reembolsar
                 </Button>
@@ -490,7 +539,7 @@ export function PagosReembolsosPanel() {
       {/* Refund Modal */}
       <Modal
         open={refundModalOpen}
-        onClose={() => setRefundModalOpen(false)}
+        onClose={closeRefundModal}
         title={`Reembolsar pago #${selectedPayment?.paymentId ?? ''}`}
         primaryAction={{
           content: refundSubmitting ? 'Procesando...' : 'Confirmar reembolso',
@@ -501,7 +550,7 @@ export function PagosReembolsosPanel() {
         secondaryActions={[
           {
             content: 'Cancelar',
-            onAction: () => setRefundModalOpen(false),
+            onAction: closeRefundModal,
           },
         ]}
       >
@@ -526,6 +575,14 @@ export function PagosReembolsosPanel() {
                     </Text>
                     <Text variant="bodyMd" fontWeight="semibold" as="span">
                       {formatCurrency(selectedPayment.amount)}
+                    </Text>
+                  </InlineStack>
+                  <InlineStack align="space-between">
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      Disponible para reembolso
+                    </Text>
+                    <Text variant="bodyMd" fontWeight="semibold" as="span">
+                      {formatCurrency(refundMaxAmount)}
                     </Text>
                   </InlineStack>
                   <InlineStack align="space-between">
@@ -570,7 +627,7 @@ export function PagosReembolsosPanel() {
               disabled={refundType === 'full'}
               helpText={
                 refundType === 'partial' && selectedPayment
-                  ? `Máximo: ${formatCurrency(selectedPayment.amount)}`
+                  ? `Máximo: ${formatCurrency(refundMaxAmount)}`
                   : undefined
               }
             />

@@ -1,29 +1,52 @@
 'use server';
 
 import { cache } from '@/infrastructure/redis';
-import { requirePermission, requireAuth, sanitize, validateNumber, validateId } from '@/lib/auth/guard';
+import { requirePermission, sanitize, validateNumber, validateId } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { validateSchema, createProductSchema, updateProductSchema, idSchema } from '@/lib/validation/schemas';
 import { db } from '@/db';
-import { products, stockMovements } from '@/db/schema';
+import { productCategories, products, stockMovements } from '@/db/schema';
 import { eq, or, and, desc } from 'drizzle-orm';
 import type { Product } from '@/types';
 import { numVal } from './_helpers';
 import { adjustStock } from './_stock';
 import { AppError, withLogging } from '@/lib/errors';
-import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
+import { isNotDeleted } from '@/infrastructure/soft-delete';
 import { withRateLimit } from '@/infrastructure/redis';
 import { emitDomainEvent } from '@/domain/events';
 
 // ==================== PRODUCTS ====================
 
+async function assertCategoryBelongsToStore(categoryId: string, storeId: string): Promise<void> {
+  const [category] = await db
+    .select({ id: productCategories.id })
+    .from(productCategories)
+    .where(
+      and(
+        eq(productCategories.id, categoryId),
+        eq(productCategories.storeId, storeId),
+        isNotDeleted(productCategories),
+      ),
+    )
+    .limit(1);
+  if (!category) {
+    throw new AppError('CATEGORY_NOT_FOUND', 'La categoría no existe dentro de este negocio.', 400);
+  }
+}
+
 async function _fetchAllProducts(): Promise<Product[]> {
-  await requireAuth();
+  const { storeId } = await requireStoreScope();
+  const cacheKey = `products:${storeId}:all`;
 
   // Check cache first — products are fetched on every dashboard load
-  const cached = await cache.get<Product[]>('products:all');
+  const cached = await cache.get<Product[]>(cacheKey);
   if (cached) return cached;
 
-  const rows = await db.select().from(products).where(isNotDeleted(products)).orderBy(products.name);
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.storeId, storeId), isNotDeleted(products)))
+    .orderBy(products.name);
   const result = rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -43,23 +66,32 @@ async function _fetchAllProducts(): Promise<Product[]> {
   }));
 
   // Cache for 30 seconds — invalidated on product mutations
-  await cache.set('products:all', result, { ttlMs: 30_000 });
+  await cache.set(cacheKey, result, { ttlMs: 30_000 });
 
   return result;
 }
 
 async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
-  await requirePermission('inventory.edit');
+  const user = await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(createProductSchema, data, 'createProduct');
 
   const sanitizedSku = sanitize(data.sku);
   const sanitizedBarcode = sanitize(data.barcode);
+  const sanitizedCategory = sanitize(data.category);
+  await assertCategoryBelongsToStore(sanitizedCategory, storeId);
 
   // Check for existing products with same SKU or barcode (exclude soft-deleted)
   const existing = await db
     .select({ sku: products.sku, barcode: products.barcode, name: products.name })
     .from(products)
-    .where(and(isNotDeleted(products), or(eq(products.sku, sanitizedSku), eq(products.barcode, sanitizedBarcode))))
+    .where(
+      and(
+        eq(products.storeId, storeId),
+        isNotDeleted(products),
+        or(eq(products.sku, sanitizedSku), eq(products.barcode, sanitizedBarcode)),
+      ),
+    )
     .limit(1);
 
   if (existing.length > 0) {
@@ -78,9 +110,6 @@ async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
 
   const id = `p-${crypto.randomUUID()}`;
 
-  await cache.invalidatePattern('products:');
-
-  const user = await requirePermission('inventory.edit');
   await db.insert(products).values({
     id,
     name: sanitize(data.name),
@@ -90,19 +119,21 @@ async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
     currentStock: validateNumber(data.currentStock, { label: 'Stock' }),
     minStock: validateNumber(data.minStock, { label: 'Stock mínimo' }),
     expirationDate: data.expirationDate || undefined,
-    category: sanitize(data.category),
+    category: sanitizedCategory,
     costPrice: String(validateNumber(data.costPrice, { label: 'Precio de costo' })),
     unitPrice: String(validateNumber(data.unitPrice, { label: 'Precio de venta' })),
     unit: data.unit ? sanitize(data.unit) : 'pieza',
     unitMultiple: data.unitMultiple ? validateNumber(data.unitMultiple, { label: 'Piezas por unidad' }) : 1,
     isPerishable: data.isPerishable,
     imageUrl: data.imageUrl,
+    storeId,
   });
+  await cache.invalidate(`products:${storeId}:all`);
 
   emitDomainEvent({
     type: 'product.created',
     payload: { productId: id, name: data.name, sku: sanitizedSku },
-    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+    metadata: { userId: user.uid, userEmail: user.email ?? '', storeId },
   });
 
   return { ...data, id };
@@ -110,9 +141,18 @@ async function _createProduct(data: Omit<Product, 'id'>): Promise<Product> {
 
 async function _updateProductStock(productId: string, newStock: number): Promise<void> {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateId(productId, 'Product ID');
   validateNumber(newStock, { label: 'Nuevo stock' });
-  await db.update(products).set({ currentStock: newStock, updatedAt: new Date() }).where(eq(products.id, productId));
+  const updated = await db
+    .update(products)
+    .set({ currentStock: newStock, updatedAt: new Date() })
+    .where(and(eq(products.id, productId), eq(products.storeId, storeId)))
+    .returning({ id: products.id });
+  if (updated.length === 0) {
+    throw new AppError('PRODUCT_NOT_FOUND', 'Producto no encontrado en tu negocio', 404);
+  }
+  await cache.invalidate(`products:${storeId}:all`);
 }
 
 /**
@@ -126,6 +166,7 @@ async function _restockProduct(
   notes?: string,
 ): Promise<{ newStock: number }> {
   const user = await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateId(productId, 'Product ID');
   if (!Number.isFinite(quantity) || quantity <= 0) {
     throw new AppError('INVALID_QUANTITY', 'La cantidad a surtir debe ser mayor a 0', 400);
@@ -133,7 +174,7 @@ async function _restockProduct(
   const [productRow] = await db
     .select({ name: products.name, costPrice: products.costPrice })
     .from(products)
-    .where(eq(products.id, productId))
+    .where(and(eq(products.id, productId), eq(products.storeId, storeId)))
     .limit(1);
   if (!productRow) {
     throw new AppError('PRODUCT_NOT_FOUND', 'Producto no encontrado', 404);
@@ -148,8 +189,10 @@ async function _restockProduct(
       notes: notes ?? '',
       userId: user.uid,
       userName: user.email ?? null,
+      storeId,
     },
   });
+  await cache.invalidate(`products:${storeId}:all`);
   return { newStock: updated?.currentStock ?? 0 };
 }
 
@@ -158,11 +201,12 @@ async function _restockProduct(
  */
 async function _fetchStockMovements(productId: string, limit = 100): Promise<import('@/types').StockMovement[]> {
   await requirePermission('inventory.view');
+  const { storeId } = await requireStoreScope();
   validateId(productId, 'Product ID');
   const rows = await db
     .select()
     .from(stockMovements)
-    .where(eq(stockMovements.productId, productId))
+    .where(and(eq(stockMovements.productId, productId), eq(stockMovements.storeId, storeId)))
     .orderBy(desc(stockMovements.createdAt))
     .limit(Math.min(Math.max(limit, 1), 500));
 
@@ -188,23 +232,33 @@ async function _fetchStockMovements(productId: string, limit = 100): Promise<imp
 
 async function _deleteProduct(productId: string): Promise<void> {
   const user = await requirePermission('inventory.delete');
+  const { storeId } = await requireStoreScope();
   validateId(productId, 'Product ID');
-  await cache.invalidatePattern('products:');
-
-  // Soft delete: mark as deleted instead of physically removing
-  await softDelete(products, productId);
+  const deleted = await db
+    .update(products)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(products.id, productId), eq(products.storeId, storeId), isNotDeleted(products)))
+    .returning({ id: products.id });
+  if (deleted.length === 0) {
+    throw new AppError('PRODUCT_NOT_FOUND', 'Producto no encontrado en tu negocio', 404);
+  }
+  await cache.invalidate(`products:${storeId}:all`);
 
   emitDomainEvent({
     type: 'product.deleted',
     payload: { productId, name: productId },
-    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+    metadata: { userId: user.uid, userEmail: user.email ?? '', storeId },
   });
 }
 
 async function _updateProduct(id: string, data: Partial<Product>): Promise<void> {
   const user = await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'updateProduct.id');
   validateSchema(updateProductSchema, data, 'updateProduct');
+  if (data.category !== undefined) {
+    await assertCategoryBelongsToStore(data.category, storeId);
+  }
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) updateData.name = data.name;
   if (data.sku !== undefined) updateData.sku = data.sku;
@@ -220,12 +274,20 @@ async function _updateProduct(id: string, data: Partial<Product>): Promise<void>
   if (data.expirationDate !== undefined) updateData.expirationDate = data.expirationDate;
   if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
   if (data.description !== undefined) updateData.description = data.description;
-  await db.update(products).set(updateData).where(eq(products.id, id));
+  const updated = await db
+    .update(products)
+    .set(updateData)
+    .where(and(eq(products.id, id), eq(products.storeId, storeId)))
+    .returning({ id: products.id });
+  if (updated.length === 0) {
+    throw new AppError('PRODUCT_NOT_FOUND', 'Producto no encontrado en tu negocio', 404);
+  }
+  await cache.invalidate(`products:${storeId}:all`);
 
   emitDomainEvent({
     type: 'product.updated',
     payload: { productId: id, changes: data as Record<string, unknown> },
-    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+    metadata: { userId: user.uid, userEmail: user.email ?? '', storeId },
   });
 }
 

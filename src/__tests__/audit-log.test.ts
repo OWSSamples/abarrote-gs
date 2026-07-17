@@ -21,6 +21,7 @@ describe('Audit Logging', () => {
     const sizeBefore = getAuditBufferSize();
 
     auditLog({
+      storeId: 'tenant-a',
       userId: 'user-1',
       userEmail: 'test@example.com',
       action: 'create',
@@ -34,6 +35,7 @@ describe('Audit Logging', () => {
 
   it('should accept audit entries with all optional fields', () => {
     auditLog({
+      storeId: 'tenant-a',
       userId: 'user-2',
       userEmail: 'admin@example.com',
       action: 'delete',
@@ -49,6 +51,7 @@ describe('Audit Logging', () => {
 
   it('should flush buffer', async () => {
     auditLog({
+      storeId: 'tenant-a',
       userId: 'user-3',
       userEmail: 'test@example.com',
       action: 'update',
@@ -75,6 +78,7 @@ describe('Audit Logging', () => {
 
     for (const action of actions) {
       auditLog({
+        storeId: 'tenant-a',
         userId: 'user-1',
         userEmail: 'test@example.com',
         action,
@@ -91,6 +95,7 @@ describe('Audit Logging', () => {
 
     for (const entity of entities) {
       auditLog({
+        storeId: 'tenant-a',
         userId: 'user-1',
         userEmail: 'test@example.com',
         action: 'create',

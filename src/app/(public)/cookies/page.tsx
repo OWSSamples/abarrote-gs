@@ -28,7 +28,7 @@ export default function CookiesPage() {
         Las <strong>cookies</strong> son pequeños archivos de texto que un sitio web almacena en tu
         navegador o dispositivo cuando lo visitas. Permiten recordar información (como tu sesión
         iniciada o tus preferencias) y mejorar la experiencia. Existen tecnologías similares como{' '}
-        <em>localStorage</em>, <em>sessionStorage</em>, <em>IndexedDB</em>, <em>píxeles</em> y{' '}
+        <em>localStorage</em>, <em>sessionStorage</em>, <em>píxeles</em> y{' '}
         <em>SDKs móviles</em> que se rigen por esta misma política.
       </p>
 
@@ -94,7 +94,7 @@ export default function CookiesPage() {
             <td>Kiosko</td>
             <td>Necesaria</td>
             <td>Mantener tu sesión iniciada de forma segura</td>
-            <td>14 días</td>
+            <td>Hasta 1 hora por token, con límite absoluto de 6 horas</td>
           </tr>
           <tr>
             <td>__Host-csrf</td>
@@ -111,11 +111,11 @@ export default function CookiesPage() {
             <td>1 año</td>
           </tr>
           <tr>
-            <td>store-id</td>
+            <td>__store_id</td>
             <td>Kiosko</td>
             <td>Necesaria</td>
             <td>Identificar la tienda activa en operaciones multi-sucursal</td>
-            <td>30 días</td>
+            <td>12 horas</td>
           </tr>
           <tr>
             <td>cookie-consent</td>
@@ -157,10 +157,9 @@ export default function CookiesPage() {
 
       <h2>5. Tecnologías de almacenamiento local</h2>
       <p>
-        Adicionalmente utilizamos <em>localStorage</em> e <em>IndexedDB</em> para soporte offline,
-        carrito de venta en curso, configuración de impresora térmica y caché de catálogo. Estos
-        datos no se transmiten automáticamente al servidor y se eliminan al cerrar sesión o desde
-        las opciones del navegador.
+        Utilizamos <em>localStorage</em> para preferencias de consentimiento, control de duración de
+        sesión y, cuando el usuario lo habilita, historial local del chat de ayuda. Las ventas,
+        cortes y movimientos no se almacenan localmente ni funcionan sin conexión al servidor.
       </p>
 
       <h2>6. Gestión y revocación del consentimiento</h2>

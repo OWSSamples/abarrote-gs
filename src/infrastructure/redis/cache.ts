@@ -152,10 +152,7 @@ export async function cacheInvalidatePattern(pattern: string): Promise<void> {
     if (regex.test(key)) l1Store.delete(key);
   }
 
-  // L2
-  await deleteKeysByPattern(REDIS_PREFIXES.CACHE, '*');
-  // Note: deleteKeysByPattern is prefix-scoped, can't use regex on Redis.
-  // For fine-grained Redis invalidation, we'd scan + filter.
+  // L2: scan and remove only keys matching the requested pattern.
   const redis = getRedisClient();
   if (redis) {
     try {

@@ -1,17 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { db } from '@/db';
 import { products } from '@/db/schema';
-import { fetchStoreConfig } from '@/app/actions/store-config-actions';
+import { getStoreConfigForStore } from '@/server/store-config-service';
 import { escapeHTML } from '@/app/actions/_notifications';
 import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
-import { env } from '@/lib/env';
+import { constantTimeStringEqual } from '@/lib/constant-time';
+import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
+import { and, eq, isNull } from 'drizzle-orm';
 
 /** Allowed Telegram bot commands */
 const ALLOWED_COMMANDS = new Set(['/stock', '/inventario', 'stock']);
 
 /** Rate limit: 10 requests per minute per IP */
 const RATE_LIMIT = { maxRequests: 10, windowMs: 60_000 } as const;
+const MAX_WEBHOOK_BYTES = 32 * 1024;
+const storeIdSchema = z.string().regex(/^(?:main|[a-f0-9]{32})$/);
+
+const telegramUpdateSchema = z
+  .object({
+    message: z
+      .object({
+        text: z.string().max(1000).optional(),
+        chat: z
+          .object({
+            id: z.union([z.string(), z.number()]).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
 
 /**
  * Verifies the request originates from Telegram by checking the
@@ -20,23 +42,16 @@ const RATE_LIMIT = { maxRequests: 10, windowMs: 60_000 } as const;
  *
  * @see https://core.telegram.org/bots/api#setwebhook
  */
-function verifyTelegramSecret(req: NextRequest): boolean {
-  const secret = env.TELEGRAM_WEBHOOK_SECRET;
+function verifyTelegramSecret(req: NextRequest, secret: string | undefined): boolean {
   if (!secret) {
-    logger.error('TELEGRAM_WEBHOOK_SECRET not configured — rejecting all webhook requests');
+    logger.error('Telegram webhook secret not configured in platform settings');
     return false;
   }
 
   const headerToken = req.headers.get('x-telegram-bot-api-secret-token');
   if (!headerToken) return false;
 
-  // Constant-time comparison to prevent timing attacks
-  if (secret.length !== headerToken.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < secret.length; i++) {
-    mismatch |= secret.charCodeAt(i) ^ headerToken.charCodeAt(i);
-  }
-  return mismatch === 0;
+  return constantTimeStringEqual(secret, headerToken);
 }
 
 export async function POST(req: NextRequest) {
@@ -48,16 +63,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false }, { status: 429 });
     }
 
+    const url = new URL(req.url);
+    const parsedStoreId = storeIdSchema.safeParse(url.searchParams.get('store'));
+    if (!parsedStoreId.success) {
+      return NextResponse.json({ ok: false }, { status: 400 });
+    }
+    const storeId = parsedStoreId.data;
+    const config = await getStoreConfigForStore(storeId);
+    if (!config) {
+      return NextResponse.json({ ok: false }, { status: 404 });
+    }
+
     // 2. Verify Telegram secret token
-    if (!verifyTelegramSecret(req)) {
+    if (!verifyTelegramSecret(req, config.telegramWebhookSecret)) {
       logger.warn('Telegram webhook rejected — invalid or missing secret token', { ip });
       return NextResponse.json({ ok: false }, { status: 403 });
     }
 
-    const body = await req.json();
+    const body = await readTextBodyWithLimit(req, MAX_WEBHOOK_BYTES);
+    if (body === null) {
+      return NextResponse.json({ ok: false }, { status: 413 });
+    }
+
+    let json: unknown;
+    try {
+      json = JSON.parse(body);
+    } catch {
+      return NextResponse.json({ ok: false }, { status: 400 });
+    }
+
+    const parsed = telegramUpdateSchema.safeParse(json);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false }, { status: 400 });
+    }
 
     // Telegram sends the message in body.message
-    const message = body.message;
+    const message = parsed.data.message;
     if (!message || !message.text) return NextResponse.json({ ok: true });
 
     const chatId = String(message.chat?.id ?? '');
@@ -65,20 +106,20 @@ export async function POST(req: NextRequest) {
 
     if (!chatId) return NextResponse.json({ ok: true });
 
-    // 3. Verify chat ID matches configured store
-    const config = await fetchStoreConfig();
-
     if (!config.telegramChatId || chatId !== config.telegramChatId) {
       logger.warn('Telegram webhook from unauthorized chatId', {
-        receivedChatId: chatId,
-        configuredChatId: config.telegramChatId ?? 'NOT_SET',
+        hasReceivedChatId: Boolean(chatId),
+        hasConfiguredChatId: Boolean(config.telegramChatId),
       });
       return NextResponse.json({ ok: true });
     }
 
     // 4. Handle allowed commands only
     if (ALLOWED_COMMANDS.has(text)) {
-      const allProducts = await db.select().from(products);
+      const allProducts = await db
+        .select()
+        .from(products)
+        .where(and(eq(products.storeId, storeId), isNull(products.deletedAt)));
 
       const stockList = allProducts
         .sort((a, b) => a.name.localeCompare(b.name))

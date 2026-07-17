@@ -1,4 +1,4 @@
-import { printWithIframe, applyTicketTemplate } from '@/lib/printTicket';
+import { printWithIframe, applyTicketTemplate, escapeTicketHtml } from '@/lib/printTicket';
 
 /* ─── Product row for the order creation form ─── */
 export interface OrderLineItem {
@@ -26,6 +26,7 @@ export function printTicketSurtido(params: {
   storePhone: string;
   templateProveedor?: string;
 }) {
+  const escape = escapeTicketHtml;
   const {
     folio,
     fecha,
@@ -61,8 +62,8 @@ export function printTicketSurtido(params: {
       (item) => `
     <tr>
       <td class="td-name">
-        <span class="prod-name">${item.productName}</span>
-        ${item.sku ? `<span class="prod-sku">${item.sku}</span>` : ''}
+        <span class="prod-name">${escape(item.productName)}</span>
+        ${item.sku ? `<span class="prod-sku">${escape(item.sku)}</span>` : ''}
       </td>
       <td class="td-qty">${item.cantidad}</td>
       <td class="td-price">$${item.precio.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
@@ -76,7 +77,7 @@ export function printTicketSurtido(params: {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Orden de Surtido · ${storeName}</title>
+  <title>Orden de Surtido · ${escape(storeName)}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{
@@ -150,23 +151,23 @@ export function printTicketSurtido(params: {
 <div class="ticket">
 
   <!-- STORE HEADER -->
-  <div class="store-name">${storeName}</div>
-  ${storeAddress ? `<div class="store-addr">${storeAddress}${storePhone ? ' · Tel: ' + storePhone : ''}</div>` : ''}
+  <div class="store-name">${escape(storeName)}</div>
+  ${storeAddress ? `<div class="store-addr">${escape(storeAddress)}${storePhone ? ' · Tel: ' + escape(storePhone) : ''}</div>` : ''}
 
   <hr class="line"/>
 
   <!-- DOCUMENT TITLE -->
   <div class="doc-title">Orden de Surtido</div>
-  <div class="folio-line">Folio: #${folioShort}</div>
-  <div class="fecha-line">${fechaFmt}</div>
+  <div class="folio-line">Folio: #${escape(folioShort)}</div>
+  <div class="fecha-line">${escape(fechaFmt)}</div>
 
   <hr class="line-thin"/>
 
   <!-- INFO BLOCK -->
-  <div class="info-row"><span class="label">Proveedor</span><span class="value">${proveedor}</span></div>
-  <div class="info-row"><span class="label">Destino</span><span class="value">${destino}</span></div>
-  <div class="info-row"><span class="label">Pago</span><span class="value">${terminosLabel[terminosPago] || terminosPago || '—'}</span></div>
-  <div class="info-row"><span class="label">Moneda</span><span class="value">${moneda}</span></div>
+  <div class="info-row"><span class="label">Proveedor</span><span class="value">${escape(proveedor)}</span></div>
+  <div class="info-row"><span class="label">Destino</span><span class="value">${escape(destino)}</span></div>
+  <div class="info-row"><span class="label">Pago</span><span class="value">${escape(terminosLabel[terminosPago] || terminosPago || '—')}</span></div>
+  <div class="info-row"><span class="label">Moneda</span><span class="value">${escape(moneda)}</span></div>
 
   <hr class="line"/>
 
@@ -185,23 +186,23 @@ export function printTicketSurtido(params: {
 
   <!-- TOTALS -->
   <div class="totals-row"><span class="t-label">Artículos</span><span class="t-value">${totalQty} pzas</span></div>
-  <div class="totals-row"><span class="t-label">Subtotal</span><span class="t-value">$${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${moneda}</span></div>
+  <div class="totals-row"><span class="t-label">Subtotal</span><span class="t-value">$${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${escape(moneda)}</span></div>
   <div class="totals-row"><span class="t-label">Envío</span><span class="t-value">—</span></div>
-  <div class="totals-row main"><span class="t-label">TOTAL</span><span class="t-value">$${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${moneda}</span></div>
+  <div class="totals-row main"><span class="t-label">TOTAL</span><span class="t-value">$${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${escape(moneda)}</span></div>
 
   ${
     notas
       ? `
   <hr class="line-thin"/>
   <div class="notes-label">Notas</div>
-  <div class="notes-text">${notas}</div>`
+  <div class="notes-text">${escape(notas)}</div>`
       : ''
   }
 
   <hr class="line"/>
 
   <!-- FOOTER -->
-  <div class="footer-line">Impreso el ${now}</div>
+  <div class="footer-line">Impreso el ${escape(now)}</div>
   <div class="footer-line"><span class="footer-bold">Documento de uso interno</span></div>
   <div class="powered-by">OPENDEX POS</div>
 
@@ -228,12 +229,12 @@ export function printTicketSurtido(params: {
     items: lineItems
       .map(
         (item) =>
-          `<div class="item-name">${item.productName}${item.sku ? ` <span style="font-size:9px;color:#777">(${item.sku})</span>` : ''}</div>` +
+          `<div class="item-name">${escape(item.productName)}${item.sku ? ` <span style="font-size:9px;color:#777">(${escape(item.sku)})</span>` : ''}</div>` +
           `<div class="item-detail"><span>${item.cantidad} × $${item.precio.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>` +
           `<span>$${(item.precio * item.cantidad).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></div>`,
       )
       .join(''),
   };
 
-  printWithIframe(applyTicketTemplate(templateProveedor, templateVars, html));
+  printWithIframe(applyTicketTemplate(templateProveedor, templateVars, html, ['items']));
 }

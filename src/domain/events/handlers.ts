@@ -11,7 +11,7 @@
 
 import { onDomainEvent, onAnyDomainEvent, type DomainEvent } from '@/domain/events';
 import { auditLog } from '@/infrastructure/audit';
-import { cacheInvalidatePattern } from '@/infrastructure/redis';
+import { cacheInvalidate } from '@/infrastructure/redis';
 import { logger } from '@/lib/logger';
 
 // ══════════════════════════════════════════════════════════════
@@ -54,11 +54,12 @@ onAnyDomainEvent(async (event: DomainEvent) => {
     'stock.critical': (event.payload as Record<string, string>).productId ?? '',
     'customer.created': (event.payload as Record<string, string>).customerId ?? '',
     'customer.deleted': (event.payload as Record<string, string>).customerId ?? '',
-    'config.changed': 'main',
+    'config.changed': event.metadata.storeId,
     'payment.received': (event.payload as Record<string, string>).chargeId ?? '',
   };
 
   auditLog({
+    storeId: event.metadata.storeId,
     userId: event.metadata.userId,
     userEmail: event.metadata.userEmail,
     action: (actionMap[event.type] ?? 'unknown') as 'create' | 'update' | 'delete' | 'config_change',
@@ -72,36 +73,20 @@ onAnyDomainEvent(async (event: DomainEvent) => {
 // 2. Cache Invalidation — clear stale data on mutations
 // ══════════════════════════════════════════════════════════════
 
-onDomainEvent('product.created', async () => {
-  await cacheInvalidatePattern('products:');
+onDomainEvent('product.created', async (event) => {
+  await cacheInvalidate(`products:${event.metadata.storeId}:all`);
 });
 
-onDomainEvent('product.updated', async () => {
-  await cacheInvalidatePattern('products:');
+onDomainEvent('product.updated', async (event) => {
+  await cacheInvalidate(`products:${event.metadata.storeId}:all`);
 });
 
-onDomainEvent('product.deleted', async () => {
-  await cacheInvalidatePattern('products:');
+onDomainEvent('product.deleted', async (event) => {
+  await cacheInvalidate(`products:${event.metadata.storeId}:all`);
 });
 
-onDomainEvent('customer.created', async () => {
-  await cacheInvalidatePattern('customers:');
-});
-
-onDomainEvent('customer.deleted', async () => {
-  await cacheInvalidatePattern('customers:');
-});
-
-onDomainEvent('config.changed', async () => {
-  await cacheInvalidatePattern('config:');
-});
-
-onDomainEvent('sale.created', async () => {
-  await cacheInvalidatePattern('dashboard:');
-});
-
-onDomainEvent('sale.cancelled', async () => {
-  await cacheInvalidatePattern('dashboard:');
+onDomainEvent('config.changed', async (event) => {
+  await cacheInvalidate(`config:${event.metadata.storeId}`);
 });
 
 logger.info('Domain event handlers registered', {

@@ -1,6 +1,7 @@
 'use server';
 
 import { requirePermission, validateId } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import {
   validateSchema,
   createClienteSchema,
@@ -11,11 +12,11 @@ import {
 } from '@/lib/validation/schemas';
 import { db } from '@/db';
 import { clientes, fiadoTransactions, fiadoItems } from '@/db/schema';
-import { eq, desc, sql, inArray } from 'drizzle-orm';
+import { and, eq, desc, sql, inArray } from 'drizzle-orm';
 import type { Cliente, FiadoTransaction, SaleItem } from '@/types';
 import { numVal } from './_helpers';
 import { withLogging, AppError } from '@/lib/errors';
-import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
+import { isNotDeleted } from '@/infrastructure/soft-delete';
 import { withRateLimit } from '@/infrastructure/redis';
 import { emitDomainEvent } from '@/domain/events';
 
@@ -23,7 +24,12 @@ import { emitDomainEvent } from '@/domain/events';
 
 async function _fetchClientes(): Promise<Cliente[]> {
   await requirePermission('customers.view');
-  const rows = await db.select().from(clientes).where(isNotDeleted(clientes)).orderBy(clientes.name);
+  const { storeId } = await requireStoreScope();
+  const rows = await db
+    .select()
+    .from(clientes)
+    .where(and(eq(clientes.storeId, storeId), isNotDeleted(clientes)))
+    .orderBy(clientes.name);
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -41,6 +47,7 @@ async function _createCliente(
   data: Omit<Cliente, 'id' | 'balance' | 'createdAt' | 'lastTransaction'>,
 ): Promise<Cliente> {
   const user = await requirePermission('customers.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(createClienteSchema, data, 'createCliente');
   const id = `cli-${crypto.randomUUID()}`;
   const now = new Date();
@@ -52,6 +59,7 @@ async function _createCliente(
     address: data.address,
     balance: '0',
     creditLimit: String(data.creditLimit),
+    storeId,
     createdAt: now,
     lastTransaction: null,
   });
@@ -59,7 +67,7 @@ async function _createCliente(
   emitDomainEvent({
     type: 'customer.created',
     payload: { customerId: id, name: data.name },
-    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+    metadata: { userId: user.uid, userEmail: user.email ?? '', storeId },
   });
 
   return {
@@ -73,6 +81,7 @@ async function _createCliente(
 
 async function _updateCliente(id: string, data: Partial<Cliente>): Promise<void> {
   await requirePermission('customers.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'updateCliente.id');
   validateSchema(updateClienteSchema, data, 'updateCliente');
   const updateData: Record<string, unknown> = {};
@@ -81,20 +90,26 @@ async function _updateCliente(id: string, data: Partial<Cliente>): Promise<void>
   if (data.address !== undefined) updateData.address = data.address;
   if (data.creditLimit !== undefined) updateData.creditLimit = String(data.creditLimit);
   if (Object.keys(updateData).length > 0) {
-    await db.update(clientes).set(updateData).where(eq(clientes.id, id));
+    await db
+      .update(clientes)
+      .set(updateData)
+      .where(and(eq(clientes.id, id), eq(clientes.storeId, storeId)));
   }
 }
 
 async function _deleteCliente(id: string): Promise<void> {
   const user = await requirePermission('customers.edit');
+  const { storeId } = await requireStoreScope();
   validateId(id, 'Cliente ID');
-  // Soft delete: preserve customer data and transaction history
-  await softDelete(clientes, id);
+  await db
+    .update(clientes)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(clientes.id, id), eq(clientes.storeId, storeId), isNotDeleted(clientes)));
 
   emitDomainEvent({
     type: 'customer.deleted',
     payload: { customerId: id, name: id },
-    metadata: { userId: user.uid, userEmail: user.email ?? '' },
+    metadata: { userId: user.uid, userEmail: user.email ?? '', storeId },
   });
 }
 
@@ -102,13 +117,24 @@ async function _deleteCliente(id: string): Promise<void> {
 
 async function _fetchFiadoTransactions(): Promise<FiadoTransaction[]> {
   await requirePermission('customers.view');
-  const rows = await db.select().from(fiadoTransactions).orderBy(desc(fiadoTransactions.date)).limit(100);
+  const { storeId } = await requireStoreScope();
+  const rows = await db
+    .select()
+    .from(fiadoTransactions)
+    .where(eq(fiadoTransactions.storeId, storeId))
+    .orderBy(desc(fiadoTransactions.date))
+    .limit(100);
   if (rows.length === 0) return [];
 
   // Batch fetch all fiado items for 'fiado' type transactions
   const fiadoIds = rows.filter((r) => r.type === 'fiado').map((r) => r.id);
   const allFiadoItems =
-    fiadoIds.length > 0 ? await db.select().from(fiadoItems).where(inArray(fiadoItems.fiadoId, fiadoIds)) : [];
+    fiadoIds.length > 0
+      ? await db
+          .select()
+          .from(fiadoItems)
+          .where(and(eq(fiadoItems.storeId, storeId), inArray(fiadoItems.fiadoId, fiadoIds)))
+      : [];
 
   // Group items by fiadoId
   const itemsByFiadoId = new Map<string, SaleItem[]>();
@@ -146,9 +172,13 @@ async function _createFiado(
   items?: SaleItem[],
 ): Promise<void> {
   await requirePermission('customers.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(createFiadoSchema, { clienteId, amount, description, saleFolio, items }, 'createFiado');
   const now = new Date();
-  const clienteRows = await db.select().from(clientes).where(eq(clientes.id, clienteId));
+  const clienteRows = await db
+    .select()
+    .from(clientes)
+    .where(and(eq(clientes.id, clienteId), eq(clientes.storeId, storeId), isNotDeleted(clientes)));
   if (!clienteRows.length) {
     throw new AppError('CLIENTE_NOT_FOUND', 'Cliente no encontrado', 404);
   }
@@ -165,6 +195,7 @@ async function _createFiado(
     description,
     saleFolio: saleFolio ?? null,
     date: now,
+    storeId,
   });
 
   if (items && items.length > 0) {
@@ -178,6 +209,7 @@ async function _createFiado(
         quantity: item.quantity,
         unitPrice: String(item.unitPrice),
         subtotal: String(item.subtotal),
+        storeId,
       });
     }
   }
@@ -188,14 +220,18 @@ async function _createFiado(
       balance: sql`balance::numeric + ${amount}`,
       lastTransaction: now,
     })
-    .where(eq(clientes.id, clienteId));
+    .where(and(eq(clientes.id, clienteId), eq(clientes.storeId, storeId)));
 }
 
 async function _createAbono(clienteId: string, amount: number, description: string): Promise<void> {
   await requirePermission('customers.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(createAbonoSchema, { clienteId, amount, description }, 'createAbono');
   const now = new Date();
-  const clienteRows = await db.select().from(clientes).where(eq(clientes.id, clienteId));
+  const clienteRows = await db
+    .select()
+    .from(clientes)
+    .where(and(eq(clientes.id, clienteId), eq(clientes.storeId, storeId), isNotDeleted(clientes)));
   if (!clienteRows.length) {
     throw new AppError('CLIENTE_NOT_FOUND', 'Cliente no encontrado', 404);
   }
@@ -210,6 +246,7 @@ async function _createAbono(clienteId: string, amount: number, description: stri
     amount: String(amount),
     description,
     date: now,
+    storeId,
   });
 
   await db
@@ -218,7 +255,7 @@ async function _createAbono(clienteId: string, amount: number, description: stri
       balance: sql`greatest(0, balance::numeric - ${amount})`,
       lastTransaction: now,
     })
-    .where(eq(clientes.id, clienteId));
+    .where(and(eq(clientes.id, clienteId), eq(clientes.storeId, storeId)));
 }
 
 // ==================== WRAPPED EXPORTS ====================

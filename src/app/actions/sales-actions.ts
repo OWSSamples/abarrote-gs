@@ -3,6 +3,8 @@
 import { requirePermission, validateId } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { db } from '@/db';
+import { nextTenantSequence } from '@/db/tenant-sequence';
+import { setTenantTransactionContext } from '@/db/tenant-context';
 import {
   saleRecords,
   saleItems,
@@ -12,22 +14,42 @@ import {
   cortesCaja,
   loyaltyTransactions,
   devoluciones,
+  fiadoTransactions,
+  fiadoItems,
 } from '@/db/schema';
-import { eq, desc, sql, inArray, gte } from 'drizzle-orm';
+import { and, eq, desc, sql, inArray, gte } from 'drizzle-orm';
 import type { SaleRecord, SaleItem, SalesData, CorteCaja, HourlySalesData } from '@/types';
 import { numVal } from './_helpers';
 import { adjustStock } from './_stock';
 import { sendNotification, escapeHTML } from './_notifications';
 import { logger } from '@/lib/logger';
-import { createConektaSPEICharge, createConektaOXXOCharge } from '@/lib/conekta-provider';
-import { createStripeSPEICharge, createStripeOXXOCharge } from '@/lib/stripe-provider';
-import { createClipCheckoutCharge, createClipTerminalCharge } from '@/lib/clip-provider';
-import { paymentCharges } from '@/db/schema';
-import { createSaleSchema } from '@/lib/validation/schemas';
-import { publishJob } from '@/infrastructure/qstash';
+import { createCorteCajaSchema, createSaleSchema, deleteSalesSchema } from '@/lib/validation/schemas';
 import { AppError, withLogging } from '@/lib/errors';
-import { withRateLimit, idempotencyCheck, withLock } from '@/infrastructure/redis';
+import {
+  withRateLimit,
+  idempotencyCheck,
+  withLock,
+  checkTieredRateLimit,
+  RateLimitError,
+  idempotencyClear,
+} from '@/infrastructure/redis';
 import { emitDomainEvent } from '@/domain/events';
+import { getStoreConfig } from '@/server/store-config-service';
+import { calculateSalePricing } from '@/domain/services/SalePricingService';
+import { consumeSaleDiscountApproval } from '@/server/sale-discount-approval-service';
+
+const UNSUPPORTED_SINGLE_TENDER_METHODS = new Set([
+  'tarjeta',
+  'tarjeta_web',
+  'qr_cobro',
+  'puntos',
+  'spei_conekta',
+  'oxxo_conekta',
+  'spei_stripe',
+  'oxxo_stripe',
+  'tarjeta_clip',
+  'clip_terminal',
+]);
 
 // ==================== FOLIO ====================
 
@@ -37,6 +59,7 @@ import { emitDomainEvent } from '@/domain/events';
 
 async function _fetchSalesData(): Promise<SalesData[]> {
   await requirePermission('sales.view');
+  const { storeId } = await requireStoreScope();
   const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -61,7 +84,12 @@ async function _fetchSalesData(): Promise<SalesData[]> {
         total: sql<string>`coalesce(sum(total::numeric), 0)`,
       })
       .from(saleRecords)
-      .where(sql`date >= ${weekStart.toISOString()} and date < ${weekEnd.toISOString()} and status != 'cancelada'`)
+      .where(
+        and(
+          eq(saleRecords.storeId, storeId),
+          sql`date >= ${weekStart.toISOString()} and date < ${weekEnd.toISOString()} and status != 'cancelada'`,
+        ),
+      )
       .groupBy(sql`extract(dow from date)`),
     db
       .select({
@@ -70,7 +98,10 @@ async function _fetchSalesData(): Promise<SalesData[]> {
       })
       .from(saleRecords)
       .where(
-        sql`date >= ${prevWeekStart.toISOString()} and date < ${prevWeekEnd.toISOString()} and status != 'cancelada'`,
+        and(
+          eq(saleRecords.storeId, storeId),
+          sql`date >= ${prevWeekStart.toISOString()} and date < ${prevWeekEnd.toISOString()} and status != 'cancelada'`,
+        ),
       )
       .groupBy(sql`extract(dow from date)`),
   ]);
@@ -87,6 +118,7 @@ async function _fetchSalesData(): Promise<SalesData[]> {
 
 async function _fetchHourlySalesData(): Promise<HourlySalesData[]> {
   await requirePermission('sales.view');
+  const { storeId } = await requireStoreScope();
   const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
   const startOfDay = new Date(`${todayStr}T00:00:00-06:00`);
   const endOfDay = new Date(`${todayStr}T23:59:59-06:00`);
@@ -98,7 +130,12 @@ async function _fetchHourlySalesData(): Promise<HourlySalesData[]> {
       count: sql<number>`count(*)::int`,
     })
     .from(saleRecords)
-    .where(sql`date >= ${startOfDay.toISOString()} and date < ${endOfDay.toISOString()} and status != 'cancelada'`)
+    .where(
+      and(
+        eq(saleRecords.storeId, storeId),
+        sql`date >= ${startOfDay.toISOString()} and date < ${endOfDay.toISOString()} and status != 'cancelada'`,
+      ),
+    )
     .groupBy(sql`extract(hour from date)`)
     .orderBy(sql`extract(hour from date)`);
 
@@ -127,12 +164,21 @@ async function _fetchHourlySalesData(): Promise<HourlySalesData[]> {
 
 async function _fetchSaleRecords(): Promise<SaleRecord[]> {
   await requirePermission('sales.view');
-  const rows = await db.select().from(saleRecords).orderBy(desc(saleRecords.date)).limit(100);
+  const { storeId } = await requireStoreScope();
+  const rows = await db
+    .select()
+    .from(saleRecords)
+    .where(eq(saleRecords.storeId, storeId))
+    .orderBy(desc(saleRecords.date))
+    .limit(100);
   if (rows.length === 0) return [];
 
   // Batch fetch all items for all sales in one query
   const saleIds = rows.map((r) => r.id);
-  const allItems = await db.select().from(saleItems).where(inArray(saleItems.saleId, saleIds));
+  const allItems = await db
+    .select()
+    .from(saleItems)
+    .where(and(inArray(saleItems.saleId, saleIds), eq(saleItems.storeId, storeId)));
 
   // Group items by saleId
   const itemsBySaleId = new Map<string, SaleItem[]>();
@@ -173,118 +219,152 @@ async function _fetchSaleRecords(): Promise<SaleRecord[]> {
 }
 
 async function _createSale(
-  saleData: Omit<SaleRecord, 'id' | 'folio' | 'date'> & { clienteId?: string; clientRequestId?: string },
+  saleData: Omit<SaleRecord, 'id' | 'folio' | 'date'> & {
+    clienteId?: string;
+    clientRequestId?: string;
+    discountApprovalToken?: string;
+  },
 ): Promise<SaleRecord> {
   return logger.withTiming(
     'createSale',
     async () => {
       const user = await requirePermission('sales.create');
       const { storeId } = await requireStoreScope();
+      const rateLimit = await checkTieredRateLimit('sales.create', user.uid, {
+        roleId: user.roleName ?? user.roleId,
+      });
+      if (rateLimit.blocked) throw new RateLimitError(rateLimit);
+
+      // Runtime validation happens before idempotency so malformed requests cannot reserve valid keys.
+      const parsed = createSaleSchema.safeParse(saleData);
+      if (!parsed.success) {
+        const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+        logger.warn('createSale validation failed', { action: 'sale_validation_error', issues });
+        throw new AppError('INVALID_SALE', 'Los datos de la venta son inválidos.', 400);
+      }
+      const input = parsed.data;
+
+      if (UNSUPPORTED_SINGLE_TENDER_METHODS.has(input.paymentMethod)) {
+        throw new AppError(
+          'PAYMENT_FLOW_REQUIRES_CONFIRMATION',
+          'Este método requiere un flujo de pago verificado antes de registrar la venta.',
+          409,
+        );
+      }
+
+      const canApplyDiscount =
+        user.roleName === 'Propietario' ||
+        user.roleName === 'Administrador' ||
+        user.permissions.includes('sales.discount');
+      let discountAuthorizedByUid: string | undefined;
+      if (input.discount > 0 && !canApplyDiscount) {
+        if (!input.clientRequestId || !input.discountApprovalToken) {
+          throw new AppError('DISCOUNT_NOT_AUTHORIZED', 'No tienes autorización para aplicar descuentos.', 403);
+        }
+
+        const approval = await consumeSaleDiscountApproval({
+          token: input.discountApprovalToken,
+          requesterUid: user.uid,
+          storeId,
+          context: {
+            operation: 'sale_discount',
+            clientRequestId: input.clientRequestId,
+            discountValue: input.discount,
+            discountType: input.discountType,
+            items: input.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+          },
+        });
+        if (!approval) {
+          throw new AppError(
+            'DISCOUNT_APPROVAL_INVALID',
+            'La autorización del descuento expiró o ya fue utilizada.',
+            403,
+          );
+        }
+        discountAuthorizedByUid = approval.authorizedByUid;
+        logger.info('Supervisor discount approval consumed', {
+          action: 'sale_discount_approval_consumed',
+          requesterUid: user.uid,
+          authorizedByUid: approval.authorizedByUid,
+          storeId,
+        });
+      }
+
+      const storeConfiguration = await getStoreConfig();
 
       // ── Idempotency guard: prevent duplicate sale creation from double-clicks/retries ──
       // Prefer a client-provided request id (one per checkout attempt). Fall back
       // to a content-based key so legacy callers stay protected.
-      const idempotencyKey = saleData.clientRequestId
-        ? `sale:req:${saleData.clientRequestId}`
-        : `sale:${saleData.total}:${saleData.paymentMethod}:${saleData.cajero}:${saleData.amountPaid}`;
-      const isNew = await idempotencyCheck(idempotencyKey, { ttlMs: 10_000 });
+      const idempotencyKey = input.clientRequestId
+        ? `sale:${storeId}:req:${input.clientRequestId}`
+        : `sale:${storeId}:${input.total}:${input.paymentMethod}:${input.cajero}:${input.amountPaid}`;
+      const isNew = await idempotencyCheck(idempotencyKey, { ttlMs: 10 * 60_000 });
       if (!isNew) {
         logger.warn('Duplicate sale creation blocked', { action: 'sale_idempotency_block', key: idempotencyKey });
         throw new Error('Venta duplicada detectada. Espera unos segundos e intenta de nuevo.');
       }
 
-      // ── Runtime validation ──
-      const parsed = createSaleSchema.safeParse(saleData);
-      if (!parsed.success) {
-        const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-        logger.warn('createSale validation failed', { action: 'sale_validation_error', issues });
-        throw new Error(`Datos de venta inválidos: ${issues}`);
-      }
-
       const now = new Date();
-      const cajero = saleData.cajero?.trim() || 'Cajero';
+      const cajero = user.displayName?.trim() || user.email || user.uid;
       const id = `sale-${crypto.randomUUID()}`;
-      const clienteId = saleData.clienteId;
+      const clienteId = input.clienteId;
 
       // ── Distributed lock: prevent concurrent folio/stock race conditions ──
       // Lock by cajero to serialize sales from the same register
-      const { folio, stockAlerts } = await withLock(
-        `sale:register:${cajero}`,
-        async () => {
+      let transactionResult: {
+        folio: string;
+        stockAlerts: { name: string; currentStock: number; minStock: number }[];
+        pricing: ReturnType<typeof calculateSalePricing>;
+      };
+      try {
+        transactionResult = await withLock(
+          `sale:register:${storeId}:${user.uid}`,
+          async () => {
           // ── Transactional core: sale + items + stock + loyalty ──
           // All DB mutations run inside a single transaction so a failure at any
           // step rolls back everything — no more partial sales with wrong stock.
           return db.transaction(async (tx) => {
-            // 1. Folio generation (sequence-based, atomic)
-            await tx.execute(sql`CREATE SEQUENCE IF NOT EXISTS folio_seq START WITH 309001`);
-            const seqResult = await tx.execute(sql`SELECT nextval('folio_seq')::text AS folio`);
-            const seqRows = Array.isArray(seqResult)
-              ? seqResult
-              : ((seqResult as { rows: Record<string, unknown>[] }).rows ?? []);
-            let txFolio = String(seqRows?.[0]?.folio ?? seqRows?.[0]?.val ?? '');
+            await setTenantTransactionContext(tx, storeId, user.uid);
+            // 1. Tenant-local folio generation (atomic and independent per business).
+            const txFolio = String(await nextTenantSequence(tx, storeId, 'sale_folio', 309001));
 
-            const [existing] = await tx.select().from(saleRecords).where(eq(saleRecords.folio, txFolio)).limit(1);
-            if (existing || !txFolio) {
-              await tx.execute(sql`
-        SELECT setval('folio_seq', (SELECT COALESCE(MAX(CASE WHEN folio ~ '^[0-9]+$' THEN folio::bigint END), 309000) FROM sale_records) + 1)
-      `);
-              const retryRes = await tx.execute(sql`SELECT nextval('folio_seq')::text AS folio`);
-              const retryRows = Array.isArray(retryRes)
-                ? retryRes
-                : ((retryRes as { rows: Record<string, unknown>[] }).rows ?? []);
-              txFolio = String(retryRows?.[0]?.folio ?? retryRows?.[0]?.val ?? '');
-            }
-            if (!txFolio) throw new Error('No se pudo generar el folio único');
-
-            // 2. Insert sale record
-            await tx.insert(saleRecords).values({
-              id,
-              folio: txFolio,
-              subtotal: String(saleData.subtotal),
-              iva: String(saleData.iva),
-              cardSurcharge: String(saleData.cardSurcharge),
-              total: String(saleData.total),
-              paymentMethod: saleData.paymentMethod,
-              amountPaid: String(saleData.amountPaid),
-              change: String(saleData.change),
-              cajero,
-              pointsEarned: String(saleData.pointsEarned),
-              pointsUsed: String(saleData.pointsUsed),
-              discount: String(saleData.discount ?? 0),
-              discountType: saleData.discountType ?? 'amount',
-              installments: saleData.installments ?? 1,
-              mpPaymentId: saleData.mpPaymentId ?? null,
-              date: now,
-              storeId,
-            });
-
-            // 3. Insert sale items
-            for (const item of saleData.items) {
-              await tx.insert(saleItems).values({
-                id: `si-${crypto.randomUUID()}`,
-                saleId: id,
-                productId: item.productId,
-                productName: item.productName,
-                sku: item.sku,
-                quantity: item.quantity,
-                unitPrice: String(item.unitPrice),
-                subtotal: String(item.subtotal),
-                storeId,
-              });
-            }
-
-            // 3.5 Stock pre-check with row-level lock to prevent oversells.
-            // Aggregate quantities by productId in case the same product appears in multiple lines.
+            // 2. Lock catalog and customer data before deriving any financial value.
             const required = new Map<string, number>();
-            for (const item of saleData.items) {
+            for (const item of input.items) {
               required.set(item.productId, (required.get(item.productId) ?? 0) + item.quantity);
             }
             const productIds = Array.from(required.keys());
             const lockedRows = await tx
-              .select({ id: products.id, name: products.name, currentStock: products.currentStock })
+              .select({
+                id: products.id,
+                name: products.name,
+                sku: products.sku,
+                unitPrice: products.unitPrice,
+                currentStock: products.currentStock,
+              })
               .from(products)
-              .where(inArray(products.id, productIds))
+              .where(and(eq(products.storeId, storeId), inArray(products.id, productIds)))
               .for('update');
+
+            let customerRow:
+              | { id: string; name: string; points: string; balance: string; creditLimit: string }
+              | undefined;
+            if (clienteId) {
+              [customerRow] = await tx
+                .select({
+                  id: clientes.id,
+                  name: clientes.name,
+                  points: clientes.points,
+                  balance: clientes.balance,
+                  creditLimit: clientes.creditLimit,
+                })
+                .from(clientes)
+                .where(and(eq(clientes.id, clienteId), eq(clientes.storeId, storeId)))
+                .for('update')
+                .limit(1);
+              if (!customerRow) throw new AppError('CUSTOMER_NOT_FOUND', 'El cliente seleccionado no existe.', 404);
+            }
+
             const stockById = new Map(lockedRows.map((r) => [r.id, r]));
             const insufficient: string[] = [];
             for (const [pid, need] of required) {
@@ -305,9 +385,109 @@ async function _createSale(
               );
             }
 
-            // 4. Deduct stock using shared helper (inside tx)
+            const calculated = calculateSalePricing(
+              {
+                items: input.items,
+                discountValue: input.discount,
+                discountType: input.discountType,
+                paymentMethod: input.paymentMethod,
+                amountPaid: input.amountPaid,
+                customerPoints: customerRow ? numVal(customerRow.points) : 0,
+              },
+              lockedRows,
+              storeConfiguration,
+            );
+            const pricing = {
+              ...calculated,
+              pointsEarned: customerRow ? calculated.pointsEarned : 0,
+            };
+
+            if (input.paymentMethod === 'fiado' && customerRow) {
+              const resultingBalance = numVal(customerRow.balance) + pricing.total;
+              if (resultingBalance > numVal(customerRow.creditLimit)) {
+                throw new AppError(
+                  'CREDIT_LIMIT_EXCEEDED',
+                  'La venta excede el límite de crédito disponible del cliente.',
+                  409,
+                );
+              }
+            }
+
+            // 3. Persist only server-derived catalog and financial values.
+            await tx.insert(saleRecords).values({
+              id,
+              folio: txFolio,
+              subtotal: String(pricing.subtotal),
+              iva: String(pricing.iva),
+              cardSurcharge: String(pricing.cardSurcharge),
+              total: String(pricing.total),
+              paymentMethod: input.paymentMethod,
+              amountPaid: String(pricing.amountPaid),
+              change: String(pricing.change),
+              cajero,
+              pointsEarned: String(pricing.pointsEarned),
+              pointsUsed: String(pricing.pointsUsed),
+              discount: String(pricing.discount),
+              discountType: pricing.discountType,
+              installments: input.installments,
+              mpPaymentId: input.mpPaymentId ?? null,
+              date: now,
+              storeId,
+            });
+
+            for (const item of pricing.items) {
+              await tx.insert(saleItems).values({
+                id: `si-${crypto.randomUUID()}`,
+                saleId: id,
+                productId: item.productId,
+                productName: item.productName,
+                sku: item.sku,
+                quantity: item.quantity,
+                unitPrice: String(item.unitPrice),
+                subtotal: String(item.subtotal),
+                storeId,
+              });
+            }
+
+            // 4. Register customer credit atomically with the sale and its line items.
+            if (input.paymentMethod === 'fiado' && customerRow) {
+              const creditId = `fiado-${crypto.randomUUID()}`;
+              await tx.insert(fiadoTransactions).values({
+                id: creditId,
+                clienteId: customerRow.id,
+                clienteName: customerRow.name,
+                type: 'fiado',
+                amount: String(pricing.total),
+                description: `Venta a crédito, folio ${txFolio}`,
+                saleFolio: txFolio,
+                date: now,
+                storeId,
+              });
+              for (const item of pricing.items) {
+                await tx.insert(fiadoItems).values({
+                  id: `fi-${crypto.randomUUID()}`,
+                  fiadoId: creditId,
+                  productId: item.productId,
+                  productName: item.productName,
+                  sku: item.sku,
+                  quantity: item.quantity,
+                  unitPrice: String(item.unitPrice),
+                  subtotal: String(item.subtotal),
+                  storeId,
+                });
+              }
+              await tx
+                .update(clientes)
+                .set({
+                  balance: sql`balance::numeric + ${pricing.total}`,
+                  lastTransaction: now,
+                })
+                .where(and(eq(clientes.id, customerRow.id), eq(clientes.storeId, storeId)));
+            }
+
+            // 5. Deduct stock using shared helper (inside tx)
             const alerts: { name: string; currentStock: number; minStock: number }[] = [];
-            for (const item of saleData.items) {
+            for (const item of pricing.items) {
               const updated = await adjustStock(item.productId, -item.quantity, {
                 tx,
                 now,
@@ -328,29 +508,28 @@ async function _createSale(
               }
             }
 
-            // 5. Loyalty points (inside tx for consistency)
-            if (clienteId) {
-              const [clienteRow] = await tx.select().from(clientes).where(eq(clientes.id, clienteId)).limit(1);
-              const saldoAnterior = clienteRow ? numVal(clienteRow.points) : 0;
+            // 6. Loyalty points (inside tx for consistency)
+            if (clienteId && customerRow) {
+              const saldoAnterior = numVal(customerRow.points);
               let runningBalance = saldoAnterior;
 
               await tx
                 .update(clientes)
                 .set({
-                  points: sql`points::numeric + ${saleData.pointsEarned} - ${saleData.pointsUsed}`,
+                  points: sql`points::numeric + ${pricing.pointsEarned} - ${pricing.pointsUsed}`,
                   lastTransaction: now,
                 })
-                .where(eq(clientes.id, clienteId));
+                .where(and(eq(clientes.id, clienteId), eq(clientes.storeId, storeId)));
 
               // Record canje (redemption) as a separate transaction
-              if (saleData.pointsUsed > 0) {
-                const saldoDespuesCanje = runningBalance - saleData.pointsUsed;
+              if (pricing.pointsUsed > 0) {
+                const saldoDespuesCanje = runningBalance - pricing.pointsUsed;
                 await tx.insert(loyaltyTransactions).values({
                   id: `lt-${crypto.randomUUID()}`,
                   clienteId,
-                  clienteName: clienteRow?.name ?? '',
+                  clienteName: customerRow.name,
                   tipo: 'canje',
-                  puntos: String(-saleData.pointsUsed),
+                  puntos: String(-pricing.pointsUsed),
                   saldoAnterior: String(runningBalance),
                   saldoNuevo: String(saldoDespuesCanje),
                   saleId: id,
@@ -364,14 +543,14 @@ async function _createSale(
               }
 
               // Record acumulacion (earning) as a separate transaction
-              if (saleData.pointsEarned > 0) {
-                const saldoDespuesAcum = runningBalance + saleData.pointsEarned;
+              if (pricing.pointsEarned > 0) {
+                const saldoDespuesAcum = runningBalance + pricing.pointsEarned;
                 await tx.insert(loyaltyTransactions).values({
                   id: `lt-${crypto.randomUUID()}`,
                   clienteId,
-                  clienteName: clienteRow?.name ?? '',
+                  clienteName: customerRow.name,
                   tipo: 'acumulacion',
-                  puntos: String(saleData.pointsEarned),
+                  puntos: String(pricing.pointsEarned),
                   saldoAnterior: String(runningBalance),
                   saldoNuevo: String(saldoDespuesAcum),
                   saleId: id,
@@ -384,11 +563,16 @@ async function _createSale(
               }
             }
 
-            return { folio: txFolio, stockAlerts: alerts };
+            return { folio: txFolio, stockAlerts: alerts, pricing };
           });
         },
-        { ttlMs: 15_000, waitMs: 10_000 },
-      ); // withLock end
+          { ttlMs: 15_000, waitMs: 10_000 },
+        );
+      } catch (error) {
+        await idempotencyClear(idempotencyKey);
+        throw error;
+      }
+      const { folio, stockAlerts, pricing } = transactionResult;
 
       // ── Side effects (outside transaction — non-critical) ──
 
@@ -397,12 +581,13 @@ async function _createSale(
         payload: {
           saleId: id,
           folio,
-          total: saleData.total,
-          paymentMethod: saleData.paymentMethod,
+          total: pricing.total,
+          paymentMethod: input.paymentMethod,
           cajero,
-          itemCount: saleData.items.length,
+          itemCount: pricing.items.length,
+          discountAuthorizedByUid,
         },
-        metadata: { userId: user.uid, userEmail: user.email ?? '' },
+        metadata: { userId: user.uid, userEmail: user.email ?? '', storeId },
       });
 
       // Stock critical alerts — published as background jobs (non-blocking).
@@ -413,287 +598,342 @@ async function _createSale(
           `Producto: ${escapeHTML(alert.name)}\n` +
           `Stock actual: ${alert.currentStock}\n` +
           `Mínimo sugerido: ${alert.minStock}`;
-        void publishJob('notification', { message }, undefined, () => sendNotification(message));
+        void sendNotification(message, storeId);
       }
 
       // Notificación de venta detallada y estética — también async vía qstash
-      const itemsList = saleData.items
+      const itemsList = pricing.items
         .map((it) => `• ${it.quantity}x ${escapeHTML(it.productName)} ($${numVal(String(it.unitPrice)).toFixed(2)})`)
         .join('\n');
 
       const saleMessage =
         `<b>REPORTE DE VENTA (#${folio})</b>\n\n` +
         `Cajero: ${escapeHTML(cajero)}\n` +
-        `Método de Pago: ${saleData.paymentMethod.toUpperCase()}\n` +
+        `Método de Pago: ${input.paymentMethod.toUpperCase()}\n` +
         `---------------------------------\n` +
         `<b>DETALLE DE PRODUCTOS:</b>\n${itemsList}\n` +
         `---------------------------------\n` +
-        `<b>TOTAL: $${numVal(String(saleData.total)).toFixed(2)}</b>\n\n` +
-        (saleData.pointsUsed > 0 ? `Puntos canjeados: ${saleData.pointsUsed}\n` : '') +
+        `<b>TOTAL: $${pricing.total.toFixed(2)}</b>\n\n` +
+        (pricing.pointsUsed > 0 ? `Puntos canjeados: ${pricing.pointsUsed}\n` : '') +
         `Hora: ${now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`;
-      void publishJob('notification', { message: saleMessage }, undefined, () => sendNotification(saleMessage));
-
-      // ── Automated payment charge creation ──
-      // For SPEI/OXXO automated methods, create a charge with the provider
-      // and link it to this sale. The charge returns a CLABE or OXXO reference.
-      let chargeResult: Record<string, unknown> | null = null;
-      const pm = saleData.paymentMethod;
-      const clienteId2 = saleData.clienteId;
-      const customerEmail = 'pos@tienda.local';
-      const customerName = 'Cliente POS';
-      if (clienteId2) {
-        const [c] = await db.select().from(clientes).where(eq(clientes.id, clienteId2)).limit(1);
-        if (c) {
-          // Use name from DB if available
-          Object.assign({ customerName: c.name }, { customerEmail: `${c.id}@pos.local` });
-        }
-      }
-
-      try {
-        if (pm === 'spei_conekta') {
-          const result = await createConektaSPEICharge({
-            amount: numVal(String(saleData.total)),
-            customerName,
-            customerEmail,
-            description: `Venta #${folio}`,
-            saleReference: folio,
-          });
-          // Link charge to sale
-          await db
-            .update(paymentCharges)
-            .set({ saleId: id })
-            .where(eq(paymentCharges.referenceNumber, result.referenceNumber));
-          chargeResult = result as unknown as Record<string, unknown>;
-        } else if (pm === 'oxxo_conekta') {
-          const result = await createConektaOXXOCharge({
-            amount: numVal(String(saleData.total)),
-            customerName,
-            customerEmail,
-            description: `Venta #${folio}`,
-            saleReference: folio,
-          });
-          await db
-            .update(paymentCharges)
-            .set({ saleId: id })
-            .where(eq(paymentCharges.referenceNumber, result.reference));
-          chargeResult = result as unknown as Record<string, unknown>;
-        } else if (pm === 'spei_stripe') {
-          const result = await createStripeSPEICharge({
-            amount: numVal(String(saleData.total)),
-            customerEmail,
-            description: `Venta #${folio}`,
-            saleReference: folio,
-          });
-          await db
-            .update(paymentCharges)
-            .set({ saleId: id })
-            .where(eq(paymentCharges.referenceNumber, result.referenceNumber));
-          chargeResult = result as unknown as Record<string, unknown>;
-        } else if (pm === 'oxxo_stripe') {
-          const result = await createStripeOXXOCharge({
-            amount: numVal(String(saleData.total)),
-            customerEmail,
-            description: `Venta #${folio}`,
-            saleReference: folio,
-          });
-          await db
-            .update(paymentCharges)
-            .set({ saleId: id })
-            .where(eq(paymentCharges.referenceNumber, result.reference));
-          chargeResult = result as unknown as Record<string, unknown>;
-        } else if (pm === 'tarjeta_clip') {
-          const result = await createClipCheckoutCharge({
-            amount: numVal(String(saleData.total)),
-            description: `Venta #${folio}`,
-            saleReference: folio,
-          });
-          await db
-            .update(paymentCharges)
-            .set({ saleId: id })
-            .where(eq(paymentCharges.referenceNumber, result.referenceNumber));
-          chargeResult = result as unknown as Record<string, unknown>;
-        } else if (pm === 'clip_terminal') {
-          const result = await createClipTerminalCharge({
-            amount: numVal(String(saleData.total)),
-            saleReference: folio,
-          });
-          await db
-            .update(paymentCharges)
-            .set({ saleId: id })
-            .where(eq(paymentCharges.referenceNumber, result.referenceNumber));
-          chargeResult = result as unknown as Record<string, unknown>;
-        }
-      } catch (chargeErr) {
-        // Charge creation failed — sale is already recorded.
-        // Log and continue; the cashier can retry the charge separately.
-        logger.error('Automated payment charge creation failed', {
-          action: 'charge_creation_failed',
-          saleId: id,
-          paymentMethod: pm,
-          error: chargeErr instanceof Error ? chargeErr.message : String(chargeErr),
-        });
-      }
-
-      // Schedule background payment status poll (belt + suspenders alongside webhooks)
-      if (chargeResult) {
-        const providerMap: Record<string, 'conekta' | 'stripe' | 'clip'> = {
-          spei_conekta: 'conekta',
-          oxxo_conekta: 'conekta',
-          spei_stripe: 'stripe',
-          oxxo_stripe: 'stripe',
-          tarjeta_clip: 'clip',
-          clip_terminal: 'clip',
-        };
-        const provider = providerMap[pm];
-        if (provider) {
-          const refNum =
-            (chargeResult as Record<string, string>).referenceNumber ||
-            (chargeResult as Record<string, string>).reference;
-          if (refNum) {
-            // Query the charge ID from DB by reference
-            const [charge] = await db
-              .select({ id: paymentCharges.id })
-              .from(paymentCharges)
-              .where(eq(paymentCharges.referenceNumber, refNum))
-              .limit(1);
-
-            if (charge) {
-              // Poll after 2 min delay — gives webhooks time to arrive first
-              publishJob('payment-poll', { chargeId: charge.id, provider }, { delaySec: 120, retries: 5 }).catch(() => {
-                /* fire-and-forget */
-              });
-            }
-          }
-        }
-      }
+      void sendNotification(saleMessage, storeId);
 
       return {
-        ...saleData,
         id,
         folio,
+        items: pricing.items,
+        subtotal: pricing.subtotal,
+        iva: pricing.iva,
+        cardSurcharge: pricing.cardSurcharge,
+        total: pricing.total,
+        paymentMethod: input.paymentMethod,
+        installments: input.installments,
+        mpPaymentId: input.mpPaymentId ?? null,
+        amountPaid: pricing.amountPaid,
+        change: pricing.change,
         date: now.toISOString(),
-        discount: saleData.discount ?? 0,
-        discountType: saleData.discountType ?? 'amount',
-        ...(chargeResult ? { chargeData: chargeResult } : {}),
-      } as SaleRecord;
+        cajero,
+        pointsEarned: pricing.pointsEarned,
+        pointsUsed: pricing.pointsUsed,
+        discount: pricing.discount,
+        discountType: pricing.discountType,
+        status: 'completada',
+      } satisfies SaleRecord;
     },
-    { items: saleData.items.length },
+    { items: Array.isArray(saleData?.items) ? saleData.items.length : 0 },
   );
 }
 
-import { fiadoTransactions, fiadoItems } from '@/db/schema'; // We need this import added if it's missing, let's just make sure.
+type SalesTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-async function _cancelSale(saleId: string): Promise<void> {
-  const user = await requirePermission('sales.cancel');
-  validateId(saleId, 'Sale ID');
-
-  const [sale] = await db.select().from(saleRecords).where(eq(saleRecords.id, saleId)).limit(1);
-  if (!sale) return;
-  if (sale.status === 'cancelada') return;
-
-  const items = await db.select().from(saleItems).where(eq(saleItems.saleId, saleId));
-  for (const item of items) {
-    await adjustStock(item.productId, item.quantity, {
-      meta: {
-        type: 'return',
-        source: 'venta',
-        sourceId: saleId,
-        sourceLabel: `Cancelación folio ${sale.folio}`,
-        unitCost: Number(item.unitPrice),
-        notes: 'Reversión por cancelación de venta',
-        userId: user.uid,
-        userName: user.email ?? null,
-      },
-    });
-  }
-
-  // Si fue fiado, revertir deuda global del cliente y limpiar tickets de deudores
-  if (sale.paymentMethod === 'fiado') {
-    const fTransactions = await db.select().from(fiadoTransactions).where(eq(fiadoTransactions.saleFolio, sale.folio));
-    for (const trx of fTransactions) {
-      await db
-        .update(clientes)
-        .set({ balance: sql`balance - ${trx.amount}` })
-        .where(eq(clientes.id, trx.clienteId));
-
-      await db.delete(fiadoItems).where(eq(fiadoItems.fiadoId, trx.id));
-      await db.delete(fiadoTransactions).where(eq(fiadoTransactions.id, trx.id));
-    }
-  }
-
-  await db.delete(devoluciones).where(eq(devoluciones.saleId, saleId));
-  await db.delete(loyaltyTransactions).where(eq(loyaltyTransactions.saleId, saleId));
-
-  // Guardado histórico en base de datos.
-  await db.update(saleRecords).set({ status: 'cancelada' }).where(eq(saleRecords.id, saleId));
-
-  emitDomainEvent({
-    type: 'sale.cancelled',
-    payload: { saleId, folio: sale.folio },
-    metadata: { userId: user.uid, userEmail: user.email ?? '' },
-  });
+interface CancelledSale {
+  saleId: string;
+  folio: string;
 }
 
-async function _deleteSales(saleIds: string[]): Promise<void> {
-  await requirePermission('sales.cancel');
-  if (saleIds.length === 0) return;
-  saleIds.forEach((id) => validateId(id, 'Sale ID'));
+async function cancelSalesInStore(
+  tx: SalesTransaction,
+  saleIds: string[],
+  storeId: string,
+  actor: { uid: string; email: string },
+): Promise<CancelledSale[]> {
+  await setTenantTransactionContext(tx, storeId, actor.uid);
+  const cancelled: CancelledSale[] = [];
 
-  const activeSales = await db.select().from(saleRecords).where(inArray(saleRecords.id, saleIds));
+  // Stable lock order prevents deadlocks when two bulk cancellations overlap.
+  for (const saleId of [...new Set(saleIds)].sort()) {
+    const [sale] = await tx
+      .select()
+      .from(saleRecords)
+      .where(and(eq(saleRecords.id, saleId), eq(saleRecords.storeId, storeId)))
+      .for('update')
+      .limit(1);
 
-  const pendingSalesToCancel = activeSales.filter((s) => s.status !== 'cancelada');
-  if (pendingSalesToCancel.length === 0) return;
+    if (!sale || sale.status === 'cancelada') continue;
+    if (sale.status !== 'completada') {
+      throw new AppError(
+        'SALE_NOT_CANCELLABLE',
+        `La venta ${sale.folio} no está en un estado que permita cancelación.`,
+        409,
+      );
+    }
 
-  const activeIds = pendingSalesToCancel.map((s) => s.id);
+    const [existingReturn] = await tx
+      .select({ id: devoluciones.id })
+      .from(devoluciones)
+      .where(and(eq(devoluciones.saleId, saleId), eq(devoluciones.storeId, storeId)))
+      .limit(1);
+    if (existingReturn) {
+      throw new AppError(
+        'SALE_HAS_RETURNS',
+        `La venta ${sale.folio} tiene devoluciones registradas y requiere conciliación manual antes de cancelarse.`,
+        409,
+      );
+    }
 
-  // Restaurar stock de todos los items involucrados
-  const allItems = await db.select().from(saleItems).where(inArray(saleItems.saleId, activeIds));
-  const folioById = new Map(pendingSalesToCancel.map((s) => [s.id, s.folio]));
-  await Promise.all(
-    allItems.map((item) =>
-      adjustStock(item.productId, item.quantity, {
+    const items = await tx
+      .select()
+      .from(saleItems)
+      .where(and(eq(saleItems.saleId, saleId), eq(saleItems.storeId, storeId)));
+    for (const item of items) {
+      await adjustStock(item.productId, item.quantity, {
+        tx,
         meta: {
           type: 'return',
           source: 'venta',
-          sourceId: item.saleId,
-          sourceLabel: `Cancelación folio ${folioById.get(item.saleId) ?? ''}`,
-          unitCost: Number(item.unitPrice),
-          notes: 'Reversión por cancelación masiva de ventas',
+          sourceId: saleId,
+          sourceLabel: `Cancelación folio ${sale.folio}`,
+          unitCost: numVal(item.unitPrice),
+          notes: 'Reversión por cancelación de venta',
+          userId: actor.uid,
+          userName: actor.email,
+          storeId,
         },
-      }),
-    ),
-  );
+      });
+    }
 
-  // Revertir deudas por fiado
-  for (const sale of pendingSalesToCancel) {
     if (sale.paymentMethod === 'fiado') {
-      const fTransactions = await db
+      const creditTransactions = await tx
         .select()
         .from(fiadoTransactions)
-        .where(eq(fiadoTransactions.saleFolio, sale.folio));
-      for (const trx of fTransactions) {
-        await db
+        .where(
+          and(
+            eq(fiadoTransactions.saleFolio, sale.folio),
+            eq(fiadoTransactions.storeId, storeId),
+            eq(fiadoTransactions.type, 'fiado'),
+          ),
+        );
+      for (const transaction of creditTransactions) {
+        const now = new Date();
+        const [laterPayment] = await tx
+          .select({ id: fiadoTransactions.id })
+          .from(fiadoTransactions)
+          .where(
+            and(
+              eq(fiadoTransactions.clienteId, transaction.clienteId),
+              eq(fiadoTransactions.storeId, storeId),
+              eq(fiadoTransactions.type, 'abono'),
+              gte(fiadoTransactions.date, transaction.date),
+            ),
+          )
+          .limit(1);
+        if (laterPayment) {
+          throw new AppError(
+            'CREDIT_RECONCILIATION_REQUIRED',
+            `La venta ${sale.folio} ya tiene movimientos de abono posteriores y requiere conciliación manual.`,
+            409,
+          );
+        }
+
+        const [customer] = await tx
+          .select({ balance: clientes.balance })
+          .from(clientes)
+          .where(and(eq(clientes.id, transaction.clienteId), eq(clientes.storeId, storeId)))
+          .for('update')
+          .limit(1);
+        if (!customer || numVal(customer.balance) < numVal(transaction.amount)) {
+          throw new AppError(
+            'CREDIT_RECONCILIATION_REQUIRED',
+            `El saldo de la venta ${sale.folio} ya no puede revertirse automáticamente.`,
+            409,
+          );
+        }
+
+        await tx
           .update(clientes)
-          .set({ balance: sql`balance - ${trx.amount}` })
-          .where(eq(clientes.id, trx.clienteId));
-        await db.delete(fiadoItems).where(eq(fiadoItems.fiadoId, trx.id));
-        await db.delete(fiadoTransactions).where(eq(fiadoTransactions.id, trx.id));
+          .set({
+            balance: sql`balance::numeric - ${transaction.amount}`,
+            lastTransaction: now,
+          })
+          .where(and(eq(clientes.id, transaction.clienteId), eq(clientes.storeId, storeId)));
+        await tx.insert(fiadoTransactions).values({
+          id: `abono-${crypto.randomUUID()}`,
+          clienteId: transaction.clienteId,
+          clienteName: transaction.clienteName,
+          type: 'abono',
+          amount: transaction.amount,
+          description: `Reversión por cancelación de venta ${sale.folio}`,
+          saleFolio: sale.folio,
+          date: now,
+          storeId,
+        });
       }
     }
+
+    const saleLoyaltyTransactions = await tx
+      .select()
+      .from(loyaltyTransactions)
+      .where(
+        and(eq(loyaltyTransactions.saleId, saleId), eq(loyaltyTransactions.storeId, storeId)),
+      );
+    const pointsByCustomer = new Map<string, number>();
+    for (const transaction of saleLoyaltyTransactions) {
+      pointsByCustomer.set(
+        transaction.clienteId,
+        (pointsByCustomer.get(transaction.clienteId) ?? 0) + numVal(transaction.puntos),
+      );
+    }
+
+    for (const customerId of [...pointsByCustomer.keys()].sort()) {
+      const pointDelta = pointsByCustomer.get(customerId) ?? 0;
+      if (pointDelta === 0) continue;
+
+      const [customer] = await tx
+        .select({ name: clientes.name, points: clientes.points })
+        .from(clientes)
+        .where(and(eq(clientes.id, customerId), eq(clientes.storeId, storeId)))
+        .for('update')
+        .limit(1);
+      if (!customer) continue;
+
+      const previousBalance = numVal(customer.points);
+      const newBalance = previousBalance - pointDelta;
+      if (newBalance < 0) {
+        throw new AppError(
+          'LOYALTY_RECONCILIATION_REQUIRED',
+          `Los puntos obtenidos en la venta ${sale.folio} ya fueron utilizados y requieren conciliación manual.`,
+          409,
+        );
+      }
+      const now = new Date();
+      await tx
+        .update(clientes)
+        .set({ points: String(newBalance), lastTransaction: now })
+        .where(and(eq(clientes.id, customerId), eq(clientes.storeId, storeId)));
+      await tx.insert(loyaltyTransactions).values({
+        id: `lt-${crypto.randomUUID()}`,
+        clienteId: customerId,
+        clienteName: customer.name,
+        tipo: 'ajuste',
+        puntos: String(-pointDelta),
+        saldoAnterior: String(previousBalance),
+        saldoNuevo: String(newBalance),
+        saleId,
+        saleFolio: sale.folio,
+        notas: `Reversión por cancelación de venta ${sale.folio}`,
+        cajero: actor.email || 'Sistema',
+        fecha: now,
+        storeId,
+      });
+    }
+
+    await tx
+      .update(saleRecords)
+      .set({ status: 'cancelada' })
+      .where(and(eq(saleRecords.id, saleId), eq(saleRecords.storeId, storeId)));
+    cancelled.push({ saleId, folio: sale.folio });
   }
 
-  await db.delete(devoluciones).where(inArray(devoluciones.saleId, activeIds));
-  await db.delete(loyaltyTransactions).where(inArray(loyaltyTransactions.saleId, activeIds));
+  return cancelled;
+}
 
-  // Guardado histórico
-  await db.update(saleRecords).set({ status: 'cancelada' }).where(inArray(saleRecords.id, activeIds));
+function emitCancellationEvents(
+  cancelled: CancelledSale[],
+  actor: { uid: string; email: string },
+  storeId: string,
+): void {
+  for (const sale of cancelled) {
+    emitDomainEvent({
+      type: 'sale.cancelled',
+      payload: { saleId: sale.saleId, folio: sale.folio },
+      metadata: { userId: actor.uid, userEmail: actor.email, storeId },
+    });
+  }
+}
+
+async function _cancelSale(saleId: string): Promise<void> {
+  const user = await requirePermission('sales.cancel');
+  const { storeId } = await requireStoreScope();
+  validateId(saleId, 'Sale ID');
+
+  const cancelled = await db.transaction((tx) => cancelSalesInStore(tx, [saleId], storeId, user));
+  emitCancellationEvents(cancelled, user, storeId);
+}
+
+async function _deleteSales(saleIds: string[]): Promise<void> {
+  const user = await requirePermission('sales.cancel');
+  const { storeId } = await requireStoreScope();
+  if (saleIds.length === 0) return;
+  const parsed = deleteSalesSchema.safeParse({ saleIds });
+  if (!parsed.success) {
+    throw new AppError('INVALID_SALE_IDS', 'La selección de ventas no es válida.', 400);
+  }
+
+  const cancelled = await db.transaction((tx) =>
+    cancelSalesInStore(tx, parsed.data.saleIds, storeId, user),
+  );
+  emitCancellationEvents(cancelled, user, storeId);
 }
 
 // ==================== CORTES DE CAJA ====================
 
+const CASH_PAYMENT_METHODS = new Set(['efectivo']);
+const CARD_PAYMENT_METHODS = new Set([
+  'tarjeta',
+  'tarjeta_web',
+  'tarjeta_manual',
+  'oxxo_conekta',
+  'oxxo_stripe',
+  'tarjeta_clip',
+  'clip_terminal',
+]);
+const TRANSFER_PAYMENT_METHODS = new Set([
+  'transferencia',
+  'spei',
+  'spei_conekta',
+  'spei_stripe',
+  'paypal',
+  'qr_cobro',
+  'puntos',
+]);
+
+function summarizeSalesByPaymentMethod(rows: (typeof saleRecords.$inferSelect)[]) {
+  const sum = (methods: Set<string>) =>
+    rows.filter((sale) => methods.has(sale.paymentMethod)).reduce((total, sale) => total + numVal(sale.total), 0);
+  const ventasEfectivo = sum(CASH_PAYMENT_METHODS);
+  const ventasTarjeta = sum(CARD_PAYMENT_METHODS);
+  const ventasTransferencia = sum(TRANSFER_PAYMENT_METHODS);
+  const ventasFiado = sum(new Set(['fiado']));
+
+  return {
+    ventasEfectivo,
+    ventasTarjeta,
+    ventasTransferencia,
+    ventasFiado,
+    totalVentas: ventasEfectivo + ventasTarjeta + ventasTransferencia + ventasFiado,
+    totalTransacciones: rows.length,
+  };
+}
+
 async function _fetchCortesHistory(): Promise<CorteCaja[]> {
   await requirePermission('corte.view');
-  const rows = await db.select().from(cortesCaja).orderBy(desc(cortesCaja.fecha)).limit(30);
+  const { storeId } = await requireStoreScope();
+  const rows = await db
+    .select()
+    .from(cortesCaja)
+    .where(eq(cortesCaja.storeId, storeId))
+    .orderBy(desc(cortesCaja.fecha))
+    .limit(30);
   return rows.map((r) => ({
     id: r.id,
     fecha: r.fecha.toISOString(),
@@ -721,64 +961,51 @@ async function _createCorteCaja(data: {
   notas: string;
 }): Promise<CorteCaja> {
   await requirePermission('corte.create');
+  const { storeId } = await requireStoreScope();
+  const parsed = createCorteCajaSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new AppError('INVALID_CASH_CLOSE', 'Los datos del corte de caja son inválidos.', 400);
+  }
+  const input = parsed.data;
   const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
 
   const salesRows = await db
     .select()
     .from(saleRecords)
     .where(
-      sql`(${saleRecords.date} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date AND ${saleRecords.status} != 'cancelada'`,
+      and(
+        eq(saleRecords.storeId, storeId),
+        sql`(${saleRecords.date} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date AND ${saleRecords.status} != 'cancelada'`,
+      ),
     );
 
-  const EFECTIVO_METHODS = new Set(['efectivo']);
-  const TARJETA_METHODS = new Set([
-    'tarjeta',
-    'tarjeta_web',
-    'tarjeta_manual',
-    'oxxo_conekta',
-    'oxxo_stripe',
-    'tarjeta_clip',
-    'clip_terminal',
-  ]);
-  const TRANSFER_METHODS = new Set([
-    'transferencia',
-    'spei',
-    'spei_conekta',
-    'spei_stripe',
-    'paypal',
-    'qr_cobro',
-    'puntos',
-  ]);
-  const FIADO_METHODS = new Set(['fiado']);
-
-  const ventasEfectivo = salesRows
-    .filter((s) => EFECTIVO_METHODS.has(s.paymentMethod))
-    .reduce((sum, s) => sum + numVal(s.total), 0);
-  const ventasTarjeta = salesRows
-    .filter((s) => TARJETA_METHODS.has(s.paymentMethod))
-    .reduce((sum, s) => sum + numVal(s.total), 0);
-  const ventasTransferencia = salesRows
-    .filter((s) => TRANSFER_METHODS.has(s.paymentMethod))
-    .reduce((sum, s) => sum + numVal(s.total), 0);
-  const ventasFiado = salesRows
-    .filter((s) => FIADO_METHODS.has(s.paymentMethod))
-    .reduce((sum, s) => sum + numVal(s.total), 0);
-  const totalVentas = ventasEfectivo + ventasTarjeta + ventasTransferencia + ventasFiado;
-  const totalTransacciones = salesRows.length;
+  const {
+    ventasEfectivo,
+    ventasTarjeta,
+    ventasTransferencia,
+    ventasFiado,
+    totalVentas,
+    totalTransacciones,
+  } = summarizeSalesByPaymentMethod(salesRows);
 
   const gastosRows = await db
     .select()
     .from(gastos)
-    .where(sql`(${gastos.fecha} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`);
+    .where(
+      and(
+        eq(gastos.storeId, storeId),
+        sql`(${gastos.fecha} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`,
+      ),
+    );
   const gastosDelDia = gastosRows.reduce((sum, g) => sum + numVal(g.monto), 0);
 
-  const efectivoEsperado = data.fondoInicial + ventasEfectivo - gastosDelDia;
-  const diferencia = data.efectivoContado - efectivoEsperado;
+  const efectivoEsperado = input.fondoInicial + ventasEfectivo - gastosDelDia;
+  const diferencia = input.efectivoContado - efectivoEsperado;
 
   const corte: CorteCaja = {
     id: `corte-${crypto.randomUUID()}`,
     fecha: new Date().toISOString(),
-    cajero: data.cajero,
+    cajero: input.cajero.trim(),
     ventasEfectivo,
     ventasTarjeta,
     ventasTransferencia,
@@ -786,11 +1013,11 @@ async function _createCorteCaja(data: {
     totalVentas,
     totalTransacciones,
     efectivoEsperado,
-    efectivoContado: data.efectivoContado,
+    efectivoContado: input.efectivoContado,
     diferencia,
-    fondoInicial: data.fondoInicial,
+    fondoInicial: input.fondoInicial,
     gastosDelDia,
-    notas: data.notas,
+    notas: input.notas,
     status: 'cerrado',
   };
 
@@ -811,6 +1038,7 @@ async function _createCorteCaja(data: {
     gastosDelDia: String(corte.gastosDelDia),
     notas: corte.notas,
     status: corte.status,
+    storeId,
   });
 
   await sendNotification(
@@ -827,73 +1055,92 @@ async function _createCorteCaja(data: {
 }
 
 async function _createAutoCorteCaja(): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  await requirePermission('corte.create');
+  const { storeId } = await requireStoreScope();
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
 
-  const existingCortes = await db.select().from(cortesCaja);
-  const todayCorte = existingCortes.find((c) => c.fecha.toISOString().startsWith(today));
-  if (todayCorte) return;
+  await withLock(
+    `corte:auto:${storeId}:${todayStr}`,
+    async () => {
+      const [existingCorte] = await db
+        .select({ id: cortesCaja.id })
+        .from(cortesCaja)
+        .where(
+          and(
+            eq(cortesCaja.storeId, storeId),
+            sql`(${cortesCaja.fecha} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`,
+          ),
+        )
+        .limit(1);
+      if (existingCorte) return;
 
-  const allSales = await db.select().from(saleRecords);
-  const todaySales = allSales.filter((s) => s.date.toISOString().startsWith(today) && s.status !== 'cancelada');
-  if (todaySales.length === 0) return;
+      const todaySales = await db
+        .select()
+        .from(saleRecords)
+        .where(
+          and(
+            eq(saleRecords.storeId, storeId),
+            sql`(${saleRecords.date} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date AND ${saleRecords.status} != 'cancelada'`,
+          ),
+        );
+      if (todaySales.length === 0) return;
 
-  const ventasEfectivo = todaySales
-    .filter((s) => s.paymentMethod === 'efectivo')
-    .reduce((sum, s) => sum + parseFloat(String(s.total)), 0);
-  const ventasTarjeta = todaySales
-    .filter((s) => s.paymentMethod === 'tarjeta')
-    .reduce((sum, s) => sum + parseFloat(String(s.total)), 0);
-  const ventasTransferencia = todaySales
-    .filter((s) => s.paymentMethod === 'transferencia')
-    .reduce((sum, s) => sum + parseFloat(String(s.total)), 0);
-  const ventasFiado = todaySales
-    .filter((s) => s.paymentMethod === 'fiado')
-    .reduce((sum, s) => sum + parseFloat(String(s.total)), 0);
-  const totalVentas = ventasEfectivo + ventasTarjeta + ventasTransferencia + ventasFiado;
+      const summary = summarizeSalesByPaymentMethod(todaySales);
+      const todayGastosRows = await db
+        .select({ monto: gastos.monto })
+        .from(gastos)
+        .where(
+          and(
+            eq(gastos.storeId, storeId),
+            sql`(${gastos.fecha} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`,
+          ),
+        );
+      const todayGastos = todayGastosRows.reduce((sum, gasto) => sum + numVal(gasto.monto), 0);
+      const fondoInicial = 500;
+      const efectivoEsperado = fondoInicial + summary.ventasEfectivo - todayGastos;
 
-  // Query only today's gastos at DB level (not full table scan)
-  const todayStart = new Date(today + 'T00:00:00.000Z');
-  const todayGastosRows = await db
-    .select({ monto: gastos.monto })
-    .from(gastos)
-    .where(gte(gastos.fecha, todayStart));
-  const todayGastos = todayGastosRows.reduce((sum, g) => sum + parseFloat(String(g.monto)), 0);
-
-  const fondoInicial = 500;
-  const efectivoEsperado = fondoInicial + ventasEfectivo - todayGastos;
-
-  await db.insert(cortesCaja).values({
-    id: crypto.randomUUID(),
-    fecha: new Date(),
-    cajero: 'Sistema (automatico)',
-    ventasEfectivo: String(ventasEfectivo),
-    ventasTarjeta: String(ventasTarjeta),
-    ventasTransferencia: String(ventasTransferencia),
-    ventasFiado: String(ventasFiado),
-    totalVentas: String(totalVentas),
-    totalTransacciones: todaySales.length,
-    efectivoEsperado: String(efectivoEsperado),
-    efectivoContado: String(efectivoEsperado),
-    diferencia: '0',
-    fondoInicial: String(fondoInicial),
-    gastosDelDia: String(todayGastos),
-    notas: 'Corte automatico generado a medianoche',
-    status: 'cerrado',
-  });
+      await db.insert(cortesCaja).values({
+        id: `corte-${crypto.randomUUID()}`,
+        fecha: new Date(),
+        cajero: 'Sistema (automático)',
+        ventasEfectivo: String(summary.ventasEfectivo),
+        ventasTarjeta: String(summary.ventasTarjeta),
+        ventasTransferencia: String(summary.ventasTransferencia),
+        ventasFiado: String(summary.ventasFiado),
+        totalVentas: String(summary.totalVentas),
+        totalTransacciones: summary.totalTransacciones,
+        efectivoEsperado: String(efectivoEsperado),
+        efectivoContado: String(efectivoEsperado),
+        diferencia: '0',
+        fondoInicial: String(fondoInicial),
+        gastosDelDia: String(todayGastos),
+        notas: 'Corte automático generado a medianoche',
+        status: 'cerrado',
+        storeId,
+      });
+    },
+    { ttlMs: 15_000, waitMs: 2_000 },
+  );
 }
 
 async function _deleteCortes(corteIds: string[]): Promise<void> {
   await requirePermission('corte.create');
+  const { storeId } = await requireStoreScope();
   if (corteIds.length === 0) return;
+  if (corteIds.length > 100) {
+    throw new AppError('TOO_MANY_CASH_CLOSE_IDS', 'Solo puedes eliminar hasta 100 cortes por operación.', 400);
+  }
   corteIds.forEach((id) => validateId(id, 'Corte ID'));
-  await db.delete(cortesCaja).where(inArray(cortesCaja.id, corteIds));
+  await db
+    .delete(cortesCaja)
+    .where(and(inArray(cortesCaja.id, corteIds), eq(cortesCaja.storeId, storeId)));
 }
 
 // ==================== EXPORTS WITH LOGGING ====================
 export const fetchSalesData = withLogging('sales.fetchSalesData', _fetchSalesData);
 export const fetchHourlySalesData = withLogging('sales.fetchHourlySalesData', _fetchHourlySalesData);
 export const fetchSaleRecords = withLogging('sales.fetchSaleRecords', _fetchSaleRecords);
-export const createSale = withRateLimit('sales.createSale', withLogging('sales.createSale', _createSale));
+export const createSale = withLogging('sales.createSale', _createSale);
 export const cancelSale = withRateLimit('sales.cancelSale', withLogging('sales.cancelSale', _cancelSale));
 export const deleteSales = withRateLimit('sales.deleteSales', withLogging('sales.deleteSales', _deleteSales));
 export const fetchCortesHistory = withLogging('sales.fetchCortesHistory', _fetchCortesHistory);

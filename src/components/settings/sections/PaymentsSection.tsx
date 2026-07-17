@@ -51,7 +51,7 @@ interface MPConnectionStatus {
 interface ClipStatus {
   connected: boolean;
   environment: string | null;
-  apiKey: string | null;
+  hasApiKey: boolean;
   serialNumber: string | null;
 }
 
@@ -279,11 +279,10 @@ export function PaymentsSection({
         setClipStatus({
           connected: true,
           environment: clipEnv,
-          apiKey: clipApiKey,
+          hasApiKey: true,
           serialNumber: clipSerialNumber || null,
         });
         updateField('clipEnabled', true);
-        updateField('clipApiKey', clipApiKey);
         if (clipSerialNumber) updateField('clipSerialNumber', clipSerialNumber);
         setClipApiKey('');
         setClipSecretKey('');
@@ -301,7 +300,7 @@ export function PaymentsSection({
   const handleClipDisconnect = useCallback(async () => {
     try {
       await disconnectClipAction();
-      setClipStatus({ connected: false, environment: null, apiKey: null, serialNumber: null });
+      setClipStatus({ connected: false, environment: null, hasApiKey: false, serialNumber: null });
       updateField('clipEnabled', false);
       setClipDisconnectOpen(false);
     } catch (err) {
@@ -657,10 +656,10 @@ export function PaymentsSection({
                   <BlockStack gap="300">
                     <Box background="bg-surface-secondary" padding="300" borderRadius="200">
                       <BlockStack gap="200">
-                        {clipStatus.apiKey && (
+                        {clipStatus.hasApiKey && (
                           <InlineStack align="space-between">
                             <Text variant="bodySm" as="span" tone="subdued">API Key</Text>
-                            <Text variant="bodySm" as="span" tone="subdued">{clipStatus.apiKey.slice(0, 12)}…</Text>
+                            <Text variant="bodySm" as="span" tone="subdued">Configurada</Text>
                           </InlineStack>
                         )}
                         {clipStatus.serialNumber && (

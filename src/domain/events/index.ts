@@ -28,7 +28,7 @@
  * emitDomainEvent({
  *   type: 'sale.created',
  *   payload: { saleId, folio, total, cajero },
- *   metadata: { userId, userEmail },
+ *   metadata: { userId, userEmail, storeId },
  * });
  * ```
  */
@@ -58,6 +58,7 @@ interface BaseEvent {
   metadata: {
     userId: string;
     userEmail: string;
+    storeId: string;
     timestamp?: Date;
     requestId?: string;
   };
@@ -72,6 +73,7 @@ export interface SaleCreatedEvent extends BaseEvent {
     paymentMethod: string;
     cajero: string;
     itemCount: number;
+    discountAuthorizedByUid?: string;
   };
 }
 

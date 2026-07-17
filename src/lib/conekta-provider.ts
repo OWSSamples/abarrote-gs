@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 import { Configuration, OrdersApi } from 'conekta';
 import crypto from 'crypto';
@@ -8,7 +8,6 @@ import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 import { conektaBreaker } from '@/infrastructure/circuit-breaker';
-import { env } from '@/lib/env';
 
 // ── Types ──
 
@@ -35,19 +34,20 @@ export interface ConektaChargeStatus {
   id: string;
   status: 'pending' | 'paid' | 'expired' | 'failed';
   paidAt: Date | null;
+  amount: number | null;
+  currency: string | null;
 }
 
 // ── Client Factory ──
 
-async function getConektaClient(): Promise<OrdersApi> {
-  // Try DB connection first, then env fallback
+async function getConektaClient(storeId: string): Promise<OrdersApi> {
   const [connection] = await db
     .select()
     .from(paymentProviderConnections)
     .where(
       and(
         eq(paymentProviderConnections.provider, 'conekta'),
-        eq(paymentProviderConnections.storeId, 'main'),
+        eq(paymentProviderConnections.storeId, storeId),
         eq(paymentProviderConnections.status, 'connected'),
       ),
     )
@@ -55,25 +55,20 @@ async function getConektaClient(): Promise<OrdersApi> {
 
   let apiKey: string;
 
-  if (connection?.accessTokenEnc) {
-    apiKey = decrypt(connection.accessTokenEnc);
-  } else if (env.CONEKTA_PRIVATE_KEY) {
-    apiKey = env.CONEKTA_PRIVATE_KEY;
-  } else {
+  if (!connection?.accessTokenEnc) {
     throw new Error('Conekta no configurado. Agrega tu API Key en Configuración → Pagos.');
   }
+
+  apiKey = decrypt(connection.accessTokenEnc);
 
   const config = new Configuration({ accessToken: apiKey });
   return new OrdersApi(config);
 }
 
-function _getConektaEnvironment(): 'production' | 'sandbox' {
-  return env.CONEKTA_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
-}
-
 // ── SPEI Charge ──
 
 export async function createConektaSPEICharge(params: {
+  storeId: string;
   amount: number;
   customerName: string;
   customerEmail: string;
@@ -82,8 +77,8 @@ export async function createConektaSPEICharge(params: {
   expirationHours?: number;
 }): Promise<ConektaSPEIResult> {
   return conektaBreaker.execute(async () => {
-    const { amount, customerName, customerEmail, description, saleReference, expirationHours = 72 } = params;
-    const ordersApi = await getConektaClient();
+    const { storeId, amount, customerName, customerEmail, description, saleReference, expirationHours = 72 } = params;
+    const ordersApi = await getConektaClient(storeId);
 
     const amountCents = Math.round(amount * 100);
     const expiresAt = Math.floor(Date.now() / 1000) + expirationHours * 3600;
@@ -134,7 +129,7 @@ export async function createConektaSPEICharge(params: {
       provider: 'conekta',
       providerChargeId: charge.id ?? order.id ?? '',
       saleId: null,
-      storeId: 'main',
+      storeId,
       amount: amount.toFixed(2),
       currency: 'MXN',
       paymentMethod: 'spei_conekta',
@@ -169,6 +164,7 @@ export async function createConektaSPEICharge(params: {
 // ── OXXO Charge ──
 
 export async function createConektaOXXOCharge(params: {
+  storeId: string;
   amount: number;
   customerName: string;
   customerEmail: string;
@@ -177,8 +173,8 @@ export async function createConektaOXXOCharge(params: {
   expirationHours?: number;
 }): Promise<ConektaOXXOResult> {
   return conektaBreaker.execute(async () => {
-    const { amount, customerName, customerEmail, description, saleReference, expirationHours = 72 } = params;
-    const ordersApi = await getConektaClient();
+    const { storeId, amount, customerName, customerEmail, description, saleReference, expirationHours = 72 } = params;
+    const ordersApi = await getConektaClient(storeId);
 
     const amountCents = Math.round(amount * 100);
     const expiresAt = Math.floor(Date.now() / 1000) + expirationHours * 3600;
@@ -227,7 +223,7 @@ export async function createConektaOXXOCharge(params: {
       provider: 'conekta',
       providerChargeId: charge.id ?? order.id ?? '',
       saleId: null,
-      storeId: 'main',
+      storeId,
       amount: amount.toFixed(2),
       currency: 'MXN',
       paymentMethod: 'oxxo_conekta',
@@ -260,30 +256,45 @@ export async function createConektaOXXOCharge(params: {
 
 // ── Charge Status ──
 
-export async function getConektaChargeStatus(orderId: string): Promise<ConektaChargeStatus> {
+export async function getConektaChargeStatus(
+  orderId: string,
+  expectedChargeId: string | undefined,
+  storeId: string,
+): Promise<ConektaChargeStatus> {
   return conektaBreaker.execute(async () => {
-    const ordersApi = await getConektaClient();
+    const ordersApi = await getConektaClient(storeId);
     const response = await ordersApi.getOrderById(orderId);
     const order = response.data;
-    const charge = order.charges?.data?.[0];
+    const charges = order.charges?.data ?? [];
+    const charge = expectedChargeId
+      ? charges.find((candidate) => candidate.id === expectedChargeId)
+      : charges.length === 1
+        ? charges[0]
+        : undefined;
 
     if (!charge) {
-      throw new Error('Cargo no encontrado en Conekta');
+      throw new Error('No fue posible conciliar un cargo único en Conekta');
     }
 
     const status =
       charge.status === 'paid'
         ? ('paid' as const)
-        : charge.status === 'expired'
+      : charge.status === 'expired'
           ? ('expired' as const)
-          : charge.status === 'pending_payment'
-            ? ('pending' as const)
-            : ('failed' as const);
+          : charge.status === 'declined' || charge.status === 'cancelled'
+            ? ('failed' as const)
+            : ('pending' as const);
+
+    const orderFinancials = order as typeof order & { amount?: number; currency?: string };
+    const amountCents = Number(orderFinancials.amount);
 
     return {
       id: charge.id ?? orderId,
       status,
       paidAt: status === 'paid' ? new Date((charge.paid_at ?? 0) * 1000) : null,
+      amount: Number.isFinite(amountCents) ? amountCents / 100 : null,
+      currency:
+        typeof orderFinancials.currency === 'string' ? orderFinancials.currency.toUpperCase() : null,
     };
   }); // conektaBreaker.execute end
 }
@@ -294,7 +305,7 @@ export async function connectConekta(params: {
   privateKey: string;
   publicKey: string;
   environment: 'sandbox' | 'production';
-}): Promise<{ success: boolean; message: string }> {
+}, storeId: string): Promise<{ success: boolean; message: string }> {
   const { privateKey, publicKey, environment } = params;
 
   // Validate key by making a test request
@@ -321,12 +332,12 @@ export async function connectConekta(params: {
   const existing = await db
     .select()
     .from(paymentProviderConnections)
-    .where(and(eq(paymentProviderConnections.provider, 'conekta'), eq(paymentProviderConnections.storeId, 'main')))
+    .where(and(eq(paymentProviderConnections.provider, 'conekta'), eq(paymentProviderConnections.storeId, storeId)))
     .limit(1);
 
   const connectionData = {
     provider: 'conekta' as const,
-    storeId: 'main',
+    storeId,
     status: 'connected',
     accessTokenEnc: encrypt(privateKey),
     publicKey,
@@ -352,7 +363,7 @@ export async function connectConekta(params: {
   return { success: true, message: `Conekta conectado en modo ${environment}` };
 }
 
-export async function disconnectConekta(): Promise<void> {
+export async function disconnectConekta(storeId: string): Promise<void> {
   await db
     .update(paymentProviderConnections)
     .set({
@@ -362,12 +373,12 @@ export async function disconnectConekta(): Promise<void> {
       disconnectedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(and(eq(paymentProviderConnections.provider, 'conekta'), eq(paymentProviderConnections.storeId, 'main')));
+    .where(and(eq(paymentProviderConnections.provider, 'conekta'), eq(paymentProviderConnections.storeId, storeId)));
 
   logger.info('Conekta disconnected', { action: 'conekta_disconnect' });
 }
 
-export async function getConektaConnectionStatus(): Promise<{
+export async function getConektaConnectionStatus(storeId: string): Promise<{
   connected: boolean;
   environment: string | null;
   publicKey: string | null;
@@ -375,7 +386,7 @@ export async function getConektaConnectionStatus(): Promise<{
   const [connection] = await db
     .select()
     .from(paymentProviderConnections)
-    .where(and(eq(paymentProviderConnections.provider, 'conekta'), eq(paymentProviderConnections.storeId, 'main')))
+    .where(and(eq(paymentProviderConnections.provider, 'conekta'), eq(paymentProviderConnections.storeId, storeId)))
     .limit(1);
 
   if (!connection || connection.status !== 'connected') {

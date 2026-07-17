@@ -4,12 +4,17 @@ import { cookies, headers } from 'next/headers';
 import { createHash, randomBytes } from 'node:crypto';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db';
-import { mfaRecoveryCodes, userRoles } from '@/db/schema';
+import { mfaRecoveryCodes, userIdentities } from '@/db/schema';
 import { verifyIdToken, adminSetUserMfaPreference, getCognitoUser } from '@/lib/cognito-admin';
 import { sendEmail } from '@/lib/email';
 import { mfaActivationReminderTemplate } from '@/lib/email-templates';
 import { logger } from '@/lib/logger';
-import { fetchStoreConfig } from './store-config-actions';
+import {
+  getEmailDomain,
+  hashIdentifierForLog,
+  normalizeEmailAddress as normalizeEmailForLog,
+} from '@/lib/security/redaction';
+import { getStoreConfig } from '@/server/store-config-service';
 
 // ══════════════════════════════════════════════════════════════
 // MFA RECOVERY CODES
@@ -119,9 +124,9 @@ export async function generateRecoveryCodesAction(): Promise<GenerateRecoveryCod
 
   // Verify the user actually exists in our DB (avoid orphan rows).
   const profile = await db
-    .select({ id: userRoles.id, email: userRoles.email })
-    .from(userRoles)
-    .where(eq(userRoles.cognitoSub, user.sub))
+    .select({ cognitoSub: userIdentities.cognitoSub, email: userIdentities.email })
+    .from(userIdentities)
+    .where(eq(userIdentities.cognitoSub, user.sub))
     .limit(1);
 
   if (profile.length === 0) {
@@ -166,9 +171,9 @@ export async function sendMfaActivationReminderAction(): Promise<MfaActivationRe
   }
 
   const profile = await db
-    .select({ email: userRoles.email, displayName: userRoles.displayName })
-    .from(userRoles)
-    .where(eq(userRoles.cognitoSub, user.sub))
+    .select({ email: userIdentities.email, displayName: userIdentities.displayName })
+    .from(userIdentities)
+    .where(eq(userIdentities.cognitoSub, user.sub))
     .limit(1);
 
   const profileEmail = normalizeEmailAddress(profile[0]?.email || user.email);
@@ -176,7 +181,7 @@ export async function sendMfaActivationReminderAction(): Promise<MfaActivationRe
     return { ok: false, skipped: true, error: 'El perfil no tiene un correo válido para enviar el recordatorio.' };
   }
 
-  const config = await fetchStoreConfig();
+  const config = await getStoreConfig();
   if (!config.emailEnabled || !config.emailSecurityAlertEnabled) {
     return { ok: false, skipped: true, email: profileEmail, error: 'Los correos de seguridad no están habilitados.' };
   }
@@ -191,8 +196,13 @@ export async function sendMfaActivationReminderAction(): Promise<MfaActivationRe
   });
 
   const subject = config.emailSubjectPrefix ? `${config.emailSubjectPrefix} ${template.subject}` : template.subject;
+  const normalizedProfileEmail = normalizeEmailForLog(profileEmail);
+  const emailLog = {
+    email_hash: await hashIdentifierForLog(normalizedProfileEmail),
+    email_domain: getEmailDomain(normalizedProfileEmail),
+  };
   const result = await sendEmail(
-    { to: profileEmail, subject, html: template.html, text: template.text, replyTo: config.emailReplyTo },
+    { to: normalizedProfileEmail, subject, html: template.html, text: template.text, replyTo: config.emailReplyTo },
     config.emailFrom || undefined,
     config.emailFromName || config.storeName,
   );
@@ -201,7 +211,7 @@ export async function sendMfaActivationReminderAction(): Promise<MfaActivationRe
     logger.warn('MFA activation reminder email failed', {
       action: 'mfa_activation_email_failed',
       userId: user.sub,
-      email: profileEmail,
+      ...emailLog,
       error: result.error,
     });
     return { ok: false, email: profileEmail, error: 'No se pudo enviar el recordatorio por correo.' };
@@ -210,7 +220,7 @@ export async function sendMfaActivationReminderAction(): Promise<MfaActivationRe
   logger.info('MFA activation reminder email sent', {
     action: 'mfa_activation_email_sent',
     userId: user.sub,
-    email: profileEmail,
+    ...emailLog,
     messageId: result.messageId,
     transport: result.transport,
   });

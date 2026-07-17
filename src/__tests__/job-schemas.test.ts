@@ -7,10 +7,13 @@ import {
   parseJobPayload,
 } from '@/infrastructure/jobs/schemas';
 
+const STORE_ID = '0123456789abcdef0123456789abcdef';
+
 describe('Job Payload Schemas', () => {
   describe('stockAlertPayloadSchema', () => {
     it('should accept valid payload', () => {
       const result = stockAlertPayloadSchema.safeParse({
+        storeId: STORE_ID,
         productName: 'Coca Cola 600ml',
         currentStock: 3,
         minStock: 10,
@@ -28,6 +31,7 @@ describe('Job Payload Schemas', () => {
 
     it('should reject negative stock', () => {
       const result = stockAlertPayloadSchema.safeParse({
+        storeId: STORE_ID,
         productName: 'Test',
         currentStock: -1,
         minStock: 10,
@@ -37,6 +41,7 @@ describe('Job Payload Schemas', () => {
 
     it('should sanitize HTML in productName', () => {
       const result = stockAlertPayloadSchema.safeParse({
+        storeId: STORE_ID,
         productName: '<script>alert("xss")</script>',
         currentStock: 3,
         minStock: 10,
@@ -50,12 +55,12 @@ describe('Job Payload Schemas', () => {
 
   describe('notificationPayloadSchema', () => {
     it('should accept valid message', () => {
-      const result = notificationPayloadSchema.safeParse({ message: 'Test notification' });
+      const result = notificationPayloadSchema.safeParse({ storeId: STORE_ID, message: 'Test notification' });
       expect(result.success).toBe(true);
     });
 
     it('should reject empty message', () => {
-      const result = notificationPayloadSchema.safeParse({ message: '' });
+      const result = notificationPayloadSchema.safeParse({ storeId: STORE_ID, message: '' });
       expect(result.success).toBe(false);
     });
 
@@ -68,6 +73,7 @@ describe('Job Payload Schemas', () => {
   describe('paymentPollPayloadSchema', () => {
     it('should accept valid conekta payload', () => {
       const result = paymentPollPayloadSchema.safeParse({
+        storeId: STORE_ID,
         chargeId: 'ch-123-abc',
         provider: 'conekta',
       });
@@ -76,6 +82,7 @@ describe('Job Payload Schemas', () => {
 
     it('should accept valid stripe payload', () => {
       const result = paymentPollPayloadSchema.safeParse({
+        storeId: STORE_ID,
         chargeId: 'pi_stripe_123',
         provider: 'stripe',
       });
@@ -84,6 +91,7 @@ describe('Job Payload Schemas', () => {
 
     it('should reject invalid provider', () => {
       const result = paymentPollPayloadSchema.safeParse({
+        storeId: STORE_ID,
         chargeId: 'ch-123',
         provider: 'paypal',
       });
@@ -92,6 +100,7 @@ describe('Job Payload Schemas', () => {
 
     it('should reject chargeId with special characters', () => {
       const result = paymentPollPayloadSchema.safeParse({
+        storeId: STORE_ID,
         chargeId: 'ch-123; DROP TABLE',
         provider: 'stripe',
       });
@@ -100,6 +109,7 @@ describe('Job Payload Schemas', () => {
 
     it('should reject empty chargeId', () => {
       const result = paymentPollPayloadSchema.safeParse({
+        storeId: STORE_ID,
         chargeId: '',
         provider: 'clip',
       });
@@ -131,7 +141,10 @@ describe('Job Payload Schemas', () => {
 
   describe('parseJobPayload', () => {
     it('should parse valid JSON', () => {
-      const result = parseJobPayload(notificationPayloadSchema, '{"message": "hello"}');
+      const result = parseJobPayload(
+        notificationPayloadSchema,
+        `{"storeId":"${STORE_ID}","message":"hello"}`,
+      );
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.message).toBe('hello');

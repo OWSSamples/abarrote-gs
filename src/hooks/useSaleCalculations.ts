@@ -10,7 +10,6 @@ export interface SaleCalculationsParams {
   items: SaleItem[];
   discount: string;
   discountType: 'amount' | 'percent';
-  discountPending: boolean;
   paymentMethod: string;
   clienteId: string;
   clientes: Cliente[];
@@ -35,7 +34,6 @@ export function useSaleCalculations({
   items,
   discount,
   discountType,
-  discountPending: _discountPending,
   paymentMethod,
   clienteId,
   clientes,

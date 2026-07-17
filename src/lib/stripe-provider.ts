@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 import Stripe from 'stripe';
 import crypto from 'crypto';
@@ -8,7 +8,6 @@ import { eq, and } from 'drizzle-orm';
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 import { stripeBreaker } from '@/infrastructure/circuit-breaker';
-import { env } from '@/lib/env';
 
 // ── Types ──
 
@@ -40,14 +39,14 @@ export interface StripeChargeStatus {
 
 // ── Client Factory ──
 
-async function getStripeClient(): Promise<Stripe> {
+async function getStripeClient(storeId: string): Promise<Stripe> {
   const [connection] = await db
     .select()
     .from(paymentProviderConnections)
     .where(
       and(
         eq(paymentProviderConnections.provider, 'stripe'),
-        eq(paymentProviderConnections.storeId, 'main'),
+        eq(paymentProviderConnections.storeId, storeId),
         eq(paymentProviderConnections.status, 'connected'),
       ),
     )
@@ -55,13 +54,11 @@ async function getStripeClient(): Promise<Stripe> {
 
   let secretKey: string;
 
-  if (connection?.accessTokenEnc) {
-    secretKey = decrypt(connection.accessTokenEnc);
-  } else if (env.STRIPE_SECRET_KEY) {
-    secretKey = env.STRIPE_SECRET_KEY;
-  } else {
+  if (!connection?.accessTokenEnc) {
     throw new Error('Stripe no configurado. Agrega tu Secret Key en Configuración → Pagos.');
   }
+
+  secretKey = decrypt(connection.accessTokenEnc);
 
   return new Stripe(secretKey, { apiVersion: '2026-04-22.dahlia' });
 }
@@ -69,14 +66,15 @@ async function getStripeClient(): Promise<Stripe> {
 // ── SPEI (mx_bank_transfer) ──
 
 export async function createStripeSPEICharge(params: {
+  storeId: string;
   amount: number;
   customerEmail: string;
   description: string;
   saleReference: string;
 }): Promise<StripeSPEIResult> {
   return stripeBreaker.execute(async () => {
-    const { amount, customerEmail, description, saleReference } = params;
-    const stripe = await getStripeClient();
+    const { storeId, amount, customerEmail, description, saleReference } = params;
+    const stripe = await getStripeClient(storeId);
 
     const amountCents = Math.round(amount * 100);
 
@@ -118,7 +116,7 @@ export async function createStripeSPEICharge(params: {
       provider: 'stripe',
       providerChargeId: paymentIntent.id,
       saleId: null,
-      storeId: 'main',
+      storeId,
       amount: amount.toFixed(2),
       currency: 'MXN',
       paymentMethod: 'spei_stripe',
@@ -152,14 +150,15 @@ export async function createStripeSPEICharge(params: {
 // ── OXXO ──
 
 export async function createStripeOXXOCharge(params: {
+  storeId: string;
   amount: number;
   customerEmail: string;
   description: string;
   saleReference: string;
 }): Promise<StripeOXXOResult> {
   return stripeBreaker.execute(async () => {
-    const { amount, customerEmail, description, saleReference } = params;
-    const stripe = await getStripeClient();
+    const { storeId, amount, customerEmail, description, saleReference } = params;
+    const stripe = await getStripeClient(storeId);
 
     const amountCents = Math.round(amount * 100);
 
@@ -203,7 +202,7 @@ export async function createStripeOXXOCharge(params: {
       provider: 'stripe',
       providerChargeId: paymentIntent.id,
       saleId: null,
-      storeId: 'main',
+      storeId,
       amount: amount.toFixed(2),
       currency: 'MXN',
       paymentMethod: 'oxxo_stripe',
@@ -235,9 +234,9 @@ export async function createStripeOXXOCharge(params: {
 
 // ── Charge Status ──
 
-export async function getStripeChargeStatus(paymentIntentId: string): Promise<StripeChargeStatus> {
+export async function getStripeChargeStatus(paymentIntentId: string, storeId: string): Promise<StripeChargeStatus> {
   return stripeBreaker.execute(async () => {
-    const stripe = await getStripeClient();
+    const stripe = await getStripeClient(storeId);
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
 
     const status =
@@ -245,9 +244,7 @@ export async function getStripeChargeStatus(paymentIntentId: string): Promise<St
         ? ('paid' as const)
         : pi.status === 'canceled'
           ? ('expired' as const)
-          : pi.status === 'requires_payment_method' || pi.status === 'requires_action'
-            ? ('pending' as const)
-            : ('failed' as const);
+          : ('pending' as const);
 
     return {
       id: pi.id,
@@ -275,7 +272,7 @@ export async function connectStripe(params: {
   publishableKey: string;
   webhookSecret?: string;
   environment: 'sandbox' | 'production';
-}): Promise<{ success: boolean; message: string }> {
+}, storeId: string): Promise<{ success: boolean; message: string }> {
   const { secretKey, publishableKey, webhookSecret, environment } = params;
 
   // Validate key by making a test request
@@ -292,12 +289,12 @@ export async function connectStripe(params: {
   const existing = await db
     .select()
     .from(paymentProviderConnections)
-    .where(and(eq(paymentProviderConnections.provider, 'stripe'), eq(paymentProviderConnections.storeId, 'main')))
+    .where(and(eq(paymentProviderConnections.provider, 'stripe'), eq(paymentProviderConnections.storeId, storeId)))
     .limit(1);
 
   const connectionData = {
     provider: 'stripe' as const,
-    storeId: 'main',
+    storeId,
     status: 'connected',
     accessTokenEnc: encrypt(secretKey),
     publicKey: publishableKey,
@@ -324,7 +321,7 @@ export async function connectStripe(params: {
   return { success: true, message: `Stripe conectado en modo ${environment}` };
 }
 
-export async function disconnectStripe(): Promise<void> {
+export async function disconnectStripe(storeId: string): Promise<void> {
   await db
     .update(paymentProviderConnections)
     .set({
@@ -335,12 +332,12 @@ export async function disconnectStripe(): Promise<void> {
       disconnectedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(and(eq(paymentProviderConnections.provider, 'stripe'), eq(paymentProviderConnections.storeId, 'main')));
+    .where(and(eq(paymentProviderConnections.provider, 'stripe'), eq(paymentProviderConnections.storeId, storeId)));
 
   logger.info('Stripe disconnected', { action: 'stripe_disconnect' });
 }
 
-export async function getStripeConnectionStatus(): Promise<{
+export async function getStripeConnectionStatus(storeId: string): Promise<{
   connected: boolean;
   environment: string | null;
   publishableKey: string | null;
@@ -348,7 +345,7 @@ export async function getStripeConnectionStatus(): Promise<{
   const [connection] = await db
     .select()
     .from(paymentProviderConnections)
-    .where(and(eq(paymentProviderConnections.provider, 'stripe'), eq(paymentProviderConnections.storeId, 'main')))
+    .where(and(eq(paymentProviderConnections.provider, 'stripe'), eq(paymentProviderConnections.storeId, storeId)))
     .limit(1);
 
   if (!connection || connection.status !== 'connected') {

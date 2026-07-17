@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useForm, useField } from '@shopify/react-form';
 import {
   Modal,
@@ -25,7 +25,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useSaleCalculations } from '@/hooks/useSaleCalculations';
 import { useMercadoPagoTerminal } from '@/hooks/useMercadoPagoTerminal';
 import { useTicketPrinter } from '@/hooks/useTicketPrinter';
-import { generateTicketHtml, applyTicketTemplate } from '@/lib/printTicket';
+import { generateTicketHtml, applyTicketTemplate, escapeTicketHtml } from '@/lib/printTicket';
 
 // Extracted sub-components
 import { TicketPreview } from './sale/TicketPreview';
@@ -40,6 +40,13 @@ import { sendTicketEmailAction } from '@/app/actions/email-actions';
 interface SaleTicketModalProps {
   open: boolean;
   onClose: () => void;
+}
+
+interface AppliedDiscount {
+  value: string;
+  type: 'amount' | 'percent';
+  itemFingerprint: string;
+  approvalToken?: string;
 }
 
 // Payment method labels for printed tickets and modal preview.
@@ -66,11 +73,10 @@ const PAYMENT_LABELS: Record<string, string> = {
 export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const products = useDashboardStore((s) => s.products);
   const inventoryAlerts = useDashboardStore((s) => s.inventoryAlerts);
-  const registerSale = useDashboardStore((s) => s.registerSale);
   const clientes = useDashboardStore((s) => s.clientes);
-  const registerFiado = useDashboardStore((s) => s.registerFiado);
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const currentUserRole = useDashboardStore((s) => s.currentUserRole);
+  const fetchDashboardData = useDashboardStore((s) => s.fetchDashboardData);
   const { showSuccess, showError } = useToast();
 
   // Permissions
@@ -81,7 +87,6 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     fields,
     reset: resetCheckoutForm,
     validate: validateCheckout,
-    submitting,
   } = useForm({
     fields: {
       paymentMethod: useField<
@@ -140,8 +145,12 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   const [barcodeError, setBarcodeError] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [discountPending, setDiscountPending] = useState(false);
+  const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [pinPadOpen, setPinPadOpen] = useState(false);
   const [pinPadAction, setPinPadAction] = useState<{ type: string; payload: string } | null>(null);
+  const checkoutRequestIdRef = useRef<string | null>(null);
+  const processingRef = useRef(false);
 
   // Merged products
   const allProducts = useMemo(() => {
@@ -152,6 +161,17 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     });
     return merged;
   }, [products, inventoryAlerts]);
+
+  const itemFingerprint = useMemo(() => {
+    const quantities = new Map<string, number>();
+    for (const item of items) {
+      quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
+    }
+    return JSON.stringify([...quantities.entries()].sort(([left], [right]) => left.localeCompare(right)));
+  }, [items]);
+
+  const activeAppliedDiscount =
+    appliedDiscount?.itemFingerprint === itemFingerprint ? appliedDiscount : null;
 
   // Calculations
   const {
@@ -167,9 +187,8 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     change,
   } = useSaleCalculations({
     items,
-    discount: fields.discount.value,
-    discountType: fields.discountType.value,
-    discountPending,
+    discount: activeAppliedDiscount?.value ?? '',
+    discountType: activeAppliedDiscount?.type ?? fields.discountType.value,
     paymentMethod: fields.paymentMethod.value,
     clienteId: fields.clienteId.value,
     clientes,
@@ -212,6 +231,10 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     setBarcodeError('');
     setCustomerEmail('');
     setDiscountPending(false);
+    setAppliedDiscount(null);
+    setIsProcessing(false);
+    processingRef.current = false;
+    checkoutRequestIdRef.current = null;
     resetMpState();
   }, [resetCheckoutForm, resetMpState]);
 
@@ -330,37 +353,66 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   );
 
   const handleApplyDiscount = useCallback(() => {
-    if (!fields.discount.value || parseFloat(fields.discount.value) <= 0) return;
+    const value = Number.parseFloat(fields.discount.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    if (fields.discountType.value === 'percent' && value > 100) {
+      showError('El descuento porcentual no puede superar 100%.');
+      return;
+    }
+
     if (hasPermission('sales.discount')) {
+      setAppliedDiscount({
+        value: fields.discount.value,
+        type: fields.discountType.value,
+        itemFingerprint,
+      });
       setDiscountPending(false);
     } else {
+      checkoutRequestIdRef.current ??= crypto.randomUUID();
+      setAppliedDiscount(null);
       setDiscountPending(true);
       setPinPadAction({ type: 'discount', payload: '' });
       setPinPadOpen(true);
     }
-  }, [fields.discount.value, hasPermission]);
+  }, [fields.discount.value, fields.discountType.value, hasPermission, itemFingerprint, showError]);
 
   const handlePinSuccess = useCallback(
-    (_uid: string, _name: string) => {
+    (_uid: string, _name: string, approvalToken?: string) => {
       if (pinPadAction?.type === 'delete') {
         setItems((prev) => prev.filter((i) => i.productId !== pinPadAction.payload));
         showSuccess('Artículo anulado (Autorizado)');
       }
       if (pinPadAction?.type === 'discount') {
+        if (!approvalToken) {
+          setDiscountPending(false);
+          setPinPadOpen(false);
+          setPinPadAction(null);
+          showError('No fue posible emitir la autorización segura del descuento.');
+          return;
+        }
+        setAppliedDiscount({
+          value: fields.discount.value,
+          type: fields.discountType.value,
+          itemFingerprint,
+          approvalToken,
+        });
         setDiscountPending(false);
         showSuccess('Descuento autorizado');
       }
       setPinPadOpen(false);
       setPinPadAction(null);
     },
-    [pinPadAction, showSuccess],
+    [fields.discount.value, fields.discountType.value, itemFingerprint, pinPadAction, showError, showSuccess],
   );
 
   const finishSale = useCallback(
     async (pmOverride?: string) => {
+      if (processingRef.current) return;
+      processingRef.current = true;
+      setIsProcessing(true);
+
       try {
-        const pMethod =
-          pmOverride || (fields.paymentMethod.value === 'tarjeta_manual' ? 'tarjeta' : fields.paymentMethod.value);
+        const pMethod = pmOverride || fields.paymentMethod.value;
 
         const payload = {
           items,
@@ -375,43 +427,31 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
             currentUserRole?.globalId || currentUserRole?.employeeNumber || currentUserRole?.displayName || 'Cajero',
           pointsEarned,
           pointsUsed,
-          discount: discountAmount,
-          discountType: fields.discountType.value,
+          discount: activeAppliedDiscount ? Number.parseFloat(activeAppliedDiscount.value) : 0,
+          discountType: activeAppliedDiscount?.type ?? 'amount',
+          discountApprovalToken: activeAppliedDiscount?.approvalToken,
           clienteId: fields.clienteId.value || undefined,
-        } as Omit<SaleRecord, 'id' | 'folio' | 'date'> & { clienteId?: string };
+        } as Omit<SaleRecord, 'id' | 'folio' | 'date'> & {
+          clienteId?: string;
+          discountApprovalToken?: string;
+        };
 
-        const result = await posEngine.processSale(payload);
+        const requestId = checkoutRequestIdRef.current ?? crypto.randomUUID();
+        checkoutRequestIdRef.current = requestId;
+        const sale = await posEngine.processSale(payload, requestId);
 
         if (fields.paymentMethod.value === 'fiado') {
-          // El fiado offline requiere lógica extra, por ahora lo manejamos como venta normal
-          // si es offline, pero notificamos.
-          if (!result.isOffline) {
-            const itemDescriptions = items.map((i) => `${i.productName} x${i.quantity}`).join(', ');
-            await registerFiado(fields.clienteId.value, total, itemDescriptions, result.folio, items);
-            const cliente = clientes.find((c) => c.id === fields.clienteId.value);
-            showSuccess(
-              `Venta ${result.folio} registrada como fiado para ${cliente?.name || 'cliente'}. Total: ${formatCurrency(total)}`,
-            );
-          } else {
-            showSuccess(`VENTA OFFLINE (#${result.folio}): Se sincronizará el fiado al volver el internet.`);
-          }
+          const cliente = clientes.find((c) => c.id === fields.clienteId.value);
+          showSuccess(
+            `Venta ${sale.folio} registrada como fiado para ${cliente?.name || 'cliente'}. Total: ${formatCurrency(sale.total)}`,
+          );
         } else {
-          if (result.isOffline) {
-            showSuccess(`Venta OFFLINE (#${result.folio}) guardada localmente ✔️`);
-          } else {
-            showSuccess(`Venta ${result.folio} registrada correctamente`);
-          }
+          showSuccess(`Venta ${sale.folio} registrada correctamente`);
         }
 
-        // IMPORTANTE: Para el ticket offline creamos un registro temporal
-        const sale = {
-          ...payload,
-          id: `temp-${Date.now()}`,
-          folio: result.folio,
-          date: new Date().toISOString(),
-        } as SaleRecord;
-
         setCompletedSale(sale);
+        checkoutRequestIdRef.current = null;
+        void fetchDashboardData();
 
         // Fire-and-forget: send ticket email if customer provided email
         if (customerEmail.trim()) {
@@ -443,32 +483,30 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
             // Email send failure should not block the sale flow
           });
         }
-      } catch (error: unknown) {
-        console.error('Sale Registration Error (Modal):', error);
-        showError(
-          `Error al registrar la venta: ${error instanceof Error ? error.message : 'Error de conexión o permisos'}`,
-        );
+      } catch {
+        showError('No fue posible registrar la venta. Revisa existencias, permisos y conexión antes de reintentar.');
+      } finally {
+        processingRef.current = false;
+        setIsProcessing(false);
       }
     },
     [
       items,
       fields.paymentMethod.value,
       fields.amountPaid.value,
-      fields.discountType.value,
       fields.clienteId.value,
       total,
       subtotalAfterDiscount,
       iva,
       cardSurcharge,
       change,
-      registerSale,
       currentUserRole,
       pointsEarned,
       pointsUsed,
-      discountAmount,
-      registerFiado,
+      activeAppliedDiscount,
       clientes,
       customerEmail,
+      fetchDashboardData,
       showSuccess,
       showError,
     ],
@@ -482,7 +520,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     let status: 'idle' | 'active' | 'paying' | 'finished' = 'idle';
     if (open) {
       if (completedSale) status = 'finished';
-      else if (submitting || mpProcessing) status = 'paying';
+      else if (isProcessing || mpProcessing) status = 'paying';
       else if (items.length > 0) status = 'active';
       else status = 'idle';
     }
@@ -561,6 +599,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   ]);
 
   const handleClose = useCallback(() => {
+    if (processingRef.current) return;
     resetForm();
     onClose();
   }, [resetForm, onClose]);
@@ -572,7 +611,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     const onPosShortcut = (event: Event) => {
       const customEvent = event as CustomEvent<{ action?: string }>;
       const action = customEvent.detail?.action;
-      if (!action || submitting) return;
+      if (!action || isProcessing) return;
 
       if (action === 'manual-search') {
         const barcodeInputEl = document.getElementById('sale-barcode-input') as HTMLInputElement | null;
@@ -611,7 +650,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     return () => {
       window.removeEventListener('gs-pos-shortcut', onPosShortcut as EventListener);
     };
-  }, [open, submitting, items, handleSale, handleRemoveClick, handleUpdateQuantity]);
+  }, [open, isProcessing, items, handleSale, handleRemoveClick, handleUpdateQuantity]);
 
   // ── Responsive ──
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -681,13 +720,13 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         items: sale.items
           .map(
             (i) =>
-              `<div class="item-name">${i.productName}</div><div class="item-detail"><span>${i.quantity} pza × $${i.unitPrice.toFixed(2)}</span><span>$${i.subtotal.toFixed(2)}</span></div>`,
+              `<div class="item-name">${escapeTicketHtml(i.productName)}</div><div class="item-detail"><span>${i.quantity} pza × $${i.unitPrice.toFixed(2)}</span><span>$${i.subtotal.toFixed(2)}</span></div>`,
           )
           .join(''),
         total: `$${sale.total.toFixed(2)}`,
         footer: storeConfig.ticketFooter || '¡Gracias por su compra!',
       };
-      return applyTicketTemplate(storeConfig.ticketTemplateVenta, templateVars, '');
+      return applyTicketTemplate(storeConfig.ticketTemplateVenta, templateVars, '', ['items']);
     }
     if (storeConfig.ticketDesignVenta) {
       return generateTicketHtml(storeConfig.ticketDesignVenta, data);
@@ -724,17 +763,17 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
           isMobile
             ? undefined
             : {
-                content: submitting ? 'Procesando...' : `Cobrar ${formatCurrency(total)}`,
+                content: isProcessing ? 'Procesando...' : `Cobrar ${formatCurrency(total)}`,
                 onAction: handleSale,
-                loading: submitting,
-                disabled: items.length === 0 || submitting,
+                loading: isProcessing,
+                disabled: items.length === 0 || isProcessing,
               }
         }
         secondaryActions={[{ content: 'Cancelar', onAction: handleClose }]}
         size="large"
       >
         <Modal.Section>
-          {submitting ? (
+          {isProcessing ? (
             <Box padding="800">
               <BlockStack gap="400" align="center" inlineAlign="center">
                 <Spinner size="large" />
@@ -743,9 +782,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                     Procesando Venta...
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-                    {typeof navigator !== 'undefined' && navigator.onLine
-                      ? 'Sincronizando con la nube'
-                      : 'Guardando en modo offline'}
+                    Registrando la venta de forma segura
                   </Text>
                 </BlockStack>
               </BlockStack>
@@ -826,8 +863,8 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
               {items.length > 0 && (
                 <SaleTotalsCard
                   subtotal={subtotal}
-                  discountType={fields.discountType.value}
-                  discount={fields.discount.value}
+                  discountType={activeAppliedDiscount?.type ?? fields.discountType.value}
+                  discount={activeAppliedDiscount?.value ?? fields.discount.value}
                   discountAmount={discountAmount}
                   discountPending={discountPending}
                   iva={iva}
@@ -836,14 +873,17 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
                   onDiscountTypeChange={(type) => {
                     fields.discountType.onChange(type);
                     fields.discount.onChange('');
+                    setAppliedDiscount(null);
                   }}
                   onDiscountChange={(v) => {
                     fields.discount.onChange(v);
+                    setAppliedDiscount(null);
                     setDiscountPending(false);
                   }}
                   onApplyDiscount={handleApplyDiscount}
                   onRemoveDiscount={() => {
                     fields.discount.onChange('');
+                    setAppliedDiscount(null);
                     setDiscountPending(false);
                   }}
                 />
@@ -904,14 +944,14 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         </Modal.Section>
 
         {/* ── Fixed bottom Cobrar bar (mobile only) ── */}
-        {isMobile && items.length > 0 && !submitting && (
+        {isMobile && items.length > 0 && !isProcessing && (
           <div className="sale-modal-fixed-cobrar">
             <Button
               variant="primary"
               size="large"
               onClick={handleSale}
-              loading={submitting}
-              disabled={items.length === 0 || submitting}
+              loading={isProcessing}
+              disabled={items.length === 0 || isProcessing}
               fullWidth
             >
               {`Cobrar ${formatCurrency(total)}`}
@@ -930,6 +970,17 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         onSuccess={handlePinSuccess}
         requiredPermission={pinPadAction?.type === 'discount' ? 'sales.discount' : 'sales.delete_item'}
         title={pinPadAction?.type === 'discount' ? 'Autorizar Descuento' : 'Autorizar Cancelación de Artículo'}
+        approvalContext={
+          pinPadAction?.type === 'discount' && checkoutRequestIdRef.current
+            ? {
+                operation: 'sale_discount',
+                clientRequestId: checkoutRequestIdRef.current,
+                discountValue: Number.parseFloat(fields.discount.value),
+                discountType: fields.discountType.value,
+                items: items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+              }
+            : undefined
+        }
       />
     </>
   );

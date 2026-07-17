@@ -13,6 +13,7 @@
  */
 
 import { logger } from '@/lib/logger';
+import { constantTimeStringEqual } from '@/lib/constant-time';
 import type {
   ServiciosProvider,
   TopupRequest,
@@ -231,7 +232,7 @@ export class InfopagoProvider implements ServiciosProvider {
     const signature = headers.get('x-infopago-signature');
     if (!signature) return false;
     // Infopago uses Bearer token comparison
-    return signature === this.apiKey;
+    return constantTimeStringEqual(this.apiKey, signature);
   }
 
   async parseWebhook(

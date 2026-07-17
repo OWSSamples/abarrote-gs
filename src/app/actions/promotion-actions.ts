@@ -1,6 +1,7 @@
 'use server';
 
 import { requirePermission, sanitize } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { withLogging } from '@/lib/errors';
 import { db } from '@/db';
 import { promotions } from '@/db/schema';
@@ -8,18 +9,24 @@ import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 import { numVal } from './_helpers';
 import type { Promotion, PromotionType, ApplicableTo } from '@/types';
 import { validateSchema, createPromotionSchema, updatePromotionSchema, idSchema } from '@/lib/validation/schemas';
-import { isNotDeleted, softDelete } from '@/infrastructure/soft-delete';
+import { isNotDeleted } from '@/infrastructure/soft-delete';
 
 // ==================== FETCH ====================
 
 async function _fetchPromotions(): Promise<Promotion[]> {
   await requirePermission('inventory.view');
-  const rows = await db.select().from(promotions).where(isNotDeleted(promotions)).orderBy(desc(promotions.createdAt));
+  const { storeId } = await requireStoreScope();
+  const rows = await db
+    .select()
+    .from(promotions)
+    .where(and(eq(promotions.storeId, storeId), isNotDeleted(promotions)))
+    .orderBy(desc(promotions.createdAt));
   return rows.map(mapRow);
 }
 
 async function _fetchActivePromotions(): Promise<Promotion[]> {
   await requirePermission('sales.create');
+  const { storeId } = await requireStoreScope();
   const now = new Date();
   const rows = await db
     .select()
@@ -27,6 +34,7 @@ async function _fetchActivePromotions(): Promise<Promotion[]> {
     .where(
       and(
         isNotDeleted(promotions),
+        eq(promotions.storeId, storeId),
         eq(promotions.active, true),
         lte(promotions.startDate, now),
         gte(promotions.endDate, now),
@@ -43,6 +51,7 @@ async function _createPromotion(
   data: Omit<Promotion, 'id' | 'usageCount' | 'createdAt' | 'updatedAt' | 'createdBy'>,
 ): Promise<Promotion> {
   const user = await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(createPromotionSchema, data, 'createPromotion');
   const id = `promo-${crypto.randomUUID()}`;
 
@@ -65,6 +74,7 @@ async function _createPromotion(
     usageLimit: data.usageLimit,
     usageCount: 0,
     createdBy: user.uid,
+    storeId,
   });
 
   return {
@@ -79,6 +89,7 @@ async function _createPromotion(
 
 async function _updatePromotion(id: string, data: Partial<Promotion>): Promise<void> {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'updatePromotion:id');
   validateSchema(updatePromotionSchema, data, 'updatePromotion');
 
@@ -97,30 +108,42 @@ async function _updatePromotion(id: string, data: Partial<Promotion>): Promise<v
   if (data.active !== undefined) updateData.active = data.active;
   if (data.usageLimit !== undefined) updateData.usageLimit = data.usageLimit;
 
-  await db.update(promotions).set(updateData).where(eq(promotions.id, id));
+  await db
+    .update(promotions)
+    .set(updateData)
+    .where(and(eq(promotions.id, id), eq(promotions.storeId, storeId)));
 }
 
 async function _deletePromotion(id: string): Promise<void> {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'deletePromotion:id');
-  await softDelete(promotions, id);
+  await db
+    .update(promotions)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(promotions.id, id), eq(promotions.storeId, storeId), isNotDeleted(promotions)));
 }
 
 async function _togglePromotionActive(id: string, active: boolean): Promise<void> {
   await requirePermission('inventory.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'togglePromotionActive:id');
-  await db.update(promotions).set({ active, updatedAt: new Date() }).where(eq(promotions.id, id));
+  await db
+    .update(promotions)
+    .set({ active, updatedAt: new Date() })
+    .where(and(eq(promotions.id, id), eq(promotions.storeId, storeId)));
 }
 
 async function _incrementPromotionUsage(id: string): Promise<void> {
   await requirePermission('sales.create');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'incrementPromotionUsage:id');
   await db
     .update(promotions)
     .set({
       usageCount: sql`${promotions.usageCount} + 1`,
     })
-    .where(eq(promotions.id, id));
+    .where(and(eq(promotions.id, id), eq(promotions.storeId, storeId)));
 }
 
 // ==================== HELPERS ====================

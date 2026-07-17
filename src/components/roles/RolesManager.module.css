@@ -1,0 +1,78 @@
+.tableToolbar {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 16px;
+  border: 1px solid var(--p-color-border);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.toolbarIntro {
+  min-width: 190px;
+}
+
+.toolbarControls {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.searchControl {
+  flex: 1 1 280px;
+  min-width: 240px;
+  max-width: 420px;
+}
+
+.filterControl {
+  flex: 0 0 180px;
+}
+
+.tableSurface {
+  overflow: hidden;
+  border: 1px solid var(--p-color-border);
+  border-radius: 8px;
+  background: var(--p-color-bg-surface);
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.04);
+}
+
+.roleCard {
+  min-height: 100%;
+  padding: 16px;
+  border: 1px solid var(--p-color-border);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96)),
+    var(--p-color-bg-surface);
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.05);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.roleCard:hover {
+  border-color: rgba(9, 105, 218, 0.36);
+  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.08);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 760px) {
+  .tableToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbarControls {
+    justify-content: stretch;
+  }
+
+  .searchControl,
+  .filterControl {
+    flex-basis: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+}

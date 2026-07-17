@@ -1,122 +1,137 @@
-/**
- * Brand logo registry — resuelve URL del logo de una marca.
- *
- * Estrategia (en orden de prioridad):
- * 1. Íconos locales en /public/icon
- * 2. Marcas regionales → S3 self-hosted
- * 3. Sin match → null (componente muestra placeholder)
- *
- * NO se usa CDN de simpleicons.org. Todos los logos viven en /public/icon.
- */
+import alibaba from 'thesvg/alibaba';
+import amazonWebServices from 'thesvg/amazon-web-services';
+import anthropic from 'thesvg/anthropic';
+import apple from 'thesvg/apple';
+import awsAmazonCognito from 'thesvg/aws-amazon-cognito';
+import azureSendgridAccounts from 'thesvg/azure-sendgrid-accounts';
+import bbva from 'thesvg/bbva';
+import claude from 'thesvg/claude';
+import cloudflare from 'thesvg/cloudflare';
+import conekta from 'thesvg/conekta';
+import deepseek from 'thesvg/deepseek';
+import discord from 'thesvg/discord';
+import drizzle from 'thesvg/drizzle';
+import gemini from 'thesvg/gemini';
+import github from 'thesvg/github';
+import google from 'thesvg/google';
+import googleCloud from 'thesvg/google-cloud';
+import googleGemini from 'thesvg/google-gemini';
+import groq from 'thesvg/groq';
+import hsbc from 'thesvg/hsbc';
+import mercadoPago from 'thesvg/mercado-pago';
+import microsoft from 'thesvg/microsoft';
+import mistral from 'thesvg/mistral';
+import neon from 'thesvg/neon';
+import nextjs from 'thesvg/nextjs';
+import openai from 'thesvg/openai';
+import openrouter from 'thesvg/openrouter';
+import paypal from 'thesvg/paypal';
+import postgresql from 'thesvg/postgresql';
+import qwen from 'thesvg/qwen';
+import react from 'thesvg/react';
+import redis from 'thesvg/redis';
+import resend from 'thesvg/resend';
+import santander from 'thesvg/santander';
+import sentry from 'thesvg/sentry';
+import shopify from 'thesvg/shopify';
+import slack from 'thesvg/slack';
+import stripe from 'thesvg/stripe';
+import telegram from 'thesvg/telegram';
+import twilio from 'thesvg/twilio';
+import typescript from 'thesvg/typescript';
+import upstash from 'thesvg/upstash';
+import vercel from 'thesvg/vercel';
+import whatsapp from 'thesvg/whatsapp';
 
-const S3_PAYMENTS = 'https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/payments';
+export interface BrandLogoAsset {
+  title: string;
+  svg?: string;
+  url?: string;
+  hex?: string;
+  variants?: Partial<Record<'default' | 'light' | 'dark' | 'wordmark', string>>;
+}
 
-/**
- * Logos locales servidos desde /public/icon
- */
-const LOCAL_ICONS: Record<string, string> = {
-  // ─── Bancos MX ───
-  bbva: '/icon/bbva-logo_1.webp',
-  santander: '/icon/banco-santander-logo_1.webp',
-  banorte: '/icon/banorte-logo.webp',
-  hsbc: '/icon/hsbc-logo-2018-.webp',
-  spei: '/icon/spei-logo.webp',
+const BRAND_LOGOS: Record<string, BrandLogoAsset> = {
+  // Banks
+  bbva,
+  santander,
+  hsbc,
+  banorte: { title: 'Banorte', url: '/icon/banorte-logo.webp' },
 
-  // ─── Email ───
-  email: '/icon/email-sender.png',
-  'email sender': '/icon/email-sender.png',
+  // Payments
+  'mercado pago': mercadoPago,
+  mercadopago: mercadoPago,
+  paypal,
+  stripe,
+  conekta,
+  spei: { title: 'SPEI', url: '/icon/spei-logo.webp' },
+  'spei clabe': { title: 'SPEI', url: '/icon/spei-logo.webp' },
 
-  // ─── Pagos ───
-  'mercado pago': '/icon/mercadopago.svg',
-  mercadopago: '/icon/mercadopago.svg',
-  paypal: '/icon/paypal.svg',
-  stripe: '/icon/stripe.svg',
+  // AI
+  groq,
+  openrouter,
+  gemini,
+  'google gemini': googleGemini,
+  'google ai': googleGemini,
+  deepseek,
+  qwen,
+  'qwen ai': qwen,
+  'qwen alibaba': qwen,
+  'qwen (alibaba)': qwen,
+  alibaba,
+  'alibaba cloud': alibaba,
+  openai,
+  'open ai': openai,
+  anthropic,
+  claude,
+  mistral,
+  'mistral ai': mistral,
 
-  // ─── IA ───
-  groq: '/icon/groq.svg',
-  openrouter: '/icon/openrouter.svg',
-  'open router': '/icon/openrouter.svg',
-  gemini: '/icon/gemini.svg',
-  'google gemini': '/icon/gemini.svg',
-  'google ai': '/icon/gemini.svg',
-  deepseek: '/icon/deepseek.svg',
-  qwen: '/icon/qwen.svg',
-  'qwen ai': '/icon/qwen.svg',
-  'qwen (alibaba)': '/icon/qwen.svg',
-  alibaba: '/icon/qwen.svg',
-  'alibaba cloud': '/icon/qwen.svg',
-  openai: '/icon/openai.svg',
-  'open ai': '/icon/openai.svg',
-  anthropic: '/icon/anthropic.svg',
-  claude: '/icon/claude.svg',
-  mistral: '/icon/mistral.svg',
-  'mistral ai': '/icon/mistral.svg',
+  // Cloud / infrastructure
+  vercel,
+  aws: amazonWebServices,
+  'amazon web services': amazonWebServices,
+  amazon: amazonWebServices,
+  'google cloud': googleCloud,
+  googlecloud: googleCloud,
+  gcp: googleCloud,
+  shopify,
+  cognito: awsAmazonCognito,
+  'aws cognito': awsAmazonCognito,
+  cloudflare,
+  sentry,
+  upstash,
+  postgres: postgresql,
+  postgresql,
+  'neon postgres': neon,
+  neon,
+  redis,
 
-  // ─── Cloud / Infraestructura ───
-  vercel: '/icon/vercel.svg',
-  aws: '/icon/aws.svg',
-  'amazon web services': '/icon/aws.svg',
-  amazon: '/icon/aws.svg',
-  'google cloud': '/icon/google-cloud.svg',
-  googlecloud: '/icon/google-cloud.svg',
-  gcp: '/icon/google-cloud.svg',
-  shopify: '/icon/shopify.svg',
-  cognito: '/icon/aws.svg',
-  cloudflare: '/icon/cloudflare.svg',
-  sentry: '/icon/sentry.svg',
-  upstash: '/icon/upstash.svg',
-  postgres: '/icon/postgresql.svg',
-  postgresql: '/icon/postgresql.svg',
-  'neon postgres': '/icon/neon.svg',
-  neon: '/icon/neon.svg',
-  redis: '/icon/redis.svg',
+  // Tech stack
+  nextjs,
+  'next.js': nextjs,
+  next: nextjs,
+  react,
+  typescript,
+  drizzle,
 
-  // ─── Tech stack ───
-  nextjs: '/icon/nextjs.svg',
-  'next.js': '/icon/nextjs.svg',
-  next: '/icon/nextjs.svg',
-  react: '/icon/react.svg',
-  typescript: '/icon/typescript.svg',
-  drizzle: '/icon/drizzle.svg',
+  // Auth / OAuth
+  google,
+  microsoft,
+  apple,
+  github,
 
-  // ─── Auth / OAuth ───
-  google: '/icon/google.svg',
-  microsoft: '/icon/microsoft.svg',
-  apple: '/icon/apple.svg',
-  github: '/icon/github.svg',
-
-  // ─── Mensajería / notificaciones ───
-  telegram: '/icon/telegram.svg',
-  whatsapp: '/icon/whatsapp.svg',
-  twilio: '/icon/twilio.svg',
-  resend: '/icon/resend.svg',
-  sendgrid: '/icon/sendgrid.svg',
-  slack: '/icon/slack.svg',
-  discord: '/icon/discord.svg',
+  // Messaging / notifications
+  telegram,
+  whatsapp,
+  twilio,
+  resend,
+  sendgrid: azureSendgridAccounts,
+  slack,
+  discord,
 };
 
-/**
- * Marcas regionales sin logo local → self-hosted S3.
- */
-const SELF_HOSTED: Record<string, string> = {
-  clip: `${S3_PAYMENTS}/clip.png`,
-  conekta: `${S3_PAYMENTS}/conekta.png`,
-  codi: `${S3_PAYMENTS}/codi.png`,
-};
-
-/**
- * Resuelve la URL del logo para una marca.
- * Devuelve null si no hay match (el componente debe renderizar placeholder).
- */
-export function getBrandLogoUrl(name: string): string | null {
+export function getBrandLogo(name: string): BrandLogoAsset | null {
   if (!name) return null;
-  const key = name.trim().toLowerCase();
-
-  const local = LOCAL_ICONS[key];
-  if (local) return local;
-
-  const selfHosted = SELF_HOSTED[key];
-  if (selfHosted) return selfHosted;
-
-  return null;
+  return BRAND_LOGOS[name.trim().toLowerCase()] ?? null;
 }

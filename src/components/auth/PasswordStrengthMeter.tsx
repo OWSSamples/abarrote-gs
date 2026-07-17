@@ -1,8 +1,8 @@
 'use client';
 
-import { Box, BlockStack, Text, InlineStack, Icon } from '@shopify/polaris';
-import { CheckCircleIcon, AlertCircleIcon } from '@shopify/polaris-icons';
+import { Box, BlockStack, Text, InlineStack } from '@shopify/polaris';
 import { evaluatePassword, PASSWORD_RULES } from '@/lib/auth/password-policy';
+import { CheckmarkCircle16Filled, DismissCircle16Filled } from '@fluentui/react-icons';
 
 interface PasswordStrengthMeterProps {
   password: string;
@@ -69,10 +69,11 @@ export function PasswordStrengthMeter({ password, showRules = true }: PasswordSt
               return (
                 <InlineStack key={rule.id} gap="200" blockAlign="center">
                   <div style={{ width: '16px', height: '16px', display: 'flex', alignItems: 'center' }}>
-                    <Icon
-                      source={passed ? CheckCircleIcon : AlertCircleIcon}
-                      tone={passed ? 'success' : 'subdued'}
-                    />
+                    {passed ? (
+                      <CheckmarkCircle16Filled style={{ color: 'var(--p-color-icon-success, #008060)' }} />
+                    ) : (
+                      <DismissCircle16Filled style={{ color: 'var(--p-color-icon-secondary, #8c9196)' }} />
+                    )}
                   </div>
                   <Text as="span" variant="bodySm" tone={passed ? 'success' : 'subdued'}>
                     {rule.label}

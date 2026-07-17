@@ -1,13 +1,15 @@
 'use server';
 
 import { requirePermission, sanitize, validateNumber } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { withLogging } from '@/lib/errors';
 import { db } from '@/db';
 import { products, clientes } from '@/db/schema';
 import { parse } from 'csv-parse/sync';
 import { S3Client } from '@aws-sdk/client-s3';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { isNotDeleted } from '@/infrastructure/soft-delete';
+import { cache } from '@/infrastructure/redis';
 import { env } from '@/lib/env';
 
 const _s3 = new S3Client({
@@ -21,6 +23,7 @@ const _s3 = new S3Client({
 async function _importProductsFromCSV(formData: FormData, overwrite: boolean, _publish: boolean) {
   try {
     await requirePermission('inventory.edit');
+    const { storeId } = await requireStoreScope();
 
     const file = formData.get('file') as File;
     if (!file) throw new Error('No se encontró archivo para importar');
@@ -44,7 +47,10 @@ async function _importProductsFromCSV(formData: FormData, overwrite: boolean, _p
     let updatedCount = 0;
     const errors: string[] = [];
 
-    const existingProducts = await db.select().from(products).where(isNotDeleted(products));
+    const existingProducts = await db
+      .select()
+      .from(products)
+      .where(and(eq(products.storeId, storeId), isNotDeleted(products)));
     const existingMap = new Map(existingProducts.map((p) => [p.barcode, p]));
 
     for (const [index, rowData] of (records as Record<string, string>[]).entries()) {
@@ -85,7 +91,7 @@ async function _importProductsFromCSV(formData: FormData, overwrite: boolean, _p
                 expirationDate,
                 updatedAt: new Date(),
               })
-              .where(eq(products.id, existingProduct.id));
+              .where(and(eq(products.id, existingProduct.id), eq(products.storeId, storeId)));
             updatedCount++;
           }
         } else {
@@ -102,6 +108,7 @@ async function _importProductsFromCSV(formData: FormData, overwrite: boolean, _p
             costPrice,
             unitPrice,
             isPerishable: !!expirationDate,
+            storeId,
           });
           addedCount++;
         }
@@ -109,6 +116,8 @@ async function _importProductsFromCSV(formData: FormData, overwrite: boolean, _p
         errors.push(err instanceof Error ? err.message : String(err));
       }
     }
+
+    await cache.invalidate(`products:${storeId}:all`);
 
     return {
       success: true,
@@ -129,6 +138,7 @@ async function _importProductsFromCSV(formData: FormData, overwrite: boolean, _p
 async function _importCustomersFromCSV(formData: FormData) {
   try {
     await requirePermission('customers.edit');
+    const { storeId } = await requireStoreScope();
 
     const file = formData.get('file') as File;
     if (!file) throw new Error('No se encontró archivo para importar');
@@ -186,6 +196,7 @@ async function _importCustomersFromCSV(formData: FormData) {
           balance: '0',
           creditLimit: '500',
           points: '0',
+          storeId,
           createdAt: new Date(),
         });
         addedCount++;

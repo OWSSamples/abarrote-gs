@@ -1,8 +1,10 @@
 'use server';
 
 import { requirePermission, sanitize, validateNumber } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { withLogging } from '@/lib/errors';
 import { db } from '@/db';
+import { nextTenantSequence } from '@/db/tenant-sequence';
 import { servicios, storeConfig } from '@/db/schema';
 import { eq, desc, sql, and, gte, lte } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
@@ -22,7 +24,7 @@ import {
 // ==================== HELPERS ====================
 
 /** Load the active servicios provider from storeConfig */
-async function loadProviderConfig(): Promise<ServiciosProviderConfig> {
+async function loadProviderConfig(storeId: string): Promise<ServiciosProviderConfig> {
   const [row] = await db
     .select({
       providerId: storeConfig.serviciosProvider,
@@ -31,6 +33,7 @@ async function loadProviderConfig(): Promise<ServiciosProviderConfig> {
       sandbox: storeConfig.serviciosSandbox,
     })
     .from(storeConfig)
+    .where(eq(storeConfig.id, storeId))
     .limit(1);
 
   return {
@@ -62,23 +65,9 @@ function mapRow(r: typeof servicios.$inferSelect): Servicio {
   };
 }
 
-/** Atomic folio generation using a sequence */
-async function generateFolio(): Promise<string> {
-  await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS servicios_folio_seq START 1`);
-
-  // Sync sequence to current max folio (first time only)
-  const maxResult = await db.execute(
-    sql`SELECT COALESCE(MAX(CAST(SUBSTRING(folio FROM 'SRV-(.*)') AS INTEGER)), 0) AS max_num FROM servicios`,
-  );
-  const maxNum = Number((maxResult as unknown as { rows: { max_num: number }[] }).rows?.[0]?.max_num) || 0;
-
-  await db.execute(
-    sql`SELECT setval('servicios_folio_seq', GREATEST(${maxNum}, (SELECT last_value FROM servicios_folio_seq)), true)`,
-  );
-
-  const result = await db.execute(sql`SELECT nextval('servicios_folio_seq') AS seq`);
-  const seq = Number((result as unknown as { rows: { seq: string }[] }).rows?.[0]?.seq) || Date.now();
-
+/** Atomic folio generation isolated by business. */
+async function generateFolio(storeId: string): Promise<string> {
+  const seq = await nextTenantSequence(db, storeId, 'service_folio', 1);
   return `SRV-${String(seq).padStart(6, '0')}`;
 }
 
@@ -90,8 +79,9 @@ async function _fetchServicios(filtro?: {
   hasta?: string;
 }): Promise<Servicio[]> {
   await requirePermission('servicios.view');
+  const { storeId } = await requireStoreScope();
 
-  const conditions = [];
+  const conditions = [eq(servicios.storeId, storeId)];
   if (filtro?.tipo) {
     conditions.push(eq(servicios.tipo, filtro.tipo));
   }
@@ -109,7 +99,11 @@ async function _fetchServicios(filtro?: {
           .from(servicios)
           .where(and(...conditions))
           .orderBy(desc(servicios.fecha))
-      : await db.select().from(servicios).orderBy(desc(servicios.fecha));
+      : await db
+          .select()
+          .from(servicios)
+          .where(eq(servicios.storeId, storeId))
+          .orderBy(desc(servicios.fecha));
 
   return rows.map(mapRow);
 }
@@ -121,6 +115,7 @@ async function _fetchServiciosResumen(): Promise<{
   pagosHoy: number;
 }> {
   await requirePermission('servicios.view');
+  const { storeId } = await requireStoreScope();
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -133,7 +128,13 @@ async function _fetchServiciosResumen(): Promise<{
       count: sql<number>`COUNT(*)`,
     })
     .from(servicios)
-    .where(and(gte(servicios.fecha, todayStart), eq(servicios.estado, 'completado')))
+    .where(
+      and(
+        eq(servicios.storeId, storeId),
+        gte(servicios.fecha, todayStart),
+        eq(servicios.estado, 'completado'),
+      ),
+    )
     .groupBy(servicios.tipo);
 
   const recargaRow = rows.find((r) => r.tipo === 'recarga');
@@ -157,6 +158,7 @@ async function _createRecarga(data: {
   cajero: string;
 }): Promise<Servicio> {
   const user = await requirePermission('servicios.create');
+  const { storeId } = await requireStoreScope();
   validateSchema(createRecargaSchema, data, 'createRecarga');
 
   const nombre = sanitize(data.nombre);
@@ -177,10 +179,10 @@ async function _createRecarga(data: {
   const comision = Math.round(monto * (comisionPct / 100) * 100) / 100;
 
   const id = `srv-${crypto.randomUUID()}`;
-  const folio = await generateFolio();
+  const folio = await generateFolio(storeId);
 
   // ── Process through provider ──
-  const providerConfig = await loadProviderConfig();
+  const providerConfig = await loadProviderConfig(storeId);
   const provider = getActiveProvider(providerConfig);
 
   const providerResult = await provider.processTopup({
@@ -206,6 +208,7 @@ async function _createRecarga(data: {
       estado,
       cajero,
       fecha: new Date(),
+      storeId,
       providerId: provider.id,
       providerTransactionId: providerResult.providerTransactionId ?? null,
       providerAuthCode: providerResult.authorizationCode ?? null,
@@ -255,6 +258,7 @@ async function _createPagoServicio(data: {
   cajero: string;
 }): Promise<Servicio> {
   const user = await requirePermission('servicios.create');
+  const { storeId } = await requireStoreScope();
   validateSchema(createPagoServicioSchema, data, 'createPagoServicio');
 
   const nombre = sanitize(data.nombre);
@@ -275,10 +279,10 @@ async function _createPagoServicio(data: {
   const comision = catalogEntry?.comisionFija ?? 8;
 
   const id = `srv-${crypto.randomUUID()}`;
-  const folio = await generateFolio();
+  const folio = await generateFolio(storeId);
 
   // ── Process through provider ──
-  const providerConfig = await loadProviderConfig();
+  const providerConfig = await loadProviderConfig(storeId);
   const provider = getActiveProvider(providerConfig);
 
   const providerResult = await provider.processBillPayment({
@@ -304,6 +308,7 @@ async function _createPagoServicio(data: {
       estado,
       cajero,
       fecha: new Date(),
+      storeId,
       providerId: provider.id,
       providerTransactionId: providerResult.providerTransactionId ?? null,
       providerAuthCode: providerResult.authorizationCode ?? null,
@@ -346,9 +351,13 @@ async function _createPagoServicio(data: {
 
 async function _cancelarServicio(id: string): Promise<void> {
   await requirePermission('servicios.edit');
+  const { storeId } = await requireStoreScope();
   validateSchema(idSchema, id, 'cancelarServicio:id');
 
-  const rows = await db.select().from(servicios).where(eq(servicios.id, id));
+  const rows = await db
+    .select()
+    .from(servicios)
+    .where(and(eq(servicios.id, id), eq(servicios.storeId, storeId)));
   if (rows.length === 0) throw new Error('Servicio no encontrado');
 
   const srv = rows[0];
@@ -360,7 +369,7 @@ async function _cancelarServicio(id: string): Promise<void> {
     throw new Error('Este servicio está siendo procesado por el proveedor. Espera la confirmación.');
 
   // Attempt provider cancel if live
-  const providerConfig = await loadProviderConfig();
+  const providerConfig = await loadProviderConfig(storeId);
   const provider = getActiveProvider(providerConfig);
 
   if (provider.isLive && srv.providerTransactionId && provider.cancelTransaction) {
@@ -370,73 +379,34 @@ async function _cancelarServicio(id: string): Promise<void> {
     }
   }
 
-  await db.update(servicios).set({ estado: 'cancelado' }).where(eq(servicios.id, id));
+  const [cancelled] = await db
+    .update(servicios)
+    .set({ estado: 'cancelado' })
+    .where(
+      and(eq(servicios.id, id), eq(servicios.storeId, storeId), eq(servicios.estado, srv.estado)),
+    )
+    .returning({ id: servicios.id });
+
+  if (!cancelled) {
+    const [latest] = await db
+      .select({ estado: servicios.estado })
+      .from(servicios)
+      .where(and(eq(servicios.id, id), eq(servicios.storeId, storeId)))
+      .limit(1);
+
+    if (latest?.estado === 'cancelado') return;
+
+    logger.warn('Concurrent servicio cancellation blocked', {
+      action: 'servicios_concurrent_cancellation',
+      id,
+      folio: srv.folio,
+      expectedStatus: srv.estado,
+      currentStatus: latest?.estado ?? 'missing',
+    });
+    throw new Error('El estado del servicio cambió durante la cancelación. Actualiza la pantalla y verifica el resultado.');
+  }
 
   logger.info('Servicio cancelled', { id, folio: srv.folio, provider: srv.providerId });
-  revalidatePath('/dashboard');
-}
-
-/** Update a transaction status from webhook or polling */
-async function _updateServicioFromProvider(
-  providerTransactionId: string,
-  status: ServicioEstado,
-  authCode?: string,
-  errorMessage?: string,
-): Promise<void> {
-  const rows = await db
-    .select()
-    .from(servicios)
-    .where(eq(servicios.providerTransactionId, providerTransactionId))
-    .limit(1);
-
-  if (rows.length === 0) {
-    logger.warn('Webhook for unknown provider transaction', {
-      action: 'servicios_webhook_unknown',
-      providerTransactionId,
-    });
-    return;
-  }
-
-  const srv = rows[0];
-
-  // State machine: only allow valid transitions
-  const validTransitions: Record<string, string[]> = {
-    pendiente: ['procesando', 'completado', 'fallido', 'cancelado'],
-    procesando: ['completado', 'fallido', 'cancelado'],
-    completado: [], // Terminal state
-    fallido: [], // Terminal state
-    cancelado: [], // Terminal state
-  };
-
-  const allowed = validTransitions[srv.estado] ?? [];
-  if (!allowed.includes(status)) {
-    logger.warn('Invalid state transition attempted', {
-      action: 'servicios_invalid_transition',
-      id: srv.id,
-      from: srv.estado,
-      to: status,
-    });
-    return;
-  }
-
-  await db
-    .update(servicios)
-    .set({
-      estado: status,
-      providerAuthCode: authCode ?? srv.providerAuthCode,
-      providerError: errorMessage ?? srv.providerError,
-      providerRespondedAt: new Date(),
-    })
-    .where(eq(servicios.id, srv.id));
-
-  logger.info('Servicio status updated from provider', {
-    action: 'servicios_status_update',
-    id: srv.id,
-    folio: srv.folio,
-    from: srv.estado,
-    to: status,
-  });
-
   revalidatePath('/dashboard');
 }
 
@@ -447,4 +417,3 @@ export const fetchServiciosResumen = withLogging('servicios.fetchServiciosResume
 export const createRecarga = withLogging('servicios.createRecarga', _createRecarga);
 export const createPagoServicio = withLogging('servicios.createPagoServicio', _createPagoServicio);
 export const cancelarServicio = withLogging('servicios.cancelarServicio', _cancelarServicio);
-export const updateServicioFromProvider = withLogging('servicios.updateFromProvider', _updateServicioFromProvider);

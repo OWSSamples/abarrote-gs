@@ -5,12 +5,8 @@ import {
   updateRoleDefinition as dbUpdateRoleDefinition,
   deleteRoleDefinition as dbDeleteRoleDefinition,
   fetchUserRoles as dbFetchUserRoles,
-  ensureOwnerRole as dbEnsureOwnerRole,
-  assignUserRole as dbAssignUserRole,
-  createCognitoUserWithRole as dbCreateCognitoUserWithRole,
   updateUserRole as dbUpdateUserRole,
   updateUserPin as dbUpdateUserPin,
-  removeUserRole as dbRemoveUserRole,
   getUserRoleByUid as dbGetUserRoleByUid,
   generateGlobalId as dbGenerateGlobalId,
   deactivateUser as dbDeactivateUser,
@@ -80,44 +76,6 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  ensureOwnerRole: async (cognitoSub, email, displayName) => {
-    try {
-      const role = await dbEnsureOwnerRole(cognitoSub, email, displayName);
-      set({ currentUserRole: role });
-      return role;
-    } catch (error) {
-      console.error('[store:role] ensureOwnerRole failed', error);
-      throw error;
-    }
-  },
-
-  assignRole: async (data, assignedByUid) => {
-    try {
-      const newRole = await dbAssignUserRole(data, assignedByUid);
-      const state = get();
-      const existing = state.userRoles.find((r) => r.cognitoSub === data.cognitoSub);
-      if (existing) {
-        set({ userRoles: state.userRoles.map((r) => (r.cognitoSub === data.cognitoSub ? newRole : r)) });
-      } else {
-        set({ userRoles: [...state.userRoles, newRole] });
-      }
-    } catch (error) {
-      console.error('[store:role] assignRole failed', error);
-      throw error;
-    }
-  },
-
-  createUserWithRole: async (data, assignedByUid) => {
-    try {
-      const newRole = await dbCreateCognitoUserWithRole(data, assignedByUid);
-      const state = get();
-      set({ userRoles: [...state.userRoles, newRole] });
-    } catch (error) {
-      console.error('[store:role] createUserWithRole failed', error);
-      throw error;
-    }
-  },
-
   updateRole: async (cognitoSub, newRoleId, assignedByUid) => {
     try {
       await dbUpdateUserRole(cognitoSub, newRoleId, assignedByUid);
@@ -147,17 +105,6 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
       }
     } catch (error) {
       console.error('[store:role] updateUserPin failed', error);
-      throw error;
-    }
-  },
-
-  removeRole: async (cognitoSub) => {
-    try {
-      await dbRemoveUserRole(cognitoSub);
-      const state = get();
-      set({ userRoles: state.userRoles.filter((r) => r.cognitoSub !== cognitoSub) });
-    } catch (error) {
-      console.error('[store:role] removeRole failed', error);
       throw error;
     }
   },
@@ -238,9 +185,9 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
     }
   },
 
-  authorizePin: async (pinCode, requiredPermission) => {
+  authorizePin: async (pinCode, requiredPermission, approvalContext) => {
     try {
-      return await dbAuthorizePin(pinCode, requiredPermission);
+      return await dbAuthorizePin(pinCode, requiredPermission, approvalContext);
     } catch (error) {
       console.error('[store:role] authorizePin failed', error);
       return { success: false, error: 'Network error validating PIN' };

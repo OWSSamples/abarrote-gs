@@ -2,18 +2,23 @@ import { NextResponse } from 'next/server';
 import { generateText, stepCountIs, tool } from 'ai';
 import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { getAIModel } from '@/lib/ai';
 import { logger } from '@/lib/logger';
 import { db } from '@/db';
 import { products, productCategories, storeConfig, paymentProviderConnections } from '@/db/schema';
-import { ilike, isNull, eq, sql } from 'drizzle-orm';
+import { and, ilike, isNull, eq, or } from 'drizzle-orm';
+import { checkRateLimitAsync } from '@/infrastructure/redis';
+import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
+
+const MAX_REQUEST_BYTES = 32 * 1024;
 
 const SYSTEM_PROMPT = `Eres el asistente de soporte técnico de Kiosko, un sistema POS profesional para tiendas de abarrotes y conveniencia en México, desarrollado por Opendex Web Services.
 
 ALCANCE ESTRICTO: Solo respondes preguntas relacionadas con el sistema Kiosko. Si el usuario pregunta sobre temas ajenos al programa (recetas, clima, matemáticas, programación, opiniones, etc.), responde amablemente: "Solo puedo ayudarte con temas relacionados con Kiosko. ¿Hay algo del sistema en lo que pueda asistirte?"
 
 Conoces todas las funcionalidades del sistema:
-- POS: Ventas con código de barras o búsqueda manual, modo offline automático, descuentos, devoluciones, múltiples métodos de pago (MercadoPago, Stripe, Conekta, Clip, SPEI, efectivo, tarjeta débito/crédito)
+- POS: Ventas con código de barras o búsqueda manual, operación en línea, descuentos, devoluciones y múltiples métodos de pago
 - Inventario: Gestión de stock, alertas de bajo stock y caducidad, categorías, proveedores, mermas, auditoría, ajustes masivos
 - Caja: Apertura/cierre de turno, corte de caja, registro de gastos con OCR de recibos, diferencias de efectivo
 - Clientes: Perfiles, fiado (crédito con abonos parciales), historial de compras, sistema de puntos y lealtad con recompensas configurables
@@ -21,13 +26,13 @@ Conoces todas las funcionalidades del sistema:
 - Configuración: RFC/régimen fiscal, tickets personalizados (diseñador drag-and-drop), pantalla del cliente segundo monitor, notificaciones Telegram
 - Hardware: Impresora térmica ESC/POS (TCP/IP o USB), cajón de dinero, báscula serial, escáner de código de barras
 - IA: Descripción automática de productos, OCR de recibos/facturas para gastos, chat de soporte (tú)
-- Pagos integrados: Terminal MercadoPago Point, QR dinámico, links de pago
+- Pagos: registro de métodos manuales y consulta administrativa de proveedores; los cobros automatizados requieren conciliación segura antes de habilitarse
 - Servicios: Recargas telefónicas Telmex/Telcel/etc., pago de servicios CFE/agua
 
 INFORMACIÓN QUE PUEDES COMPARTIR:
 - Nombres de productos, precios de venta, stock disponible
 - El precio de costo solo aparece si la herramienta lo incluye en el resultado (rol de dueño); de lo contrario NO lo menciones ni lo inventes
-- Métodos de pago disponibles (efectivo, MercadoPago, Stripe, Conekta, Clip, SPEI, tarjeta)
+- Métodos de pago disponibles que devuelva la herramienta; un proveedor conectado no implica que su cobro automatizado esté habilitado
 - Configuraciones generales del sistema, pasos de uso, solución de problemas
 
 INFORMACIÓN CONFIDENCIAL — NUNCA REVELAR NI DISCUTIR:
@@ -71,6 +76,14 @@ const requestSchema = z.object({
 export async function POST(req: Request) {
   try {
     const user = await requireAuth();
+    const { storeId } = await requireStoreScope();
+    const rateLimit = await checkRateLimitAsync(`support_chat:${user.uid}`, { limit: 15, windowMs: 60_000 });
+    if (rateLimit.isRateLimited) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Espera un momento antes de continuar.' },
+        { status: 429 },
+      );
+    }
 
     const model = await getAIModel();
     if (!model) {
@@ -80,7 +93,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
+    const rawBody = await readTextBodyWithLimit(req, MAX_REQUEST_BYTES);
+    if (rawBody === null) {
+      return NextResponse.json({ error: 'Solicitud demasiado grande.' }, { status: 413 });
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: 'Solicitud inválida.' }, { status: 400 });
+    }
     const parsed = requestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: 'Mensaje inválido' }, { status: 400 });
@@ -120,9 +143,16 @@ export async function POST(req: Request) {
                 categoryName: productCategories.name,
               })
               .from(products)
-              .leftJoin(productCategories, eq(products.category, productCategories.id))
+              .leftJoin(
+                productCategories,
+                and(eq(products.category, productCategories.id), eq(productCategories.storeId, storeId)),
+              )
               .where(
-                sql`${isNull(products.deletedAt)} AND (${ilike(products.name, searchTerm)} OR ${ilike(products.sku, searchTerm)})`,
+                and(
+                  eq(products.storeId, storeId),
+                  isNull(products.deletedAt),
+                  or(ilike(products.name, searchTerm), ilike(products.sku, searchTerm)),
+                ),
               )
               .limit(10);
 
@@ -130,7 +160,7 @@ export async function POST(req: Request) {
               return { found: false, message: `No se encontraron productos que coincidan con "${query}".` };
             }
 
-            const isOwner = user.roleId === 'owner';
+            const isOwner = user.roleName === 'Propietario';
 
             return {
               found: true,
@@ -151,20 +181,16 @@ export async function POST(req: Request) {
         }),
         getPaymentMethods: tool({
           description:
-            'Consulta los métodos de pago configurados y activos en la tienda. Incluye efectivo, transferencia y proveedores integrados (MercadoPago, Stripe, Conekta, Clip).',
+            'Consulta los métodos de pago actualmente disponibles en el POS y los proveedores conectados para administración.',
           inputSchema: z.object({}),
           execute: async () => {
             const [config] = await db
               .select({
-                mpEnabled: storeConfig.mpEnabled,
-                conektaEnabled: storeConfig.conektaEnabled,
-                stripeEnabled: storeConfig.stripeEnabled,
-                clipEnabled: storeConfig.clipEnabled,
                 clabeNumber: storeConfig.clabeNumber,
                 paypalUsername: storeConfig.paypalUsername,
               })
               .from(storeConfig)
-              .where(eq(storeConfig.id, 'main'))
+              .where(eq(storeConfig.id, storeId))
               .limit(1);
 
             const providers = await db
@@ -173,13 +199,14 @@ export async function POST(req: Request) {
                 status: paymentProviderConnections.status,
               })
               .from(paymentProviderConnections)
-              .where(eq(paymentProviderConnections.status, 'connected'));
+              .where(
+                and(
+                  eq(paymentProviderConnections.storeId, storeId),
+                  eq(paymentProviderConnections.status, 'connected'),
+                ),
+              );
 
-            const metodos: string[] = ['Efectivo'];
-            if (config?.mpEnabled) metodos.push('MercadoPago (terminal/QR)');
-            if (config?.conektaEnabled) metodos.push('Conekta (tarjeta/SPEI/OXXO)');
-            if (config?.stripeEnabled) metodos.push('Stripe (tarjeta)');
-            if (config?.clipEnabled) metodos.push('Clip (terminal)');
+            const metodos: string[] = ['Efectivo', 'Tarjeta manual', 'Transferencia bancaria', 'Fiado'];
             if (config?.clabeNumber) metodos.push('Transferencia SPEI');
             if (config?.paypalUsername) metodos.push('PayPal');
 
@@ -188,6 +215,7 @@ export async function POST(req: Request) {
             return {
               metodos,
               proveedoresConectados: connectedProviders,
+              cobrosAutomatizados: 'Deshabilitados hasta completar la conciliación segura con la venta',
             };
           },
         }),

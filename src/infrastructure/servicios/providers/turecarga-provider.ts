@@ -15,6 +15,7 @@
  */
 
 import { logger } from '@/lib/logger';
+import { constantTimeStringEqual } from '@/lib/constant-time';
 import type {
   ServiciosProvider,
   TopupRequest,
@@ -333,7 +334,7 @@ export class TuRecargaProvider implements ServiciosProvider {
       const expected = Array.from(new Uint8Array(signed))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
-      return expected === signature;
+      return constantTimeStringEqual(expected, signature);
     } catch {
       return false;
     }

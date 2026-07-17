@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { fetchStoreConfig } from '@/app/actions/store-config-actions';
-import { DEFAULT_STORE_CONFIG } from '@/types';
+import { fetchPublicDisplayConfig } from '@/app/actions/store-config-actions';
+import { DEFAULT_PUBLIC_DISPLAY_CONFIG } from '@/lib/store-config-public';
 import type {
-  StoreConfig,
   CustomerDisplayAnimation,
   CustomerDisplayPromoAnimation,
   TransitionSpeed,
@@ -12,6 +11,7 @@ import type {
   MessageTextSize,
   MessageStyle,
 } from '@/types';
+import type { PublicDisplayConfig } from '@/lib/store-config-public';
 import { formatCurrency } from '@/lib/utils';
 import {
   Box,
@@ -255,7 +255,7 @@ function getBankNameFromClabe(raw: string): string | null {
 // ═══════════════════════════════════════════════════════════
 
 export default function CustomerDisplayPage() {
-  const [storeConfig, setStoreConfig] = useState<StoreConfig>(DEFAULT_STORE_CONFIG);
+  const [storeConfig, setStoreConfig] = useState<PublicDisplayConfig>(DEFAULT_PUBLIC_DISPLAY_CONFIG);
   const [_configLoaded, setConfigLoaded] = useState(false);
   const [sale, setSale] = useState<SaleState>(EMPTY_SALE);
   const [currentTime, setCurrentTime] = useState('');
@@ -265,7 +265,7 @@ export default function CustomerDisplayPage() {
   // Load store config
   useEffect(() => {
     let mounted = true;
-    fetchStoreConfig()
+    fetchPublicDisplayConfig()
       .then((config) => {
         if (mounted) {
           setStoreConfig(config);
@@ -308,7 +308,7 @@ export default function CustomerDisplayPage() {
         setSale(event.data.payload as SaleState);
         setAnimKey((k) => k + 1);
       } else if (event.data.type === 'UPDATE_CONFIG') {
-        setStoreConfig(event.data.payload as StoreConfig);
+        setStoreConfig(event.data.payload as PublicDisplayConfig);
         setAnimKey((k) => k + 1);
       } else if (event.data.type === 'PING') {
         // Respond so the admin knows a display is alive

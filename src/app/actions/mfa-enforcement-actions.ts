@@ -3,7 +3,7 @@
 import { cookies, headers } from 'next/headers';
 import { verifyIdToken, getCognitoUser } from '@/lib/cognito-admin';
 import { db } from '@/db';
-import { userRoles } from '@/db/schema';
+import { userIdentities } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 // ══════════════════════════════════════════════════════════════
@@ -51,12 +51,11 @@ export async function checkMfaEnforcementAction(): Promise<MfaEnforcementStatus>
   // Check user record in DB
   const rows = await db
     .select({
-      id: userRoles.id,
-      mfaNoticeAt: userRoles.mfaNoticeAt,
-      cognitoSub: userRoles.cognitoSub,
+      mfaNoticeAt: userIdentities.mfaNoticeAt,
+      cognitoSub: userIdentities.cognitoSub,
     })
-    .from(userRoles)
-    .where(eq(userRoles.cognitoSub, uid))
+    .from(userIdentities)
+    .where(eq(userIdentities.cognitoSub, uid))
     .limit(1);
 
   if (rows.length === 0) {
@@ -84,7 +83,7 @@ export async function checkMfaEnforcementAction(): Promise<MfaEnforcementStatus>
   if (mfaEnabled) {
     // User has MFA — clear notice if it was set
     if (user.mfaNoticeAt) {
-      await db.update(userRoles).set({ mfaNoticeAt: null }).where(eq(userRoles.id, user.id));
+      await db.update(userIdentities).set({ mfaNoticeAt: null }).where(eq(userIdentities.cognitoSub, user.cognitoSub));
     }
     return { mfaEnabled: true, totpEnabled, emailFactorEnabled, daysRemaining: null, graceExpired: false, noticeStartDate: null };
   }
@@ -96,7 +95,7 @@ export async function checkMfaEnforcementAction(): Promise<MfaEnforcementStatus>
   if (!noticeAt) {
     // First time showing the notice — set the clock
     noticeAt = now;
-    await db.update(userRoles).set({ mfaNoticeAt: now }).where(eq(userRoles.id, user.id));
+    await db.update(userIdentities).set({ mfaNoticeAt: now }).where(eq(userIdentities.cognitoSub, user.cognitoSub));
   }
 
   const elapsedMs = now.getTime() - noticeAt.getTime();

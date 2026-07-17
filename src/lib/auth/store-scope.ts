@@ -1,9 +1,11 @@
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { db } from '@/db';
-import { stores, userStoreAccess } from '@/db/schema';
+import { roleDefinitions, stores, userRoles } from '@/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { requireAuth, AuthError, type AuthenticatedUser } from '@/lib/auth/guard';
 import { logger } from '@/lib/logger';
+import type { PermissionKey } from '@/types';
 
 // ══════════════════════════════════════════════════════════════
 // Store Scope (ADR-001 Phase 2)
@@ -12,80 +14,127 @@ import { logger } from '@/lib/logger';
 // Derives the active store id for the current request.
 // Resolution order:
 //   1. `__store_id` cookie (only honored if the user has access to it).
-//   2. `is_default = true` row in `user_store_access`.
-//   3. First row in `user_store_access` for the user.
-//   4. Fallback to 'main' (single-tenant compatibility).
+//   2. `is_default = true` tenant membership.
+//   3. First active membership for the user.
+// No implicit fallback is allowed. A valid Cognito identity without an active
+// membership is authenticated, but has no tenant access.
 //
-// Owners are auto-granted access to every active store on read so they can
-// switch via the topbar without explicit provisioning.
+// Every user, including owners, always needs an explicit assignment. This
+// prevents an unprovisioned identity from seeing a legacy `main` tenant.
 
 const STORE_COOKIE = '__store_id';
 
 export interface StoreScope {
   user: AuthenticatedUser;
   storeId: string;
+  accessibleStores: AccessibleStore[];
 }
 
-async function listAccessibleStoreIds(user: AuthenticatedUser): Promise<{ storeId: string; isDefault: boolean }[]> {
-  if (user.roleId === 'owner') {
-    const rows = await db
-      .select({ storeId: stores.id })
-      .from(stores)
-      .where(isNull(stores.deletedAt));
-    return rows.map((r) => ({ storeId: r.storeId, isDefault: r.storeId === 'main' }));
-  }
+export interface AccessibleStore {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
 
-  return db
-    .select({ storeId: userStoreAccess.storeId, isDefault: userStoreAccess.isDefault })
-    .from(userStoreAccess)
-    .where(eq(userStoreAccess.userId, user.uid));
+interface AccessibleMembership extends AccessibleStore {
+  membershipId: string;
+  roleId: string;
+  roleName: string | null;
+  permissions: string | null;
+  displayName: string;
+}
+
+function parsePermissions(value: string | null): PermissionKey[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed as PermissionKey[] : [];
+  } catch {
+    return [];
+  }
+}
+
+async function listAccessibleMemberships(user: AuthenticatedUser): Promise<AccessibleMembership[]> {
+  const rows = await db
+    .select({
+      id: stores.id,
+      name: stores.name,
+      isDefault: userRoles.isDefault,
+      membershipId: userRoles.id,
+      roleId: userRoles.roleId,
+      roleName: roleDefinitions.name,
+      permissions: roleDefinitions.permissions,
+      displayName: userRoles.displayName,
+    })
+    .from(userRoles)
+    .innerJoin(stores, eq(stores.id, userRoles.storeId))
+    .leftJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
+    .where(
+      and(
+        eq(userRoles.cognitoSub, user.uid),
+        eq(userRoles.status, 'activo'),
+        eq(stores.status, 'active'),
+        isNull(stores.deletedAt),
+      ),
+    );
+
+  return rows.sort(
+    (a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name, 'es'),
+  );
+}
+
+export async function listAccessibleStores(user: AuthenticatedUser): Promise<AccessibleStore[]> {
+  const memberships = await listAccessibleMemberships(user);
+  return memberships.map(({ id, name, isDefault }) => ({ id, name, isDefault }));
 }
 
 /**
  * Returns the authenticated user along with the active store id.
  * Throws AuthError(403) if the user has no store access at all.
  */
-export async function requireStoreScope(): Promise<StoreScope> {
+const resolveStoreScope = cache(async (): Promise<StoreScope> => {
   const user = await requireAuth();
-  const accessible = await listAccessibleStoreIds(user);
+  const memberships = await listAccessibleMemberships(user);
 
-  if (accessible.length === 0) {
+  if (memberships.length === 0) {
     logger.warn('User has no store access', { action: 'store_scope_no_access', userId: user.uid });
-    throw new AuthError('No tienes acceso a ninguna sucursal. Contacta al administrador.', 403);
+    throw new AuthError('No tienes acceso a ningún negocio. Completa el registro o contacta al administrador.', 403);
   }
 
   const cookieStore = await cookies();
   const cookieValue = cookieStore.get(STORE_COOKIE)?.value;
-  const allowed = new Set(accessible.map((r) => r.storeId));
-
-  if (cookieValue && allowed.has(cookieValue)) {
-    return { user, storeId: cookieValue };
+  const selected = (cookieValue ? memberships.find((membership) => membership.id === cookieValue) : undefined)
+    ?? memberships.find((membership) => membership.isDefault)
+    ?? memberships[0];
+  if (!selected?.roleName) {
+    logger.error('Tenant membership has no valid role', {
+      action: 'store_scope_invalid_role',
+      userId: user.uid,
+      storeId: selected?.id,
+    });
+    throw new AuthError('Tu acceso al negocio no tiene un rol válido. Contacta al administrador.', 403);
   }
+  const accessibleStores = memberships.map(({ id, name, isDefault }) => ({ id, name, isDefault }));
+  const tenantUser: AuthenticatedUser = {
+    ...user,
+    roleId: selected.roleId,
+    roleName: selected.roleName ?? undefined,
+    permissions: parsePermissions(selected.permissions),
+    displayName: selected.displayName || user.displayName,
+  };
 
-  const defaultRow = accessible.find((r) => r.isDefault) ?? accessible[0];
-  return { user, storeId: defaultRow.storeId };
-}
+  return { user: tenantUser, storeId: selected.id, accessibleStores };
+});
 
-/**
- * Grants a user access to a store. Idempotent.
- */
-export async function grantStoreAccess(userId: string, storeId: string, isDefault = false): Promise<void> {
-  await db
-    .insert(userStoreAccess)
-    .values({ userId, storeId, isDefault })
-    .onConflictDoNothing();
+export async function requireStoreScope(): Promise<StoreScope> {
+  return resolveStoreScope();
 }
 
 /**
  * Returns true if the user has access to the given store.
- * Owners always pass.
+ * Access is always derived from an explicit tenant assignment.
  */
 export async function userHasStoreAccess(user: AuthenticatedUser, storeId: string): Promise<boolean> {
-  if (user.roleId === 'owner') return true;
-  const [row] = await db
-    .select({ storeId: userStoreAccess.storeId })
-    .from(userStoreAccess)
-    .where(and(eq(userStoreAccess.userId, user.uid), eq(userStoreAccess.storeId, storeId)))
-    .limit(1);
-  return row != null;
+  const accessible = await listAccessibleStores(user);
+  return accessible.some((store) => store.id === storeId);
 }

@@ -56,6 +56,7 @@ export function NotificationsSection({
   handleTGTest,
 }: NotificationsSectionProps) {
   const isConfigured = Boolean(config.enableNotifications && config.telegramToken && config.telegramChatId);
+  const webhookConfigured = Boolean(config.enableNotifications && config.telegramWebhookSecret);
 
   return (
     <BlockStack gap="600">
@@ -98,6 +99,15 @@ export function NotificationsSection({
                       placeholder="Ej: -100123456789"
                       helpText="El chat grupal o individual de los gerentes."
                     />
+                    <TextField
+                      label="Secreto de webhook"
+                      value={config.telegramWebhookSecret || ''}
+                      onChange={(v) => updateField('telegramWebhookSecret', v)}
+                      autoComplete="off"
+                      type="password"
+                      placeholder="Mínimo 16 caracteres"
+                      helpText="Debe coincidir con el secret_token registrado en Telegram. Usa letras, números, guion y guion bajo."
+                    />
                   </FormLayout>
 
                   <Divider />
@@ -112,6 +122,11 @@ export function NotificationsSection({
                       )}
                       {config.enableNotifications && !isConfigured && (
                         <Badge tone="attention">Faltan credenciales</Badge>
+                      )}
+                      {webhookConfigured ? (
+                        <Badge tone="success">Webhook protegido</Badge>
+                      ) : (
+                        <Badge tone="attention">Webhook sin secreto</Badge>
                       )}
                     </InlineStack>
                   </BlockStack>

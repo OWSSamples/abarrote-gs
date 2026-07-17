@@ -35,7 +35,7 @@ export const viewport: Viewport = {
  * Root Layout - Minimal shared wrapper
  *
  * Route-specific providers:
- * - (main) group: AuthProvider + OfflineProvider
+ * - (main) group: AuthProvider
  * - (public) group: No auth (customer display)
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -35,6 +35,7 @@ import { EmptyStateCard } from '@/components/ui/EmptyStateCard';
 import { DeleteConfirmation } from '@/components/ui/DeleteConfirmation';
 import { ReceiptScanner } from '@/components/gastos/ReceiptScanner';
 import type { GastoCategoria } from '@/types';
+import { uploadFile } from '@/lib/storage';
 
 const categoriaOptions: { label: string; value: GastoCategoria | '' }[] = [
   { label: 'Todas las categorías', value: '' },
@@ -89,13 +90,7 @@ export function GastosManager() {
   const [editCategoryOpen, setEditCategoryOpen] = useState(false);
 
   const uploadComprobante = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('path', `receipts/gasto-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`);
-    const res = await fetch('/api/upload', { method: 'POST', body: formData });
-    if (!res.ok) throw new Error('Error al subir comprobante');
-    const data = await res.json();
-    return data.url;
+    return uploadFile(file, `receipts/gasto-${Date.now()}-${file.name}`);
   };
   const [filterCategoria, setFilterCategoria] = useState('');
   const [filterMonth, setFilterMonth] = useState('');

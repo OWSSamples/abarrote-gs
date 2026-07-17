@@ -27,8 +27,8 @@ import {
   EmptyState,
   Bleed,
 } from '@shopify/polaris';
-import { getDevices } from '@/lib/mercadopago';
 import type { MercadoPagoConfig } from '@/lib/mercadopago';
+import { fetchMPDevices } from '@/app/actions/mercadopago-actions';
 import { useDashboardStore } from '@/store/dashboardStore';
 import type { StoreConfig } from '@/types';
 import { BrandLogo } from '@/components/ui/BrandLogo';
@@ -112,6 +112,7 @@ const EmailSection = dynamic(() => import('./sections/EmailSection').then((m) =>
 });
 import { parseError } from '@/lib/errors';
 import { sendTestEmailAction } from '@/app/actions/email-actions';
+import { testTelegramNotification } from '@/app/actions/store-config-actions';
 
 const SETTINGS_CATEGORIES = [
   {
@@ -232,6 +233,7 @@ export function ConfiguracionPage() {
       city: useField(storeConfig.city || ''),
       postalCode: useField(storeConfig.postalCode || ''),
       phone: useField(storeConfig.phone || ''),
+      estimatedUsers: useField(storeConfig.estimatedUsers ?? 1),
       rfc: useField(storeConfig.rfc || ''),
       regimenFiscal: useField(storeConfig.regimenFiscal || ''),
       regimenDescription: useField(storeConfig.regimenDescription || ''),
@@ -257,6 +259,7 @@ export function ConfiguracionPage() {
       enableNotifications: useField(storeConfig.enableNotifications ?? false),
       telegramToken: useField(storeConfig.telegramToken || ''),
       telegramChatId: useField(storeConfig.telegramChatId || ''),
+      telegramWebhookSecret: useField(storeConfig.telegramWebhookSecret || ''),
       printerIp: useField(storeConfig.printerIp || ''),
       cashDrawerPort: useField(storeConfig.cashDrawerPort || ''),
       scalePort: useField(storeConfig.scalePort || ''),
@@ -490,7 +493,7 @@ export function ConfiguracionPage() {
 
   const handleLogoDrop = useCallback((_accepted: File[], rejected: File[]) => {
     if (rejected.length > 0) {
-      setLogoError('Solo se aceptan imágenes (JPG, PNG, WebP, SVG) de máximo 5 MB.');
+      setLogoError('Solo se aceptan imágenes JPG, PNG o WebP de máximo 5 MB.');
     }
   }, []);
 
@@ -521,7 +524,7 @@ export function ConfiguracionPage() {
     setMpTesting(true);
     setMpTestResult(null);
     try {
-      const devices = await getDevices();
+      const devices = await fetchMPDevices();
       setMpDevices(devices);
       if (devices.length > 0) {
         setMpTestResult({ success: true, message: `Conexión exitosa. ${devices.length} terminal(es) encontrada(s).` });
@@ -541,34 +544,16 @@ export function ConfiguracionPage() {
   }, [fields.mpDeviceId]);
 
   const handleTGTest = useCallback(async () => {
-    if (!fields.telegramToken.value || !fields.telegramChatId.value) {
-      setTgTestResult({ success: false, message: 'Ingresa Token y Chat ID primero' });
-      return;
-    }
     setTgTesting(true);
     setTgTestResult(null);
     try {
-      const url = `https://api.telegram.org/bot${fields.telegramToken.value}/sendMessage`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: fields.telegramChatId.value,
-          text: '✅ <b>PRUEBA DE CONEXIÓN</b>\n\nTu consola de abarrotes está conectada correctamente a Telegram.',
-          parse_mode: 'HTML',
-        }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setTgTestResult({ success: true, message: 'Notificación enviada con éxito' });
-      } else {
-        setTgTestResult({ success: false, message: `Error de Telegram: ${data.description}` });
-      }
-    } catch (_err) {
-      setTgTestResult({ success: false, message: 'Error al conectar con Telegram API' });
+      setTgTestResult(await testTelegramNotification());
+    } catch {
+      setTgTestResult({ success: false, message: 'No fue posible probar la conexion con Telegram.' });
+    } finally {
+      setTgTesting(false);
     }
-    setTgTesting(false);
-  }, [fields.telegramToken.value, fields.telegramChatId.value]);
+  }, []);
 
   const handleEmailTest = useCallback(async () => {
     const from = fields.emailFrom.value;

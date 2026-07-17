@@ -163,8 +163,8 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
   }, [file, avatarUrl]);
 
   const getRoleTone = (): 'success' | 'info' | 'attention' => {
-    if (currentUserRole?.roleId === 'owner') return 'success';
-    if (currentUserRole?.roleId === 'cashier') return 'info';
+    if (roleName === 'Propietario' || roleName === 'Administrador') return 'success';
+    if (roleName === 'Cajero') return 'info';
     return 'attention';
   };
 

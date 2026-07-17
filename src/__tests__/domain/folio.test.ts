@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Folio } from '@/domain/value-objects/Folio';
 
 describe('Folio Value Object', () => {
@@ -18,44 +18,12 @@ describe('Folio Value Object', () => {
       expect(folio.toString()).toBe('20260101-12345');
     });
 
-    it('is not temporary', () => {
-      const folio = Folio.generate('20260101', 1);
-      expect(folio.isTemporary()).toBe(false);
-    });
-  });
-
-  describe('generateOffline()', () => {
-    it('creates a folio prefixed with OFF-', () => {
-      const folio = Folio.generateOffline();
-      expect(folio.toString()).toMatch(/^OFF-\d+$/);
-    });
-
-    it('is marked as temporary', () => {
-      const folio = Folio.generateOffline();
-      expect(folio.isTemporary()).toBe(true);
-    });
-
-    it('generates unique folios on successive calls', () => {
-      vi.useFakeTimers();
-      const f1 = Folio.generateOffline();
-      vi.advanceTimersByTime(1);
-      const f2 = Folio.generateOffline();
-      vi.useRealTimers();
-      expect(f1.toString()).not.toBe(f2.toString());
-    });
   });
 
   describe('fromString()', () => {
     it('reconstructs a standard folio', () => {
       const folio = Folio.fromString('20260404-0042');
       expect(folio.toString()).toBe('20260404-0042');
-      expect(folio.isTemporary()).toBe(false);
-    });
-
-    it('reconstructs an offline folio', () => {
-      const folio = Folio.fromString('OFF-1712000000000');
-      expect(folio.toString()).toBe('OFF-1712000000000');
-      expect(folio.isTemporary()).toBe(true);
     });
 
     it('throws on empty string', () => {
@@ -74,10 +42,6 @@ describe('Folio Value Object', () => {
       expect(folio.getDatePrefix()).toBe('20260404');
     });
 
-    it('returns null for offline folio', () => {
-      const folio = Folio.generateOffline();
-      expect(folio.getDatePrefix()).toBeNull();
-    });
   });
 
   describe('getSequenceNumber()', () => {
@@ -86,10 +50,6 @@ describe('Folio Value Object', () => {
       expect(folio.getSequenceNumber()).toBe(42);
     });
 
-    it('returns null for offline folio', () => {
-      const folio = Folio.generateOffline();
-      expect(folio.getSequenceNumber()).toBeNull();
-    });
   });
 
   describe('equals()', () => {

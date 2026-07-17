@@ -1,274 +1,169 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
+import { z } from 'zod';
+import { and, eq, ne } from 'drizzle-orm';
 import { db } from '@/db';
 import { paymentCharges } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { getClipCheckoutStatus, getClipTerminalStatus } from '@/lib/clip-provider';
 import { logger } from '@/lib/logger';
-import { checkRateLimit, getClientIp, idempotencyCheck } from '@/infrastructure/redis';
-import { env } from '@/lib/env';
+import { checkRateLimitAsync, getClientIp } from '@/infrastructure/redis';
+import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
 
-/**
- * Clip Webhook Handler
- *
- * Handles webhook notifications from both:
- * - Checkout Redireccionado (payment links)
- * - PinPad API (physical terminal payments)
- *
- * Security layers:
- * 1. Rate limiting per IP (30 req/60s)
- * 2. Shared secret validation via X-Clip-Webhook-Secret header (if configured)
- * 3. HMAC-SHA256 signature via X-Clip-Signature header (if configured)
- * 4. DB record matching — only updates charges that exist in our system
- * 5. Status transition validation — prevents replay / downgrade attacks
- */
+const MAX_WEBHOOK_BYTES = 64 * 1024;
 
-const VALID_STATUS_TRANSITIONS: Record<string, Set<string>> = {
+const checkoutSignalSchema = z.object({ payment_request_id: z.string().min(1).max(200) }).passthrough();
+const pinpadSignalSchema = z.object({ pinpad_request_id: z.string().min(1).max(200) }).passthrough();
+const genericSignalSchema = z
+  .object({
+    id: z.string().min(1).max(200),
+    origin: z.string().min(1).max(100),
+    event_type: z.string().min(1).max(100),
+  })
+  .passthrough();
+const clipSignalSchema = z.union([checkoutSignalSchema, pinpadSignalSchema, genericSignalSchema]);
+
+type ChargeStatus = 'pending' | 'paid' | 'expired' | 'failed';
+
+const VALID_STATUS_TRANSITIONS: Record<string, ReadonlySet<ChargeStatus>> = {
   pending: new Set(['paid', 'expired', 'failed']),
-  paid: new Set([]), // terminal state — no transitions allowed
-  expired: new Set([]),
-  failed: new Set(['pending']), // retry only
+  paid: new Set(),
+  expired: new Set(['paid']),
+  failed: new Set(['paid']),
 };
-
-interface ClipCheckoutWebhookPayload {
-  payment_request_id: string;
-  status: string;
-  amount?: number;
-  currency?: string;
-  payment_method?: string;
-  approved_at?: string;
-}
-
-interface ClipPinpadWebhookPayload {
-  pinpad_request_id: string;
-  reference: string;
-  amount: string;
-  status: string;
-  transaction_id?: string;
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
+  const ip = getClientIp(request);
+  const rateLimit = await checkRateLimitAsync(`clip_webhook:${ip}`, { limit: 30, windowMs: 60_000 });
+
+  if (rateLimit.isRateLimited) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
 
   try {
-    // ── Rate limiting ──
-    const ip = getClientIp(request);
-    const rl = checkRateLimit(`clip_webhook:${ip}`, { limit: 30, windowMs: 60_000 });
-    if (rl.isRateLimited) {
-      logger.warn('Clip webhook rate limited', { action: 'clip_webhook_rate_limit', ip });
-      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    const storeId = new URL(request.url).searchParams.get('store');
+    if (!storeId || !/^(?:main|[a-f0-9]{32})$/.test(storeId)) {
+      return NextResponse.json({ error: 'Store scope required' }, { status: 400 });
+    }
+    const body = await readTextBodyWithLimit(request, MAX_WEBHOOK_BYTES);
+    if (body === null) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
 
-    const body = await request.text();
-
-    // ── Shared secret verification ──
-    const webhookSecret = env.CLIP_WEBHOOK_SECRET;
-    if (webhookSecret) {
-      // Option 1: HMAC signature header (preferred)
-      const signature = request.headers.get('x-clip-signature');
-      if (signature) {
-        const expectedSignature = crypto.createHmac('sha256', webhookSecret).update(body).digest('hex');
-        const isValid = crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expectedSignature, 'hex'));
-        if (!isValid) {
-          logger.warn('Clip webhook signature mismatch', { action: 'clip_webhook_sig_fail', ip });
-          return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-        }
-      } else {
-        // Option 2: Shared secret in custom header
-        const headerSecret = request.headers.get('x-clip-webhook-secret');
-        if (headerSecret) {
-          const isValid = crypto.timingSafeEqual(Buffer.from(headerSecret), Buffer.from(webhookSecret));
-          if (!isValid) {
-            logger.warn('Clip webhook secret mismatch', { action: 'clip_webhook_secret_fail', ip });
-            return NextResponse.json({ error: 'Invalid secret' }, { status: 401 });
-          }
-        }
-        // If neither header is present, fall through to DB-record validation
-        // This allows the webhook to work even without signature while still logging
-        logger.info('Clip webhook received without signature (using DB validation only)', {
-          action: 'clip_webhook_no_sig',
-          ip,
-        });
-      }
-    }
-
-    let payload: Record<string, unknown>;
+    let json: unknown;
     try {
-      payload = JSON.parse(body) as Record<string, unknown>;
+      json = JSON.parse(body);
     } catch {
-      logger.warn('Clip webhook invalid JSON', { action: 'clip_webhook_invalid_json' });
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
     }
 
-    // Determine source: PinPad or Checkout
-    const isPinpad = 'pinpad_request_id' in payload;
-    const isCheckout = 'payment_request_id' in payload;
-
-    if (!isPinpad && !isCheckout) {
-      logger.warn('Clip webhook unknown payload format', {
-        action: 'clip_webhook_unknown',
-        keys: Object.keys(payload).join(','),
-      });
-      return NextResponse.json({ error: 'Unknown payload format' }, { status: 400 });
+    const parsed = clipSignalSchema.safeParse(json);
+    if (!parsed.success) {
+      logger.warn('Clip webhook payload rejected', { action: 'clip_webhook_invalid_payload', ip });
+      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    if (isCheckout) {
-      const data = payload as unknown as ClipCheckoutWebhookPayload;
-      const providerChargeId = data.payment_request_id;
-      const status = mapClipWebhookStatus(data.status);
+    const signal = parsed.data;
+    const providerChargeId =
+      'payment_request_id' in signal
+        ? signal.payment_request_id
+        : 'pinpad_request_id' in signal
+          ? signal.pinpad_request_id
+          : signal.id;
 
-      // Idempotency: prevent duplicate processing on webhook retries
-      const isNew = await idempotencyCheck(`clip_webhook:checkout:${providerChargeId}:${data.status}`, {
-        ttlMs: 86_400_000,
+    const [existing] = await db
+      .select({
+        id: paymentCharges.id,
+        status: paymentCharges.status,
+        paymentMethod: paymentCharges.paymentMethod,
+      })
+      .from(paymentCharges)
+      .where(
+        and(
+          eq(paymentCharges.storeId, storeId),
+          eq(paymentCharges.provider, 'clip'),
+          eq(paymentCharges.providerChargeId, providerChargeId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      logger.warn('Clip webhook signal has no matching charge', {
+        action: 'clip_webhook_no_match',
+        providerChargeId,
       });
-      if (!isNew) {
-        logger.info('Clip checkout webhook duplicate skipped', { action: 'clip_checkout_duplicate', providerChargeId });
-        return NextResponse.json({ received: true, duplicate: true });
-      }
-
-      logger.info('Clip checkout webhook received', {
-        action: 'clip_checkout_webhook',
-        paymentRequestId: providerChargeId,
-        status: data.status,
-      });
-
-      // Validate: only update if we have a matching record
-      const [existing] = await db
-        .select({ id: paymentCharges.id, status: paymentCharges.status })
-        .from(paymentCharges)
-        .where(eq(paymentCharges.providerChargeId, providerChargeId))
-        .limit(1);
-
-      if (!existing) {
-        logger.warn('Clip webhook: no matching charge found', {
-          action: 'clip_webhook_no_match',
-          providerChargeId,
-        });
-        return NextResponse.json({ received: true, matched: false });
-      }
-
-      if (status !== existing.status) {
-        // Validate status transition to prevent replay/downgrade attacks
-        const allowedTransitions = VALID_STATUS_TRANSITIONS[existing.status];
-        if (!allowedTransitions?.has(status)) {
-          logger.warn('Clip checkout webhook invalid status transition', {
-            action: 'clip_checkout_invalid_transition',
-            chargeId: existing.id,
-            currentStatus: existing.status,
-            attemptedStatus: status,
-          });
-          return NextResponse.json({ received: true, transitionDenied: true });
-        }
-
-        await db
-          .update(paymentCharges)
-          .set({
-            status,
-            paidAt:
-              status === 'paid' && data.approved_at
-                ? new Date(data.approved_at)
-                : status === 'paid'
-                  ? new Date()
-                  : undefined,
-            updatedAt: new Date(),
-          })
-          .where(eq(paymentCharges.providerChargeId, providerChargeId));
-
-        logger.info('Clip checkout payment status updated', {
-          action: 'clip_checkout_status_update',
-          chargeId: existing.id,
-          oldStatus: existing.status,
-          newStatus: status,
-          duration: Date.now() - startTime,
-        });
-      }
+      return NextResponse.json({ received: true, matched: false }, { status: 202 });
     }
 
-    if (isPinpad) {
-      const data = payload as unknown as ClipPinpadWebhookPayload;
-      const providerChargeId = data.pinpad_request_id;
-      const status = mapClipPinpadWebhookStatus(data.status);
+    // Webhook fields are not authoritative; reconcile through Clip's authenticated API.
+    const providerStatus =
+      existing.paymentMethod === 'clip_terminal'
+        ? await getClipTerminalStatus(providerChargeId, storeId)
+        : await getClipCheckoutStatus(providerChargeId, storeId);
 
-      // Idempotency: prevent duplicate processing on webhook retries
-      const isNew = await idempotencyCheck(`clip_webhook:pinpad:${providerChargeId}:${data.status}`, {
-        ttlMs: 86_400_000,
+    if (providerStatus.id !== providerChargeId) {
+      logger.warn('Clip reconciliation returned a different charge identifier', {
+        action: 'clip_webhook_id_mismatch',
+        chargeId: existing.id,
+        requestedProviderChargeId: providerChargeId,
+        returnedProviderChargeId: providerStatus.id,
       });
-      if (!isNew) {
-        logger.info('Clip PinPad webhook duplicate skipped', { action: 'clip_pinpad_duplicate', providerChargeId });
-        return NextResponse.json({ received: true, duplicate: true });
-      }
-
-      logger.info('Clip PinPad webhook received', {
-        action: 'clip_pinpad_webhook',
-        pinpadRequestId: providerChargeId,
-        status: data.status,
-      });
-
-      const [existing] = await db
-        .select({ id: paymentCharges.id, status: paymentCharges.status })
-        .from(paymentCharges)
-        .where(eq(paymentCharges.providerChargeId, providerChargeId))
-        .limit(1);
-
-      if (!existing) {
-        logger.warn('Clip PinPad webhook: no matching charge found', {
-          action: 'clip_pinpad_webhook_no_match',
-          providerChargeId,
-        });
-        return NextResponse.json({ received: true, matched: false });
-      }
-
-      if (status !== existing.status) {
-        // Validate status transition
-        const allowedTransitions = VALID_STATUS_TRANSITIONS[existing.status];
-        if (!allowedTransitions?.has(status)) {
-          logger.warn('Clip PinPad webhook invalid status transition', {
-            action: 'clip_pinpad_invalid_transition',
-            chargeId: existing.id,
-            currentStatus: existing.status,
-            attemptedStatus: status,
-          });
-          return NextResponse.json({ received: true, transitionDenied: true });
-        }
-
-        await db
-          .update(paymentCharges)
-          .set({
-            status,
-            paidAt: status === 'paid' ? new Date() : undefined,
-            updatedAt: new Date(),
-          })
-          .where(eq(paymentCharges.providerChargeId, providerChargeId));
-
-        logger.info('Clip PinPad payment status updated', {
-          action: 'clip_pinpad_status_update',
-          chargeId: existing.id,
-          oldStatus: existing.status,
-          newStatus: status,
-          duration: Date.now() - startTime,
-        });
-      }
+      return NextResponse.json({ error: 'Charge reconciliation failed' }, { status: 409 });
     }
 
-    return NextResponse.json({ received: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    logger.error('Clip webhook error', { action: 'clip_webhook_error', error: message });
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    if (providerStatus.status === existing.status) {
+      return NextResponse.json({ received: true, matched: true, changed: false });
+    }
+
+    const nextStatus = providerStatus.status as ChargeStatus;
+    const allowedTransitions = VALID_STATUS_TRANSITIONS[existing.status];
+    if (!allowedTransitions?.has(nextStatus)) {
+      logger.warn('Clip webhook status transition denied', {
+        action: 'clip_webhook_transition_denied',
+        chargeId: existing.id,
+        currentStatus: existing.status,
+        attemptedStatus: nextStatus,
+      });
+      return NextResponse.json({ received: true, matched: true, changed: false });
+    }
+
+    const [updated] = await db
+      .update(paymentCharges)
+      .set({
+        status: nextStatus,
+        paidAt: nextStatus === 'paid' ? providerStatus.paidAt ?? new Date() : undefined,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(paymentCharges.id, existing.id),
+          eq(paymentCharges.storeId, storeId),
+          eq(paymentCharges.provider, 'clip'),
+          nextStatus === 'paid'
+            ? ne(paymentCharges.status, 'paid')
+            : eq(paymentCharges.status, 'pending'),
+        ),
+      )
+      .returning({ status: paymentCharges.status });
+
+    if (!updated) {
+      return NextResponse.json({ received: true, matched: true, changed: false });
+    }
+
+    logger.info('Clip payment status reconciled', {
+      action: 'clip_webhook_reconciled',
+      chargeId: existing.id,
+      oldStatus: existing.status,
+      newStatus: nextStatus,
+      durationMs: Date.now() - startTime,
+    });
+
+    return NextResponse.json({ received: true, matched: true, changed: true });
+  } catch (error) {
+    logger.error('Clip webhook reconciliation failed', {
+      action: 'clip_webhook_error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      durationMs: Date.now() - startTime,
+    });
+    return NextResponse.json({ error: 'Processing failed' }, { status: 502 });
   }
-}
-
-function mapClipWebhookStatus(status: string): 'pending' | 'paid' | 'expired' | 'failed' {
-  const normalized = (status ?? '').toUpperCase();
-  if (normalized === 'APPROVED' || normalized === 'PAID' || normalized === 'COMPLETED') return 'paid';
-  if (normalized === 'EXPIRED' || normalized === 'CANCELED' || normalized === 'CANCELLED') return 'expired';
-  if (normalized === 'DECLINED' || normalized === 'REJECTED' || normalized === 'FAILED') return 'failed';
-  return 'pending';
-}
-
-function mapClipPinpadWebhookStatus(status: string): 'pending' | 'paid' | 'expired' | 'failed' {
-  const normalized = (status ?? '').toUpperCase();
-  if (normalized === 'COMPLETED' || normalized === 'APPROVED') return 'paid';
-  if (normalized === 'CANCELED' || normalized === 'CANCELLED' || normalized === 'EXPIRED') return 'expired';
-  if (normalized === 'DECLINED' || normalized === 'REJECTED' || normalized === 'FAILED') return 'failed';
-  return 'pending';
 }

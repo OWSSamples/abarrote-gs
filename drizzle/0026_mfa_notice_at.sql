@@ -1,1 +1,1 @@
-ALTER TABLE "user_roles" ADD COLUMN "mfa_notice_at" timestamp;
+ALTER TABLE "user_roles" ADD COLUMN IF NOT EXISTS "mfa_notice_at" timestamp;

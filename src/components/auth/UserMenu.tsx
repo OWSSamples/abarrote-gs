@@ -12,15 +12,18 @@ import {
   Badge,
   Box,
   Icon,
+  UnstyledButton,
 } from '@shopify/polaris';
 import { ProfileIcon, SettingsIcon, ExitIcon, SunIcon, MoonIcon, ChevronDownIcon } from '@shopify/polaris-icons';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { ProfileModal } from '@/components/modals/ProfileModal';
+import { usePermissions } from '@/hooks/usePermissions';
 
 export function UserMenu() {
   const { user, signOut } = useAuth();
   const currentUserRole = useDashboardStore((s) => s.currentUserRole);
+  const { roleName } = usePermissions();
   const [active, setActive] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
@@ -43,7 +46,11 @@ export function UserMenu() {
 
   const rawDisplayName = currentUserRole?.displayName || user.displayName || user.email?.split('@')[0] || 'Usuario';
   const displayName =
-    rawDisplayName === 'ERROR' ? (currentUserRole?.roleId === 'owner' ? 'Admin' : 'Usuario') : rawDisplayName;
+    rawDisplayName === 'ERROR'
+      ? roleName === 'Propietario' || roleName === 'Administrador'
+        ? 'Admin'
+        : 'Usuario'
+      : rawDisplayName;
 
   const initials = displayName
     .split(' ')
@@ -56,37 +63,19 @@ export function UserMenu() {
   const avatarSource = currentUserRole?.avatarUrl || undefined;
 
   const getRoleBadgeTone = (): 'success' | 'info' | 'attention' => {
-    if (currentUserRole?.roleId === 'owner') return 'success';
-    if (currentUserRole?.roleId === 'cashier') return 'info';
+    if (roleName === 'Propietario' || roleName === 'Administrador') return 'success';
+    if (roleName === 'Cajero') return 'info';
     return 'attention';
   };
 
-  const roleLabel =
-    currentUserRole?.roleId === 'owner' ? 'Admin' : currentUserRole?.roleId === 'cashier' ? 'Cajero' : 'Usuario';
+  const roleLabel = roleName === 'Sin rol' ? 'Usuario' : roleName;
 
   const activator = (
-    <button
+    <UnstyledButton
       onClick={toggleActive}
-      aria-label="Abrir menú de usuario"
-      style={{
-        background: active ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-        border: '1px solid transparent',
-        cursor: 'pointer',
-        padding: '4px 8px 4px 4px',
-        borderRadius: '8px',
-        transition: 'all 0.15s ease',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = active ? 'rgba(255, 255, 255, 0.1)' : 'transparent';
-        e.currentTarget.style.borderColor = 'transparent';
-      }}
+      accessibilityLabel="Abrir menú de usuario"
+      ariaExpanded={active}
+      className="ctb-user-menu-trigger"
     >
       <Avatar initials={initials} size="sm" name={displayName} source={avatarSource} />
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -105,7 +94,7 @@ export function UserMenu() {
         </span>
         <Icon source={ChevronDownIcon} tone="inherit" />
       </div>
-    </button>
+    </UnstyledButton>
   );
 
   return (

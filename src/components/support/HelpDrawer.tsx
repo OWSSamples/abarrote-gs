@@ -89,7 +89,7 @@ const FAQ_ITEMS = [
   { category: 'pos', question: '¿Cómo registro una venta?', answer: 'Ve a "Punto de Venta" en el menú lateral.\n1. Escanea el código de barras del producto o búscalo por nombre.\n2. Ajusta la cantidad si es necesario.\n3. Selecciona el método de pago (efectivo, tarjeta, MercadoPago, SPEI…).\n4. Presiona "Cobrar" para completar la venta e imprimir el ticket.' },
   { category: 'pos', question: '¿Cómo aplico un descuento a una venta?', answer: 'En la pantalla de cobro, antes de confirmar el pago:\n1. Toca el subtotal o el ícono de descuento.\n2. Ingresa el porcentaje o monto fijo del descuento.\n3. Confirma. El total se ajustará automáticamente y quedará registrado en el historial.' },
   { category: 'pos', question: '¿Cómo registro una devolución?', answer: 'Ve a "Historial de Ventas".\n1. Busca la venta original por folio o fecha.\n2. Presiona el botón "Devolver".\n3. Selecciona los artículos y cantidades a devolver.\n4. Confirma. El stock se reajusta automáticamente y se genera un ticket de devolución.' },
-  { category: 'pos', question: '¿Qué hago si el internet se cae?', answer: 'El sistema funciona en modo offline automáticamente. Aparecerá un indicador naranja en la barra superior.\n- Las ventas, cortes y movimientos se guardan localmente.\n- Al recuperar la conexión, todo se sincroniza con el servidor.\n- No pierdes ningún dato si el sistema estaba funcionando antes de la caída.' },
+  { category: 'pos', question: '¿Qué hago si el internet se cae?', answer: 'El sistema requiere conexión para registrar operaciones. No confirmes ventas, cortes ni movimientos mientras aparezca el aviso de desconexión.\n1. Conserva el carrito abierto.\n2. Verifica la red del equipo.\n3. Cuando vuelva la conexión, revisa los importes y confirma la operación una sola vez.\nEl sistema no guarda operaciones pendientes de forma local.' },
   { category: 'inventory', question: '¿Cómo agrego un producto nuevo?', answer: 'Ve a "Productos" → clic en "+ Agregar producto".\n1. Completa nombre, SKU (o deja que se genere), precio de costo y precio de venta.\n2. Asigna una categoría y unidad de medida.\n3. Ingresa el stock inicial.\n4. Opcional: sube imagen y activa la IA para generar una descripción automática.\n5. Guarda.' },
   { category: 'inventory', question: '¿Cómo recibo mercancía de un proveedor?', answer: 'Ve a "Inventario" → "Recepción de mercancía" o desde el perfil del proveedor.\n1. Selecciona los productos recibidos y en qué cantidades.\n2. Opcionalmente adjunta la factura (la IA puede extraerla automáticamente).\n3. Confirma. El stock se incrementa y queda el registro trazable.' },
   { category: 'caja', question: '¿Cómo hago un corte de caja?', answer: 'Ve a "Caja" → "Corte de Caja".\n1. El sistema muestra el efectivo esperado (ventas en efectivo - cambios).\n2. Cuenta el dinero físico e ingresa el monto contado.\n3. Registra cualquier retiro de caja si hubo.\n4. Confirma el corte. Se genera un reporte imprimible automáticamente.' },
@@ -124,7 +124,7 @@ const _QUICK_PROMPTS = [
   '¿Cómo hago un corte de caja?',
   'No puedo conectar la impresora',
   '¿Cómo configuro MercadoPago?',
-  '¿Cómo funciona el modo offline?',
+  '¿Qué hago si pierdo conexión?',
   'Error al registrar una venta',
   '¿Cómo exporto mis reportes?',
 ];
@@ -256,8 +256,8 @@ function getSuggestions(lastBotMsg: string): string[] {
   if (lower.includes('impresora') || lower.includes('imprimir') || lower.includes('hardware')) {
     return ['¿Cómo cambio el tamaño del papel?', '¿Qué impresoras son compatibles?'];
   }
-  if (lower.includes('offline') || lower.includes('sincroniz') || lower.includes('conexión')) {
-    return ['¿Qué funciona sin internet?', '¿Cómo fuerzo la sincronización?'];
+  if (lower.includes('sincroniz') || lower.includes('conexión')) {
+    return ['¿Cómo verifico mi conexión?', '¿Cómo reintento una operación?'];
   }
   return [];
 }

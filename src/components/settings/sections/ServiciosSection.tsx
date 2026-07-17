@@ -38,7 +38,7 @@ import { useDashboardStore } from '@/store/dashboardStore';
 import {
   getAvailableProviders,
   type ServiceCategory,
-} from '@/infrastructure/servicios/provider-registry';
+} from '@/infrastructure/servicios/provider-catalog';
 import { parseError } from '@/lib/errors';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 

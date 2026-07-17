@@ -37,6 +37,7 @@ export type DiscountType = 'amount' | 'percent';
  *
  * @example
  * const sale = Sale.create({
+ *   folio: Folio.generate('20260714', 42),
  *   items: [item1, item2],
  *   paymentMethod: 'efectivo',
  *   amountPaid: Money.fromPesos(500),
@@ -45,7 +46,7 @@ export type DiscountType = 'amount' | 'percent';
  */
 export interface SaleProps {
   readonly id?: string;
-  readonly folio?: Folio;
+  readonly folio: Folio;
   readonly items: readonly SaleItem[];
   readonly paymentMethod: PaymentMethod;
   readonly amountPaid: Money;
@@ -65,19 +66,6 @@ export interface SaleProps {
  * IVA rate in Mexico (16%)
  */
 const IVA_RATE = 0.16;
-
-/**
- * Payment methods that require internet
- */
-const ONLINE_ONLY_METHODS = new Set<PaymentMethod>([
-  'spei_conekta',
-  'spei_stripe',
-  'oxxo_conekta',
-  'oxxo_stripe',
-  'tarjeta_web',
-  'tarjeta_clip',
-  'clip_terminal',
-]);
 
 export class Sale {
   private constructor(private readonly props: Required<Omit<SaleProps, 'customerId'>> & { customerId?: string }) {}
@@ -101,7 +89,7 @@ export class Sale {
 
     return new Sale({
       id: props.id ?? `s-${crypto.randomUUID()}`,
-      folio: props.folio ?? Folio.generateOffline(),
+      folio: props.folio,
       items,
       paymentMethod: props.paymentMethod,
       amountPaid: props.amountPaid,
@@ -252,20 +240,6 @@ export class Sale {
   }
 
   /**
-   * Check if this is an offline sale that needs syncing
-   */
-  isOffline(): boolean {
-    return this.folio.isTemporary();
-  }
-
-  /**
-   * Check if payment method requires internet
-   */
-  requiresInternet(): boolean {
-    return ONLINE_ONLY_METHODS.has(this.paymentMethod);
-  }
-
-  /**
    * Check if sale is cancelled
    */
   isCancelled(): boolean {
@@ -346,7 +320,7 @@ export class Sale {
   }
 
   /**
-   * Update with server-assigned folio (after offline sync)
+   * Replace the folio while preserving the remaining aggregate state.
    */
   withFolio(folio: Folio): Sale {
     return new Sale({

@@ -5,8 +5,9 @@ import { withLogging } from '@/lib/errors';
 import { sendEmail } from '@/lib/email';
 import { testEmailTemplate, ticketEmailTemplate } from '@/lib/email-templates';
 import type { TicketEmailData } from '@/lib/email-templates';
-import { fetchStoreConfig } from './store-config-actions';
+import { getStoreConfig } from '@/server/store-config-service';
 import { logger } from '@/lib/logger';
+import { getEmailDomain, hashIdentifierForLog, normalizeEmailAddress } from '@/lib/security/redaction';
 import { z } from 'zod';
 
 // ══════════════════════════════════════════════════════════════
@@ -18,6 +19,14 @@ const ticketEmailItemSchema = z.object({
   qty: z.number().int().positive(),
   price: z.number().nonnegative(),
   subtotal: z.number().nonnegative(),
+});
+
+const sendTestEmailSchema = z.object({
+  to: z.string().email('Correo electrónico inválido'),
+  fromEmail: z.string().email('Correo remitente inválido'),
+  fromName: z.string().max(100).optional(),
+  storeName: z.string().min(1).max(120),
+  logoUrl: z.string().url().optional().or(z.literal('')),
 });
 
 const sendTicketEmailSchema = z.object({
@@ -48,17 +57,28 @@ async function _sendTestEmailAction(params: {
 }): Promise<{ success: boolean; message: string }> {
   await requireOwner();
 
-  const template = testEmailTemplate(params.storeName, params.logoUrl);
+  const parsed = sendTestEmailSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, message: 'Datos inválidos para enviar correo de prueba' };
+  }
+  const data = parsed.data;
+  const recipient = normalizeEmailAddress(data.to);
+  const recipientLog = {
+    to_hash: await hashIdentifierForLog(recipient),
+    to_domain: getEmailDomain(recipient),
+  };
+
+  const template = testEmailTemplate(data.storeName, data.logoUrl || undefined);
 
   const result = await sendEmail(
-    { to: params.to, subject: template.subject, html: template.html, text: template.text },
-    params.fromEmail,
-    params.fromName,
+    { to: recipient, subject: template.subject, html: template.html, text: template.text },
+    data.fromEmail,
+    data.fromName || data.storeName,
   );
 
   if (result.success) {
-    logger.info('Test email sent', { action: 'email_test', to: params.to, messageId: result.messageId });
-    return { success: true, message: `Correo de prueba enviado a ${params.to}` };
+    logger.info('Test email sent', { action: 'email_test', ...recipientLog, messageId: result.messageId });
+    return { success: true, message: 'Correo de prueba enviado.' };
   }
 
   return { success: false, message: result.error || 'Error al enviar correo de prueba' };
@@ -92,8 +112,13 @@ async function _sendTicketEmailAction(params: {
     return { success: false, message: 'Datos inválidos para enviar ticket por correo' };
   }
   const data = parsed.data;
+  const recipient = normalizeEmailAddress(data.to);
+  const recipientLog = {
+    to_hash: await hashIdentifierForLog(recipient),
+    to_domain: getEmailDomain(recipient),
+  };
 
-  const config = await fetchStoreConfig();
+  const config = await getStoreConfig();
 
   if (!config.emailEnabled) {
     return { success: false, message: 'El envío de correos no está habilitado' };
@@ -128,7 +153,7 @@ async function _sendTicketEmailAction(params: {
     : template.subject;
 
   const result = await sendEmail(
-    { to: data.to, subject, html: template.html, text: template.text },
+    { to: recipient, subject, html: template.html, text: template.text },
     config.emailFrom,
     config.emailFromName || config.storeName,
   );
@@ -136,16 +161,16 @@ async function _sendTicketEmailAction(params: {
   if (result.success) {
     logger.info('Ticket email sent', {
       action: 'email_ticket',
-      to: data.to,
+      ...recipientLog,
       folio: data.folio,
       messageId: result.messageId,
     });
-    return { success: true, message: `Ticket enviado a ${data.to}` };
+    return { success: true, message: 'Ticket enviado por correo' };
   }
 
   logger.error('Failed to send ticket email', {
     action: 'email_ticket',
-    to: data.to,
+    ...recipientLog,
     folio: data.folio,
     error: result.error,
   });

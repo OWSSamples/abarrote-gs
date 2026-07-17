@@ -1,23 +1,29 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Modal, FormLayout, TextField, Select, Banner, Text } from '@shopify/polaris';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Banner,
+  BlockStack,
+  Button,
+  Divider,
+  InlineGrid,
+  InlineStack,
+  Modal,
+  Text,
+  TextField,
+} from '@shopify/polaris';
 import type { RoleDefinition } from '@/types';
+import { PolarisOptionDropdown } from '../PolarisOptionDropdown';
 
 interface AddUserModalProps {
   open: boolean;
   onClose: () => void;
-  onSave: (data: {
-    email: string;
-    displayName: string;
-    password: string;
-    roleId: string;
-    pinCode: string;
-  }) => Promise<void>;
+  onSave: (data: { email: string; roleId: string }) => Promise<void>;
   saving: boolean;
   roleSelectOptions: { label: string; value: string }[];
   roleMap: Map<string, RoleDefinition>;
   defaultRoleId: string;
+  onCreateRole: () => void;
 }
 
 export function AddUserModal({
@@ -28,127 +34,115 @@ export function AddUserModal({
   roleSelectOptions,
   roleMap,
   defaultRoleId,
+  onCreateRole,
 }: AddUserModalProps) {
-  const [formEmail, setFormEmail] = useState('');
-  const [formDisplayName, setFormDisplayName] = useState('');
-  const [formPassword, setFormPassword] = useState('');
-  const [formRoleId, setFormRoleId] = useState(defaultRoleId);
-  const [formPinCode, setFormPinCode] = useState('');
-
-  const normalizedEmail = formEmail.trim().toLowerCase();
+  const [email, setEmail] = useState('');
+  const [roleId, setRoleId] = useState(defaultRoleId);
+  const normalizedEmail = email.trim().toLowerCase();
   const emailError = useMemo(() => {
-    if (!formEmail.trim()) return undefined;
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ? undefined : 'Ingresa un correo válido.';
-  }, [formEmail, normalizedEmail]);
-  const passwordError = useMemo(() => {
-    const password = formPassword.trim();
-    if (!password) return undefined;
-    return password.length >= 8 ? undefined : 'La contraseña debe tener mínimo 8 caracteres.';
-  }, [formPassword]);
-  const pinError = useMemo(() => {
-    if (!formPinCode) return undefined;
-    return /^\d{4,6}$/.test(formPinCode) ? undefined : 'El PIN debe tener de 4 a 6 dígitos numéricos.';
-  }, [formPinCode]);
-  const canSubmit = Boolean(normalizedEmail && formPassword.trim().length >= 8 && formRoleId && !emailError && !pinError);
+    if (!email.trim()) return undefined;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+      ? undefined
+      : 'Ingresa un correo válido.';
+  }, [email, normalizedEmail]);
+  const selectedRole = roleId ? roleMap.get(roleId) : undefined;
+  const hasAssignableRoles = roleSelectOptions.length > 0;
+  const canSubmit = Boolean(hasAssignableRoles && normalizedEmail && roleId && !emailError);
 
-  // Reset form when modal opens
-  /* eslint-disable react-hooks/set-state-in-effect -- intentional form reset on open */
   useEffect(() => {
-    if (open) {
-      setFormEmail('');
-      setFormDisplayName('');
-      setFormPassword('');
-      setFormRoleId(defaultRoleId);
-      setFormPinCode('');
-    }
-  }, [open, defaultRoleId]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  const handleClose = useCallback(() => {
-    onClose();
-  }, [onClose]);
+    if (!open) return;
+    setEmail('');
+    setRoleId(defaultRoleId);
+  }, [defaultRoleId, open]);
 
   const handleSave = useCallback(() => {
-    return onSave({
-      email: normalizedEmail,
-      displayName: formDisplayName,
-      password: formPassword,
-      roleId: formRoleId,
-      pinCode: formPinCode,
-    });
-  }, [onSave, normalizedEmail, formDisplayName, formPassword, formRoleId, formPinCode]);
-
-  const handlePinChange = useCallback((value: string) => {
-    setFormPinCode(value.replace(/\D/g, '').slice(0, 6));
-  }, []);
+    if (!canSubmit) return Promise.resolve();
+    return onSave({ email: normalizedEmail, roleId });
+  }, [canSubmit, normalizedEmail, onSave, roleId]);
 
   return (
     <Modal
       open={open}
-      onClose={handleClose}
-      title="Agregar usuario al sistema"
+      onClose={onClose}
+      title="Invitar usuario al negocio"
+      size="large"
       primaryAction={{
-        content: 'Crear usuario y asignar rol',
+        content: hasAssignableRoles ? 'Enviar invitación' : 'Crea un rol primero',
         onAction: handleSave,
         loading: saving,
         disabled: !canSubmit,
       }}
-      secondaryActions={[{ content: 'Cancelar', onAction: handleClose }]}
+      secondaryActions={[
+        ...(hasAssignableRoles ? [] : [{ content: 'Crear rol', onAction: onCreateRole }]),
+        { content: 'Cancelar', onAction: onClose },
+      ]}
     >
       <Modal.Section>
-        <FormLayout>
-          <TextField
-            label="Correo electrónico"
-            type="email"
-            value={formEmail}
-            onChange={setFormEmail}
-            autoComplete="email"
-            placeholder="cajero@mitienda.com"
-            helpText="El correo con el que el usuario inicia sesión en Cognito"
-            error={emailError}
-          />
-          <TextField
-            label="Nombre (opcional)"
-            value={formDisplayName}
-            onChange={setFormDisplayName}
-            autoComplete="name"
-            placeholder="Juan Perez"
-          />
-          <TextField
-            label="Contraseña"
-            type="password"
-            value={formPassword}
-            onChange={setFormPassword}
-            autoComplete="new-password"
-            placeholder="Mínimo 8 caracteres"
-            helpText="Debe cumplir la política mínima del servidor y AWS Cognito."
-            error={passwordError}
-          />
-          <Select label="Rol" options={roleSelectOptions} value={formRoleId} onChange={setFormRoleId} />
-          <TextField
-            label="PIN de Aprobación (Opcional)"
-            type="password"
-            value={formPinCode}
-            onChange={handlePinChange}
-            autoComplete="off"
-            maxLength={6}
-            placeholder="Ej: 1234"
-            helpText="PIN de 4 a 6 dígitos numéricos para autorizar anulaciones y mermas en mostrador."
-            error={pinError}
-          />
-          {formRoleId && roleMap.get(formRoleId) && (
-            <Banner tone="info">
-              <Text as="p" variant="bodySm">
-                <strong>{roleMap.get(formRoleId)!.name}:</strong> {roleMap.get(formRoleId)!.description}
-              </Text>
+        <BlockStack gap="500">
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingMd">Acceso mediante invitación</Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              El destinatario conservará su cuenta y deberá aceptar el acceso con el mismo correo.
+            </Text>
+          </BlockStack>
+
+          {!hasAssignableRoles && (
+            <Banner tone="warning" title="No hay roles asignables">
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm">
+                  Crea un rol con los permisos necesarios antes de invitar integrantes.
+                </Text>
+                <div>
+                  <Button variant="primary" onClick={onCreateRole}>Crear rol</Button>
+                </div>
+              </BlockStack>
             </Banner>
           )}
-          <Banner tone="warning">
-            <Text as="p" variant="bodySm">
-              Este flujo crea primero la identidad en AWS Cognito y después vincula el rol en PostgreSQL. Si la vinculación falla, el sistema revierte la cuenta en Cognito para evitar usuarios sin acceso local.
-            </Text>
-          </Banner>
-        </FormLayout>
+
+          <InlineGrid columns={{ xs: 1, md: 2 }} gap="500">
+            <TextField
+              label="Correo electrónico"
+              type="email"
+              value={email}
+              onChange={setEmail}
+              autoComplete="email"
+              placeholder="colaborador@empresa.com"
+              helpText="La invitación vence en 48 horas y solo funciona con este correo."
+              error={emailError}
+              disabled={!hasAssignableRoles || saving}
+            />
+
+            <BlockStack gap="200">
+              <PolarisOptionDropdown
+                label="Rol dentro del negocio"
+                options={hasAssignableRoles ? roleSelectOptions : []}
+                value={roleId}
+                onChange={setRoleId}
+                disabled={!hasAssignableRoles || saving}
+                placeholder="Seleccionar rol"
+                helpText="Los permisos se aplicarán únicamente en este negocio."
+              />
+              {selectedRole && (
+                <BlockStack gap="100">
+                  <InlineStack align="space-between" gap="200">
+                    <Text as="span" variant="bodySm" fontWeight="semibold">{selectedRole.name}</Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {selectedRole.permissions.length} permisos
+                    </Text>
+                  </InlineStack>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {selectedRole.description || 'Rol sin descripción.'}
+                  </Text>
+                </BlockStack>
+              )}
+            </BlockStack>
+          </InlineGrid>
+
+          <Divider />
+          <Text as="p" variant="bodySm" tone="subdued">
+            La invitación no modifica la contraseña, MFA ni los accesos que la persona tenga en otros negocios.
+          </Text>
+        </BlockStack>
       </Modal.Section>
     </Modal>
   );

@@ -261,6 +261,8 @@ export function TicketTemplateSection({ label, description, value, onChange, sam
             <div style={{ flex: 1, overflow: 'auto', padding: '16px', background: '#f9fafb' }}>
               <iframe
                 srcDoc={value}
+                sandbox=""
+                referrerPolicy="no-referrer"
                 style={{
                   width: '100%',
                   minHeight: '500px',

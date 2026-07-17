@@ -54,7 +54,7 @@ export async function checkAuthRateLimit(action: AuthAction, email?: string): Pr
 
   if (!result.allowed) {
     void logAuthEvent({
-      event: 'sign_in_failure',
+      event: action === 'password_reset' ? 'password_reset_failure' : 'sign_in_failure',
       email,
       ipAddress: ip,
       reason: `rate_limit_${action}`,

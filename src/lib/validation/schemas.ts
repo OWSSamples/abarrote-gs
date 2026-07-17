@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PAYMENT_METHODS, GASTO_CATEGORIAS, PEDIDO_ESTADOS, MERMA_REASONS } from '@/types';
+import { ALL_PERMISSIONS, PAYMENT_METHODS, GASTO_CATEGORIAS, PEDIDO_ESTADOS, MERMA_REASONS } from '@/types';
 import { isValidRFC } from './rfc';
 
 // ══════════════════════════════════════════════════════
@@ -13,6 +13,7 @@ const money = z.number().nonnegative().max(99_999_999.99);
 const positiveMoney = z.number().positive('Debe ser mayor a 0').max(99_999_999.99);
 const positiveInt = z.number().int().positive().max(9_999_999);
 const nonNegativeInt = z.number().int().nonnegative().max(9_999_999);
+const permissionSet = new Set<string>(ALL_PERMISSIONS);
 
 // ══════════════════════════════════════════════════════
 // SALES
@@ -27,30 +28,69 @@ const saleItemSchema = z.object({
   subtotal: money,
 });
 
-export const createSaleSchema = z.object({
-  items: z.array(saleItemSchema).min(1, 'La venta debe tener al menos un producto').max(500),
-  subtotal: money,
-  iva: money,
-  cardSurcharge: money.default(0),
-  total: positiveMoney,
-  paymentMethod: z.enum(PAYMENT_METHODS),
-  installments: z.number().int().min(1).max(48).default(1),
-  mpPaymentId: z.string().max(200).nullable().optional(),
-  amountPaid: money,
-  change: money.default(0),
-  cajero: z.string().min(1).max(200).default('Cajero'),
-  pointsEarned: nonNegativeInt.default(0),
-  pointsUsed: nonNegativeInt.default(0),
-  discount: money.default(0),
-  discountType: z.enum(['amount', 'percent']).default('amount'),
-  clienteId: z.string().max(200).optional(),
-  clientRequestId: z.string().min(8).max(200).optional(),
-});
+export const createSaleSchema = z
+  .object({
+    items: z.array(saleItemSchema).min(1, 'La venta debe tener al menos un producto').max(500),
+    subtotal: money,
+    iva: money,
+    cardSurcharge: money.default(0),
+    total: positiveMoney,
+    paymentMethod: z.enum(PAYMENT_METHODS),
+    installments: z.number().int().min(1).max(48).default(1),
+    mpPaymentId: z.string().max(200).nullable().optional(),
+    amountPaid: money,
+    change: money.default(0),
+    cajero: z.string().min(1).max(200).default('Cajero'),
+    pointsEarned: nonNegativeInt.default(0),
+    pointsUsed: nonNegativeInt.default(0),
+    discount: money.default(0),
+    discountType: z.enum(['amount', 'percent']).default('amount'),
+    clienteId: z.string().max(200).optional(),
+    clientRequestId: z.string().min(8).max(200).optional(),
+    discountApprovalToken: z.string().min(32).max(200).optional(),
+  })
+  .superRefine((sale, context) => {
+    if ((sale.paymentMethod === 'fiado' || sale.paymentMethod === 'puntos') && !sale.clienteId) {
+      context.addIssue({
+        code: 'custom',
+        path: ['clienteId'],
+        message: 'Este método de pago requiere un cliente.',
+      });
+    }
+  });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 
+export const saleDiscountApprovalContextSchema = z.object({
+  operation: z.literal('sale_discount'),
+  clientRequestId: z.string().min(8).max(200),
+  discountValue: positiveMoney,
+  discountType: z.enum(['amount', 'percent']),
+  items: z
+    .array(z.object({ productId: idSchema, quantity: positiveInt }))
+    .min(1)
+    .max(500),
+}).superRefine((context, refinement) => {
+  if (context.discountType === 'percent' && context.discountValue > 100) {
+    refinement.addIssue({
+      code: 'custom',
+      path: ['discountValue'],
+      message: 'El descuento porcentual no puede superar 100.',
+    });
+  }
+});
+
+export type SaleDiscountApprovalContext = z.infer<typeof saleDiscountApprovalContextSchema>;
+
 export const deleteSalesSchema = z.object({
   saleIds: z.array(idSchema).min(1).max(100),
+});
+
+export const createCorteCajaSchema = z.object({
+  cajero: safeString('Cajero', 200),
+  efectivoContado: money,
+  fondoInicial: money,
+  notas: z.string().max(2000),
 });
 
 // ══════════════════════════════════════════════════════
@@ -207,28 +247,18 @@ export const updatePromotionSchema = createPromotionSchema.partial();
 export const createRoleSchema = z.object({
   name: safeString('Nombre del rol', 100),
   description: z.string().max(500).default(''),
-  permissions: z.array(z.string().max(100)).min(1, 'Al menos un permiso').max(200),
+  permissions: z
+    .array(
+      z
+        .string()
+        .max(100)
+        .refine((permission) => permissionSet.has(permission), 'Permiso no reconocido'),
+    )
+    .min(1, 'Al menos un permiso')
+    .max(ALL_PERMISSIONS.length),
 });
 
 export const updateRoleSchema = createRoleSchema.partial();
-
-export const assignUserRoleSchema = z.object({
-  cognitoSub: safeString('Cognito Sub', 200),
-  email: z.string().email().max(300),
-  displayName: z.string().max(200).default(''),
-  roleId: idSchema,
-});
-
-export const createUserWithRoleSchema = z.object({
-  email: z.string().email().max(300),
-  password: z.string().min(8, 'Mínimo 8 caracteres').max(128).optional(),
-  displayName: safeString('Nombre', 200),
-  roleId: idSchema,
-  pinCode: z
-    .string()
-    .regex(/^\d{4,6}$/, 'PIN debe ser 4-6 dígitos')
-    .optional(),
-});
 
 export const updateUserPinSchema = z.object({
   cognitoSub: safeString('Cognito Sub', 200),
@@ -301,7 +331,7 @@ const environmentSchema = z.enum(['sandbox', 'production']);
 
 export const connectConektaSchema = z.object({
   privateKey: z.string().min(1).max(500),
-  publicKey: z.string().min(1).max(500),
+  publicKey: z.string().min(1).max(5000),
   environment: environmentSchema,
 });
 
@@ -333,6 +363,40 @@ export const createClipTerminalSchema = z.object({
   serialNumber: z.string().max(100).optional(),
 });
 
+const requiredPaymentEmail = z.string().trim().email().max(320);
+const requiredPaymentReference = z.string().trim().min(1, 'Referencia requerida').max(200);
+
+export const createConektaChargeSchema = createChargeSchema.extend({
+  customerName: safeString('Nombre del cliente', 200),
+  customerEmail: requiredPaymentEmail,
+  description: z.string().trim().min(1, 'Descripción requerida').max(500),
+  saleReference: requiredPaymentReference,
+});
+
+export const createStripeChargeSchema = createChargeSchema.extend({
+  customerEmail: requiredPaymentEmail,
+  description: z.string().trim().min(1, 'Descripción requerida').max(500),
+  saleReference: requiredPaymentReference,
+});
+
+export const createClipCheckoutChargeSchema = createChargeSchema.pick({
+  amount: true,
+  description: true,
+  saleReference: true,
+});
+
+export const createCobrarChargeSchema = z.object({
+  amount: positiveMoney,
+  reference: requiredPaymentReference,
+});
+
+export const checkPaymentChargeSchema = z.object({
+  chargeId: idSchema,
+  provider: z.enum(['conekta', 'stripe', 'clip', 'cobrar']),
+});
+
+export const pendingPaymentProviderSchema = z.enum(['conekta', 'stripe', 'clip']).optional();
+
 // ══════════════════════════════════════════════════════
 // STORE CONFIG
 // ══════════════════════════════════════════════════════
@@ -345,6 +409,7 @@ export const saveStoreConfigSchema = z
     city: z.string().max(200).optional(),
     postalCode: z.string().max(10).optional(),
     phone: z.string().max(30).optional(),
+    estimatedUsers: z.number().int().min(1).max(500).optional(),
     rfc: z
       .string()
       .max(20)
@@ -375,6 +440,7 @@ export const saveStoreConfigSchema = z
     enableNotifications: z.boolean().optional(),
     telegramToken: z.string().max(500).optional(),
     telegramChatId: z.string().max(100).optional(),
+    telegramWebhookSecret: z.string().min(16).max(256).regex(/^[A-Za-z0-9_-]+$/).optional(),
     printerIp: z.string().max(100).optional(),
     loyaltyEnabled: z.boolean().optional(),
     pointsPerPeso: z.number().int().min(0).max(10000).optional(),
@@ -484,9 +550,22 @@ export const createPagoServicioSchema = z.object({
 // ══════════════════════════════════════════════════════
 
 export const createMPRefundSchema = z.object({
-  mpPaymentId: safeString('Payment ID', 200),
-  amount: positiveMoney,
-  reason: safeString('Motivo', 500),
+  mpPaymentId: z.string().trim().min(1, 'Payment ID es requerido').max(200),
+  amount: positiveMoney.refine(
+    (value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8,
+    'El monto debe tener como máximo dos decimales',
+  ),
+  reason: z.string().trim().min(1, 'Motivo es requerido').max(500),
+  clientRequestId: z.string().uuid(),
+});
+
+export const searchMPPaymentsSchema = z.object({
+  status: z.enum(['approved', 'pending', 'in_process', 'rejected', 'refunded', 'cancelled']).optional(),
+  beginDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  externalReference: z.string().max(200).optional(),
+  offset: z.number().int().nonnegative().max(100_000).default(0),
+  limit: z.number().int().min(1).max(50).default(30),
 });
 
 // ══════════════════════════════════════════════════════

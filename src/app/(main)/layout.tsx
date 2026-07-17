@@ -7,12 +7,6 @@
  */
 
 import { AuthProvider } from '@/lib/auth/AuthContext';
-import { OfflineProvider } from '@/components/providers/OfflineProvider';
-
 export default function MainLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <AuthProvider>
-      <OfflineProvider>{children}</OfflineProvider>
-    </AuthProvider>
-  );
+  return <AuthProvider>{children}</AuthProvider>;
 }

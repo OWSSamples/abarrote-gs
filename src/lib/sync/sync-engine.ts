@@ -48,7 +48,6 @@ export interface SyncStatus {
   readonly lastSyncAt: number;
   readonly isStale: boolean;
   readonly isSyncing: boolean;
-  readonly pendingOfflineOps: number;
   readonly consecutiveErrors: number;
   readonly circuitOpen: boolean;
 }
@@ -164,7 +163,6 @@ export class SyncEngine {
       lastSyncAt: this.lastSyncAt,
       isStale: this.isStale(),
       isSyncing: this.isSyncing,
-      pendingOfflineOps: 0, // Updated by OfflineQueue integration
       consecutiveErrors: this.consecutiveErrors,
       circuitOpen: Date.now() < this.circuitOpenUntil,
     };

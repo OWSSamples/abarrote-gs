@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { DEFAULT_STORE_CONFIG } from '@/types';
 import type { DashboardStore } from './types';
 import { fetchDashboardFromDB, saveStoreConfig as dbSaveStoreConfig } from '@/app/actions/db-actions';
+import { toPublicDisplayConfig } from '@/lib/store-config-public';
 import { logger } from '@/lib/logger';
 import { parseError } from '@/lib/errors';
 
@@ -48,15 +49,6 @@ export const useDashboardStore = create<DashboardStore>((set, get) => {
     // ── Multi-tienda ──
     activeStoreId: 'main',
     stores: [{ id: 'main', name: 'Tienda Principal' }],
-    switchStore: (storeId: string) => {
-      const store = get().stores.find((s) => s.id === storeId);
-      if (store) {
-        set({ activeStoreId: storeId });
-        // Reload data for the new store
-        get().fetchDashboardData();
-      }
-    },
-
     // ── Core setters ──
     setKPIData: (data) => set({ kpiData: data }),
     setInventoryAlerts: (alerts) => set({ inventoryAlerts: alerts }),
@@ -108,6 +100,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => {
               loyaltyTransactions: data.loyaltyTransactions,
               hourlySalesData: data.hourlySalesData,
               categories: data.categories || [],
+              activeStoreId: data.activeStoreId,
+              stores: data.stores,
               isLoading: false,
               lastSyncAt: Date.now(),
             });
@@ -174,7 +168,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => {
         // Broadcast config change to /display window
         try {
           const channel = new BroadcastChannel('customer_display');
-          channel.postMessage({ type: 'UPDATE_CONFIG', payload: updatedConfig });
+          channel.postMessage({ type: 'UPDATE_CONFIG', payload: toPublicDisplayConfig(updatedConfig) });
           channel.close();
         } catch {
           // BroadcastChannel not available (SSR or unsupported browser)

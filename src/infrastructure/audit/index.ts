@@ -54,6 +54,7 @@ type AuditEntity =
   | 'merma';
 
 interface AuditEntry {
+  storeId: string;
   userId: string;
   userEmail: string;
   action: AuditAction;
@@ -109,6 +110,7 @@ async function flushBuffer(): Promise<void> {
     await db.insert(auditLogs).values(
       entries.map((e) => ({
         id: e.id,
+        storeId: e.storeId,
         userId: e.userId,
         userEmail: e.userEmail,
         action: e.action,
@@ -133,8 +135,8 @@ async function flushBuffer(): Promise<void> {
         auditAction: entry.action,
         entity: entry.entity,
         entityId: entry.entityId,
+        storeId: entry.storeId,
         userId: entry.userId,
-        userEmail: entry.userEmail,
         changes: entry.changes ? JSON.stringify(entry.changes) : undefined,
         ipAddress: entry.ipAddress,
         requestId: entry.requestId,
@@ -154,6 +156,7 @@ async function flushBuffer(): Promise<void> {
  * @example
  * ```ts
  * auditLog({
+ *   storeId,
  *   userId: user.uid,
  *   userEmail: user.email,
  *   action: 'update',
@@ -200,6 +203,7 @@ export async function auditLogSync(entry: AuditEntry): Promise<void> {
   try {
     await db.insert(auditLogs).values({
       id: record.id,
+      storeId: record.storeId,
       userId: record.userId,
       userEmail: record.userEmail,
       action: record.action,
@@ -217,6 +221,7 @@ export async function auditLogSync(entry: AuditEntry): Promise<void> {
       auditAction: record.action,
       entity: record.entity,
       entityId: record.entityId,
+      storeId: record.storeId,
       userId: record.userId,
       error: err instanceof Error ? err.message : String(err),
     });

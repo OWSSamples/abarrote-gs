@@ -7,7 +7,8 @@
 //
 // Email notifications run in parallel alongside Telegram (fire-and-forget).
 
-import { fetchStoreConfig } from './store-config-actions';
+import { getStoreConfigForStore } from '@/server/store-config-service';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { logger } from '@/lib/logger';
 import { publishJob } from '@/infrastructure/qstash';
 import { telegramBreaker } from '@/infrastructure/circuit-breaker';
@@ -29,18 +30,19 @@ export function escapeHTML(text: string): string {
  * - QStash available → publishes to background job (instant return)
  * - QStash unavailable → sends inline (waits for Telegram API)
  */
-export async function sendNotification(message: string): Promise<void> {
+export async function sendNotification(message: string, explicitStoreId?: string): Promise<void> {
   // Feature flag gate — allows disabling all notifications
   const notificationsEnabled = await isFeatureEnabled('telegram-notifications');
   if (!notificationsEnabled) return;
 
   try {
+    const storeId = explicitStoreId ?? (await requireStoreScope()).storeId;
     await publishJob(
       'notification',
-      { message },
+      { message, storeId },
       { retries: 3 },
       // Inline fallback when QStash is not configured
-      async () => sendNotificationInline(message),
+      async () => sendNotificationInline(message, storeId),
     );
   } catch (error) {
     logger.error('Error dispatching notification', {
@@ -51,9 +53,10 @@ export async function sendNotification(message: string): Promise<void> {
 }
 
 /** Direct inline Telegram send — used as QStash fallback. */
-async function sendNotificationInline(message: string): Promise<void> {
-  const config = await fetchStoreConfig();
+async function sendNotificationInline(message: string, storeId: string): Promise<void> {
+  const config = await getStoreConfigForStore(storeId);
 
+  if (!config) return;
   if (!config.enableNotifications) return;
   if (!config.telegramToken || !config.telegramChatId) {
     logger.warn('Telegram notifications enabled but token/chatId missing');
@@ -95,10 +98,15 @@ async function sendNotificationInline(message: string): Promise<void> {
  * Uses store config for from, recipients, and branding.
  * Fire-and-forget — errors are logged but never thrown.
  */
-export async function sendEmailAlert(alertData: Omit<AlertEmailData, 'storeName' | 'logoUrl' | 'accentColor'>): Promise<void> {
+export async function sendEmailAlert(
+  alertData: Omit<AlertEmailData, 'storeName' | 'logoUrl' | 'accentColor'>,
+  explicitStoreId?: string,
+): Promise<void> {
   try {
-    const config = await fetchStoreConfig();
+    const storeId = explicitStoreId ?? (await requireStoreScope()).storeId;
+    const config = await getStoreConfigForStore(storeId);
 
+    if (!config) return;
     if (!config.emailEnabled || !config.emailFrom || !config.emailRecipients) return;
 
     const recipients = config.emailRecipients

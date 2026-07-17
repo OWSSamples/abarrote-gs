@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Modal, FormLayout, TextField, Select, Text, Badge, Banner } from '@shopify/polaris';
+import { Modal, FormLayout, TextField, Text, Badge, Banner } from '@shopify/polaris';
 import type { RoleDefinition, UserRoleRecord } from '@/types';
+import { PolarisOptionDropdown } from '../PolarisOptionDropdown';
 
 interface EditUserModalProps {
   open: boolean;
@@ -70,7 +71,13 @@ export function EditUserModal({
           <Text as="p">
             Rol actual: <Badge tone="info">{roleMap.get(selectedUser?.roleId ?? '')?.name || 'Sin rol'}</Badge>
           </Text>
-          <Select label="Nuevo rol" options={roleSelectOptions} value={editRoleId} onChange={setEditRoleId} />
+          <PolarisOptionDropdown
+            label="Nuevo rol"
+            options={roleSelectOptions}
+            value={editRoleId}
+            onChange={setEditRoleId}
+            placeholder="Seleccionar rol"
+          />
           <TextField
             label="Cambiar o Establecer PIN de Aprobación"
             type="password"

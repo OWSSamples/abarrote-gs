@@ -39,7 +39,6 @@ export function TicketPreview({
   const barcodeRef = useRef<SVGSVGElement>(null);
   const sc = storeConfig;
 
-  const isOffline = completedSale.folio.startsWith('OFF-');
   const cliente = clientes.find((c) => c.id === clienteId);
 
   // Email sharing state
@@ -133,11 +132,6 @@ export function TicketPreview({
           <BlockStack gap="400" align="center">
             {designHtml ? (
               <div className="ticket-design-frame">
-                {isOffline && (
-                  <div className="offline-strip" style={{ marginBottom: 8 }}>
-                    MODO OFFLINE — COMPROBANTE DE EMERGENCIA
-                  </div>
-                )}
                 <iframe
                   title="Vista previa del ticket"
                   srcDoc={designHtml}
@@ -146,7 +140,7 @@ export function TicketPreview({
                 />
               </div>
             ) : (
-            <div className={`ticket-paper ${isOffline ? 'ticket-offline' : ''}`}>
+            <div className="ticket-paper">
               {/* ── Logo / Store Identity ── */}
               <div className="header-area">
                 {sc.logoUrl ? (
@@ -167,8 +161,6 @@ export function TicketPreview({
               </div>
 
               <div className="sep-line" />
-
-              {isOffline && <div className="offline-strip">MODO OFFLINE — COMPROBANTE DE EMERGENCIA</div>}
 
               {/* ── Document type ── */}
               <div className="doc-label">Ticket de Venta</div>
@@ -312,8 +304,6 @@ export function TicketPreview({
             color: #111;
             position: relative;
           }
-          .ticket-offline { border-top: 2px solid #111; }
-
           /* ── Header ── */
           .header-area { text-align: center; margin-bottom: 4px; }
           .store-logo {
@@ -347,17 +337,6 @@ export function TicketPreview({
           .sep-line { border-top: 1px solid #111; margin: 12px 0; }
           .sep-thin { border-top: 1px solid #e0e0e0; margin: 10px 0; }
           .sep-double { border-top: 3px double #111; margin: 10px 0; }
-
-          .offline-strip {
-            text-align: center;
-            font-size: 8px;
-            font-weight: 700;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            border: 1px solid #111;
-            padding: 4px 8px;
-            margin-bottom: 8px;
-          }
 
           /* ── Doc label ── */
           .doc-label {

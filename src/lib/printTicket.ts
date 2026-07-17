@@ -7,6 +7,9 @@ export function printWithIframe(html: string): void {
   const url = URL.createObjectURL(blob);
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;opacity:0;';
+  iframe.setAttribute('sandbox', 'allow-modals allow-same-origin');
+  iframe.referrerPolicy = 'no-referrer';
+  iframe.setAttribute('aria-hidden', 'true');
   iframe.src = url;
   document.body.appendChild(iframe);
   iframe.onload = () => {
@@ -21,6 +24,15 @@ export function printWithIframe(html: string): void {
   };
 }
 
+export function escapeTicketHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 /**
  * applyTicketTemplate — Replaces {{variable}} placeholders in a custom HTML
  * template with the supplied values map, then prints using printWithIframe.
@@ -31,13 +43,16 @@ export function applyTicketTemplate(
   template: string | undefined,
   vars: Record<string, string>,
   defaultHtml: string,
+  rawHtmlKeys: readonly string[] = [],
 ): string {
   if (!template) return defaultHtml;
+  const rawKeys = new Set(rawHtmlKeys);
   let result = template;
   for (const [key, value] of Object.entries(vars)) {
+    const replacement = rawKeys.has(key) ? value : escapeTicketHtml(value);
     // Replace all occurrences of {{key}} (with optional spaces inside braces)
-    result = result.replaceAll(`{{${key}}}`, value);
-    result = result.replaceAll(`{{ ${key} }}`, value);
+    result = result.replaceAll(`{{${key}}}`, replacement);
+    result = result.replaceAll(`{{ ${key} }}`, replacement);
   }
   return result;
 }
@@ -129,14 +144,6 @@ export const posTicketCSS = `
     text-align:center;font-size:8px;font-weight:800;
     letter-spacing:3px;text-transform:uppercase;
     color:#999;margin:6px 0;
-  }
-
-  /* ── OFFLINE ── */
-  .offline-badge{
-    text-align:center;font-size:8px;font-weight:700;
-    text-transform:uppercase;letter-spacing:2px;
-    border:1px solid #999;padding:3px 8px;
-    margin:4px auto;display:inline-block;
   }
 
   @media print{
@@ -262,7 +269,7 @@ export function generateTicketHtml(design: TicketDesignConfig, data: TicketPrint
   const logoSz: Record<string, string> = { small: '30px', medium: '50px', large: '70px' };
   const itemCount = data.items.reduce((s, i) => s + i.qty, 0);
 
-  const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escape = escapeTicketHtml;
 
   const style = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box;margin:0;padding:0}

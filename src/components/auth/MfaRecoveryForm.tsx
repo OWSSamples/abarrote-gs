@@ -7,9 +7,11 @@ import { logAuthEvent } from '@/lib/auth/auth-logger';
 import { verifyRecoveryCodeAction } from '@/app/actions/mfa-recovery-actions';
 import { Button } from '@cloudflare/kumo/components/button';
 import { Input } from '@cloudflare/kumo/components/input';
+import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { Text } from '@cloudflare/kumo/components/text';
 import { Link } from '@cloudflare/kumo/components/link';
 import { useToast } from '@/components/notifications/ToastProvider';
+import { CheckmarkCircle24Filled, ShieldKeyhole24Filled } from '@fluentui/react-icons';
 
 /**
  * MFA Recovery Form.
@@ -73,103 +75,113 @@ export function MfaRecoveryForm() {
 
   if (success) {
     return (
-      <div className="space-y-5">
-        <div className="flex flex-col items-center gap-3 text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/pass_recovery.svg" alt="" width={80} height={72} className="block" />
-          <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
-            Cuenta recuperada
-          </Text>
-          <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
-            Hemos deshabilitado MFA temporalmente. Inicia sesión con tu correo
-            y contraseña — se te pedirá <b>volver a configurar la
-            autenticación de dos factores</b> de inmediato.
-          </Text>
-          <Text variant="secondary" size="xs" as="p" DANGEROUS_className="text-center">
-            Te redirigiremos al inicio de sesión en unos segundos…
-          </Text>
-        </div>
-        <Button
-          variant="primary"
-          className="w-full justify-center"
-          size="lg"
-          onClick={() => router.push('/auth/login')}
-        >
-          Ir a iniciar sesión
-        </Button>
-      </div>
+      <>
+        <LayerCard.Secondary>
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex size-16 items-center justify-center rounded-full bg-kumo-success-tint/70">
+              <CheckmarkCircle24Filled className="text-kumo-success" />
+            </div>
+            <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
+              Cuenta recuperada
+            </Text>
+            <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
+              Hemos deshabilitado MFA temporalmente. Inicia sesión con tu correo
+              y contraseña — se te pedirá <b>volver a configurar la
+              autenticación de dos factores</b> de inmediato.
+            </Text>
+            <Text variant="secondary" size="xs" as="p" DANGEROUS_className="text-center">
+              Te redirigiremos al inicio de sesión en unos segundos…
+            </Text>
+          </div>
+        </LayerCard.Secondary>
+        <LayerCard.Primary>
+          <Button
+            variant="primary"
+            className="w-full justify-center"
+            size="lg"
+            onClick={() => router.push('/auth/login')}
+          >
+            Ir a iniciar sesión
+          </Button>
+        </LayerCard.Primary>
+      </>
     );
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col items-center gap-3 text-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/pass_recovery.svg" alt="" width={80} height={72} className="block" />
-        <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
-          Recupera tu cuenta
-        </Text>
-        <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
-          Usa uno de los códigos de recuperación que guardaste al activar la
-          autenticación de doble factor para verificar tu identidad y acceder
-          a tu cuenta.
-        </Text>
-      </div>
+    <>
+      <LayerCard.Secondary>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex size-16 items-center justify-center rounded-full bg-kumo-recessed">
+            <ShieldKeyhole24Filled className="text-kumo-secondary" />
+          </div>
+          <Text variant="heading2" as="h1" DANGEROUS_className="text-center">
+            Recupera tu cuenta
+          </Text>
+          <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
+            Usa uno de los códigos de recuperación que guardaste al activar la
+            autenticación de doble factor para verificar tu identidad y acceder
+            a tu cuenta.
+          </Text>
+        </div>
+      </LayerCard.Secondary>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="Correo electrónico"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-          type="email"
-          disabled={isLoading}
-          placeholder="GlobalID@Company.com"
-          autoFocus
-        />
-        <Input
-          label="Código de recuperación"
-          value={recoveryCode}
-          onChange={(e) => setRecoveryCode(e.target.value)}
-          autoComplete="one-time-code"
-          type="text"
-          disabled={isLoading}
-          placeholder="XXXX-XXXX-XXXX"
-        />
-        <Button
-          variant="primary"
-          type="submit"
-          className="w-full justify-center"
-          size="lg"
-          loading={isLoading}
-        >
-          Verificar
-        </Button>
-      </form>
+      <LayerCard.Primary className="gap-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input
+            label="Correo electrónico"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            type="email"
+            disabled={isLoading}
+            placeholder="GlobalID@Company.com"
+            autoFocus
+          />
+          <Input
+            label="Código de recuperación"
+            value={recoveryCode}
+            onChange={(e) => setRecoveryCode(e.target.value)}
+            autoComplete="one-time-code"
+            type="text"
+            disabled={isLoading}
+            placeholder="XXXX-XXXX-XXXX"
+          />
+          <Button
+            variant="primary"
+            type="submit"
+            className="w-full justify-center"
+            size="lg"
+            loading={isLoading}
+          >
+            Verificar
+          </Button>
+        </form>
 
-      <div className="text-center">
-        <Text variant="secondary" size="sm" as="span">
-          ¿Ya tienes cuenta?{' '}
-        </Text>
-        <Link href="/auth/login" variant="plain" render={<NextLink href="/auth/login" />}>
-          <Text as="span" size="sm" bold>Iniciar sesión</Text>
-        </Link>
-      </div>
+        <div className="text-center">
+          <Text variant="secondary" size="sm" as="span">
+            ¿Ya tienes cuenta?{' '}
+          </Text>
+          <Link href="/auth/login" variant="plain" render={<NextLink href="/auth/login" />}>
+            <Text as="span" size="sm" bold>Iniciar sesión</Text>
+          </Link>
+        </div>
 
-      <div className="h-px w-full bg-kumo-hairline" />
+        <div className="h-px w-full bg-kumo-hairline" />
 
-      <div className="text-center">
-        <Text variant="secondary" size="sm" as="span">
-          ¿No encuentras tu código de recuperación?{' '}
-        </Text>
-        <Link
-          href="/auth/forgot-password"
-          variant="plain"
-          render={<NextLink href="/auth/forgot-password" />}
-        >
-          <Text as="span" size="sm" bold>Iniciar recuperación de cuenta</Text>
-        </Link>
-      </div>
-    </div>
+        <div className="text-center">
+          <Text variant="secondary" size="sm" as="span">
+            ¿No encuentras tu código de recuperación?{' '}
+          </Text>
+          <Link
+            href="/auth/forgot-password"
+            variant="plain"
+            render={<NextLink href="/auth/forgot-password" />}
+          >
+            <Text as="span" size="sm" bold>Iniciar recuperación de cuenta</Text>
+          </Link>
+        </div>
+      </LayerCard.Primary>
+    </>
   );
 }

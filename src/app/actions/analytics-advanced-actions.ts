@@ -2,6 +2,7 @@
 
 import { withLogging } from '@/lib/errors';
 import { requirePermission } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { db } from '@/db';
 import {
   products,
@@ -20,7 +21,7 @@ import { eq, desc, sql, gte, and } from 'drizzle-orm';
 import { numVal } from './_helpers';
 import { sendNotification, escapeHTML } from './_notifications';
 import { weeklyReportEvent } from './_notification-events';
-import { fetchStoreConfig } from './store-config-actions';
+import { getStoreConfig } from '@/server/store-config-service';
 import type {
   ABCAnalysis,
   ABCProduct,
@@ -48,8 +49,9 @@ import {
   type CfdiPacProviderId,
   type PacRuntimeConfig,
 } from '@/infrastructure/cfdi/pac-provider';
+import { buildDailyStoreReport } from '@/server/daily-report-service';
 
-function buildPacRuntimeConfig(config: Awaited<ReturnType<typeof fetchStoreConfig>>): PacRuntimeConfig {
+function buildPacRuntimeConfig(config: Awaited<ReturnType<typeof getStoreConfig>>): PacRuntimeConfig {
   return {
     provider: (config.cfdiPacProvider || 'none') as CfdiPacProviderId,
     environment: (config.cfdiPacEnvironment || 'sandbox') as CfdiPacEnvironment,
@@ -65,6 +67,7 @@ function buildPacRuntimeConfig(config: Awaited<ReturnType<typeof fetchStoreConfi
 
 async function _fetchABCAnalysis(periodDays = 30): Promise<ABCAnalysis> {
   await requirePermission('analytics.view');
+  const { storeId } = await requireStoreScope();
 
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - periodDays);
@@ -81,12 +84,15 @@ async function _fetchABCAnalysis(periodDays = 30): Promise<ABCAnalysis> {
     })
     .from(saleItems)
     .innerJoin(saleRecords, eq(saleRecords.id, saleItems.saleId))
-    .where(gte(saleRecords.date, sql`${cutoffStr}::timestamp`))
+    .where(and(eq(saleRecords.storeId, storeId), gte(saleRecords.date, sql`${cutoffStr}::timestamp`)))
     .groupBy(saleItems.productId, saleItems.productName, saleItems.sku)
     .orderBy(desc(sql`sum(${saleItems.subtotal}::numeric)`));
 
   // Get current product data for stock/price info
-  const allProducts = await db.select().from(products).where(isNotDeleted(products));
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.storeId, storeId), isNotDeleted(products)));
   const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
   const totalRevenue = revenueRows.reduce((sum, r) => sum + numVal(r.totalRevenue), 0);
@@ -163,6 +169,7 @@ async function _fetchABCAnalysis(periodDays = 30): Promise<ABCAnalysis> {
 
 async function _fetchReorderSuggestions(): Promise<ReorderSuggestion[]> {
   await requirePermission('inventory.view');
+  const { storeId } = await requireStoreScope();
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -176,14 +183,20 @@ async function _fetchReorderSuggestions(): Promise<ReorderSuggestion[]> {
     })
     .from(saleItems)
     .innerJoin(saleRecords, eq(saleRecords.id, saleItems.saleId))
-    .where(gte(saleRecords.date, sql`${cutoffStr}::timestamp`))
+    .where(and(eq(saleRecords.storeId, storeId), gte(saleRecords.date, sql`${cutoffStr}::timestamp`)))
     .groupBy(saleItems.productId);
 
   const velocityMap = new Map(salesVelocity.map((v) => [v.productId, numVal(v.totalQty) / 30]));
 
   // Get all products and suppliers
-  const allProducts = await db.select().from(products).where(isNotDeleted(products));
-  const allProveedores = await db.select().from(proveedores).where(isNotDeleted(proveedores));
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.storeId, storeId), isNotDeleted(products)));
+  const allProveedores = await db
+    .select()
+    .from(proveedores)
+    .where(and(eq(proveedores.storeId, storeId), isNotDeleted(proveedores)));
 
   // Build supplier lookup by category
   const supplierByCategory = new Map<string, string>();
@@ -242,6 +255,7 @@ async function _fetchReorderSuggestions(): Promise<ReorderSuggestion[]> {
  */
 async function _createAutoReorderPedido(supplierName: string): Promise<{ id: string; itemCount: number }> {
   await requirePermission('pedidos.create');
+  const { storeId } = await requireStoreScope();
 
   const suggestions = await fetchReorderSuggestions();
   const forSupplier = suggestions.filter((s) => s.supplier === supplierName);
@@ -259,6 +273,7 @@ async function _createAutoReorderPedido(supplierName: string): Promise<{ id: str
     notas: `Auto-generado por sistema de reorden inteligente (${forSupplier.length} productos)`,
     fecha: now,
     estado: 'pendiente',
+    storeId,
   });
 
   for (const item of forSupplier) {
@@ -268,6 +283,7 @@ async function _createAutoReorderPedido(supplierName: string): Promise<{ id: str
       productId: item.productId,
       productName: item.productName,
       cantidad: item.suggestedQuantity,
+      storeId,
     });
   }
 
@@ -278,99 +294,20 @@ async function _createAutoReorderPedido(supplierName: string): Promise<{ id: str
 
 async function _sendDailyTelegramReport(): Promise<{ sent: boolean; message: string }> {
   await requirePermission('reports.view');
-
-  const config = await fetchStoreConfig();
-  if (!config.enableNotifications || !config.telegramToken || !config.telegramChatId) {
-    return { sent: false, message: 'Notificaciones no configuradas' };
-  }
-
-  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterdayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(yesterdayDate);
-
-  // Parallel queries
-  const [todaySales, yesterdaySales, lowStock, topProducts] = await Promise.all([
-    db
-      .select({
-        total: sql<string>`coalesce(sum(total::numeric), 0)`,
-        count: sql<string>`count(*)`,
-        efectivo: sql<string>`coalesce(sum(case when ${saleRecords.paymentMethod} = 'efectivo' then total::numeric else 0 end), 0)`,
-        tarjeta: sql<string>`coalesce(sum(case when ${saleRecords.paymentMethod} = 'tarjeta' then total::numeric else 0 end), 0)`,
-        transferencia: sql<string>`coalesce(sum(case when ${saleRecords.paymentMethod} = 'transferencia' then total::numeric else 0 end), 0)`,
-      })
-      .from(saleRecords)
-      .where(sql`date::date = ${todayStr}`),
-
-    db
-      .select({
-        total: sql<string>`coalesce(sum(total::numeric), 0)`,
-      })
-      .from(saleRecords)
-      .where(sql`date::date = ${yesterdayStr}`),
-
-    db
-      .select()
-      .from(products)
-      .where(and(isNotDeleted(products), sql`${products.currentStock}::numeric <= ${products.minStock}::numeric`)),
-
-    db
-      .select({
-        productName: saleItems.productName,
-        qty: sql<string>`sum(${saleItems.quantity})`,
-        revenue: sql<string>`sum(${saleItems.subtotal}::numeric)`,
-      })
-      .from(saleItems)
-      .innerJoin(saleRecords, eq(saleRecords.id, saleItems.saleId))
-      .where(sql`${saleRecords.date}::date = ${todayStr}`)
-      .groupBy(saleItems.productName)
-      .orderBy(desc(sql`sum(${saleItems.subtotal}::numeric)`))
-      .limit(5),
-  ]);
-
-  const today = todaySales[0];
-  const totalHoy = numVal(today.total);
-  const totalAyer = numVal(yesterdaySales[0].total);
-  const diff = totalAyer > 0 ? (((totalHoy - totalAyer) / totalAyer) * 100).toFixed(1) : '0';
-  const arrow = numVal(diff) > 0 ? '📈' : numVal(diff) < 0 ? '📉' : '➡️';
-
-  const topProductsList = topProducts
-    .map((p, i) => `  ${i + 1}. ${escapeHTML(p.productName)} — ${numVal(p.qty)} uds ($${numVal(p.revenue).toFixed(0)})`)
-    .join('\n');
-
-  const lowStockList = lowStock
-    .slice(0, 5)
-    .map((p) => `  ⚠️ ${escapeHTML(p.name)} — ${p.currentStock} uds`)
-    .join('\n');
-
-  const message = `<b>📊 Reporte del Día — ${escapeHTML(config.storeName)}</b>
-<b>Fecha:</b> ${todayStr}
-
-<b>💰 Ventas del día:</b> $${totalHoy.toFixed(2)}
-<b>📊 Vs ayer:</b> $${totalAyer.toFixed(2)} (${arrow} ${diff}%)
-<b>🧾 Transacciones:</b> ${numVal(today.count)}
-
-<b>💳 Desglose:</b>
-  Efectivo: $${numVal(today.efectivo).toFixed(2)}
-  Tarjeta: $${numVal(today.tarjeta).toFixed(2)}
-  Transferencia: $${numVal(today.transferencia).toFixed(2)}
-
-<b>🏆 Top 5 Productos:</b>
-${topProductsList || '  Sin ventas hoy'}
-
-<b>📦 Stock Bajo (${lowStock.length}):</b>
-${lowStockList || '  ✅ Todo en orden'}`;
-
-  await sendNotification(message);
-  return { sent: true, message: 'Reporte enviado' };
+  const { storeId } = await requireStoreScope();
+  const report = await buildDailyStoreReport(storeId);
+  if (!report.shouldSend) return { sent: false, message: report.statusMessage };
+  await sendNotification(report.message, storeId);
+  return { sent: true, message: report.statusMessage };
 }
 
 // ==================== 3b. WEEKLY TELEGRAM REPORT ====================
 
 async function _sendWeeklyTelegramReport(): Promise<{ sent: boolean; message: string }> {
   await requirePermission('reports.view');
+  const { storeId } = await requireStoreScope();
 
-  const config = await fetchStoreConfig();
+  const config = await getStoreConfig();
   if (!config.enableNotifications || !config.telegramToken || !config.telegramChatId) {
     return { sent: false, message: 'Notificaciones no configuradas' };
   }
@@ -395,14 +332,24 @@ async function _sendWeeklyTelegramReport(): Promise<{ sent: boolean; message: st
         count: sql<string>`count(*)`,
       })
       .from(saleRecords)
-      .where(sql`date::date >= ${weekStartStr} and date::date < ${weekEndStr}`),
+      .where(
+        and(
+          eq(saleRecords.storeId, storeId),
+          sql`date::date >= ${weekStartStr} and date::date < ${weekEndStr}`,
+        ),
+      ),
 
     db
       .select({
         total: sql<string>`coalesce(sum(total::numeric), 0)`,
       })
       .from(saleRecords)
-      .where(sql`date::date >= ${prevWeekStartStr} and date::date < ${weekStartStr}`),
+      .where(
+        and(
+          eq(saleRecords.storeId, storeId),
+          sql`date::date >= ${prevWeekStartStr} and date::date < ${weekStartStr}`,
+        ),
+      ),
 
     db
       .select({
@@ -412,7 +359,12 @@ async function _sendWeeklyTelegramReport(): Promise<{ sent: boolean; message: st
       })
       .from(saleItems)
       .innerJoin(saleRecords, eq(saleRecords.id, saleItems.saleId))
-      .where(sql`${saleRecords.date}::date >= ${weekStartStr} and ${saleRecords.date}::date < ${weekEndStr}`)
+      .where(
+        and(
+          eq(saleRecords.storeId, storeId),
+          sql`${saleRecords.date}::date >= ${weekStartStr} and ${saleRecords.date}::date < ${weekEndStr}`,
+        ),
+      )
       .groupBy(saleItems.productName)
       .orderBy(desc(sql`sum(${saleItems.subtotal}::numeric)`))
       .limit(5),
@@ -422,7 +374,12 @@ async function _sendWeeklyTelegramReport(): Promise<{ sent: boolean; message: st
         total: sql<string>`coalesce(sum(monto::numeric), 0)`,
       })
       .from(gastos)
-      .where(sql`fecha::date >= ${weekStartStr} and fecha::date < ${weekEndStr}`),
+      .where(
+        and(
+          eq(gastos.storeId, storeId),
+          sql`fecha::date >= ${weekStartStr} and fecha::date < ${weekEndStr}`,
+        ),
+      ),
 
     db
       .select({
@@ -430,12 +387,23 @@ async function _sendWeeklyTelegramReport(): Promise<{ sent: boolean; message: st
         count: sql<string>`count(*)`,
       })
       .from(devoluciones)
-      .where(sql`fecha::date >= ${weekStartStr} and fecha::date < ${weekEndStr}`),
+      .where(
+        and(
+          eq(devoluciones.storeId, storeId),
+          sql`fecha::date >= ${weekStartStr} and fecha::date < ${weekEndStr}`,
+        ),
+      ),
 
     db
       .select()
       .from(products)
-      .where(and(isNotDeleted(products), sql`${products.currentStock}::numeric <= ${products.minStock}::numeric`)),
+      .where(
+        and(
+          eq(products.storeId, storeId),
+          isNotDeleted(products),
+          sql`${products.currentStock}::numeric <= ${products.minStock}::numeric`,
+        ),
+      ),
   ]);
 
   const totalVentas = numVal(weekSales[0].total);
@@ -476,6 +444,7 @@ async function _sendWeeklyTelegramReport(): Promise<{ sent: boolean; message: st
  */
 async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
   await requirePermission('reports.export');
+  const { storeId } = await requireStoreScope();
 
   // Validate RFC format (13 chars for persona moral, 12 for persona física)
   const rfcRegex = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/;
@@ -484,17 +453,24 @@ async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
   }
 
   // Fetch sale data
-  const saleRows = await db.select().from(saleRecords).where(eq(saleRecords.id, request.saleId)).limit(1);
+  const saleRows = await db
+    .select()
+    .from(saleRecords)
+    .where(and(eq(saleRecords.id, request.saleId), eq(saleRecords.storeId, storeId)))
+    .limit(1);
 
   if (saleRows.length === 0) {
     throw new Error('Venta no encontrada');
   }
 
   const sale = saleRows[0];
-  const config = await fetchStoreConfig();
+  const config = await getStoreConfig();
 
   // Fetch sale items
-  const items = await db.select().from(saleItems).where(eq(saleItems.saleId, request.saleId));
+  const items = await db
+    .select()
+    .from(saleItems)
+    .where(and(eq(saleItems.saleId, request.saleId), eq(saleItems.storeId, storeId)));
 
   const pacConfig = buildPacRuntimeConfig(config);
   const pacProvider = createPacProvider(pacConfig);
@@ -522,6 +498,7 @@ async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
 
     await db.insert(cfdiRecords).values({
       id: record.id,
+      storeId,
       saleId: record.saleId,
       folio: record.folio,
       uuid: record.uuid,
@@ -605,6 +582,7 @@ async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
     // Persist the timbrada CFDI to DB
     await db.insert(cfdiRecords).values({
       id: record.id,
+      storeId,
       saleId: record.saleId,
       folio: record.folio,
       uuid: record.uuid,
@@ -631,10 +609,20 @@ async function _generateCFDI(request: CFDIRequest): Promise<CFDIRecord> {
  */
 async function _fetchCFDIRecords(saleId?: string): Promise<CFDIRecord[]> {
   await requirePermission('reports.view');
+  const { storeId } = await requireStoreScope();
 
   const query = saleId
-    ? db.select().from(cfdiRecords).where(eq(cfdiRecords.saleId, saleId)).orderBy(desc(cfdiRecords.createdAt))
-    : db.select().from(cfdiRecords).orderBy(desc(cfdiRecords.createdAt)).limit(100);
+    ? db
+        .select()
+        .from(cfdiRecords)
+        .where(and(eq(cfdiRecords.saleId, saleId), eq(cfdiRecords.storeId, storeId)))
+        .orderBy(desc(cfdiRecords.createdAt))
+    : db
+        .select()
+        .from(cfdiRecords)
+        .where(eq(cfdiRecords.storeId, storeId))
+        .orderBy(desc(cfdiRecords.createdAt))
+        .limit(100);
 
   const rows = await query;
   return rows.map((r) => ({
@@ -667,8 +655,13 @@ async function _cancelCFDI(
   relatedUuid?: string,
 ): Promise<{ success: boolean; message: string }> {
   const currentUser = await requirePermission('reports.export');
+  const { storeId } = await requireStoreScope();
 
-  const [record] = await db.select().from(cfdiRecords).where(eq(cfdiRecords.id, cfdiId)).limit(1);
+  const [record] = await db
+    .select()
+    .from(cfdiRecords)
+    .where(and(eq(cfdiRecords.id, cfdiId), eq(cfdiRecords.storeId, storeId)))
+    .limit(1);
   if (!record) throw new Error('CFDI no encontrado');
   if (record.status === 'cancelada') throw new Error('Este CFDI ya fue cancelado');
   if (record.status !== 'timbrada') throw new Error('Solo se pueden cancelar CFDIs timbrados');
@@ -678,7 +671,7 @@ async function _cancelCFDI(
     throw new Error('Motivo 01 requiere el UUID del CFDI sustituto');
   }
 
-  const config = await fetchStoreConfig();
+  const config = await getStoreConfig();
   const pacConfig = buildPacRuntimeConfig(config);
   const pacProvider = createPacProvider(pacConfig);
   const now = new Date();
@@ -693,10 +686,11 @@ async function _cancelCFDI(
         cancelRelatedUuid: relatedUuid ?? null,
         cancelledAt: now,
       })
-      .where(eq(cfdiRecords.id, cfdiId));
+      .where(and(eq(cfdiRecords.id, cfdiId), eq(cfdiRecords.storeId, storeId)));
 
     await db.insert(auditLogs).values({
       id: crypto.randomUUID(),
+      storeId,
       userId: currentUser.uid,
       userEmail: currentUser.email ?? 'system',
       action: 'update',
@@ -721,10 +715,11 @@ async function _cancelCFDI(
         cancelAckUrl: result.acuse ?? '',
         cancelledAt: now,
       })
-      .where(eq(cfdiRecords.id, cfdiId));
+      .where(and(eq(cfdiRecords.id, cfdiId), eq(cfdiRecords.storeId, storeId)));
 
     await db.insert(auditLogs).values({
       id: crypto.randomUUID(),
+      storeId,
       userId: currentUser.uid,
       userEmail: currentUser.email ?? 'system',
       action: 'update',
@@ -745,25 +740,14 @@ async function _cancelCFDI(
 
 async function _fetchRFMAnalysis(periodDays = 90): Promise<RFMAnalysis> {
   await requirePermission('analytics.view');
+  const { storeId } = await requireStoreScope();
 
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - periodDays);
   const cutoffStr = cutoffDate.toISOString().split('T')[0];
 
   // Get all clients
-  const allClients = await db.select().from(clientes);
-
-  // Per-client purchase data
-  const _purchaseData = await db
-    .select({
-      clienteId: sql<string>`${saleRecords.cajero}`, // We need a client link; fallback to scanning fiadoTransactions if needed
-      lastPurchase: sql<string>`max(${saleRecords.date})`,
-      purchaseCount: sql<string>`count(*)`,
-      totalSpent: sql<string>`coalesce(sum(${saleRecords.total}::numeric), 0)`,
-    })
-    .from(saleRecords)
-    .where(gte(saleRecords.date, sql`${cutoffStr}::timestamp`))
-    .groupBy(saleRecords.cajero);
+  const allClients = await db.select().from(clientes).where(eq(clientes.storeId, storeId));
 
   // Also bring in fiado transactions which are client-linked
   const { fiadoTransactions } = await import('@/db/schema');
@@ -775,7 +759,12 @@ async function _fetchRFMAnalysis(periodDays = 90): Promise<RFMAnalysis> {
       totalSpent: sql<string>`coalesce(sum(case when ${fiadoTransactions.type} = 'fiado' then ${fiadoTransactions.amount}::numeric else 0 end), 0)`,
     })
     .from(fiadoTransactions)
-    .where(gte(fiadoTransactions.date, sql`${cutoffStr}::timestamp`))
+    .where(
+      and(
+        eq(fiadoTransactions.storeId, storeId),
+        gte(fiadoTransactions.date, sql`${cutoffStr}::timestamp`),
+      ),
+    )
     .groupBy(fiadoTransactions.clienteId);
 
   const fiadoMap = new Map(fiadoData.map((f) => [f.clienteId, f]));
@@ -895,6 +884,7 @@ function classifyRFMSegment(r: number, f: number, m: number): RFMSegment {
 
 async function _fetchDemandForecast(): Promise<ForecastProduct[]> {
   await requirePermission('analytics.view');
+  const { storeId } = await requireStoreScope();
 
   const eightWeeksAgo = new Date();
   eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
@@ -912,7 +902,7 @@ async function _fetchDemandForecast(): Promise<ForecastProduct[]> {
     })
     .from(saleItems)
     .innerJoin(saleRecords, eq(saleRecords.id, saleItems.saleId))
-    .where(gte(saleRecords.date, sql`${cutoffStr}::timestamp`))
+    .where(and(eq(saleRecords.storeId, storeId), gte(saleRecords.date, sql`${cutoffStr}::timestamp`)))
     .groupBy(
       saleItems.productId,
       saleItems.productName,
@@ -927,7 +917,10 @@ async function _fetchDemandForecast(): Promise<ForecastProduct[]> {
     );
 
   // Get all products for stock info
-  const allProducts = await db.select().from(products).where(isNotDeleted(products));
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.storeId, storeId), isNotDeleted(products)));
   const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
   // Group by product
@@ -1003,9 +996,13 @@ async function _fetchDemandForecast(): Promise<ForecastProduct[]> {
 
 async function _fetchInventoryAging(): Promise<InventoryAgingAnalysis> {
   await requirePermission('analytics.view');
+  const { storeId } = await requireStoreScope();
 
   // All active products
-  const allProducts = await db.select().from(products).where(isNotDeleted(products));
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.storeId, storeId), isNotDeleted(products)));
 
   // Last sale date per product
   const lastSaleRows = await db
@@ -1015,6 +1012,7 @@ async function _fetchInventoryAging(): Promise<InventoryAgingAnalysis> {
     })
     .from(saleItems)
     .innerJoin(saleRecords, eq(saleRecords.id, saleItems.saleId))
+    .where(eq(saleRecords.storeId, storeId))
     .groupBy(saleItems.productId);
 
   const lastSaleMap = new Map(lastSaleRows.map((r) => [r.productId, r.lastSaleDate]));
@@ -1075,6 +1073,7 @@ async function _fetchInventoryAging(): Promise<InventoryAgingAnalysis> {
 
 async function _fetchProductMargins(periodDays = 30): Promise<ProductMarginReport> {
   await requirePermission('analytics.view');
+  const { storeId } = await requireStoreScope();
 
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - periodDays);
@@ -1091,12 +1090,15 @@ async function _fetchProductMargins(periodDays = 30): Promise<ProductMarginRepor
     })
     .from(saleItems)
     .innerJoin(saleRecords, eq(saleRecords.id, saleItems.saleId))
-    .where(gte(saleRecords.date, sql`${cutoffStr}::timestamp`))
+    .where(and(eq(saleRecords.storeId, storeId), gte(saleRecords.date, sql`${cutoffStr}::timestamp`)))
     .groupBy(saleItems.productId, saleItems.productName, saleItems.sku)
     .orderBy(desc(sql`sum(${saleItems.subtotal}::numeric)`));
 
   // Current product data (cost, category)
-  const allProducts = await db.select().from(products).where(isNotDeleted(products));
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.storeId, storeId), isNotDeleted(products)));
   const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
   const marginProducts: ProductMarginRow[] = [];

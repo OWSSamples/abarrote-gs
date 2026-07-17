@@ -1,11 +1,12 @@
 'use server';
 
-import { requireOwner } from '@/lib/auth/guard';
+import { requireOwner, requirePermission } from '@/lib/auth/guard';
 import { withLogging } from '@/lib/errors';
 import { generateMPAuthorizationUrl, disconnectProvider, getProviderConnectionStatus } from '@/lib/oauth-providers';
 import { logAudit } from '@/lib/audit';
 import { sendNotification } from './_notifications';
 import { providerConnectionEvent } from './_notification-events';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 
 /**
  * Initiates MercadoPago OAuth flow.
@@ -13,10 +14,12 @@ import { providerConnectionEvent } from './_notification-events';
  */
 async function _initiateMPOAuth(): Promise<{ url: string }> {
   const user = await requireOwner();
+  const { storeId } = await requireStoreScope();
 
-  const { url, state } = await generateMPAuthorizationUrl();
+  const { url, state } = await generateMPAuthorizationUrl(storeId);
 
   await logAudit({
+    storeId,
     userId: user.uid,
     userEmail: user.email,
     action: 'create',
@@ -25,7 +28,7 @@ async function _initiateMPOAuth(): Promise<{ url: string }> {
     changes: { after: { provider: 'mercadopago', action: 'initiate_oauth' } },
   });
 
-  sendNotification(providerConnectionEvent({ provider: 'MercadoPago', action: 'connect', userEmail: user.email ?? '' })).catch(() => {});
+  sendNotification(providerConnectionEvent({ provider: 'MercadoPago', action: 'connect', userEmail: user.email ?? '' }), storeId).catch(() => {});
 
   return { url };
 }
@@ -36,10 +39,12 @@ async function _initiateMPOAuth(): Promise<{ url: string }> {
  */
 async function _disconnectMPOAuth(): Promise<void> {
   const user = await requireOwner();
+  const { storeId } = await requireStoreScope();
 
-  await disconnectProvider('mercadopago');
+  await disconnectProvider('mercadopago', storeId);
 
   await logAudit({
+    storeId,
     userId: user.uid,
     userEmail: user.email,
     action: 'delete',
@@ -47,14 +52,16 @@ async function _disconnectMPOAuth(): Promise<void> {
     entityId: 'mercadopago',
     changes: { after: { provider: 'mercadopago', action: 'disconnect' } },
   });
-  sendNotification(providerConnectionEvent({ provider: 'MercadoPago', action: 'disconnect', userEmail: user.email ?? '' })).catch(() => {});
+  sendNotification(providerConnectionEvent({ provider: 'MercadoPago', action: 'disconnect', userEmail: user.email ?? '' }), storeId).catch(() => {});
 }
 
 /**
  * Returns current connection status for MercadoPago.
  */
 async function _getMPConnectionStatus() {
-  return getProviderConnectionStatus('mercadopago');
+  await requirePermission('settings.view');
+  const { storeId } = await requireStoreScope();
+  return getProviderConnectionStatus('mercadopago', storeId);
 }
 
 // ==================== EXPORTS WITH LOGGING ====================

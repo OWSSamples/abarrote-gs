@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { expireStalePoints } from '@/app/actions/loyalty-actions';
+import { expireStalePointsForStore } from '@/server/loyalty-expiration-service';
 import { logger } from '@/lib/logger';
-import { idempotencyCheck } from '@/infrastructure/redis';
 import { env } from '@/lib/env';
 import { db } from '@/db';
-import { storeConfig } from '@/db/schema';
+import { storeConfig, stores } from '@/db/schema';
+import { and, eq, isNull } from 'drizzle-orm';
 
 /**
  * Weekly cron to expire loyalty points for inactive customers.
@@ -19,21 +19,31 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const week = `${new Date().getFullYear()}-W${Math.ceil(
-      ((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 86_400_000 + 1) / 7,
-    )}`;
-    const isNew = await idempotencyCheck(`cron_loyalty_expire:${week}`, { ttlMs: 7 * 86_400_000 });
-    if (!isNew) {
-      return NextResponse.json({ message: 'Ya se ejecutó esta semana' });
+    const configs = await db
+      .select({ storeId: storeConfig.id, days: storeConfig.loyaltyExpirationDays })
+      .from(storeConfig)
+      .innerJoin(stores, eq(stores.id, storeConfig.id))
+      .where(and(eq(stores.status, 'active'), isNull(stores.deletedAt)));
+
+    let expired = 0;
+    let processedStores = 0;
+    let failedStores = 0;
+    for (const config of configs) {
+      try {
+        const result = await expireStalePointsForStore(config.storeId, config.days ?? 365);
+        expired += result.expired;
+        processedStores++;
+      } catch (error) {
+        failedStores++;
+        logger.error('Loyalty expiration failed for store', {
+          storeId: config.storeId,
+          error: error instanceof Error ? error.message : 'Unknown',
+        });
+      }
     }
 
-    // Read configurable expiration days
-    const [cfg] = await db.select({ days: storeConfig.loyaltyExpirationDays }).from(storeConfig).limit(1);
-    const expirationDays = cfg?.days ?? 365;
-
-    const result = await expireStalePoints(expirationDays);
-    logger.info('Loyalty expiration cron completed', { expired: result.expired, expirationDays });
-    return NextResponse.json({ ok: true, ...result, expirationDays });
+    logger.info('Loyalty expiration cron completed', { expired, processedStores, failedStores });
+    return NextResponse.json({ ok: failedStores === 0, expired, processedStores, failedStores });
   } catch (error) {
     logger.error('Loyalty expiration cron failed', { error });
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });

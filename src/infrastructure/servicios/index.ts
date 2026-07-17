@@ -1,4 +1,6 @@
-export { getActiveProvider, getAvailableProviders, resetProvider } from './provider-registry';
+export { getAvailableProviders } from './provider-catalog';
+export type { ServiceCategory, ServiciosProviderCatalogEntry } from './provider-catalog';
+export { getActiveProvider, resetProvider } from './provider-registry';
 export type { ServiciosProviderConfig } from './provider-registry';
 export type {
   ServiciosProvider,

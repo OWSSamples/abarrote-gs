@@ -3,12 +3,14 @@ import { Modal, Text, BlockStack, InlineStack, Button, Box, InlineGrid, Icon } f
 import { DeleteIcon, CheckCircleIcon, AlertCircleIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { PermissionKey } from '@/types';
+import type { SaleDiscountApprovalContext } from '@/lib/validation/schemas';
 
 interface PinPadModalProps {
   open: boolean;
   onClose: () => void;
-  onSuccess: (authorizedByUid: string, userDisplayName: string) => void;
+  onSuccess: (authorizedByUid: string, userDisplayName: string, approvalToken?: string) => void;
   requiredPermission: PermissionKey;
+  approvalContext?: SaleDiscountApprovalContext;
   title?: string;
   label?: string; // Nuevo: etiqueta dinámica tipo Shopify API
   masked?: boolean; // Nuevo: opción de enmascaramiento
@@ -20,6 +22,7 @@ export function PinPadModal({
   onClose,
   onSuccess,
   requiredPermission,
+  approvalContext,
   title = 'Seguridad POS',
   label = 'Ingresa PIN de autorización',
   masked: _masked = true,
@@ -46,7 +49,7 @@ export function PinPadModal({
   const handleKeyPress = (num: string) => {
     setError('');
     setIsShaking(false);
-    if (pin.length < 8) {
+    if (pin.length < 6) {
       setPin((prev) => prev + num);
     }
   };
@@ -66,12 +69,12 @@ export function PinPadModal({
     setLoading(true);
     setError('');
 
-    const res = await authorizePin(pin, requiredPermission);
+    const res = await authorizePin(pin, requiredPermission, approvalContext);
     setLoading(false);
 
     if (res.success && res.authorizedByUid) {
       setPin('');
-      onSuccess(res.authorizedByUid, res.userDisplayName || 'Supervisor');
+      onSuccess(res.authorizedByUid, res.userDisplayName || 'Supervisor', res.approvalToken);
     } else {
       setError(res.error || 'PIN incorrecto o sin permisos');
       triggerShake();

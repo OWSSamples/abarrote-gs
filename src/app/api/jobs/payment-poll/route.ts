@@ -11,7 +11,7 @@ import { paymentPollPayloadSchema, parseJobPayload } from '@/infrastructure/jobs
 // Scheduled by QStash after a charge is created, so we don't
 // rely solely on webhooks (belt + suspenders).
 //
-// Payload: { chargeId: string, provider: 'conekta' | 'stripe' | 'clip' }
+// Payload: { storeId: string, chargeId: string, provider: 'conekta' | 'stripe' | 'clip' }
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
   const payload = parsed.data;
 
   try {
-    const { checkChargeStatus } = await import('@/app/actions/payment-provider-actions');
-    const result = await checkChargeStatus(payload.chargeId, payload.provider);
+    const { checkPaymentChargeStatus } = await import('@/server/payment-charge-service');
+    const result = await checkPaymentChargeStatus(payload.chargeId, payload.provider, payload.storeId);
 
     logger.info('Payment poll job completed', {
       action: 'job_payment_poll',

@@ -10,7 +10,7 @@ import { fetchDevoluciones } from './devolucion-actions';
 import { fetchCashMovements } from './cash-movement-actions';
 import { fetchLoyaltyTransactions } from './loyalty-actions';
 import { fetchCategories } from './category-actions';
-import { requireAuth } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { logger } from '@/lib/logger';
 import type { KPIData } from '@/types';
 import { DEFAULT_STORE_CONFIG } from '@/types';
@@ -61,8 +61,9 @@ const DEFAULT_KPI: KPIData = {
 };
 
 async function _fetchDashboardFromDB() {
-  // Guard: this action loads ALL business data — must be authenticated
-  await requireAuth();
+  // Resolve the server-owned tenant boundary before loading any dashboard module.
+  const scope = await requireStoreScope();
+  const accessibleStores = scope.accessibleStores;
 
   const results = await Promise.all([
     safe(fetchKPIData(), DEFAULT_KPI, 'KPI'),
@@ -134,7 +135,8 @@ async function _fetchDashboardFromDB() {
     loyaltyTransactions: loyaltyTransactionsListReq.data,
     hourlySalesData: hourlySalesListReq.data,
     categories: categoriesListReq.data,
-    isOffline: allProductsReq.data.length === 0 && partialErrors.length > 5,
+    activeStoreId: scope.storeId,
+    stores: accessibleStores.map(({ id, name }) => ({ id, name })),
     partialErrors, // Nuevo: el frontend ahora sabrá exactamente QUÉ falló y POR QUÉ
   };
 }

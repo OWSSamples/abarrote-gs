@@ -20,7 +20,7 @@ describe('Domain Events', () => {
     emitDomainEvent({
       type: 'sale.created',
       payload: { saleId: 's1', folio: '001', total: 100, paymentMethod: 'efectivo', cajero: 'Admin', itemCount: 2 },
-      metadata: { userId: 'u1', userEmail: 'test@test.com' },
+      metadata: { userId: 'u1', userEmail: 'test@test.com', storeId: 'tenant-a' },
     });
 
     // Handlers are fire-and-forget — wait for microtasks
@@ -35,13 +35,13 @@ describe('Domain Events', () => {
     emitDomainEvent({
       type: 'product.created',
       payload: { productId: 'p1', name: 'Test', sku: 'TST' },
-      metadata: { userId: 'u1', userEmail: 'test@test.com' },
+      metadata: { userId: 'u1', userEmail: 'test@test.com', storeId: 'tenant-a' },
     });
 
     emitDomainEvent({
       type: 'customer.created',
       payload: { customerId: 'c1', name: 'Client' },
-      metadata: { userId: 'u1', userEmail: 'test@test.com' },
+      metadata: { userId: 'u1', userEmail: 'test@test.com', storeId: 'tenant-a' },
     });
 
     await new Promise((r) => setTimeout(r, 50));
@@ -55,7 +55,7 @@ describe('Domain Events', () => {
     emitDomainEvent({
       type: 'product.created',
       payload: { productId: 'p1', name: 'Test', sku: 'TST' },
-      metadata: { userId: 'u1', userEmail: 'test@test.com' },
+      metadata: { userId: 'u1', userEmail: 'test@test.com', storeId: 'tenant-a' },
     });
 
     await new Promise((r) => setTimeout(r, 50));
@@ -71,7 +71,7 @@ describe('Domain Events', () => {
       emitDomainEvent({
         type: 'sale.created',
         payload: { saleId: 's1', folio: '001', total: 100, paymentMethod: 'efectivo', cajero: 'Admin', itemCount: 2 },
-        metadata: { userId: 'u1', userEmail: 'test@test.com' },
+        metadata: { userId: 'u1', userEmail: 'test@test.com', storeId: 'tenant-a' },
       });
     }).not.toThrow();
 
@@ -86,7 +86,7 @@ describe('Domain Events', () => {
     emitDomainEvent({
       type: 'sale.created',
       payload: { saleId: 's1', folio: '001', total: 100, paymentMethod: 'efectivo', cajero: 'Admin', itemCount: 2 },
-      metadata: { userId: 'u1', userEmail: 'test@test.com' },
+      metadata: { userId: 'u1', userEmail: 'test@test.com', storeId: 'tenant-a' },
     });
 
     await new Promise((r) => setTimeout(r, 50));

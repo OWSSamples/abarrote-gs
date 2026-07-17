@@ -2,7 +2,7 @@
 
 import './CustomTopBar.css';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Icon, Tooltip } from '@shopify/polaris';
+import { ActionList, Icon, Popover, Tooltip } from '@shopify/polaris';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
 import {
   MenuIcon,
@@ -22,6 +22,7 @@ import { HelpDrawer } from '@/components/support/HelpDrawer';
 
 interface CustomTopBarProps {
   userMenu: React.ReactNode;
+  storeSelector?: React.ReactNode;
   onNavigationToggle?: () => void;
   onSectionSelect?: (section: string) => void;
   onProductClick?: (product: { id: string; name: string; sku: string; barcode: string; category: string }) => void;
@@ -55,13 +56,18 @@ const QUICK_ACTIONS = [
   { label: 'Corte de Caja', section: 'sales-corte', icon: FinanceIcon, keywords: 'corte caja cierre turno' },
 ];
 
-export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, onProductClick }: CustomTopBarProps) {
+export function CustomTopBar({
+  userMenu,
+  storeSelector,
+  onNavigationToggle,
+  onSectionSelect,
+  onProductClick,
+}: CustomTopBarProps) {
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const products = useDashboardStore((s) => s.products);
   const _shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
 
@@ -86,7 +92,8 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
   }, [query]);
 
   const totalResults = filteredProducts.length + filteredActions.length;
-  const showDropdown = isFocused && (query.length >= 1 || isFocused);
+  const shouldShowSearchPopover = isFocused && (query.length >= 1 || isFocused);
+  const searchPopoverActive = shouldShowSearchPopover && (totalResults > 0 || query.length >= 2);
 
   /* eslint-disable react-hooks/set-state-in-effect -- reset on query change */
   useEffect(() => {
@@ -111,16 +118,6 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isFocused]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsFocused(false);
-      }
-    };
-    if (isFocused) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
   }, [isFocused]);
 
   // === SOPORTE Y ASISTENCIA ===
@@ -173,6 +170,68 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
     [totalResults, selectedIndex, filteredActions.length, handleSelect],
   );
 
+  const actionItems = useMemo(
+    () =>
+      filteredActions.map((action, index) => ({
+        content: action.label,
+        prefix: <Icon source={action.icon} tone="subdued" />,
+        suffix: selectedIndex === index ? '↵' : undefined,
+        active: selectedIndex === index,
+        onAction: () => handleSelect('action', index),
+      })),
+    [filteredActions, handleSelect, selectedIndex],
+  );
+
+  const productItems = useMemo(
+    () =>
+      filteredProducts.map((product, index) => {
+        const itemIndex = filteredActions.length + index;
+        return {
+          content: product.name,
+          helpText: `${product.sku} · ${product.category}`,
+          prefix: <OptimizedImage source={product.imageUrl} alt={product.name} size="extraSmall" />,
+          suffix: (
+            <span className="ctb-result-suffix">
+              <strong>{formatCurrency(product.unitPrice)}</strong>
+              <span className={product.currentStock <= product.minStock ? 'critical' : undefined}>
+                {product.currentStock} uds
+              </span>
+            </span>
+          ),
+          active: selectedIndex === itemIndex,
+          onAction: () => handleSelect('product', index),
+        };
+      }),
+    [filteredActions.length, filteredProducts, handleSelect, selectedIndex],
+  );
+
+  const searchActivator = (
+    <div
+      className={`ctb-search-input-row${isFocused ? ' focused' : ''}`}
+      onClick={() => inputRef.current?.focus()}
+    >
+      <div className="ctb-search-icon">
+        <Icon source={SearchIcon} tone="inherit" />
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onFocus={() => setIsFocused(true)}
+        onKeyDown={handleKeyDown}
+        placeholder="Buscar"
+        className="ctb-search-native"
+      />
+      {!isFocused && (
+        <div className="ctb-kbd">
+          <span>CTRL</span>
+          <span>K</span>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="ctb-root">
       {/* Left */}
@@ -194,122 +253,60 @@ export function CustomTopBar({ userMenu, onNavigationToggle, onSectionSelect, on
 
       {/* Center: Search */}
       <div className="ctb-search-wrap">
-        <div className="ctb-search-box" ref={dropdownRef}>
-          <div
-            className={`ctb-search-input-row${isFocused ? ' focused' : ''}${showDropdown && totalResults > 0 ? ' open-dd' : ''}`}
-            onClick={() => inputRef.current?.focus()}
+        <div className="ctb-search-box">
+          <Popover
+            active={searchPopoverActive}
+            activator={searchActivator}
+            onClose={() => setIsFocused(false)}
+            fullWidth
+            preferredAlignment="center"
+            preferredPosition="below"
+            preventFocusOnClose
           >
-            <div className="ctb-search-icon">
-              <Icon source={SearchIcon} tone="inherit" />
-            </div>
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => setIsFocused(true)}
-              onKeyDown={handleKeyDown}
-              placeholder="Buscar"
-              className="ctb-search-native"
-            />
-            {!isFocused && (
-              <div className="ctb-kbd">
-                <span>CTRL</span>
-                <span>K</span>
-              </div>
-            )}
-          </div>
-
-          {showDropdown && (totalResults > 0 || query.length >= 2) && (
-            <div className="ctb-dropdown">
-              {filteredActions.length > 0 && (
-                <div>
-                  <div className="ctb-dd-section-label">{query.length < 2 ? 'Accesos rápidos' : 'Secciones'}</div>
-                  {filteredActions.map((action, i) => (
-                    <button
-                      key={action.section}
-                      className={`ctb-dd-item${selectedIndex === i ? ' active' : ''}`}
-                      onClick={() => handleSelect('action', i)}
-                      onMouseEnter={() => setSelectedIndex(i)}
-                    >
-                      <div className="ctb-dd-item-icon">
-                        <Icon source={action.icon} tone="inherit" />
-                      </div>
-                      <span>{action.label}</span>
-                      <span className="ctb-dd-item-arrow">↵</span>
-                    </button>
-                  ))}
-                </div>
+            <Popover.Pane fixed>
+              {actionItems.length > 0 && (
+                <ActionList
+                  actionRole="menuitem"
+                  sections={[
+                    {
+                      title: query.length < 2 ? 'Accesos rápidos' : 'Secciones',
+                      items: actionItems,
+                    },
+                  ]}
+                />
               )}
-
-              {filteredProducts.length > 0 && (
-                <div>
-                  {filteredActions.length > 0 && <div className="ctb-dd-sep" />}
-                  <div className="ctb-dd-section-label">Productos ({filteredProducts.length})</div>
-                  {filteredProducts.map((product, i) => {
-                    const idx = filteredActions.length + i;
-                    return (
-                      <button
-                        key={product.id}
-                        className={`ctb-dd-item${selectedIndex === idx ? ' active' : ''}`}
-                        onClick={() => handleSelect('product', i)}
-                        onMouseEnter={() => setSelectedIndex(idx)}
-                      >
-                        <OptimizedImage source={product.imageUrl} alt={product.name} size="extraSmall" />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              color: '#e4e4e7',
-                            }}
-                          >
-                            {product.name}
-                          </div>
-                          <div style={{ fontSize: '11px', color: '#52525b' }}>
-                            {product.sku} · {product.category}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#6ee7b7' }}>
-                            {formatCurrency(product.unitPrice)}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: '10.5px',
-                              color: product.currentStock <= product.minStock ? '#f87171' : '#52525b',
-                            }}
-                          >
-                            {product.currentStock} uds
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+              {productItems.length > 0 && (
+                <ActionList
+                  actionRole="menuitem"
+                  sections={[
+                    {
+                      title: `Productos (${filteredProducts.length})`,
+                      items: productItems,
+                    },
+                  ]}
+                />
               )}
-
               {query.length >= 2 && totalResults === 0 && (
-                <div className="ctb-dd-empty">
-                  <div style={{ color: '#52525b', fontSize: '13px' }}>Sin resultados para &quot;{query}&quot;</div>
-                </div>
+                <Popover.Section>
+                  <div className="ctb-dd-empty">Sin resultados para &quot;{query}&quot;</div>
+                </Popover.Section>
               )}
-
-              <div className="ctb-dd-footer">
-                <span>↑↓ navegar</span>
-                <span>↵ seleccionar</span>
-                <span>esc cerrar</span>
-              </div>
-            </div>
-          )}
+              <Popover.Section>
+                <div className="ctb-dd-footer">
+                  <span>↑↓ navegar</span>
+                  <span>↵ seleccionar</span>
+                  <span>esc cerrar</span>
+                </div>
+              </Popover.Section>
+            </Popover.Pane>
+          </Popover>
         </div>
       </div>
 
       {/* Right */}
       <div className="ctb-actions">
+        {storeSelector}
+
         <Tooltip content="Soporte y Ayuda" dismissOnMouseOut>
           <button className="ctb-icon-btn" onClick={openLiveChat} aria-label="Soporte">
             <Icon source={SidekickIcon} tone="inherit" />

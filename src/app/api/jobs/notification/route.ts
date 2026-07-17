@@ -10,7 +10,7 @@ import { notificationPayloadSchema, parseJobPayload } from '@/infrastructure/job
 // Receives a Telegram notification payload from QStash and sends it.
 // This decouples notification sending from the main request flow.
 //
-// Payload: { message: string }
+// Payload: { message: string, storeId: string }
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   try {
     // Dynamic import to avoid circular deps with server actions
     const { sendNotificationDirect } = await import('@/infrastructure/qstash/handlers');
-    await sendNotificationDirect(payload.message);
+    await sendNotificationDirect(payload.message, payload.storeId);
 
     return NextResponse.json({ success: true });
   } catch (err) {

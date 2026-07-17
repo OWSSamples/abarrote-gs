@@ -5,9 +5,11 @@
 export const PAYMENT_METHODS = [
   'efectivo',
   'tarjeta',
+  'tarjeta_manual',
   'tarjeta_web',
   'transferencia',
   'fiado',
+  'puntos',
   'spei',
   'paypal',
   'qr_cobro',
@@ -286,6 +288,11 @@ export interface StoreConfig {
   city: string;
   postalCode: string;
   phone: string;
+  country: string;
+  businessType: string;
+  businessTypeOther?: string;
+  contactEmail?: string;
+  estimatedUsers: number;
   rfc: string;
   regimenFiscal: string;
   regimenDescription: string;
@@ -313,6 +320,7 @@ export interface StoreConfig {
   enableNotifications: boolean;
   telegramToken?: string;
   telegramChatId?: string;
+  telegramWebhookSecret?: string;
   // Email (AWS SES)
   emailEnabled: boolean;
   emailFrom?: string;
@@ -435,6 +443,9 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   city: 'MEXICO',
   postalCode: '00000',
   phone: '(555) 123-4567',
+  country: 'MX',
+  businessType: 'abarrotes',
+  estimatedUsers: 1,
   rfc: 'XAXX010101000',
   regimenFiscal: '612',
   regimenDescription: 'REGIMEN SIMPLIFICADO DE CONFIANZA',
@@ -458,6 +469,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   storeNumber: '001',
   ticketBarcodeFormat: 'CODE128',
   enableNotifications: false,
+  telegramWebhookSecret: '',
   emailEnabled: false,
   emailTicketEnabled: true,
   emailDailyReportEnabled: true,
@@ -846,6 +858,8 @@ export interface RoleDefinition {
   description: string;
   permissions: PermissionKey[];
   isSystem: boolean;
+  /** Tenant owner for custom roles. System roles are shared and omit this field. */
+  storeId?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -855,18 +869,50 @@ export interface UserRoleRecord {
   id: string;
   /** Cognito `sub` (subject) claim. Field name kept as `cognitoSub` for legacy compatibility. */
   cognitoSub: string;
+  /** Tenant this user belongs to. */
+  storeId: string;
   email: string;
   displayName: string;
   avatarUrl: string;
   employeeNumber: string;
   globalId?: string; // Permanent unique ID, generated once, never reused
   status: UserStatus; // Active or deactivated
+  isDefault: boolean;
   deactivatedAt?: string; // ISO date when deactivated
   pinCode?: string;
   roleId: string;
   assignedBy: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TenantStatus = 'active' | 'suspended' | 'archived';
+
+export interface TenantIdentity {
+  cognitoSub: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string;
+  globalId?: string;
+  status: 'active' | 'disabled';
+}
+
+export type TenantMembership = UserRoleRecord;
+
+export interface PlatformAdministrator {
+  cognitoSub: string;
+  role: 'platform_admin';
+  status: 'active' | 'revoked';
+}
+
+export interface TenantInvitation {
+  id: string;
+  storeId: string;
+  email: string;
+  roleId: string;
+  status: 'pending' | 'accepted' | 'revoked' | 'expired';
+  expiresAt: string;
+  createdAt: string;
 }
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {

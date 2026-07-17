@@ -29,26 +29,15 @@ const envSchema = z.object({
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
 
   // ── QStash ──
+  QSTASH_URL: z.string().url().optional(),
   QSTASH_TOKEN: z.string().min(1).optional(),
   QSTASH_CURRENT_SIGNING_KEY: z.string().min(1).optional(),
   QSTASH_NEXT_SIGNING_KEY: z.string().min(1).optional(),
 
-  // ── Payment Providers: Stripe ──
-  STRIPE_SECRET_KEY: z.string().min(1).optional(),
-  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  // ── Payment Providers: Cobrar.io ──
+  COBRAR_WEBHOOK_SECRET: z.string().min(32).optional(),
 
-  // ── Payment Providers: Conekta ──
-  CONEKTA_PRIVATE_KEY: z.string().min(1).optional(),
-  CONEKTA_WEBHOOK_KEY: z.string().min(1).optional(),
-  CONEKTA_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
-
-  // ── Payment Providers: Clip ──
-  CLIP_API_KEY: z.string().min(1).optional(),
-  CLIP_SECRET_KEY: z.string().min(1).optional(),
-  CLIP_SERIAL_NUMBER: z.string().min(1).optional(),
-  CLIP_WEBHOOK_SECRET: z.string().min(1).optional(),
-
-  // ── Payment Providers: MercadoPago ──
+  // ── Mercado Pago OAuth platform app ──
   MP_APP_ID: z.string().min(1).optional(),
   MP_CLIENT_SECRET: z.string().min(1).optional(),
   MP_ACCESS_TOKEN: z.string().min(1).optional(),
@@ -56,6 +45,8 @@ const envSchema = z.object({
 
   // ── AWS (file uploads + SES email) ──
   AWS_REGION: z.string().min(1).optional(),
+  AWS_SES_REGION: z.string().min(1).optional(),
+  AWS_S3_REGION: z.string().min(1).optional(),
   AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
   AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   AWS_S3_BUCKET: z.string().min(1).optional(),
@@ -71,24 +62,27 @@ const envSchema = z.object({
   SMTP_FROM_EMAIL: z.string().email().optional(),
   SMTP_FROM_NAME: z.string().min(1).optional(),
 
-  // ── Telegram ──
-  TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
-  TELEGRAM_CHAT_ID: z.string().min(1).optional(),
-  TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
-
   // ── Cognito ──
+  COGNITO_USER_POOL_ID: z.string().min(1).optional(),
+  COGNITO_CLIENT_ID: z.string().min(1).optional(),
+  COGNITO_REGION: z.string().min(1).optional(),
+  COGNITO_DOMAIN: z.string().min(1).optional(),
+  COGNITO_REDIRECT_SIGN_IN: z.string().min(1).optional(),
+  COGNITO_REDIRECT_SIGN_OUT: z.string().min(1).optional(),
+  COGNITO_OAUTH_PROVIDERS: z.string().min(1).optional(),
+  COGNITO_OAUTH_SCOPES: z.string().min(1).optional(),
   NEXT_PUBLIC_COGNITO_USER_POOL_ID: z.string().min(1).optional(),
   NEXT_PUBLIC_COGNITO_CLIENT_ID: z.string().min(1).optional(),
   NEXT_PUBLIC_COGNITO_REGION: z.string().min(1).optional(),
   NEXT_PUBLIC_COGNITO_DOMAIN: z.string().min(1).optional(),
+  NEXT_PUBLIC_COGNITO_REDIRECT_SIGN_IN: z.string().min(1).optional(),
+  NEXT_PUBLIC_COGNITO_REDIRECT_SIGN_OUT: z.string().min(1).optional(),
+  NEXT_PUBLIC_COGNITO_OAUTH_PROVIDERS: z.string().min(1).optional(),
+  NEXT_PUBLIC_COGNITO_OAUTH_SCOPES: z.string().min(1).optional(),
+  NEXT_PUBLIC_MICROSOFT_TENANT_ID: z.string().min(1).optional(),
 
   // ── Encryption ──
   OAUTH_ENCRYPTION_KEY: z.string().min(1).optional(),
-
-  // ── CFDI / PAC ──
-  CFDI_PAC_URL: z.string().url().optional(),
-  CFDI_PAC_USER: z.string().min(1).optional(),
-  CFDI_PAC_PASSWORD: z.string().min(1).optional(),
 
   // ── Database Pool ──
   DB_POOL_MAX: z.string().regex(/^\d+$/).optional(),
@@ -102,6 +96,11 @@ const envSchema = z.object({
 
   // ── Observability ──
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+  SENTRY_DSN: z.string().url().optional(),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ORG: z.string().min(1).optional(),
+  SENTRY_PROJECT: z.string().min(1).optional(),
+  SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -122,7 +121,7 @@ function validateEnv() {
     if (process.env.NODE_ENV === 'test') {
       // Remove invalid URL values that fail z.string().url() in test env
       const testCleaned = { ...cleaned };
-      const urlFields = ['BASE_URL', 'NEXT_PUBLIC_APP_URL', 'CFDI_PAC_URL'];
+      const urlFields = ['BASE_URL', 'NEXT_PUBLIC_APP_URL'];
       for (const field of urlFields) {
         if (testCleaned[field]) {
           try {
@@ -156,21 +155,6 @@ export type Env = z.infer<typeof envSchema>;
 // RUNTIME CHECKS (for optional integrations)
 // ══════════════════════════════════════════════════════════════
 
-/** Returns true if Stripe integration is fully configured */
-export function isStripeConfigured(): boolean {
-  return !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET);
-}
-
-/** Returns true if Conekta webhook verification is configured */
-export function isConektaWebhookConfigured(): boolean {
-  return !!env.CONEKTA_WEBHOOK_KEY;
-}
-
-/** Returns true if Telegram notifications are configured */
-export function isTelegramConfigured(): boolean {
-  return !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID);
-}
-
 /** Returns true if QStash is configured for background jobs */
 export function isQStashConfigured(): boolean {
   return !!(env.QSTASH_TOKEN && env.QSTASH_CURRENT_SIGNING_KEY);
@@ -178,12 +162,7 @@ export function isQStashConfigured(): boolean {
 
 /** Returns true if AWS S3 is configured for file uploads */
 export function isS3Configured(): boolean {
-  return !!(env.AWS_REGION && env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY && env.AWS_S3_BUCKET);
-}
-
-/** Returns true if Clip payment integration is configured */
-export function isClipConfigured(): boolean {
-  return !!(env.CLIP_API_KEY && env.CLIP_SECRET_KEY);
+  return !!((env.AWS_S3_REGION || env.AWS_REGION) && env.AWS_S3_BUCKET);
 }
 
 /** Returns true if MercadoPago integration is configured */

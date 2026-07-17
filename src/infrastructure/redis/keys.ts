@@ -14,6 +14,7 @@ export const REDIS_PREFIXES = {
   LOCK: 'lock',
   SESSION: 'session',
   IDEMPOTENCY: 'idem',
+  APPROVAL: 'approval',
 } as const;
 
 export type RedisPrefix = (typeof REDIS_PREFIXES)[keyof typeof REDIS_PREFIXES];

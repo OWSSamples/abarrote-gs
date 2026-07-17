@@ -16,7 +16,8 @@ Usar `@cloudflare/kumo` v2.2.1 **exclusivamente** para las páginas de autentica
 - `Input` — Campos de texto con label, description, error integrados
 - `SensitiveInput` — Campo de contraseña con toggle show/hide built-in
 - `Link` — Enlaces con variantes inline/current/plain
-- `@phosphor-icons/react` — Iconografía (EnvelopeSimple, WarningDiamond, CheckCircle)
+- `@fluentui/react-icons` — Iconografía filled para login, registro, recuperación y accesos
+- `thesvg` — Logos de marcas/servicios en accesos e integraciones; no se usan logos locales para empresas
 
 ### Configuración CSS
 - `@cloudflare/kumo/styles/tailwind` importado en `globals.css` (tema tokens)
@@ -33,7 +34,9 @@ Usar `@cloudflare/kumo` v2.2.1 **exclusivamente** para las páginas de autentica
 
 ### Negativas
 - Dos design systems en la misma app (Polaris + Kumo)
-- Dependencia adicional: `@phosphor-icons/react` (requerido por Kumo)
+- `@phosphor-icons/react` se mantiene como peer dependency requerida por Kumo, pero no se usa directamente para la iconografía de auth
+- `@fluentui/react-icons` queda como set de iconos de acceso/login; Polaris Icons permanece para superficies Polaris del dashboard
+- `thesvg` queda como fuente de logos de empresas y servicios; si una marca no existe en el paquete, se muestra fallback tipográfico en vez de usar assets locales
 - `npm install --legacy-peer-deps` necesario por conflictos React 19
 
 ### Riesgos

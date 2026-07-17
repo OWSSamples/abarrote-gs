@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 import { db } from '@/db';
 import { auditLogs } from '@/db/schema';
@@ -12,6 +12,7 @@ interface AuditChanges {
 }
 
 export async function logAudit(params: {
+  storeId: string;
   userId: string;
   userEmail: string;
   action: AuditAction;
@@ -24,6 +25,7 @@ export async function logAudit(params: {
   try {
     await db.insert(auditLogs).values({
       id: crypto.randomUUID(),
+      storeId: params.storeId,
       userId: params.userId,
       userEmail: params.userEmail,
       action: params.action,
@@ -39,7 +41,8 @@ export async function logAudit(params: {
   }
 }
 
-export async function getAuditLogs(filters?: {
+export async function getAuditLogs(filters: {
+  storeId: string;
   userId?: string;
   entity?: string;
   action?: AuditAction;
@@ -47,21 +50,22 @@ export async function getAuditLogs(filters?: {
   endDate?: Date;
   limit?: number;
 }) {
-  const conditions = [];
+  if (!filters.storeId) throw new Error('El tenant es obligatorio para consultar auditoría.');
+  const conditions = [eq(auditLogs.storeId, filters.storeId)];
 
-  if (filters?.userId) {
+  if (filters.userId) {
     conditions.push(eq(auditLogs.userId, filters.userId));
   }
-  if (filters?.entity) {
+  if (filters.entity) {
     conditions.push(eq(auditLogs.entity, filters.entity));
   }
-  if (filters?.action) {
+  if (filters.action) {
     conditions.push(eq(auditLogs.action, filters.action));
   }
-  if (filters?.startDate) {
+  if (filters.startDate) {
     conditions.push(gte(auditLogs.timestamp, filters.startDate));
   }
-  if (filters?.endDate) {
+  if (filters.endDate) {
     conditions.push(lte(auditLogs.timestamp, filters.endDate));
   }
 
@@ -70,7 +74,7 @@ export async function getAuditLogs(filters?: {
     .from(auditLogs)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(auditLogs.timestamp))
-    .limit(filters?.limit ?? 200);
+    .limit(filters.limit ?? 200);
 
   return rows.map((r) => ({
     id: r.id,

@@ -167,7 +167,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Sync status indicators */}
         {!syncStatus.isOnline && (
           <Banner tone="warning">
-            Sin conexión — las operaciones se guardan localmente y se sincronizan al reconectar.
+            Sin conexión. Las operaciones requieren acceso al servidor y no se guardarán localmente.
           </Banner>
         )}
         {syncStatus.circuitOpen && syncStatus.isOnline && (

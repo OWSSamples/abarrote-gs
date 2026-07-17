@@ -120,8 +120,8 @@ function csrfCheck(request: NextRequest): NextResponse | null {
 
 const isDev = process.env.NODE_ENV === 'development';
 
-const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN || '';
-const cognitoRegion = process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-2';
+const cognitoDomain = process.env.COGNITO_DOMAIN || process.env.NEXT_PUBLIC_COGNITO_DOMAIN || '';
+const cognitoRegion = process.env.COGNITO_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-2';
 const cognitoOrigins = [
   cognitoDomain ? `https://${cognitoDomain}` : '',
   `https://cognito-idp.${cognitoRegion}.amazonaws.com`,
@@ -141,7 +141,7 @@ const CSP = [
   "font-src 'self' data: https://fonts.gstatic.com https://cdn.shopify.com",
   "img-src 'self' data: blob: https://*.amazonaws.com https://*.mlstatic.com",
   `connect-src 'self' https://*.neon.tech wss://*.neon.tech https://*.upstash.io https://api.mercadopago.com https://api.stripe.com https://api.conekta.io https://api.telegram.org https://*.amazonaws.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io ${cognitoOrigins}`,
-  "frame-src 'none'",
+  "frame-src 'self' blob:",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",

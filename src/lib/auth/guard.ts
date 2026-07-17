@@ -2,8 +2,7 @@ import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
 import { verifyIdToken } from '@/lib/cognito-admin';
 import { db } from '@/db';
-import { userRoles, roleDefinitions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { userIdentities } from '@/db/schema';
 import type { PermissionKey } from '@/types';
 import { logger } from '@/lib/logger';
 
@@ -60,80 +59,42 @@ async function extractToken(): Promise<string | null> {
 const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
   const decodedToken = await verifyIdToken(token);
   const uid = decodedToken.sub;
-  const email = decodedToken.email || '';
+  const email = (decodedToken.email || '').trim().toLowerCase();
   const tokenName = decodedToken['custom:display_name'] || decodedToken['cognito:username'] || '';
 
-  // Single JOIN query: user role + permissions in one round-trip
-  const rows = await db
-    .select({
-      status: userRoles.status,
-      roleId: userRoles.roleId,
-      displayName: userRoles.displayName,
-      permissions: roleDefinitions.permissions,
-      roleName: roleDefinitions.name,
+  const [identity] = await db
+    .insert(userIdentities)
+    .values({
+      cognitoSub: uid,
+      email,
+      displayName: tokenName,
+      updatedAt: new Date(),
     })
-    .from(userRoles)
-    .leftJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
-    .where(eq(userRoles.cognitoSub, uid))
-    .limit(1);
-
-  // Auto-bootstrap: si el usuario tiene token Cognito válido pero no
-  // existe en la tabla user_roles, lo creamos automáticamente. El
-  // primer usuario en absoluto se vuelve Propietario; los siguientes
-  // entran como "Solo lectura" hasta que un admin les asigne rol.
-  if (rows.length === 0) {
-    logger.info('Auto-bootstrap: creating user_roles row for new Cognito user', {
-      action: 'auth_auto_bootstrap',
-      uid,
-      email,
+    .onConflictDoUpdate({
+      target: userIdentities.cognitoSub,
+      set: {
+        email,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({
+      status: userIdentities.status,
+      displayName: userIdentities.displayName,
     });
-    const { ensureOwnerRole } = await import('@/app/actions/role-actions');
-    const created = await ensureOwnerRole(uid, email, tokenName);
-    const roleDef = await db
-      .select({ permissions: roleDefinitions.permissions, name: roleDefinitions.name })
-      .from(roleDefinitions)
-      .where(eq(roleDefinitions.id, created.roleId))
-      .limit(1);
-    let perms: PermissionKey[] = [];
-    if (roleDef[0]?.permissions) {
-      try {
-        perms = JSON.parse(roleDef[0].permissions) as PermissionKey[];
-      } catch {
-        perms = [];
-      }
-    }
-    return {
-      uid,
-      email,
-      roleId: created.roleId,
-      roleName: roleDef[0]?.name ?? undefined,
-      permissions: perms,
-      displayName: created.displayName || tokenName || undefined,
-    };
-  }
 
-  const row = rows[0];
-
-  if (row.status !== 'activo') {
+  if (identity?.status !== 'active') {
     throw new AuthError('Tu cuenta ha sido desactivada. Contacta al administrador.', 403);
-  }
-
-  let permissions: PermissionKey[] = [];
-  if (row.permissions) {
-    try {
-      permissions = JSON.parse(row.permissions) as PermissionKey[];
-    } catch {
-      permissions = [];
-    }
   }
 
   return {
     uid,
     email,
-    roleId: row.roleId,
-    roleName: row.roleName ?? undefined,
-    permissions,
-    displayName: row.displayName || undefined,
+    // Authorization is deliberately resolved later from the active tenant
+    // membership. Identity verification alone grants no business permission.
+    roleId: '',
+    roleName: undefined,
+    permissions: [],
+    displayName: identity?.displayName || tokenName || undefined,
   };
 });
 
@@ -188,7 +149,8 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
  * Requires the user to have at least one of the specified permissions.
  */
 export async function requirePermission(...requiredPerms: PermissionKey[]): Promise<AuthenticatedUser> {
-  const user = await requireAuth();
+  const { requireStoreScope } = await import('@/lib/auth/store-scope');
+  const { user } = await requireStoreScope();
 
   // Propietario/Administrador bypass all permission checks
   if (user.roleName === 'Propietario' || user.roleName === 'Administrador') return user;
@@ -212,7 +174,8 @@ export async function requirePermission(...requiredPerms: PermissionKey[]): Prom
  * Requires the user to be the owner/admin.
  */
 export async function requireOwner(): Promise<AuthenticatedUser> {
-  const user = await requireAuth();
+  const { requireStoreScope } = await import('@/lib/auth/store-scope');
+  const { user } = await requireStoreScope();
 
   if (user.roleName !== 'Propietario') {
     throw new AuthError('Esta acción requiere permisos de administrador TI', 403);

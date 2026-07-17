@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Sale, SaleItem } from '@/domain/entities';
-import { Money, Quantity } from '@/domain/value-objects';
+import { Folio, Money, Quantity } from '@/domain/value-objects';
 
 function createTestSaleItem(
   overrides: Partial<{
@@ -111,6 +111,7 @@ describe('SaleItem Entity', () => {
 describe('Sale Entity', () => {
   const createTestSale = (items = [createTestSaleItem()]) => {
     return Sale.create({
+      folio: Folio.generate('20260714', 1),
       items,
       paymentMethod: 'efectivo',
       amountPaid: Money.fromPesos(500),
@@ -126,14 +127,10 @@ describe('Sale Entity', () => {
       expect(sale.status).toBe('completada');
     });
 
-    it('generates offline folio when not provided', () => {
-      const sale = createTestSale();
-      expect(sale.folio.isTemporary()).toBe(true);
-    });
-
     it('throws on empty items', () => {
       expect(() =>
         Sale.create({
+          folio: Folio.generate('20260714', 2),
           items: [],
           paymentMethod: 'efectivo',
           amountPaid: Money.fromPesos(100),
@@ -145,6 +142,7 @@ describe('Sale Entity', () => {
     it('throws on empty cajero', () => {
       expect(() =>
         Sale.create({
+          folio: Folio.generate('20260714', 3),
           items: [createTestSaleItem()],
           paymentMethod: 'efectivo',
           amountPaid: Money.fromPesos(100),
@@ -179,6 +177,7 @@ describe('Sale Entity', () => {
     it('calculates change', () => {
       const items = [createTestSaleItem({ quantity: 1, unitPrice: 100 })];
       const sale = Sale.create({
+        folio: Folio.generate('20260714', 4),
         items,
         paymentMethod: 'efectivo',
         amountPaid: Money.fromPesos(200),
@@ -250,28 +249,6 @@ describe('Sale Entity', () => {
       const sale = createTestSale();
       const cancelled = sale.cancel();
       expect(() => cancelled.cancel()).toThrow('Already cancelled');
-    });
-  });
-
-  describe('payment methods', () => {
-    it('identifies online-only payment methods', () => {
-      const sale = Sale.create({
-        items: [createTestSaleItem()],
-        paymentMethod: 'spei_conekta',
-        amountPaid: Money.fromPesos(500),
-        cajero: 'Test',
-      });
-      expect(sale.requiresInternet()).toBe(true);
-    });
-
-    it('identifies offline-capable payment methods', () => {
-      const sale = Sale.create({
-        items: [createTestSaleItem()],
-        paymentMethod: 'efectivo',
-        amountPaid: Money.fromPesos(500),
-        cajero: 'Test',
-      });
-      expect(sale.requiresInternet()).toBe(false);
     });
   });
 

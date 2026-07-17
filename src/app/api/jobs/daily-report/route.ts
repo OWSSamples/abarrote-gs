@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const stores = await db
+    const activeStores = await db
       .select({ storeId: storeConfig.id })
       .from(storeConfig)
       .innerJoin(stores, eq(stores.id, storeConfig.id))
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     let skipped = 0;
     let failed = 0;
 
-    for (const store of stores) {
+    for (const store of activeStores) {
       try {
         const report = await buildDailyStoreReport(store.storeId);
         if (!report.shouldSend) {

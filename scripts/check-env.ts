@@ -16,7 +16,7 @@ const required = [
   ['COGNITO_REGION', cognitoEnv.region],
 ] as const;
 
-function status(label: string, ok: boolean, detail?: string) {
+function logStatus(label: string, ok: boolean, detail?: string) {
   const marker = ok ? 'ok' : 'fail';
   console.log(`${marker}: ${label}${detail ? ` - ${detail}` : ''}`);
 }
@@ -32,7 +32,7 @@ function splitList(value: string | undefined): string[] {
 
 async function main() {
   const missing = required.filter(([, value]) => !value).map(([key]) => key);
-  status('required environment variables', missing.length === 0, missing.length ? `missing ${missing.join(', ')}` : undefined);
+  logStatus('required environment variables', missing.length === 0, missing.length ? `missing ${missing.join(', ')}` : undefined);
 
   const region = cognitoEnv.region;
   const userPoolId = cognitoEnv.userPoolId;
@@ -43,16 +43,16 @@ async function main() {
 
   const issuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
   const oidcResponse = await fetch(`${issuer}/.well-known/openid-configuration`);
-  status('cognito oidc discovery', oidcResponse.ok, `http ${oidcResponse.status}`);
+  logStatus('cognito oidc discovery', oidcResponse.ok, `http ${oidcResponse.status}`);
   if (!oidcResponse.ok) return;
 
   const oidc = (await oidcResponse.json()) as { issuer?: string; jwks_uri?: string };
-  status('cognito issuer match', oidc.issuer === issuer);
+  logStatus('cognito issuer match', oidc.issuer === issuer);
 
   if (oidc.jwks_uri) {
     const jwksResponse = await fetch(oidc.jwks_uri);
     const jwks = jwksResponse.ok ? ((await jwksResponse.json()) as { keys?: unknown[] }) : null;
-    status('cognito jwks', jwksResponse.ok && Array.isArray(jwks?.keys) && jwks.keys.length > 0, `http ${jwksResponse.status}`);
+    logStatus('cognito jwks', jwksResponse.ok && Array.isArray(jwks?.keys) && jwks.keys.length > 0, `http ${jwksResponse.status}`);
   }
 
   const signUpProbeResponse = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
@@ -80,7 +80,7 @@ async function main() {
     type.includes('InvalidParameterException') &&
     probeMessage.includes('email');
 
-  status(
+  logStatus(
     'cognito sign-up reaches email schema validation',
     !hasClientSecret && rejectedInvalidEmail,
     hasClientSecret ? 'client is configured with secret' : `${type}: ${data.message ?? 'unexpected response'}`,
@@ -108,7 +108,7 @@ async function main() {
     message?: string;
   };
   const reachedPasswordPolicy = policyProbe.__type?.includes('InvalidPasswordException') === true;
-  status(
+  logStatus(
     'cognito self sign-up accepts opaque usernames',
     reachedPasswordPolicy,
     `${policyProbe.__type ?? 'unknown'}: ${policyProbe.message ?? 'unexpected response'}`,
@@ -129,24 +129,24 @@ async function main() {
     hostedUrl.searchParams.set('redirect_uri', redirectUri);
     hostedUrl.searchParams.set('state', 'opendex-healthcheck');
     const hostedResponse = await fetch(hostedUrl, { redirect: 'manual' });
-    status(
+    logStatus(
       'cognito authorization endpoint reachable',
       hostedResponse.status >= 200 && hostedResponse.status < 400,
       `http ${hostedResponse.status}`,
     );
   } else {
-    status('cognito hosted ui configured', false, 'COGNITO_DOMAIN is empty');
+    logStatus('cognito hosted ui configured', false, 'COGNITO_DOMAIN is empty');
   }
 
   const providers = splitList(cognitoEnv.oauthProviders);
   const extraSignIn = splitList(cognitoEnv.redirectSignIn);
   const extraSignOut = splitList(cognitoEnv.redirectSignOut);
-  status('cognito oauth providers env', providers.length > 0, providers.length ? providers.join(', ') : 'not configured');
-  status('cognito extra redirect sign-in env', true, `${extraSignIn.length} configured`);
-  status('cognito extra redirect sign-out env', true, `${extraSignOut.length} configured`);
+  logStatus('cognito oauth providers env', providers.length > 0, providers.length ? providers.join(', ') : 'not configured');
+  logStatus('cognito extra redirect sign-in env', true, `${extraSignIn.length} configured`);
+  logStatus('cognito extra redirect sign-out env', true, `${extraSignOut.length} configured`);
 }
 
 main().catch((error) => {
-  status('environment check', false, error instanceof Error ? error.message : 'unknown error');
+  logStatus('environment check', false, error instanceof Error ? error.message : 'unknown error');
   process.exitCode = 1;
 });

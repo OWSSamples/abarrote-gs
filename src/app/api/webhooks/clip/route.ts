@@ -63,11 +63,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const signal = parsed.data;
-    const providerChargeId =
+    const providerChargeId: string =
       'payment_request_id' in signal
-        ? signal.payment_request_id
+        ? signal.payment_request_id as string
         : 'pinpad_request_id' in signal
-          ? signal.pinpad_request_id
+          ? signal.pinpad_request_id as string
           : signal.id;
 
     const [existing] = await db

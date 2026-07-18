@@ -476,6 +476,7 @@ export const stockMovements = pgTable(
     index('stock_movements_product_id_idx').on(t.productId),
     index('stock_movements_created_at_idx').on(t.createdAt),
     index('stock_movements_product_created_idx').on(t.productId, t.createdAt),
+    index('stock_movements_store_product_created_idx').on(t.storeId, t.productId, t.createdAt),
     index('stock_movements_type_idx').on(t.type),
     index('stock_movements_store_idx').on(t.storeId),
     foreignKey({
@@ -549,6 +550,8 @@ export const saleItems = pgTable(
     index('sale_items_sale_id_idx').on(t.saleId),
     index('sale_items_product_id_idx').on(t.productId),
     index('sale_items_store_idx').on(t.storeId),
+    index('sale_items_store_sale_idx').on(t.storeId, t.saleId),
+    index('sale_items_store_product_idx').on(t.storeId, t.productId),
     foreignKey({
       columns: [t.storeId, t.saleId],
       foreignColumns: [saleRecords.storeId, saleRecords.id],
@@ -636,6 +639,8 @@ export const pedidoItems = pgTable(
     index('pedido_items_pedido_id_idx').on(t.pedidoId),
     index('pedido_items_product_id_idx').on(t.productId),
     index('pedido_items_store_idx').on(t.storeId),
+    index('pedido_items_store_pedido_idx').on(t.storeId, t.pedidoId),
+    index('pedido_items_store_product_idx').on(t.storeId, t.productId),
     foreignKey({
       columns: [t.storeId, t.pedidoId],
       foreignColumns: [pedidos.storeId, pedidos.id],
@@ -699,6 +704,8 @@ export const fiadoTransactions = pgTable(
     index('fiado_transactions_date_idx').on(t.date),
     index('fiado_transactions_cliente_date_idx').on(t.clienteId, t.date),
     index('fiado_transactions_store_idx').on(t.storeId),
+    index('fiado_transactions_store_date_idx').on(t.storeId, t.date),
+    index('fiado_transactions_store_cliente_date_idx').on(t.storeId, t.clienteId, t.date),
     uniqueIndex('fiado_transactions_store_id_unique_idx').on(t.storeId, t.id),
     foreignKey({
       columns: [t.storeId, t.clienteId],
@@ -737,6 +744,8 @@ export const fiadoItems = pgTable(
   (t) => [
     index('fiado_items_fiado_id_idx').on(t.fiadoId),
     index('fiado_items_store_idx').on(t.storeId),
+    index('fiado_items_store_fiado_idx').on(t.storeId, t.fiadoId),
+    index('fiado_items_store_product_idx').on(t.storeId, t.productId),
     foreignKey({
       columns: [t.storeId, t.fiadoId],
       foreignColumns: [fiadoTransactions.storeId, fiadoTransactions.id],
@@ -869,6 +878,8 @@ export const inventoryAuditItems = pgTable(
   (t) => [
     index('inventory_audit_items_audit_id_idx').on(t.auditId),
     index('inventory_audit_items_store_idx').on(t.storeId),
+    index('inventory_audit_items_store_audit_idx').on(t.storeId, t.auditId),
+    index('inventory_audit_items_store_product_idx').on(t.storeId, t.productId),
     foreignKey({
       columns: [t.storeId, t.auditId],
       foreignColumns: [inventoryAudits.storeId, inventoryAudits.id],
@@ -897,7 +908,13 @@ export const roleDefinitions = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
-  (t) => [index('role_definitions_store_idx').on(t.storeId)],
+  (t) => [
+    index('role_definitions_store_idx').on(t.storeId),
+    check(
+      'role_definitions_scope_check',
+      sql`(${t.isSystem} = true AND ${t.storeId} IS NULL) OR (${t.isSystem} = false AND ${t.storeId} IS NOT NULL)`,
+    ),
+  ],
 );
 
 export const userRoles = pgTable(
@@ -939,6 +956,9 @@ export const userRoles = pgTable(
     index('user_roles_cognito_sub_idx').on(t.cognitoSub),
     index('user_roles_store_idx').on(t.storeId),
     index('user_roles_store_status_idx').on(t.storeId, t.status),
+    index('user_roles_active_cognito_idx')
+      .on(t.cognitoSub)
+      .where(sql`${t.status} = 'activo'`),
     check('user_roles_status_check', sql`${t.status} IN ('activo', 'baja')`),
   ],
 );
@@ -1131,6 +1151,8 @@ export const devolucionItems = pgTable(
   (t) => [
     index('devolucion_items_devolucion_id_idx').on(t.devolucionId),
     index('devolucion_items_store_idx').on(t.storeId),
+    index('devolucion_items_store_devolucion_idx').on(t.storeId, t.devolucionId),
+    index('devolucion_items_store_product_idx').on(t.storeId, t.productId),
     foreignKey({
       columns: [t.storeId, t.devolucionId],
       foreignColumns: [devoluciones.storeId, devoluciones.id],
@@ -1168,6 +1190,8 @@ export const cashMovements = pgTable(
     index('cash_movements_corte_id_idx').on(t.corteId),
     index('cash_movements_tipo_idx').on(t.tipo),
     index('cash_movements_store_idx').on(t.storeId),
+    index('cash_movements_store_fecha_idx').on(t.storeId, t.fecha),
+    index('cash_movements_store_corte_idx').on(t.storeId, t.corteId),
     foreignKey({
       columns: [t.storeId, t.corteId],
       foreignColumns: [cortesCaja.storeId, cortesCaja.id],

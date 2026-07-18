@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
-import { checkRedisHealth, type RedisHealth, getCacheStats } from '@/infrastructure/redis';
-import { getAllCircuitBreakerStats } from '@/infrastructure/circuit-breaker';
-import { getAuditBufferSize } from '@/infrastructure/audit';
-import { getDomainEventStats } from '@/domain/events';
+import { checkRedisHealth, type RedisHealth } from '@/infrastructure/redis';
 import { db } from '@/db';
 import { sql } from 'drizzle-orm';
 
@@ -13,47 +10,33 @@ export const revalidate = 0;
 /**
  * Health Check Endpoint
  *
- * Returns comprehensive health status for:
+ * Returns a public, non-sensitive readiness status for:
  * - Application (always up if this responds)
  * - Database (PostgreSQL via Drizzle)
  * - Cache (Redis/Upstash)
  *
  * Used by:
- * - Kubernetes liveness/readiness probes
- * - Load balancers
- * - Uptime monitoring (Checkly, Pingdom, etc.)
- * - Internal dashboards
+ * - External uptime monitoring
+ * - Load balancer and readiness probes
  *
  * Response codes:
- * - 200: All systems healthy
- * - 503: One or more systems degraded
+ * - 200: The application is serviceable (healthy or degraded)
+ * - 503: A critical dependency is unavailable
  */
 
 interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
   timestamp: string;
-  version: string;
-  uptime: number;
   checks: {
     database: DatabaseHealth;
-    redis: RedisHealth;
-  };
-  infrastructure: {
-    circuitBreakers: ReturnType<typeof getAllCircuitBreakerStats>;
-    cache: ReturnType<typeof getCacheStats>;
-    auditBufferSize: number;
-    domainEvents: Record<string, number>;
+    redis: Pick<RedisHealth, 'connected' | 'latencyMs'>;
   };
 }
 
 interface DatabaseHealth {
   connected: boolean;
   latencyMs: number | null;
-  error?: string;
 }
-
-// Track process start time for uptime calculation
-const startTime = Date.now();
 
 async function checkDatabaseHealth(): Promise<DatabaseHealth> {
   const start = performance.now();
@@ -67,11 +50,10 @@ async function checkDatabaseHealth(): Promise<DatabaseHealth> {
       connected: true,
       latencyMs,
     };
-  } catch (err) {
+  } catch {
     return {
       connected: false,
       latencyMs: null,
-      error: err instanceof Error ? err.message : 'Unknown database error',
     };
   }
 }
@@ -98,6 +80,20 @@ function determineOverallStatus(
   return 'healthy';
 }
 
+function getHttpStatus(status: HealthStatus['status']): 200 | 503 {
+  // Redis has an in-memory fallback, so a degraded state remains serviceable.
+  return status === 'unhealthy' ? 503 : 200;
+}
+
+function getHealthHeaders(status: HealthStatus['status']): Record<string, string> {
+  return {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'X-Health-Status': status,
+    'X-Content-Type-Options': 'nosniff',
+    'X-Robots-Tag': 'noindex, nofollow',
+  };
+}
+
 export async function GET(): Promise<NextResponse<HealthStatus>> {
   const [dbHealth, redisHealth] = await Promise.all([checkDatabaseHealth(), checkRedisHealth()]);
 
@@ -106,29 +102,18 @@ export async function GET(): Promise<NextResponse<HealthStatus>> {
   const response: HealthStatus = {
     status,
     timestamp: new Date().toISOString(),
-    version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'dev',
-    uptime: Math.floor((Date.now() - startTime) / 1000),
     checks: {
       database: dbHealth,
-      redis: redisHealth,
-    },
-    infrastructure: {
-      circuitBreakers: getAllCircuitBreakerStats(),
-      cache: getCacheStats(),
-      auditBufferSize: getAuditBufferSize(),
-      domainEvents: getDomainEventStats(),
+      redis: {
+        connected: redisHealth.connected,
+        latencyMs: redisHealth.latencyMs,
+      },
     },
   };
 
-  // Return 503 if not fully healthy
-  const httpStatus = status === 'healthy' ? 200 : 503;
-
   return NextResponse.json(response, {
-    status: httpStatus,
-    headers: {
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'X-Health-Status': status,
-    },
+    status: getHttpStatus(status),
+    headers: getHealthHeaders(status),
   });
 }
 
@@ -137,12 +122,9 @@ export async function HEAD(): Promise<NextResponse> {
   const [dbHealth, redisHealth] = await Promise.all([checkDatabaseHealth(), checkRedisHealth()]);
 
   const status = determineOverallStatus(dbHealth, redisHealth);
-  const httpStatus = status === 'healthy' ? 200 : 503;
 
   return new NextResponse(null, {
-    status: httpStatus,
-    headers: {
-      'X-Health-Status': status,
-    },
+    status: getHttpStatus(status),
+    headers: getHealthHeaders(status),
   });
 }

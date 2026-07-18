@@ -185,9 +185,69 @@ GROUP BY "store_id"
 ON CONFLICT ("store_id", "key") DO UPDATE
 SET "value" = GREATEST("tenant_sequences"."value", EXCLUDED."value"), "updated_at" = now();
 
+-- Legacy products stored a category slug while the normalized catalog uses a
+-- category ID. Resolve existing names inside the same tenant before creating
+-- only the genuinely missing catalog entries.
+WITH categories_by_name AS (
+  SELECT DISTINCT ON ("store_id", lower(trim("name")))
+    "store_id", lower(trim("name")) AS normalized_name, "id"
+  FROM "product_categories"
+  WHERE "deleted_at" IS NULL
+  ORDER BY "store_id", lower(trim("name")), "created_at" ASC, "id" ASC
+)
+UPDATE "products" product
+SET "category" = category."id"
+FROM categories_by_name category
+WHERE product."store_id" = category."store_id"
+  AND lower(trim(product."category")) = category.normalized_name
+  AND product."category" <> category."id";
+
+WITH missing_categories AS (
+  SELECT DISTINCT
+    product."store_id",
+    lower(trim(product."category")) AS normalized_name,
+    trim(product."category") AS legacy_name
+  FROM "products" product
+  LEFT JOIN "product_categories" category
+    ON category."store_id" = product."store_id"
+   AND category."id" = product."category"
+  WHERE category."id" IS NULL
+    AND trim(product."category") <> ''
+)
+INSERT INTO "product_categories" ("id", "name", "description", "store_id")
+SELECT
+  'cat-' || md5("store_id" || ':' || normalized_name),
+  CASE normalized_name
+    WHEN 'lacteos' THEN 'Lácteos'
+    WHEN 'panaderia' THEN 'Panadería'
+    ELSE initcap(replace(legacy_name, '_', ' '))
+  END,
+  'Categoría recuperada del catálogo existente',
+  "store_id"
+FROM missing_categories
+ON CONFLICT ("id") DO NOTHING;
+
+UPDATE "products" product
+SET "category" = 'cat-' || md5(product."store_id" || ':' || lower(trim(product."category")))
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM "product_categories" category
+  WHERE category."store_id" = product."store_id"
+    AND category."id" = product."category"
+);
+
 -- Stop before adding composite constraints when historical data crosses a tenant boundary.
 DO $$
 BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "products" product
+    LEFT JOIN "product_categories" category
+      ON category."store_id" = product."store_id"
+     AND category."id" = product."category"
+    WHERE category."id" IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Unresolved product categories must be corrected before migration 0032';
+  END IF;
   IF EXISTS (
     SELECT 1 FROM "products" p
     JOIN "product_categories" c ON c."id" = p."category"
@@ -301,6 +361,23 @@ FROM "devoluciones" parent
 WHERE parent."id" = child."devolucion_id" AND child."store_id" IS NULL;
 ALTER TABLE "devolucion_items" ALTER COLUMN "store_id" SET DEFAULT 'main';
 ALTER TABLE "devolucion_items" ALTER COLUMN "store_id" SET NOT NULL;
+
+-- Preserve orphaned legacy sale folios as descriptive evidence instead of
+-- manufacturing a sale record. The relational field is optional and can then
+-- be protected by the tenant-scoped foreign key.
+UPDATE "fiado_transactions" transaction
+SET
+  "description" = trim(
+    transaction."description" || ' [Referencia histórica: venta ' || transaction."sale_folio" || ']'
+  ),
+  "sale_folio" = NULL
+WHERE transaction."sale_folio" IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM "sale_records" sale
+    WHERE sale."store_id" = transaction."store_id"
+      AND sale."folio" = transaction."sale_folio"
+  );
 
 -- Abort instead of silently legitimizing cross-tenant references that already
 -- exist. These rows must be investigated before the migration is retried.

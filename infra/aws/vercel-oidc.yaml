@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Least-privilege Vercel OIDC access for the Opendex Kiosko production runtime
+
+Parameters:
+  PublicAssetsBucketName:
+    Type: String
+    Default: kiosko-blob
+    Description: Existing bucket for public tenant visual assets
+  PrivateAssetsBucketName:
+    Type: String
+    Description: Existing private bucket for receipts and evidence
+  CognitoUserPoolId:
+    Type: String
+    Default: us-east-1_V3Avc8yaO
+    AllowedPattern: '^us-east-1_[A-Za-z0-9]+$'
+    Description: Cognito User Pool managed by this application
+  SESIdentityName:
+    Type: String
+    Default: ows.opendex.dev
+    Description: Verified SES domain identity used for transactional email
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+
+Resources:
+  VercelOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      ClientIdList:
+        - https://vercel.com/opendex-corporation
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+      Url: https://oidc.vercel.com/opendex-corporation
+
+  VercelProductionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: opendex-kiosko-vercel-production
+      Description: Temporary production access for the Opendex Kiosko Vercel deployment
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowExactVercelProductionDeployment
+            Effect: Allow
+            Principal:
+              Federated: !Ref VercelOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                oidc.vercel.com/opendex-corporation:aud: https://vercel.com/opendex-corporation
+                oidc.vercel.com/opendex-corporation:sub: owner:opendex-corporation:project:abarrote-gs:environment:production
+      Policies:
+        - PolicyName: OpendexKioskoRuntime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadAssetBucketMetadata
+                Effect: Allow
+                Action: s3:GetBucketLocation
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${PublicAssetsBucketName}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${PrivateAssetsBucketName}'
+              - Sid: ListTenantAssetPrefixes
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${PublicAssetsBucketName}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${PrivateAssetsBucketName}'
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - tenants/*
+              - Sid: ManageTenantAssets
+                Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${PublicAssetsBucketName}/tenants/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${PrivateAssetsBucketName}/tenants/*'
+              - Sid: ManageApplicationUsers
+                Effect: Allow
+                Action:
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminDisableUser
+                  - cognito-idp:AdminEnableUser
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminListGroupsForUser
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminResetUserPassword
+                  - cognito-idp:AdminSetUserMFAPreference
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminUserGlobalSignOut
+                  - cognito-idp:ListGroups
+                  - cognito-idp:ListUsers
+                Resource: !Sub 'arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}'
+              - Sid: SendTransactionalEmail
+                Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: !Sub 'arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SESIdentityName}'
+                Condition:
+                  StringLike:
+                    ses:FromAddress: !Sub '*@${SESIdentityName}'
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  VercelRoleArn:
+    Description: Set as AWS_ROLE_ARN in the Vercel production environment
+    Value: !GetAtt VercelProductionRole.Arn
+  VercelOidcProviderArn:
+    Description: Team-scoped Vercel OIDC provider
+    Value: !Ref VercelOidcProvider

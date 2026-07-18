@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cost-controlled threat detection and posture management for Opendex Kiosko
+
+Parameters:
+  AuditBucketName:
+    Type: String
+    Description: Existing private bucket that stores AWS Config evidence
+  SecurityTopicArn:
+    Type: String
+    Description: Existing SNS topic for security findings
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+
+Resources:
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: FIFTEEN_MINUTES
+      Features:
+        - Name: S3_DATA_EVENTS
+          Status: ENABLED
+        - Name: EKS_AUDIT_LOGS
+          Status: DISABLED
+        - Name: EBS_MALWARE_PROTECTION
+          Status: DISABLED
+        - Name: RDS_LOGIN_EVENTS
+          Status: DISABLED
+        - Name: LAMBDA_NETWORK_LOGS
+          Status: DISABLED
+        - Name: EKS_RUNTIME_MONITORING
+          Status: DISABLED
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+
+  SecurityHub:
+    Type: AWS::SecurityHub::Hub
+    Properties:
+      ControlFindingGenerator: SECURITY_CONTROL
+      EnableDefaultStandards: false
+      Tags:
+        Application: opendex-kiosko
+        Environment: !Ref Environment
+
+  FoundationalSecurityBestPractices:
+    Type: AWS::SecurityHub::Standard
+    DependsOn:
+      - SecurityHub
+      - ConfigRecorder
+    Properties:
+      StandardsArn: !Sub 'arn:${AWS::Partition}:securityhub:${AWS::Region}::standards/aws-foundational-security-best-practices/v/1.0.0'
+
+  MacieSession:
+    Type: AWS::Macie::Session
+    Properties:
+      FindingPublishingFrequency: ONE_HOUR
+      Status: ENABLED
+
+  ConfigRecorderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: opendex-kiosko-config-recorder
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWS_ConfigRole'
+      Policies:
+        - PolicyName: DeliverConfigEvidence
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketAcl
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${AuditBucketName}'
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${AuditBucketName}/config/AWSLogs/${AWS::AccountId}/Config/*'
+                Condition:
+                  StringEquals:
+                    s3:x-amz-acl: bucket-owner-full-control
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+
+  ConfigDeliveryChannel:
+    Type: AWS::Config::DeliveryChannel
+    Properties:
+      Name: opendex-kiosko-config-delivery
+      S3BucketName: !Ref AuditBucketName
+      S3KeyPrefix: config
+
+  ConfigRecorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      Name: opendex-kiosko-config-recorder
+      RecordingGroup:
+        AllSupported: true
+        IncludeGlobalResourceTypes: true
+      RecordingMode:
+        RecordingFrequency: DAILY
+      RoleARN: !GetAtt ConfigRecorderRole.Arn
+
+  GuardDutyFindingRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Route GuardDuty findings to the security topic
+      EventPattern:
+        source:
+          - aws.guardduty
+        detail-type:
+          - GuardDuty Finding
+      Name: opendex-kiosko-guardduty-findings
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SecurityTopicArn
+          Id: SecurityTopic
+
+  SecurityHubFindingRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Route high and critical posture findings to the security topic
+      EventPattern:
+        source:
+          - aws.securityhub
+        detail-type:
+          - Security Hub Findings - Imported
+        detail:
+          findings:
+            Severity:
+              Label:
+                - HIGH
+                - CRITICAL
+      Name: opendex-kiosko-securityhub-findings
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SecurityTopicArn
+          Id: SecurityTopic
+
+  MacieFindingRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Route Macie findings to the security topic
+      EventPattern:
+        source:
+          - aws.macie
+        detail-type:
+          - Macie Finding
+      Name: opendex-kiosko-macie-findings
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SecurityTopicArn
+          Id: SecurityTopic
+
+Outputs:
+  GuardDutyDetectorId:
+    Description: GuardDuty detector configured with cost-controlled features
+    Value: !Ref GuardDutyDetector
+  ConfigRecorderName:
+    Description: Daily AWS Config recorder
+    Value: !Ref ConfigRecorder
+  SecurityHubArn:
+    Description: Security Hub account hub
+    Value: !Ref SecurityHub

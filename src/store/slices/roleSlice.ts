@@ -110,10 +110,27 @@ export const createRoleSlice = (set: StoreSet, get: StoreGet): RoleSlice => ({
   },
 
   getUserRole: async (cognitoSub) => {
+    // Prevent permissions from the previous identity from remaining visible
+    // while the active tenant authorization context is being resolved.
+    set({ currentUserRole: null, roleDefinitions: [], userRoles: [] });
     try {
-      const role = await dbGetUserRoleByUid(cognitoSub);
-      if (role) set({ currentUserRole: role });
-      return role;
+      const context = await dbGetUserRoleByUid(cognitoSub);
+      if (!context) return null;
+
+      const state = get();
+      const roleDefinitions = state.roleDefinitions.some(
+        (definition) => definition.id === context.roleDefinition.id,
+      )
+        ? state.roleDefinitions.map((definition) =>
+            definition.id === context.roleDefinition.id ? context.roleDefinition : definition,
+          )
+        : [...state.roleDefinitions, context.roleDefinition];
+
+      set({
+        currentUserRole: context.userRole,
+        roleDefinitions,
+      });
+      return context.userRole;
     } catch (error) {
       console.error('[store:role] getUserRole failed', error);
       return null;

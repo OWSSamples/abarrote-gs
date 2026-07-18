@@ -120,6 +120,7 @@ interface RegistrationPreflightInput {
 interface RegistrationPreflightResult {
   allowed: boolean;
   tenantNameAvailable: boolean;
+  identityExists: boolean;
   retryAfterSeconds?: number;
 }
 
@@ -172,13 +173,23 @@ async function _checkRegistrationPreflight(
     return {
       allowed: false,
       tenantNameAvailable: false,
+      identityExists: false,
       retryAfterSeconds: Math.max(1, Math.ceil((rateLimit.reset.getTime() - Date.now()) / 1000)),
     };
   }
 
+  const existingIdentities = await listCognitoUsers({
+    limit: 3,
+    filter: `email = "${escapeCognitoFilterValue(email)}"`,
+  });
+  const identityExists = existingIdentities.users.some(
+    (candidate) => candidate.email.trim().toLowerCase() === email,
+  );
+
   return {
     allowed: true,
     tenantNameAvailable: !(await storeNameExists(tenantName)),
+    identityExists,
   };
 }
 
@@ -302,15 +313,22 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
   const existingUserStore = await findActiveTenantForUser(user.uid);
 
   if (existingUserStore && input.mode !== 'additional') {
-    const cookieStore = await cookies();
-    cookieStore.set(STORE_COOKIE, existingUserStore.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 30,
-    });
-    return { storeId: existingUserStore.id, tenantName: existingUserStore.name };
+    if (normalizeTenantName(existingUserStore.name).toLowerCase() === tenantName.toLowerCase()) {
+      const cookieStore = await cookies();
+      cookieStore.set(STORE_COOKIE, existingUserStore.id, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 30,
+      });
+      return { storeId: existingUserStore.id, tenantName: existingUserStore.name };
+    }
+
+    throw new AuthError(
+      'Esta cuenta ya pertenece a un negocio. Inicia sesión y usa "Crear otro negocio" para registrar un tenant adicional.',
+      409,
+    );
   }
 
   const provisionLimit = await checkRateLimitAsync(
@@ -396,10 +414,14 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
           createdAt: now,
           updatedAt: now,
         })
-        .returning({ id: userRoles.id });
+        .returning({
+          id: userRoles.id,
+          storeId: userRoles.storeId,
+          roleId: userRoles.roleId,
+        });
 
-      if (!createdOwner) {
-        throw new Error('No fue posible vincular la identidad con el nuevo negocio.');
+      if (!createdOwner || createdOwner.storeId !== storeId || createdOwner.roleId !== ownerRole.id) {
+        throw new Error('No fue posible crear la membresía propietaria del nuevo negocio.');
       }
 
       // Compatibility write for code deployed before the membership cut-over.

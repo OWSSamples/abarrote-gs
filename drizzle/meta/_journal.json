@@ -239,6 +239,20 @@
       "when": 1784332801000,
       "tag": "0033_platform_admin_and_tenant_rls_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784419200000,
+      "tag": "0034_tenant_query_performance",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1784505600000,
+      "tag": "0035_tenant_role_boundaries",
+      "breakpoints": true
     }
   ]
 }

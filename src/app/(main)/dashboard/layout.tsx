@@ -5,6 +5,7 @@ import { Frame, Loading, Page, Banner, Button, SkeletonPage, Layout, SkeletonBod
 import { useDashboardStore } from '@/store/dashboardStore';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
 import { CustomTopBar } from '@/components/navigation/CustomTopBar';
+import { StoreSelector } from '@/components/navigation/StoreSelector';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { MfaEnforcementBanner } from '@/components/auth/MfaEnforcementBanner';
@@ -136,6 +137,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const topBarMarkup = (
     <CustomTopBar
       userMenu={<UserMenu />}
+      storeSelector={<StoreSelector />}
       onNavigationToggle={toggleMobileNav}
       onSectionSelect={handleSectionSelect}
       onProductClick={(product) => {

@@ -38,6 +38,45 @@ function getSafeReturnTo(value: string | null): string | null {
   return value;
 }
 
+function getLoginErrorMessage(error: unknown): string {
+  const err = error as { name?: string; message?: string };
+  const message = (err.message ?? '').toLowerCase();
+
+  if (
+    err.name === 'LimitExceededException' ||
+    err.name === 'TooManyRequestsException' ||
+    message.includes('password attempts exceeded')
+  ) {
+    return 'El acceso está bloqueado temporalmente por varios intentos. Espera unos minutos antes de volver a intentarlo.';
+  }
+
+  if (err.name === 'PasswordResetRequiredException') {
+    return 'Debes restablecer tu contraseña antes de iniciar sesión.';
+  }
+
+  if (message.includes('user is disabled')) {
+    return 'Tu cuenta está desactivada. Contacta al administrador del negocio.';
+  }
+
+  if (
+    message.includes('secret_hash') ||
+    message.includes('configured with secret') ||
+    (message.includes('auth flow') && message.includes('not enabled'))
+  ) {
+    return 'La configuración del inicio de sesión no es válida. Contacta al administrador de la plataforma.';
+  }
+
+  if (err.name === 'NetworkError' || message.includes('network')) {
+    return 'No fue posible conectar con el servicio de identidad. Revisa tu conexión e intenta de nuevo.';
+  }
+
+  if (err.name === 'NotAuthorizedException' || err.name === 'UserNotFoundException') {
+    return 'No pudimos validar el acceso. Verifica el correo y la contraseña o restablece tu contraseña.';
+  }
+
+  return 'No fue posible iniciar sesión. Inténtalo de nuevo o contacta al administrador.';
+}
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -183,7 +222,11 @@ export function LoginForm() {
         } catch {
           // No active session — expected on a fresh login.
         }
-        const result = await signIn({ username: normalizedEmail, password });
+        const result = await signIn({
+          username: normalizedEmail,
+          password,
+          options: { authFlowType: 'USER_SRP_AUTH' },
+        });
         if (result.isSignedIn) {
           await finishAuthenticatedLogin(normalizedEmail, 'Bienvenido al sistema');
         } else if (result.nextStep?.signInStep === 'CONFIRM_SIGN_UP') {
@@ -235,20 +278,14 @@ export function LoginForm() {
           toast.showError(`Paso de autenticación no soportado: ${result.nextStep?.signInStep ?? 'desconocido'}. Contacta al administrador.`);
         }
       } catch (error: unknown) {
-        console.error('SignIn error:', error);
-        const err = error as { name?: string };
+        const err = error as { name?: string; message?: string };
+        console.warn('[LoginForm] signIn failed:', err.name ?? 'UnknownAuthError');
         void logAuthEvent({ event: 'sign_in_failure', email: normalizedEmail, errorCode: err.name });
         if (err.name === 'UserNotConfirmedException') {
           await continuePendingRegistration(normalizedEmail);
           return;
         }
-        const errorMessage =
-          err.name === 'NotAuthorizedException'
-            ? 'Correo o contraseña incorrectos'
-            : err.name === 'UserNotFoundException'
-              ? 'Correo o contraseña incorrectos'
-              : 'Error al iniciar sesión. Inténtalo de nuevo.';
-        toast.showError(errorMessage);
+        toast.showError(getLoginErrorMessage(err));
       } finally {
         setIsLoading(false);
       }

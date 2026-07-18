@@ -47,10 +47,15 @@ const envSchema = z.object({
   AWS_REGION: z.string().min(1).optional(),
   AWS_SES_REGION: z.string().min(1).optional(),
   AWS_S3_REGION: z.string().min(1).optional(),
+  AWS_ROLE_ARN: z.string().startsWith('arn:aws:iam::').optional(),
+  AWS_OIDC_AUDIENCE: z.string().url().optional(),
   AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
   AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   AWS_S3_BUCKET: z.string().min(1).optional(),
+  AWS_S3_PRIVATE_BUCKET: z.string().min(1).optional(),
+  AWS_S3_PRIVATE_REGION: z.string().min(1).optional(),
   SES_FROM_EMAIL: z.string().email().optional(),
+  SES_CONFIGURATION_SET: z.string().min(1).optional(),
 
   // ── SMTP (Spacemail / cualquier proveedor IMAP/SMTP/POP3) ──
   // Si SMTP_HOST está definido, sendEmail() usa nodemailer en lugar de SES.
@@ -163,6 +168,11 @@ export function isQStashConfigured(): boolean {
 /** Returns true if AWS S3 is configured for file uploads */
 export function isS3Configured(): boolean {
   return !!((env.AWS_S3_REGION || env.AWS_REGION) && env.AWS_S3_BUCKET);
+}
+
+/** Returns true when the isolated bucket for sensitive tenant documents is configured. */
+export function isPrivateS3Configured(): boolean {
+  return !!((env.AWS_S3_PRIVATE_REGION || env.AWS_REGION) && env.AWS_S3_PRIVATE_BUCKET);
 }
 
 /** Returns true if MercadoPago integration is configured */

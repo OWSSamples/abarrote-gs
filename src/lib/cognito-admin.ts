@@ -22,9 +22,13 @@ import {
   type UserType,
   type GroupType,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { getAwsCredentials } from '@/lib/aws-credentials';
 
 const region = process.env.COGNITO_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-1';
-const cognitoClient = new CognitoIdentityProviderClient({ region });
+const cognitoClient = new CognitoIdentityProviderClient({
+  region,
+  credentials: getAwsCredentials(),
+});
 
 let lazyCognitoVerifier: ReturnType<typeof CognitoJwtVerifier.create> | null = null;
 

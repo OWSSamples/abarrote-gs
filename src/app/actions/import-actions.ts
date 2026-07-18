@@ -6,19 +6,9 @@ import { withLogging } from '@/lib/errors';
 import { db } from '@/db';
 import { products, clientes } from '@/db/schema';
 import { parse } from 'csv-parse/sync';
-import { S3Client } from '@aws-sdk/client-s3';
 import { and, eq } from 'drizzle-orm';
 import { isNotDeleted } from '@/infrastructure/soft-delete';
 import { cache } from '@/infrastructure/redis';
-import { env } from '@/lib/env';
-
-const _s3 = new S3Client({
-  region: env.AWS_REGION!,
-  credentials: {
-    accessKeyId: env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
 
 async function _importProductsFromCSV(formData: FormData, overwrite: boolean, _publish: boolean) {
   try {

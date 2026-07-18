@@ -5,10 +5,10 @@
  */
 
 /**
- * Uploads a file via the server API route and returns the public URL.
+ * Uploads a file via the server API route and returns its access URL.
  * @param file  The file to upload.
  * @param path  A local classification hint. The server never uses it as the S3 key.
- * @returns     Promise with the public URL of the uploaded file.
+ * @returns     A public URL for visual assets or an authenticated URL for sensitive documents.
  */
 export async function uploadFile(file: File, path: string): Promise<string> {
   const [rawKind = '', rawResource = ''] = path.replace(/^\/+/, '').split('/');

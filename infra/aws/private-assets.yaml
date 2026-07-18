@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private tenant asset storage and least-privilege application access for Opendex Kiosko
+
+Parameters:
+  ApplicationUserName:
+    Type: String
+    Default: ows-kiosko-app
+    Description: Existing IAM user used temporarily by the application runtime
+  PublicAssetsBucketName:
+    Type: String
+    Default: kiosko-blob
+    Description: Existing bucket that contains public visual assets
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+
+Resources:
+  PrivateAssetsLogBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAccessLogs
+            Status: Enabled
+            ExpirationInDays: 365
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: DataClassification
+          Value: security-logs
+
+  PrivateAssetsLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PrivateAssetsLogBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowS3ServerAccessLogs
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${PrivateAssetsLogBucket.Arn}/private-assets/*'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt PrivateAssetsLogBucket.Arn
+              - !Sub '${PrivateAssetsLogBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  PrivateAssetsBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: PrivateAssetsLogBucketPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ManageObjectVersions
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
+      LoggingConfiguration:
+        DestinationBucketName: !Ref PrivateAssetsLogBucket
+        LogFilePrefix: private-assets/
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: DataClassification
+          Value: confidential
+
+  PrivateAssetsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PrivateAssetsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt PrivateAssetsBucket.Arn
+              - !Sub '${PrivateAssetsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  ApplicationStoragePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Least-privilege access to Opendex public and private tenant assets
+      Users:
+        - !Ref ApplicationUserName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReadBucketLocations
+            Effect: Allow
+            Action: s3:GetBucketLocation
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::${PublicAssetsBucketName}'
+              - !GetAtt PrivateAssetsBucket.Arn
+          - Sid: ListTenantAssetPrefixes
+            Effect: Allow
+            Action: s3:ListBucket
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::${PublicAssetsBucketName}'
+              - !GetAtt PrivateAssetsBucket.Arn
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - tenants/*
+          - Sid: ManagePublicTenantAssets
+            Effect: Allow
+            Action:
+              - s3:DeleteObject
+              - s3:GetObject
+              - s3:PutObject
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::${PublicAssetsBucketName}/tenants/*'
+          - Sid: ManagePrivateTenantAssets
+            Effect: Allow
+            Action:
+              - s3:DeleteObject
+              - s3:GetObject
+              - s3:PutObject
+            Resource: !Sub '${PrivateAssetsBucket.Arn}/tenants/*'
+
+Outputs:
+  PrivateAssetsBucketName:
+    Description: Set this value as AWS_S3_PRIVATE_BUCKET in the application runtime
+    Value: !Ref PrivateAssetsBucket
+  PrivateAssetsRegion:
+    Description: Set this value as AWS_S3_PRIVATE_REGION in the application runtime
+    Value: !Ref AWS::Region
+  PrivateAssetsLogBucketName:
+    Description: S3 server access log destination
+    Value: !Ref PrivateAssetsLogBucket

@@ -181,8 +181,11 @@ async function _createTenantInvitation(input: {
     await db
       .update(tenantInvitations)
       .set({ status: 'revoked', updatedAt: new Date() })
-      .where(eq(tenantInvitations.id, invitationId));
-    throw new Error('No fue posible enviar la invitación. Verifica la configuración de correo e intenta de nuevo.');
+      .where(and(eq(tenantInvitations.id, invitationId), eq(tenantInvitations.storeId, storeId)));
+    throw new AuthError(
+      emailResult.error || 'No fue posible enviar la invitación en este momento.',
+      503,
+    );
   }
 
   await db.insert(auditLogs).values({

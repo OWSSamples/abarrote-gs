@@ -121,7 +121,7 @@ function csrfCheck(request: NextRequest): NextResponse | null {
 const isDev = process.env.NODE_ENV === 'development';
 
 const cognitoDomain = process.env.COGNITO_DOMAIN || process.env.NEXT_PUBLIC_COGNITO_DOMAIN || '';
-const cognitoRegion = process.env.COGNITO_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-2';
+const cognitoRegion = process.env.COGNITO_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-1';
 const cognitoOrigins = [
   cognitoDomain ? `https://${cognitoDomain}` : '',
   `https://cognito-idp.${cognitoRegion}.amazonaws.com`,

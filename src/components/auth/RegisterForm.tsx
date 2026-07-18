@@ -618,6 +618,13 @@ export function RegisterForm() {
           setFieldError('tenantName', 'Ese nombre de tienda ya está registrado. Elige otro nombre.');
           return;
         }
+        if (!isAdditionalTenant && !isPendingVerificationResume && preflight.identityExists) {
+          setFieldError(
+            'email',
+            'Ya existe una identidad con este correo. Inicia sesión y usa "Crear otro negocio" para crear otro tenant.',
+          );
+          return;
+        }
 
         if (isAdditionalTenant) {
           await completeProvisioning(normalizedEmail);

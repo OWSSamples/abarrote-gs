@@ -1,0 +1,427 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Low-cost security, audit, alerting and budget baseline for Opendex Kiosko
+
+Parameters:
+  NotificationEmail:
+    Type: String
+    Description: Operational email that receives security and budget alerts
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+  MonthlyBudgetAmount:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    Description: Monthly AWS cost threshold in USD
+  SESConfigurationSetName:
+    Type: String
+    Default: my-first-configuration-set
+    Description: Existing SES configuration set used by Cognito and application email
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+
+Resources:
+  SecurityTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Opendex security alerts
+      TopicName: opendex-kiosko-security-alerts
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+
+  SecurityTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref NotificationEmail
+      Protocol: email
+      TopicArn: !Ref SecurityTopic
+
+  SecurityTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref SecurityTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAccountSecurityServices
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudwatch.amazonaws.com
+                - events.amazonaws.com
+                - ses.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref SecurityTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  AuditBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: RetainAuditEvidence
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+            ExpirationInDays: 365
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: DataClassification
+          Value: security-logs
+
+  AuditBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AuditBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt AuditBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AllowCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${AuditBucket.Arn}/AWSLogs/${AWS::AccountId}/*'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                s3:x-amz-acl: bucket-owner-full-control
+          - Sid: AllowConfigAclCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action:
+              - s3:GetBucketAcl
+              - s3:ListBucket
+            Resource: !GetAtt AuditBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AllowConfigWrite
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${AuditBucket.Arn}/config/AWSLogs/${AWS::AccountId}/Config/*'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                s3:x-amz-acl: bucket-owner-full-control
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt AuditBucket.Arn
+              - !Sub '${AuditBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  AuditLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: /aws/cloudtrail/opendex-kiosko-management
+      RetentionInDays: 30
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+
+  CloudTrailLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: opendex-kiosko-cloudtrail-logs
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WriteCloudTrailLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub '${AuditLogGroup.Arn}:*'
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+
+  ManagementTrail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: AuditBucketPolicy
+    Properties:
+      CloudWatchLogsLogGroupArn: !GetAtt AuditLogGroup.Arn
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailLogsRole.Arn
+      EnableLogFileValidation: true
+      EventSelectors:
+        - IncludeManagementEvents: true
+          ReadWriteType: All
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: true
+      S3BucketName: !Ref AuditBucket
+      TrailName: opendex-kiosko-management
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+
+  RootAccountUsageMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: opendex-root-account-usage
+      FilterPattern: '{ ($.userIdentity.type = "Root") && ($.userIdentity.invokedBy NOT EXISTS) && ($.eventType != "AwsServiceEvent") }'
+      LogGroupName: !Ref AuditLogGroup
+      MetricTransformations:
+        - MetricName: RootAccountUsage
+          MetricNamespace: Opendex/Security
+          MetricValue: '1'
+
+  RootAccountUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: opendex-root-account-usage
+      AlarmDescription: Root account activity was detected
+      AlarmActions:
+        - !Ref SecurityTopic
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: RootAccountUsage
+      Namespace: Opendex/Security
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+      TreatMissingData: notBreaching
+
+  UnauthorizedApiMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: opendex-unauthorized-api-calls
+      FilterPattern: '{ ($.errorCode = "*UnauthorizedOperation") || ($.errorCode = "AccessDenied*") }'
+      LogGroupName: !Ref AuditLogGroup
+      MetricTransformations:
+        - MetricName: UnauthorizedApiCalls
+          MetricNamespace: Opendex/Security
+          MetricValue: '1'
+
+  UnauthorizedApiAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: opendex-unauthorized-api-calls
+      AlarmDescription: Repeated unauthorized AWS API calls were detected
+      AlarmActions:
+        - !Ref SecurityTopic
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: UnauthorizedApiCalls
+      Namespace: Opendex/Security
+      Period: 300
+      Statistic: Sum
+      Threshold: 5
+      TreatMissingData: notBreaching
+
+  IamChangeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Notify on IAM policy and trust changes
+      EventPattern:
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - iam.amazonaws.com
+          eventName:
+            - AttachRolePolicy
+            - CreatePolicy
+            - CreatePolicyVersion
+            - DeletePolicy
+            - DeletePolicyVersion
+            - DeleteRolePolicy
+            - DetachRolePolicy
+            - PutRolePolicy
+            - SetDefaultPolicyVersion
+            - UpdateAssumeRolePolicy
+      Name: opendex-kiosko-iam-changes
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SecurityTopic
+          Id: SecurityTopic
+
+  S3SecurityChangeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Notify on S3 policy and public access changes
+      EventPattern:
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - s3.amazonaws.com
+          eventName:
+            - DeleteBucketPolicy
+            - DeletePublicAccessBlock
+            - PutBucketAcl
+            - PutBucketPolicy
+            - PutBucketPublicAccessBlock
+      Name: opendex-kiosko-s3-security-changes
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SecurityTopic
+          Id: SecurityTopic
+
+  AccountAccessAnalyzer:
+    Type: AWS::AccessAnalyzer::Analyzer
+    Properties:
+      AnalyzerName: opendex-kiosko-account-access
+      ArchiveRules:
+        - RuleName: ArchiveExpectedIdentityCenterRoles
+          Filter:
+            - Property: resource
+              Contains:
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-reserved/sso.amazonaws.com/'
+        - RuleName: ArchiveExpectedVercelProductionRole
+          Filter:
+            - Property: resource
+              Eq:
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/opendex-kiosko-vercel-production'
+      Type: ACCOUNT
+      Tags:
+        - Key: Application
+          Value: opendex-kiosko
+        - Key: Environment
+          Value: !Ref Environment
+
+  MonthlyCostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetAmount
+          Unit: USD
+        BudgetName: opendex-kiosko-monthly-cost
+        BudgetType: COST
+        CostTypes:
+          IncludeCredit: true
+          IncludeDiscount: true
+          IncludeOtherSubscription: true
+          IncludeRecurring: true
+          IncludeRefund: true
+          IncludeSubscription: true
+          IncludeSupport: true
+          IncludeTax: true
+          IncludeUpfront: true
+          UseAmortized: false
+          UseBlended: false
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref NotificationEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref NotificationEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref NotificationEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: FORECASTED
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref NotificationEmail
+              SubscriptionType: EMAIL
+
+  SESCriticalEvents:
+    Type: AWS::SES::ConfigurationSetEventDestination
+    Properties:
+      ConfigurationSetName: !Ref SESConfigurationSetName
+      EventDestination:
+        Enabled: true
+        MatchingEventTypes:
+          - BOUNCE
+          - COMPLAINT
+          - DELIVERY_DELAY
+          - REJECT
+          - RENDERING_FAILURE
+        Name: opendex-kiosko-critical-email-events
+        SnsDestination:
+          TopicARN: !Ref SecurityTopic
+
+Outputs:
+  AuditBucketName:
+    Description: Shared destination for CloudTrail and AWS Config evidence
+    Value: !Ref AuditBucket
+  SecurityTopicArn:
+    Description: SNS topic used by security detection stacks
+    Value: !Ref SecurityTopic
+  TrailArn:
+    Description: Multi-region management event trail
+    Value: !GetAtt ManagementTrail.Arn

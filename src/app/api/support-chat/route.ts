@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { generateText, stepCountIs, tool } from 'ai';
 import { z } from 'zod';
-import { requireAuth } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { getAIModel } from '@/lib/ai';
 import { logger } from '@/lib/logger';
@@ -75,8 +74,7 @@ const requestSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const user = await requireAuth();
-    const { storeId } = await requireStoreScope();
+    const { user, storeId } = await requireStoreScope();
     const rateLimit = await checkRateLimitAsync(`support_chat:${user.uid}`, { limit: 15, windowMs: 60_000 });
     if (rateLimit.isRateLimited) {
       return NextResponse.json(

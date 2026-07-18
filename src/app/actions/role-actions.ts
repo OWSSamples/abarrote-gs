@@ -336,14 +336,29 @@ async function _fetchUserRoles(): Promise<UserRoleRecord[]> {
   return rows.map(mapUserRole);
 }
 
-async function _getUserRoleByUid(cognitoSub: string): Promise<UserRoleRecord | null> {
+interface UserRoleAuthorizationContext {
+  userRole: UserRoleRecord;
+  roleDefinition: RoleDefinition;
+}
+
+async function _getUserRoleByUid(cognitoSub: string): Promise<UserRoleAuthorizationContext | null> {
   const currentUser = await requireAuth();
   if (currentUser.uid !== cognitoSub) {
     await requirePermission('roles.manage');
   }
   const { storeId } = await requireStoreScope();
   const user = await getTenantUser(cognitoSub, storeId);
-  return user ? mapUserRole(user) : null;
+  if (!user) return null;
+
+  const role = await getAccessibleRole(user.roleId, storeId);
+  if (!role) {
+    throw new AuthError('El usuario no tiene un rol válido dentro de este negocio.', 403);
+  }
+
+  return {
+    userRole: mapUserRole(user),
+    roleDefinition: mapRoleDef(role),
+  };
 }
 
 async function _updateUserPin(cognitoSub: string, pinCode: string): Promise<void> {
@@ -669,11 +684,7 @@ async function _updateUserProfile(
   await db
     .update(userRoles)
     .set(safeData)
-    .where(
-      currentUser.uid === cognitoSub
-        ? eq(userRoles.cognitoSub, cognitoSub)
-        : and(eq(userRoles.cognitoSub, cognitoSub), eq(userRoles.storeId, storeId)),
-    );
+    .where(and(eq(userRoles.cognitoSub, cognitoSub), eq(userRoles.storeId, storeId)));
   if (currentUser.uid === cognitoSub) {
     await db
       .update(userIdentities)

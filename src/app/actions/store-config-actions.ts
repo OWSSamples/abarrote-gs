@@ -1,13 +1,14 @@
 'use server';
 
-import { requireAuth, requireOwner } from '@/lib/auth/guard';
+import { requireOwner } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 import { withLogging } from '@/lib/errors';
 import { redactStoreConfigSecrets, toPublicDisplayConfig } from '@/lib/store-config-public';
 import { getStoreConfig, saveStoreConfigForOwner } from '@/server/store-config-service';
 import type { StoreConfig } from '@/types';
 
 async function _fetchStoreConfig(): Promise<StoreConfig> {
-  const user = await requireAuth();
+  const { user } = await requireStoreScope();
   const config = await getStoreConfig();
   const safeConfig = redactStoreConfigSecrets(config);
 

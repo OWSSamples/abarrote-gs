@@ -21,11 +21,12 @@
  * - HTML + plain-text multipart emails
  * - Typed email payloads
  * - Centralized error handling
- * - Configurable from/reply-to from store config o env
+ * - Remitente autenticado por transporte y reply-to configurable por negocio
  */
 
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import nodemailer, { type Transporter } from 'nodemailer';
+import { getAwsCredentials } from '@/lib/aws-credentials';
 import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
 import {
@@ -79,6 +80,12 @@ function toPublicEmailError(message: string): string {
   if (/configuration|configuraci[oó]n|missing|required|credentials?/i.test(safeMessage)) {
     return 'La configuración de correo está incompleta.';
   }
+  if (/EAUTH|authentication|auth command failed|invalid login|535\b/i.test(safeMessage)) {
+    return 'El servidor de correo rechazó las credenciales configuradas.';
+  }
+  if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ESOCKET|ETIMEDOUT|timeout/i.test(safeMessage)) {
+    return 'No fue posible conectar con el servidor de correo configurado.';
+  }
   if (/throttl|rate|limit|quota/i.test(safeMessage)) {
     return 'El proveedor limitó temporalmente el envío. Intenta más tarde.';
   }
@@ -100,6 +107,14 @@ function getSMTPTransporter(): Transporter {
       port,
       // Spacemail/IMAP estándar: 465 = SSL implícito; 587 = STARTTLS
       secure: env.SMTP_SECURE === 'true' || port === 465,
+      requireTLS: port === 587,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+      tls: {
+        minVersion: 'TLSv1.2',
+        servername: env.SMTP_HOST,
+      },
       auth:
         env.SMTP_USER && env.SMTP_PASSWORD
           ? { user: env.SMTP_USER, pass: env.SMTP_PASSWORD }
@@ -116,14 +131,7 @@ function getSESClient(): SESv2Client {
   if (!sesClient) {
     sesClient = new SESv2Client({
       region: env.AWS_SES_REGION || env.AWS_REGION || 'us-east-1',
-      ...(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY
-        ? {
-            credentials: {
-              accessKeyId: env.AWS_ACCESS_KEY_ID,
-              secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-            },
-          }
-        : {}),
+      credentials: getAwsCredentials(),
     });
   }
   return sesClient;
@@ -161,11 +169,12 @@ export interface EmailResult {
 /**
  * Sends an email via the active transport (SMTP if configured, else SES).
  *
- * Si el caller pasa fromEmail vacío, se usa SMTP_FROM_EMAIL/SES_FROM_EMAIL
- * del .env como fallback.
+ * SMTP siempre usa SMTP_FROM_EMAIL como remitente autenticado para preservar
+ * alineación SPF/DKIM/DMARC. Un fromEmail del negocio se usa como Reply-To.
+ * SES permite fromEmail explícito y usa SES_FROM_EMAIL como fallback.
  *
  * @param payload - Email data (to, subject, html, text)
- * @param fromEmail - Sender address (debe estar verificado en SES o ser válido para SMTP)
+ * @param fromEmail - Sender de SES o Reply-To del negocio cuando se usa SMTP
  * @param fromName - Display name for sender
  */
 export async function sendEmail(
@@ -175,12 +184,15 @@ export async function sendEmail(
 ): Promise<EmailResult> {
   const transport = getActiveTransport();
   const normalizedRecipient = normalizeEmailAddress(payload.to);
-  const normalizedReplyTo = payload.replyTo ? normalizeEmailAddress(payload.replyTo) : undefined;
+  const requestedReplyTo = payload.replyTo || (transport === 'smtp' ? fromEmail : undefined);
+  const normalizedReplyTo = requestedReplyTo
+    ? normalizeEmailAddress(requestedReplyTo)
+    : undefined;
   const recipientLog = await getRecipientLogMetadata(normalizedRecipient);
 
-  // Resolver from según transporte si no se pasó explícito
+  // SMTP no permite que la configuración de un tenant suplante al buzón autenticado.
   const resolvedFrom =
-    fromEmail || (transport === 'smtp' ? env.SMTP_FROM_EMAIL : env.SES_FROM_EMAIL) || '';
+    (transport === 'smtp' ? env.SMTP_FROM_EMAIL : fromEmail || env.SES_FROM_EMAIL) || '';
   const resolvedName = fromName || env.SMTP_FROM_NAME || undefined;
   const safeSubject = sanitizeHeaderText(payload.subject);
   const safeFromName = resolvedName ? sanitizeHeaderText(resolvedName) : undefined;
@@ -254,6 +266,7 @@ export async function sendEmail(
     const client = getSESClient();
     const command = new SendEmailCommand({
       FromEmailAddress: fromAddress,
+      ConfigurationSetName: env.SES_CONFIGURATION_SET,
       Destination: { ToAddresses: [normalizedRecipient] },
       ReplyToAddresses: normalizedReplyTo ? [normalizedReplyTo] : undefined,
       Content: {

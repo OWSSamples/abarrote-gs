@@ -1,36 +1,26 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { tenantAssets } from '@/db/schema';
 import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { AuthError } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
-import { env, isS3Configured } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import {
+  ASSET_KINDS,
+  type AssetKind,
+  getStoredAssetTarget,
+  getUploadTarget,
+  privateAssetUrl,
+  publicObjectUrl,
+} from '@/lib/tenant-asset-storage';
 import type { PermissionKey } from '@/types';
 
-const s3 = new S3Client({
-  region: env.AWS_S3_REGION || env.AWS_REGION,
-  ...(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY
-    ? {
-        credentials: {
-          accessKeyId: env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-        },
-      }
-    : {}),
-});
-
-const BUCKET = env.AWS_S3_BUCKET!;
-const S3_REGION = env.AWS_S3_REGION || env.AWS_REGION!;
 const MAX_SIZE = 5 * 1024 * 1024;
 const UPLOAD_RATE = { maxRequests: 20, windowMs: 60_000 } as const;
 const DELETE_RATE = { maxRequests: 10, windowMs: 60_000 } as const;
-
-const ASSET_KINDS = ['products', 'avatars', 'logos', 'receipts', 'evidence', 'promo', 'display'] as const;
-type AssetKind = (typeof ASSET_KINDS)[number];
 
 const KIND_PERMISSIONS: Partial<Record<AssetKind, PermissionKey[]>> = {
   products: ['inventory.create', 'inventory.edit'],
@@ -94,16 +84,9 @@ function assertAssetPermission(
   }
 }
 
-function publicObjectUrl(objectKey: string): string {
-  return `https://${BUCKET}.s3.${S3_REGION}.amazonaws.com/${objectKey}`;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const { user, storeId } = await requireStoreScope();
-    if (!isS3Configured()) {
-      return NextResponse.json({ error: 'El almacenamiento de archivos no está configurado.' }, { status: 503 });
-    }
     const ip = getClientIp(req);
     const rl = checkRateLimit(`upload:post:${storeId}:${user.uid}:${ip}`, UPLOAD_RATE);
     if (!rl.allowed) {
@@ -134,17 +117,21 @@ export async function POST(req: NextRequest) {
     const assetId = randomUUID();
     const resourceId = kind === 'avatars' ? user.uid : requestedResourceId;
     const objectKey = `tenants/${storeId}/${kind}/${assetId}.${detected.extension}`;
-    const publicUrl = publicObjectUrl(objectKey);
+    const target = getUploadTarget(kind);
+    const accessUrl = target.isPrivate
+      ? privateAssetUrl(assetId)
+      : publicObjectUrl(target.bucket, target.region, objectKey);
     const checksumSha256 = createHash('sha256').update(buffer).digest('hex');
 
-    await s3.send(new PutObjectCommand({
-      Bucket: BUCKET,
+    await target.client.send(new PutObjectCommand({
+      Bucket: target.bucket,
       Key: objectKey,
       Body: buffer,
       ContentType: detected.mimeType,
-      CacheControl: 'public, max-age=31536000, immutable',
+      CacheControl: target.isPrivate ? 'private, no-store' : 'public, max-age=31536000, immutable',
       ...(detected.mimeType === 'application/pdf' ? { ContentDisposition: 'attachment' } : {}),
-      Metadata: { tenant: storeId, asset: assetId },
+      ServerSideEncryption: 'AES256',
+      Metadata: { tenant: storeId, asset: assetId, access: target.isPrivate ? 'private' : 'public' },
     }));
 
     try {
@@ -154,21 +141,26 @@ export async function POST(req: NextRequest) {
         kind,
         resourceId,
         objectKey,
-        publicUrl,
+        publicUrl: accessUrl,
         mimeType: detected.mimeType,
         sizeBytes: buffer.length,
         checksumSha256,
         uploadedBy: user.uid,
       });
     } catch (error) {
-      await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: objectKey })).catch(() => undefined);
+      await target.client
+        .send(new DeleteObjectCommand({ Bucket: target.bucket, Key: objectKey }))
+        .catch(() => undefined);
       throw error;
     }
 
-    return NextResponse.json({ assetId, url: publicUrl }, { status: 201 });
+    return NextResponse.json({ assetId, url: accessUrl }, { status: 201 });
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof Error && error.message.endsWith('_STORAGE_NOT_CONFIGURED')) {
+      return NextResponse.json({ error: 'El almacenamiento requerido no está configurado.' }, { status: 503 });
     }
     logger.error('Tenant asset upload failed', {
       action: 'tenant_asset_upload',
@@ -181,9 +173,6 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const { user, storeId } = await requireStoreScope();
-    if (!isS3Configured()) {
-      return NextResponse.json({ error: 'El almacenamiento de archivos no está configurado.' }, { status: 503 });
-    }
     const ip = getClientIp(req);
     const rl = checkRateLimit(`upload:delete:${storeId}:${user.uid}:${ip}`, DELETE_RATE);
     if (!rl.allowed) {
@@ -246,7 +235,8 @@ export async function DELETE(req: NextRequest) {
     }
 
     try {
-      await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: asset.objectKey }));
+      const target = getStoredAssetTarget(asset.kind as AssetKind, asset.publicUrl);
+      await target.client.send(new DeleteObjectCommand({ Bucket: target.bucket, Key: asset.objectKey }));
     } catch (error) {
       await db
         .update(tenantAssets)
@@ -265,6 +255,9 @@ export async function DELETE(req: NextRequest) {
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof Error && error.message.endsWith('_STORAGE_NOT_CONFIGURED')) {
+      return NextResponse.json({ error: 'El almacenamiento requerido no está configurado.' }, { status: 503 });
     }
     logger.error('Tenant asset deletion failed', {
       action: 'tenant_asset_delete',

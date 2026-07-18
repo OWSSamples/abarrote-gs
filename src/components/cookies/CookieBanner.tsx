@@ -196,7 +196,6 @@ function CategoryRow({ title, description, checked, disabled, onChange }: Catego
           enable-background="new 0 0 30 14"
           version="1.1"
           viewBox="0 0 30 14"
-          xml:space="preserve"
           xmlns="http://www.w3.org/2000/svg"
           aria-hidden="true"
         >

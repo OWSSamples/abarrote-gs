@@ -62,40 +62,63 @@ const verifyToken = cache(async (token: string): Promise<AuthenticatedUser> => {
   const email = (decodedToken.email || '').trim().toLowerCase();
   const tokenName = decodedToken['custom:display_name'] || decodedToken['cognito:username'] || '';
 
-  const [identity] = await db
-    .insert(userIdentities)
-    .values({
-      cognitoSub: uid,
-      email,
-      displayName: tokenName,
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: userIdentities.cognitoSub,
-      set: {
-        email,
-        updatedAt: new Date(),
-      },
-    })
-    .returning({
-      status: userIdentities.status,
-      displayName: userIdentities.displayName,
-    });
-
-  if (identity?.status !== 'active') {
-    throw new AuthError('Tu cuenta ha sido desactivada. Contacta al administrador.', 403);
+  if (!uid) {
+    throw new AuthError('Token inválido: falta el identificador de usuario', 401);
+  }
+  if (!email) {
+    throw new AuthError('Token inválido: falta el email del usuario', 401);
   }
 
-  return {
-    uid,
-    email,
-    // Authorization is deliberately resolved later from the active tenant
-    // membership. Identity verification alone grants no business permission.
-    roleId: '',
-    roleName: undefined,
-    permissions: [],
-    displayName: identity?.displayName || tokenName || undefined,
-  };
+  try {
+    const [identity] = await db
+      .insert(userIdentities)
+      .values({
+        cognitoSub: uid,
+        email,
+        displayName: tokenName,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: userIdentities.cognitoSub,
+        set: {
+          email,
+          displayName: tokenName,
+          updatedAt: new Date(),
+        },
+      })
+      .returning({
+        status: userIdentities.status,
+        displayName: userIdentities.displayName,
+      });
+
+    if (identity?.status !== 'active') {
+      throw new AuthError('Tu cuenta ha sido desactivada. Contacta al administrador.', 403);
+    }
+
+    return {
+      uid,
+      email,
+      // Authorization is deliberately resolved later from the active tenant
+      // membership. Identity verification alone grants no business permission.
+      roleId: '',
+      roleName: undefined,
+      permissions: [],
+      displayName: identity?.displayName || tokenName || undefined,
+    };
+  } catch (error) {
+    // Log detailed database error for debugging
+    const pgError = error as { code?: string; detail?: string; constraint?: string };
+    logger.error('User identity upsert failed', {
+      action: 'verifyToken_upsert',
+      uid,
+      email,
+      pgCode: pgError.code,
+      pgDetail: pgError.detail,
+      pgConstraint: pgError.constraint,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 });
 
 /**

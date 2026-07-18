@@ -118,12 +118,9 @@ export function SessionExpiredScreen({
 
             <div style={{ width: '100%' }}>
               <BlockStack gap="200">
-                <Button variant="primary" size="large" fullWidth url={loginPath}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                    <ArrowRight24Filled />
-                    Iniciar sesión
-                  </span>
-                </Button>
+<Button variant="primary" size="large" fullWidth url={loginPath} icon={ArrowRight24Filled}>
+                   Iniciar sesión
+                 </Button>
                 <Button variant="tertiary" size="large" fullWidth url="/dashboard">
                   Ir al inicio
                 </Button>

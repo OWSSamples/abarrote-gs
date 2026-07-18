@@ -1139,7 +1139,7 @@ export function RegisterForm() {
                   />
                   <div className="flex flex-col gap-3 rounded-lg border border-kumo-line bg-kumo-recessed/40 p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0 space-y-1">
-                      <Text variant="primary" size="sm" as="p" DANGEROUS_className="truncate">
+                      <Text variant="body" size="sm" as="p" DANGEROUS_className="truncate">
                         {logoFileName || 'Sin logo adjunto'}
                       </Text>
                       <Text variant="secondary" size="xs" as="p">

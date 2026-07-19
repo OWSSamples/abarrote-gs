@@ -14,17 +14,6 @@ import type { PublicDisplayConfig } from '@/lib/store-config-public';
 
 type DisplayLoadState = 'loading' | 'ready' | 'error';
 
-interface WakeLockSentinelLike extends EventTarget {
-  readonly released: boolean;
-  release: () => Promise<void>;
-}
-
-interface WakeLockNavigator extends Navigator {
-  wakeLock?: {
-    request: (type: 'screen') => Promise<WakeLockSentinelLike>;
-  };
-}
-
 export default function CustomerDisplayPage() {
   const [storeConfig, setStoreConfig] = useState<PublicDisplayConfig>(DEFAULT_PUBLIC_DISPLAY_CONFIG);
   const [displayStoreId, setDisplayStoreId] = useState<string | null>(null);
@@ -146,14 +135,13 @@ export default function CustomerDisplayPage() {
   }, [sale.status, storeConfig.customerDisplaySoundEnabled]);
 
   useEffect(() => {
-    const wakeLockNavigator = navigator as WakeLockNavigator;
-    let sentinel: WakeLockSentinelLike | null = null;
+    let sentinel: WakeLockSentinel | null = null;
     let cancelled = false;
 
     const requestWakeLock = async () => {
-      if (!wakeLockNavigator.wakeLock || document.visibilityState !== 'visible') return;
+      if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
       try {
-        const acquired = await wakeLockNavigator.wakeLock.request('screen');
+        const acquired = await navigator.wakeLock.request('screen');
         if (cancelled) {
           await acquired.release();
           return;

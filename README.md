@@ -2,14 +2,14 @@
   <img src="public/icon/OWS-Dash.png" alt="Kiosko" width="200" height="200" />
 </p>
 
-<h1 align="center">Kiosko</h1>s
+<h1 align="center">KIOSKO</h1>
 
 <p align="center">
-  <strong>Sistema de Punto de Venta de Nueva Generación para el Comercio Mexicano</strong>
+  <strong>Enterprise Point of Sale Platform for Mexican Retail</strong>
 </p>
 
 <p align="center">
-  <code>v0.12.568 Edition Prerelease</code>
+  <code>Version 0.12.568 Prerelease | Proprietary Software</code>
 </p>
 
 <p align="center">
@@ -24,343 +24,347 @@
 
 ---
 
-## Visión General
+## Executive Summary
 
-**Kiosko** es una plataforma integral de punto de venta diseñada específicamente para abarrotes, tiendas de conveniencia y pequeños comercios en México. No es solo un POS — es un sistema operativo completo para tu negocio.
+**Kiosko** is an enterprise-grade point of sale platform engineered specifically for convenience stores, grocery shops, and small retail businesses in Mexico. This is not merely a POS system — it is a comprehensive business operating system.
 
-Construido sobre una arquitectura **offline-first** con sincronización en tiempo real, impresión térmica nativa vía ESC/POS, 4 proveedores de pago integrados, sistema de facturación electrónica (CFDI), analíticos con inteligencia artificial y una experiencia de usuario de clase enterprise con Shopify Polaris.
+Built on an **offline-first architecture** with real-time synchronization, native ESC/POS thermal printing, integration with 4 payment providers, electronic invoicing (CFDI 4.0), AI-powered analytics, and an enterprise-class user experience powered by Shopify Polaris.
 
 ```
-32 tablas · 24 server actions · 10 grupos de API · 110+ componentes · 481 tests · 25 migraciones
+System Metrics: 32 Database Tables | 24 Server Actions | 10 API Route Groups | 110+ Components | 481 Passing Tests | 25 Migrations
+```
+
+**Status:** Production-ready enterprise software. All rights reserved by OPENDEX Corporation.
+
+---
+
+## Table of Contents
+
+- [System Architecture](#system-architecture)
+- [Core Modules](#core-modules)
+- [Technology Stack](#technology-stack)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Data Model](#data-model)
+- [Infrastructure](#infrastructure)
+- [Testing Strategy](#testing-strategy)
+- [Security Controls](#security-controls)
+- [Deployment](#deployment)
+- [Licensing](#licensing)
+
+---
+
+## System Architecture
+
+### Four-Layer Enterprise Architecture
+
+```
++---------------------------------------------------------------------+
+|                      PRESENTATION LAYER                              |
+|  Next.js 16 App Router · Shopify Polaris · Polaris Viz · Three.js   |
+|  Zustand State Management (5 slices) · React 19 · Turbopack         |
++---------------------------------------------------------------------+
+|                      APPLICATION LAYER                               |
+|  24 Server Actions · 10 API Route Groups · 3 Cron Jobs              |
+|  Action Factory Pattern · Safe Actions · Error Boundaries           |
++---------------------------------------------------------------------+
+|                        DOMAIN LAYER                                  |
+|  Entities: Product, Sale, SaleItem, Customer, Payment               |
+|  Value Objects: Money, Quantity, StockLevel, Folio                  |
+|  Domain Services: PricingService, StockService, PaymentService      |
+|  Domain Events · Business Rules · Validation Logic                  |
++---------------------------------------------------------------------+
+|                    INFRASTRUCTURE LAYER                              |
+|  Neon PostgreSQL (32 tables) · Drizzle ORM · Redis (Upstash)        |
+|  QStash Job Queue · AWS Cognito · S3/Vercel Blob · WebSerial API    |
+|  Circuit Breaker · Rate Limiting · Distributed Locks                |
++---------------------------------------------------------------------+
+```
+
+### Offline-First Synchronization Pattern
+
+```
+                    +--------------+
+                    |   IndexedDB  | <-- Cached Products
+                    |  Offline DB  | <-- Pending Transactions
+                    |              | <-- Cart State
+                    +------+-------+
+                           |
+              +------------v------------+
+              |     Hybrid POS Engine   |
+              |  +--------+ +--------+  |
+              |  | Online | |Offline |  |
+              |  |  Mode  | |  Mode  |  |
+              |  +--------+ +--------+  |
+              |  Idempotency · Dedup    |
+              +------------+------------+
+                           |
+              +------------v------------+
+              |     SyncEngine v1       |
+              |  BroadcastChannel       |--> Cross-tab synchronization
+              |  Visibility Refresh     |--> Smart polling
+              |  Network Reconnect      |--> Auto-recovery
+              |  Circuit Breaker        |--> Fault tolerance
+              +-------------------------+
 ```
 
 ---
 
-## Tabla de Contenidos
+## Core Modules
 
-- [Arquitectura](#arquitectura)
-- [Módulos del Sistema](#módulos-del-sistema)
-- [Stack Tecnológico](#stack-tecnológico)
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Modelo de Datos](#modelo-de-datos)
-- [Infraestructura](#infraestructura)
-- [Testing](#testing)
-- [Seguridad](#seguridad)
-- [Despliegue](#despliegue)
-- [Licencia](#licencia)
+### Point of Sale System
 
----
+| Feature | Specification |
+|---------|---------------|
+| **Hybrid Engine** | Online and offline transaction processing with sync queue, idempotency keys, and stale detection |
+| **16 Payment Methods** | Cash, card terminal, card web, card manual, bank transfer, manual SPEI, Conekta SPEI, Stripe SPEI, OXXO Conekta, OXXO Stripe, Clip Checkout, Clip Terminal, PayPal, CoDi QR, credit (fiado), loyalty points |
+| **ESC/POS Printing** | Direct USB thermal printer via WebSerial API. HTML iframe fallback. 80mm support |
+| **Cash Drawer Control** | Automatic opening via ESC/POS pulse (RJ-11) on ticket print |
+| **Barcode Scanning** | USB keyboard-wedge scanners + device camera (html5-qrcode) |
+| **Ticket Designer** | Visual drag-and-drop editor with real-time preview. 3 template types: sales, cashout, supplier |
+| **Card Surcharges** | Configurable commission (default 2.5%) applied automatically |
+| **Discounts Engine** | Promotion rules engine with configurable conditions |
 
-## Arquitectura
+### Inventory Management
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         CAPA DE PRESENTACIÓN                        │
-│  Next.js 16 App Router · Shopify Polaris · Polaris Viz · Three.js  │
-│  Zustand (5 slices) · React 19 · Turbopack                        │
-├─────────────────────────────────────────────────────────────────────┤
-│                         CAPA DE APLICACIÓN                          │
-│  24 Server Actions · 10 API Route Groups · 3 Cron Jobs             │
-│  Action Factory · Safe Actions · Error Boundary                    │
-├─────────────────────────────────────────────────────────────────────┤
-│                          CAPA DE DOMINIO                            │
-│  Entities: Product, Sale, SaleItem                                 │
-│  Value Objects: Money, Quantity, StockLevel, Folio                 │
-│  Services: PricingService, StockService                            │
-│  Domain Events · Business Rules · Validation                      │
-├─────────────────────────────────────────────────────────────────────┤
-│                       CAPA DE INFRAESTRUCTURA                       │
-│  Neon PostgreSQL (32 tablas) · Drizzle ORM · Redis (Upstash)      │
-│  QStash Jobs · AWS Cognito · S3/Vercel Blob · WebSerial           │
-│  Circuit Breaker · Rate Limiting · Distributed Locks               │
-└─────────────────────────────────────────────────────────────────────┘
-```
+| Feature | Specification |
+|---------|---------------|
+| **Product Catalog** | SKU, barcode, cost/sale price, categories, expiration dates, minimum stock levels |
+| **Smart Alerts** | Automatic detection of low stock, near-expiry, expired products, and shrinkage by severity |
+| **Shrinkage Tracking** | Registration with reason codes (expiration, damage, theft, waste), photo evidence via DropZone |
+| **Inventory Audits** | Physical count sessions with system variance reporting |
+| **Bulk Operations** | Mass editing of prices, stock levels, and categories |
+| **Import/Export** | CSV import with validation, Excel/ZIP export, PDF report generation |
 
-### Patrón Offline-First
+### Analytics and Business Intelligence
 
-```
-                    ┌──────────────┐
-                    │   IndexedDB  │ ◄── Productos cacheados
-                    │  Offline DB  │ ◄── Ventas pendientes
-                    │              │ ◄── Estado del carrito
-                    └──────┬───────┘
-                           │
-              ┌────────────▼────────────┐
-              │     Hybrid POS Engine   │
-              │  ┌────────┐ ┌────────┐  │
-              │  │ Online │ │Offline │  │
-              │  │  Mode  │ │  Mode  │  │
-              │  └────────┘ └────────┘  │
-              │  Idempotency · Dedup    │
-              └────────────┬────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │     SyncEngine v1       │
-              │  BroadcastChannel       │──► Cross-tab sync
-              │  Visibility Refresh     │──► Smart polling
-              │  Network Reconnect      │──► Auto-recovery
-              │  Circuit Breaker        │──► Fault tolerance
-              └─────────────────────────┘
-```
+| Feature | Specification |
+|---------|---------------|
+| **KPI Dashboard** | Daily sales, average ticket, low inventory alerts, active warnings — real-time updates |
+| **ABC Analysis** | Product classification by revenue contribution (Pareto 80/20 principle) |
+| **RFM Analysis** | Customer segmentation by Recency, Frequency, Monetary value |
+| **Demand Forecasting** | Sales projections based on historical trends |
+| **Inventory Aging** | Stock rotation analysis and identification of slow-moving products |
+| **Product Margins** | Individual profitability analysis with cost vs price comparison |
+| **Smart Reorder** | Automatic restocking suggestions based on sell-through velocity |
+| **AI Receipt Scanner** | Automatic data extraction from receipts using OpenAI SDK |
+| **Polaris Viz Charts** | Professional visualizations: hourly sales, monthly trends, top products |
 
----
+### Payment Gateway Integration
 
-## Módulos del Sistema
+| Provider | Connection Method | Supported Methods |
+|----------|-------------------|-------------------|
+| **Mercado Pago** | OAuth 2.0 | Terminal Point Smart + Web Checkout (React SDK) |
+| **Stripe** | API Keys + Webhooks | Automatic SPEI + OXXO voucher |
+| **Conekta** | API Keys + Webhooks | Automatic SPEI + OXXO voucher |
+| **Clip** | API Keys + Webhooks | Checkout Link + PinPad Terminal |
 
-### 💰 Punto de Venta
+Additional manual methods: **SPEI** (CLABE), **PayPal** (PayPal.Me), **Payment QR** (CoDi with auto-verification via Cobrar.io).
 
-| Característica | Detalle |
-|---|---|
-| **Motor Híbrido** | Venta online y offline con cola de sincronización, idempotencia y detección de stale |
-| **16 Métodos de Pago** | Efectivo, tarjeta terminal, tarjeta web, tarjeta manual, transferencia, SPEI manual, SPEI Conekta, SPEI Stripe, OXXO Conekta, OXXO Stripe, Clip Checkout, Clip Terminal, PayPal, QR CoDi, fiado, puntos |
-| **Impresión ESC/POS** | Impresión directa a térmicas USB vía WebSerial. Fallback a HTML iframe. Soporte 80mm |
-| **Cajón de Dinero** | Apertura automática vía pulso ESC/POS (RJ-11) al imprimir ticket |
-| **Escáner** | USB keyboard-wedge + cámara del dispositivo (html5-qrcode) |
-| **Ticket Designer** | Editor visual drag-and-drop con vista previa en tiempo real. 3 tipos: venta, corte, proveedor |
-| **Recargos por Tarjeta** | Comisión configurable (default 2.5%) aplicada automáticamente |
-| **Descuentos y Promociones** | Motor de promociones con reglas configurables |
+### Electronic Invoicing (CFDI 4.0)
 
-### 📦 Inventario
+PAC (Certified Service Provider) abstraction layer supporting:
+- **Facturama** — Cloud-based invoicing
+- **SW Sapien** — Fiscal stamping services
+- **Finkok** — Digital certification
 
-| Característica | Detalle |
-|---|---|
-| **Catálogo** | SKU, código de barras, precio costo/venta, categorías, caducidad, stock mínimo |
-| **Alertas Inteligentes** | Detección automática de stock bajo, próximo a vencer, vencido y mermas por severidad |
-| **Mermas** | Registro con motivo (expiración, daño, robo, desperdicio), evidencia fotográfica vía DropZone |
-| **Auditorías** | Sesiones de auditoría de inventario con conteo físico vs sistema |
-| **Edición Masiva** | Bulk edit de precios, stock y categorías |
-| **Import/Export** | CSV import con validación, Excel/ZIP export, PDF generation |
+### Financial Management
 
-### 📊 Analíticos e Inteligencia Artificial
+| Module | Capabilities |
+|--------|--------------|
+| **Cash Register Close** | Daily closing by payment method, scheduled automatic closes, printed close reports |
+| **Expense Tracking** | Category-based expenses, receipt scanning with AI, cash register integration |
+| **Cash Movements** | Cash inflows/outflows, configurable opening balance |
+| **Income Statement** | P&L format with revenue, COGS, expenses, and net profit |
+| **Cash Flow** | Operational cash flow with trend analysis and margins |
+| **Returns Processing** | Complete return workflow with automatic inventory reversal |
 
-| Característica | Detalle |
-|---|---|
-| **Dashboard KPIs** | Ventas del día, ticket promedio, inventario bajo, alertas activas — actualización en tiempo real |
-| **Análisis ABC** | Clasificación de productos por contribución al ingreso (Pareto 80/20) |
-| **Análisis RFM** | Segmentación de clientes por Recency, Frequency, Monetary value |
-| **Pronóstico de Demanda** | Proyección de ventas basada en tendencias históricas |
-| **Aging de Inventario** | Rotación de stock y detección de productos estancados |
-| **Márgenes por Producto** | Análisis de rentabilidad individual con costo vs precio |
-| **Smart Reorder** | Sugerencias automáticas de reabastecimiento basadas en velocidad de venta |
-| **AI Receipt Scanner** | Extracción automática de datos de recibos con OpenAI SDK |
-| **Polaris Viz** | Gráficas profesionales: ventas por hora, tendencias mensuales, top productos |
+### Customer Loyalty Program
 
-### 💳 Pagos Integrados — 4 Proveedores
+| Feature | Specification |
+|---------|---------------|
+| **Credit System (Fiado)** | Configurable credit limits, balance tracking, partial payments, detailed history |
+| **Points Program** | Purchase-based accumulation, redemption as payment method, configurable expiration |
+| **Customer Profiles** | Customer directory with KPIs, purchase history, RFM segmentation |
 
-| Proveedor | Conexión | Métodos |
-|---|---|---|
-| **Mercado Pago** | OAuth 2.0 | Terminal Point Smart + Checkout Web (SDK React) |
-| **Stripe** | API Keys + Webhook | SPEI automático + OXXO voucher |
-| **Conekta** | API Keys + Webhook | SPEI automático + OXXO voucher |
-| **Clip** | API Keys + Webhook | Checkout Link + Terminal PinPad |
+### Supplier Management
 
-Plus métodos manuales: **SPEI** (CLABE), **PayPal** (PayPal.Me), **QR de Cobro** (CoDi con auto-verificación vía Cobrar.io).
+| Feature | Specification |
+|---------|---------------|
+| **Supplier Directory** | Contact information, categories, payment terms |
+| **Purchase Orders** | Creation, status tracking (pending/shipped/received), order printing |
+| **Receiving** | Automatic inventory update on receipt, receiving tickets |
 
-### 🧾 Facturación Electrónica (CFDI)
+### Authentication and Access Control (RBAC)
 
-Abstracción de PAC (Proveedor Autorizado de Certificación) con soporte para:
-- **Facturama** — Facturación en la nube
-- **SW Sapien** — Timbrado fiscal
-- **Finkok** — Certificación digital
+| Feature | Specification |
+|---------|---------------|
+| **AWS Cognito** | Email/password authentication, password recovery, secure sessions |
+| **Role System** | Owner, Admin, Manager, Cashier, Warehouse, Accountant — fully customizable |
+| **Granular Permissions** | 12+ permissions: manage_sales, cancel_sales, manage_inventory, view_reports, cashdrawer.open, etc. |
+| **PIN Authentication** | Quick numeric PIN login for cashier changes |
 
-### 🏪 Gestión Financiera
+### Customer Display
 
-| Módulo | Capacidades |
-|---|---|
-| **Corte de Caja** | Cierre diario con desglose por método, cortes automáticos programados, impresión de corte |
-| **Gastos** | Registro por categoría, escaneo de recibos con IA, integración con corte de caja |
-| **Movimientos** | Entradas/salidas de efectivo, fondo inicial configurable |
-| **Estado de Resultados** | P&L format con ingresos, costos, gastos y utilidad neta |
-| **Flujo de Efectivo** | Cash flow operativo con tendencia y margen |
-| **Devoluciones** | Proceso completo con reversión automática de inventario |
-
-### 👥 Clientes y Lealtad
-
-| Característica | Detalle |
-|---|---|
-| **Fiado (Crédito)** | Límite configurable, seguimiento de saldos, abonos parciales, historial detallado |
-| **Programa de Puntos** | Acumulación por compra, canje como método de pago, expiración configurable |
-| **Perfiles** | Directorio de clientes con KPIs, historial de compras, segmentación RFM |
-
-### 🚚 Proveedores y Pedidos
-
-| Característica | Detalle |
-|---|---|
-| **Directorio** | Proveedores con datos de contacto, categoría, condiciones de pago |
-| **Órdenes de Compra** | Creación, seguimiento de estados (pendiente/enviado/recibido), impresión de orden |
-| **Recepción** | Actualización automática de inventario al recibir, ticket de recepción |
-
-### 🔒 Autenticación y Roles (RBAC)
-
-| Característica | Detalle |
-|---|---|
-| **AWS Cognito** | Email/password, recuperación de contraseña, sesiones seguras |
-| **Roles** | Owner, Admin, Gerente, Cajero, Almacenista, Contador — totalmente customizables |
-| **Permisos Granulares** | 12+ permisos: `manage_sales`, `cancel_sales`, `manage_inventory`, `view_reports`, `cashdrawer.open`, etc. |
-| **PIN Pad** | Autenticación rápida por PIN numérico para cambio de cajero |
-
-### 🖥️ Customer Display
-
-Pantalla de cara al cliente con animaciones 3D construida con:
+Client-facing display with 3D animations built with:
 - **Three.js** + **React Three Fiber** + **Postprocessing**
-- Muestra productos, precios y promociones
-- Animaciones configurables desde settings
+- Displays products, prices, and promotions
+- Configurable animations via settings panel
 
-### 📱 Servicios y Recargas
+### Services and Top-ups
 
-Motor de pagos de servicios con 4 proveedores:
-- **LocalProvider** — Recargas telefónicas locales
-- **TuRecarga** — Plataforma de recargas
-- **Infopago** — Pagos de servicios
-- **Billpocket** — Pagos diversos
+Payment services engine with 4 providers:
+- **LocalProvider** — Local mobile top-ups
+- **TuRecarga** — Top-up platform
+- **Infopago** — Bill payments
+- **Billpocket** — Diverse payment services
 
-### 🔔 Notificaciones
+### Notification System
 
-| Canal | Detalle |
-|---|---|
-| **Telegram** | Alertas de stock crítico en tiempo real vía bot |
-| **In-App** | Centro de notificaciones con filtros por severidad y tipo |
-| **Toast** | Sistema de notificaciones transaccionales (Sileo) |
-| **QStash** | Alertas asíncronas de stock vía background jobs |
+| Channel | Specification |
+|---------|---------------|
+| **Telegram** | Real-time critical stock alerts via bot |
+| **In-App** | Notification center with severity and type filters |
+| **Toast** | Transactional notification system (Sileo) |
+| **QStash** | Async stock alerts via background jobs |
 
 ---
 
-## Stack Tecnológico
+## Technology Stack
 
-### Core
+### Core Technologies
 
-| Capa | Tecnología | Versión |
-|---|---|---|
+| Layer | Technology | Version |
+|-------|------------|---------|
 | **Framework** | Next.js (App Router + Turbopack) | 16.2.3 |
 | **Runtime** | React + React Compiler | 19.2.3 |
 | **Language** | TypeScript (strict mode) | 6.0.2 |
 | **Database** | Neon Serverless PostgreSQL | — |
 | **ORM** | Drizzle ORM | 0.45.1 |
-| **State** | Zustand (5 slices) | 5.0.11 |
-| **Auth** | AWS Cognito (aws-amplify + aws-jwt-verify) | 6.16 / 5.1 |
+| **State Management** | Zustand (5 slices) | 5.0.11 |
+| **Authentication** | AWS Cognito (aws-amplify + aws-jwt-verify) | 6.16 / 5.1 |
 | **Deployment** | Vercel (Edge + Serverless) | — |
 | **Package Manager** | Bun | 1.3+ |
 
-### UI & Design
+### User Interface
 
-| Tecnología | Uso |
-|---|---|
-| **Shopify Polaris 13.9** | Design system completo — 110+ componentes |
-| **Polaris Viz 16.16** | Gráficas y visualizaciones de datos |
-| **Tailwind CSS 4** | Utilidades de estilo |
-| **Radix UI** | Primitivas accesibles |
-| **Lucide React** | Iconografía complementaria |
-| **dnd-kit** | Drag and drop (ticket designer, reordenamiento) |
-| **Three.js + R3F** | Pantalla de cliente 3D con postprocessing |
+| Technology | Purpose |
+|------------|---------|
+| **Shopify Polaris 13.9** | Complete design system — 110+ components |
+| **Polaris Viz 16.16** | Data visualization and charts |
+| **Tailwind CSS 4** | Utility-first styling |
+| **Radix UI** | Accessible primitives |
+| **Lucide React** | Icon library |
+| **dnd-kit** | Drag and drop functionality (ticket designer, reordering) |
+| **Three.js + R3F** | 3D customer display with postprocessing |
 
-### Infraestructura
+### Infrastructure Services
 
-| Servicio | Uso |
-|---|---|
-| **Upstash Redis** | Cache, rate limiting, distributed locks, idempotencia |
+| Service | Purpose |
+|---------|---------|
+| **Upstash Redis** | Caching, rate limiting, distributed locks, idempotency keys |
 | **Upstash QStash** | Background jobs (stock alerts, daily reports, payment polling) |
-| **Vercel Blob / AWS S3** | Almacenamiento de archivos (logos, evidencia de mermas) |
-| **Vercel Analytics** | Métricas de rendimiento |
-| **Vercel Speed Insights** | Core Web Vitals |
+| **Vercel Blob / AWS S3** | File storage (logos, shrinkage evidence) |
+| **Vercel Analytics** | Performance metrics |
+| **Vercel Speed Insights** | Core Web Vitals monitoring |
 
-### Integraciones de Pago
+### Payment Integrations
 
-| Proveedor | Paquete | Versión |
-|---|---|---|
-| **Stripe** | `stripe` | 21.0.1 |
-| **Mercado Pago** | `mercadopago` + `@mercadopago/sdk-react` | 2.0.15 / 0.0.19 |
-| **Conekta** | `conekta` | 8.0.2 |
-| **Clip** | Custom provider | — |
+| Provider | Package | Version |
+|----------|---------|---------|
+| **Stripe** | stripe | 21.0.1 |
+| **Mercado Pago** | mercadopago + @mercadopago/sdk-react | 2.0.15 / 0.0.19 |
+| **Conekta** | conekta | 8.0.2 |
+| **Clip** | Custom provider implementation | — |
 
-### AI & Data
+### AI and Data Processing
 
-| Tecnología | Uso |
-|---|---|
-| **Vercel AI SDK** | Abstracción de modelos de IA |
-| **OpenAI** | Extracción de recibos, análisis de datos |
-| **Zod 4** | Validación de schemas y payloads |
-| **jsPDF + AutoTable** | Generación de reportes PDF |
-| **JsBarcode** | Generación de códigos de barras |
-| **html5-qrcode** | Escaneo de QR y códigos de barras por cámara |
+| Technology | Purpose |
+|------------|---------|
+| **Vercel AI SDK** | AI model abstraction layer |
+| **OpenAI** | Receipt extraction, data analysis |
+| **Zod 4** | Schema validation and payload verification |
+| **jsPDF + AutoTable** | PDF report generation |
+| **JsBarcode** | Barcode generation |
+| **html5-qrcode** | QR and barcode scanning via camera |
 
 ---
 
-## Instalación
+## Installation
 
-### Prerrequisitos
+### Prerequisites
 
-| Herramienta | Versión Mínima |
-|---|---|
+| Tool | Minimum Version |
+|------|-----------------|
 | [Bun](https://bun.sh/) | 1.3+ |
-| [Neon](https://neon.tech/) | Cuenta activa |
-| [AWS Cognito](https://aws.amazon.com/cognito/) | User Pool con App Client habilitado |
+| [Neon](https://neon.tech/) | Active account |
+| [AWS Cognito](https://aws.amazon.com/cognito/) | User Pool with enabled App Client |
 
-### Setup
+### Setup Procedure
 
 ```bash
-# 1. Clonar
+# 1. Clone repository
 git clone https://github.com/OWSSamples/abarrote-gs.git
 cd abarrote-gs
 
-# 2. Instalar dependencias
+# 2. Install dependencies
 bun install
 
-# 3. Configurar variables de entorno
+# 3. Configure environment variables
 cp .env.example .env.local
-# Editar .env.local con tus credenciales
+# Edit .env.local with your credentials
 
-# 4. Setup de base de datos
-bun run db:push      # Crear schema en Neon
-bun run db:seed      # Datos de demo (opcional)
+# 4. Database setup
+bun run db:push      # Create schema in Neon
+bun run db:seed      # Seed demo data (optional)
 
-# 5. Iniciar
-bun run dev          # → http://localhost:3000
+# 5. Start development server
+bun run dev          # http://localhost:3000
 ```
 
-### Scripts
+### Available Scripts
 
-| Comando | Descripción |
-|---|---|
-| `bun run dev` | Servidor de desarrollo (Turbopack) |
-| `bun run build` | Build de producción |
-| `bun run start` | Servidor de producción |
-| `bun run lint` | ESLint |
-| `bun run typecheck` | TypeScript strict check |
-| `bun run test` | Vitest (481 unit tests) |
-| `bun run test:e2e` | Playwright (7 E2E specs) |
-| `bun run db:generate` | Generar migraciones Drizzle |
-| `bun run db:migrate` | Ejecutar migraciones |
-| `bun run db:push` | Push schema directo |
-| `bun run db:studio` | Drizzle Studio (GUI) |
-| `bun run db:seed` | Datos de demo |
-| `bun run format` | Prettier |
+| Command | Description |
+|---------|-------------|
+| `bun run dev` | Development server (Turbopack) |
+| `bun run build` | Production build |
+| `bun run start` | Production server |
+| `bun run lint` | ESLint validation |
+| `bun run typecheck` | TypeScript strict mode check |
+| `bun run test` | Vitest unit tests (481 tests) |
+| `bun run test:e2e` | Playwright E2E tests (7 specs) |
+| `bun run db:generate` | Generate Drizzle migrations |
+| `bun run db:migrate` | Execute migrations |
+| `bun run db:push` | Direct schema push |
+| `bun run db:studio` | Drizzle Studio GUI |
+| `bun run db:seed` | Seed demo data |
+| `bun run format` | Prettier formatting |
 
 ---
 
-## Configuración
+## Configuration
 
-### Variables de Entorno
+### Environment Variables
 
 ```env
-# ── Base de Datos ──
+# -- Database Configuration --
 DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
 
-# ── AWS Cognito ──
+# -- AWS Cognito Configuration --
 NEXT_PUBLIC_COGNITO_USER_POOL_ID=
 NEXT_PUBLIC_COGNITO_CLIENT_ID=
 NEXT_PUBLIC_COGNITO_REGION=us-east-2
-NEXT_PUBLIC_COGNITO_DOMAIN=         # us-east-2xxxxx.auth.us-east-2.amazoncognito.com
+NEXT_PUBLIC_COGNITO_DOMAIN=
 AWS_REGION=us-east-2
-AWS_ACCESS_KEY_ID=                  # IAM con permisos cognito-idp:AdminCreateUser
+AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 
-# ── Redis (Upstash) ──
+# -- Redis Configuration (Upstash) --
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 QSTASH_TOKEN=
 
-# ── Pagos (todos opcionales) ──
+# -- Payment Providers (all optional) --
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 MP_ACCESS_TOKEN=
@@ -368,46 +372,46 @@ CONEKTA_PRIVATE_KEY=
 CLIP_API_KEY=
 CLIP_SECRET_KEY=
 
-# ── Storage ──
-BLOB_READ_WRITE_TOKEN=           # Vercel Blob
-# O alternativamente:
+# -- Storage Configuration --
+BLOB_READ_WRITE_TOKEN=
+# Alternative configuration:
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_S3_BUCKET=
 
-# ── AI (opcional) ──
+# -- AI Services (optional) --
 OPENAI_API_KEY=
 
-# ── Notificaciones (opcional) ──
+# -- Notification Services (optional) --
 TELEGRAM_BOT_TOKEN=
 ```
 
 ---
 
-## Modelo de Datos
+## Data Model
 
-**32 tablas** organizadas por dominio:
+**32 tables** organized by business domain:
 
 ```
-CORE                    VENTAS                  INVENTARIO
-─────────────────       ─────────────────       ─────────────────
-store_config            sale_records            products
-feature_flags           sale_items              product_categories
-audit_logs              devoluciones            merma_records
-                        devolucion_items        inventory_audits
-                        promotions              inventory_audit_items
+CORE DOMAIN               SALES DOMAIN            INVENTORY DOMAIN
+─────────────────         ─────────────────       ─────────────────
+store_config              sale_records            products
+feature_flags             sale_items              product_categories
+audit_logs                devoluciones            merma_records
+                          devolucion_items        inventory_audits
+                          promotions              inventory_audit_items
 
-FINANZAS                CLIENTES                PROVEEDORES
-─────────────────       ─────────────────       ─────────────────
-cortes_caja             clientes                proveedores
-gastos                  fiado_transactions      pedidos
-cash_movements          fiado_items             pedido_items
-                        loyalty_transactions
+FINANCE DOMAIN            CUSTOMER DOMAIN         SUPPLIER DOMAIN
+─────────────────         ─────────────────       ─────────────────
+cortes_caja               clientes                proveedores
+gastos                    fiado_transactions      pedidos
+cash_movements            fiado_items             pedido_items
+                          loyalty_transactions
 
-PAGOS                   AUTH                    SERVICIOS
-─────────────────       ─────────────────       ─────────────────
-payment_charges         role_definitions        servicios
-payment_provider_conn   user_roles              cfdi_records
+PAYMENT DOMAIN            AUTHENTICATION          SERVICES DOMAIN
+─────────────────         ─────────────────       ─────────────────
+payment_charges           role_definitions        servicios
+payment_provider_conn     user_roles              cfdi_records
 mercadopago_payments
 mercadopago_refunds
 oauth_states
@@ -415,23 +419,23 @@ oauth_states
 
 ---
 
-## Infraestructura
+## Infrastructure
 
-### Background Jobs (QStash)
+### Background Job Schedule (QStash)
 
-| Job | Schedule | Descripción |
-|---|---|---|
-| **daily-report** | `0 8 * * *` | Reporte diario de ventas |
-| **token-maintenance** | `0 6 * * *` | Mantenimiento de tokens OAuth |
-| **loyalty-expire** | `0 3 * * 1` | Expiración semanal de puntos de lealtad |
-| **stock-alert** | On demand | Alertas de stock crítico vía Telegram |
-| **payment-poll** | On demand | Polling de estado de pagos |
-| **notification** | On demand | Envío de notificaciones Telegram |
+| Job Name | Schedule | Description |
+|----------|----------|-------------|
+| **daily-report** | 0 8 * * * | Daily sales summary report |
+| **token-maintenance** | 0 6 * * * | OAuth token refresh and cleanup |
+| **loyalty-expire** | 0 3 * * 1 | Weekly loyalty points expiration |
+| **stock-alert** | On demand | Critical stock alerts via Telegram |
+| **payment-poll** | On demand | Payment status polling |
+| **notification** | On demand | Telegram notification dispatch |
 
-### Webhooks
+### Webhook Endpoints
 
-| Endpoint | Proveedor |
-|---|---|
+| Endpoint | Provider |
+|----------|----------|
 | `/api/webhooks/stripe` | Stripe (SPEI + OXXO confirmations) |
 | `/api/webhooks/conekta` | Conekta (SPEI + OXXO confirmations) |
 | `/api/webhooks/clip` | Clip (payment confirmations) |
@@ -440,95 +444,114 @@ oauth_states
 | `/api/mercadopago/webhook` | MercadoPago (payment + refund events) |
 | `/api/telegram/webhook` | Telegram bot commands |
 
-### Patrones de Resiliencia
+### Resilience Patterns
 
-| Patrón | Implementación |
-|---|---|
-| **Circuit Breaker** | Auto-trip en errores consecutivos, cooldown configurable |
-| **Rate Limiting** | Tiers por endpoint (Upstash) |
-| **Distributed Locks** | Redis locks para operaciones de stock |
-| **Idempotency** | Keys Redis para prevenir duplicados |
-| **Soft Delete** | Borrado lógico con restauración |
-| **Feature Flags** | Toggle de funcionalidades por DB |
-| **Audit Log** | Registro inmutable de operaciones críticas |
+| Pattern | Implementation |
+|---------|----------------|
+| **Circuit Breaker** | Auto-trip on consecutive failures, configurable cooldown |
+| **Rate Limiting** | Tiered limits per endpoint (Upstash Redis) |
+| **Distributed Locks** | Redis-based locks for stock operations |
+| **Idempotency** | Redis keys to prevent duplicate transactions |
+| **Soft Delete** | Logical deletion with restoration capability |
+| **Feature Flags** | Database-driven feature toggles |
+| **Audit Logging** | Immutable log of critical operations |
 
 ---
 
-## Testing
+## Testing Strategy
 
-| Tipo | Framework | Archivos | Tests |
-|---|---|---|---|
-| **Unit** | Vitest 4.1 | 31 | 481 |
-| **E2E** | Playwright 1.59 | 7 | — |
+| Test Type | Framework | Files | Tests |
+|-----------|-----------|-------|-------|
+| **Unit Tests** | Vitest 4.1 | 31 | 481 |
+| **E2E Tests** | Playwright 1.59 | 7 | — |
 
 ```bash
-bun run test              # Unit tests
-bun run test:watch        # Watch mode
-bun run test:ci           # CI mode
-bun run test:e2e          # E2E headless
-bun run test:e2e:ui       # E2E con UI
+bun run test              # Execute unit tests
+bun run test:watch        # Watch mode for development
+bun run test:ci           # CI/CD mode
+bun run test:e2e          # Headless E2E tests
+bun run test:e2e:ui       # E2E tests with UI
 ```
 
-### Cobertura por Dominio
+### Domain Coverage
 
-- **Domain**: `Folio`, `Money`, `Quantity`, `StockLevel`, `Product`, `Sale`, `SaleItem`, `PricingService`, `StockService`
-- **Infrastructure**: Circuit breaker, cache, rate limiting, Redis keys, idempotency, soft delete, feature flags, job schemas
-- **Application**: Action factory, audit log, auth errors, validation schemas, pagination, helpers, logger, navigation, utils, crypto, RFC validation
+- **Domain Layer**: Folio, Money, Quantity, StockLevel, Product, Sale, SaleItem, PricingService, StockService
+- **Infrastructure Layer**: Circuit breaker, cache management, rate limiting, Redis key patterns, idempotency, soft delete, feature flags, job schemas
+- **Application Layer**: Action factory, audit logging, authentication errors, validation schemas, pagination, helpers, logger, navigation, utilities, crypto, RFC validation
 
 ---
 
-## Seguridad
+## Security Controls
 
-| Control | Implementación |
-|---|---|
-| **Autenticación** | AWS Cognito (email/password) con verificación JWT server-side |
-| **Autorización** | RBAC con 12+ permisos granulares |
-| **Validación** | Zod 4 schemas en todas las Server Actions |
-| **Rate Limiting** | Upstash Redis por endpoint y usuario |
-| **CSRF** | Next.js built-in protections |
-| **SQL Injection** | Drizzle ORM parameterized queries |
-| **XSS** | React auto-escaping + sanitización de inputs |
+| Control | Implementation |
+|---------|----------------|
+| **Authentication** | AWS Cognito (email/password) with server-side JWT verification |
+| **Authorization** | RBAC with 12+ granular permissions |
+| **Input Validation** | Zod 4 schemas on all Server Actions |
+| **Rate Limiting** | Upstash Redis per endpoint and user |
+| **CSRF Protection** | Next.js built-in protections |
+| **SQL Injection Prevention** | Drizzle ORM parameterized queries |
+| **XSS Prevention** | React auto-escaping + input sanitization |
 | **Webhook Verification** | Signature validation (Stripe, QStash, Conekta) |
-| **Secrets** | Server-only env vars, no exposición al cliente |
-| **Audit Trail** | Log inmutable de operaciones sensibles |
+| **Secrets Management** | Server-only environment variables, no client exposure |
+| **Audit Trail** | Immutable logging of sensitive operations |
 
 ---
 
-## Despliegue
+## Deployment
 
-### Vercel (Recomendado)
+### Vercel Deployment (Recommended)
 
 ```bash
-# Instalar CLI
+# Install Vercel CLI
 bun add -g vercel
 
-# Vincular proyecto
+# Link project
 vercel link
 
 # Deploy preview
 vercel
 
-# Deploy producción
+# Deploy production
 vercel --prod
 ```
 
-El proyecto incluye `vercel.json` con:
-- 3 cron jobs programados
-- Extended function duration para webhooks (30s) e imports (60s)
-- Configuración de regiones
+The project includes `vercel.json` configuration with:
+- 3 scheduled cron jobs
+- Extended function duration for webhooks (30s) and imports (60s)
+- Regional deployment configuration
 
 ---
 
-## Licencia
+## Licensing
 
-Licencia propietaria de **OPENDEX**. Consulta el archivo [LICENSE](LICENSE) para términos completos.
+This software is proprietary property of **OPENDEX Corporation**. All rights reserved.
+
+Unauthorized copying, distribution, modification, or use of this software is strictly prohibited. This codebase contains confidential and proprietary information protected by trade secret laws and international copyright treaties.
+
+For licensing inquiries, contact: legal@opendex.com
+
+See the [LICENSE](LICENSE) file for complete terms and conditions.
+
+---
+
+## Support and Documentation
+
+- **Architecture Documentation**: `/docs/architecture/`
+- **Security Policy**: [SECURITY.md](SECURITY.md)
+- **Development Roadmap**: `/docs/ROADMAP_MASTER.md`
+- **Agent Guidelines**: [AGENTS.md](AGENTS.md)
 
 ---
 
 <p align="center">
-  <strong>Kiosko</strong> — Construido para los tenderos de México que merecen tecnología de clase mundial.
+  <strong>KIOSKO Enterprise POS Platform</strong>
 </p>
 
 <p align="center">
-  <sub>OPENDEX Corporation · 2024–2026</sub>
+  Engineered for Mexican retailers who deserve world-class technology.
+</p>
+
+<p align="center">
+  <sub>OPENDEX Corporation | 2024–2026 | All Rights Reserved</sub>
 </p>

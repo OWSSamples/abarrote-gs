@@ -60,6 +60,10 @@ import {
 import { useDashboardStore } from '@/store/dashboardStore';
 import { uploadFile } from '@/lib/storage';
 import { parseError } from '@/lib/errors';
+import {
+  getCustomerDisplayChannelName,
+  getCustomerDisplayWindowName,
+} from '@/lib/customer-display-channel';
 import type {
   CustomerDisplayAnimation,
   CustomerDisplayPromoAnimation,
@@ -311,7 +315,7 @@ type ConnectionState = 'unknown' | 'connected' | 'disconnected';
 const PING_INTERVAL_MS = 3_000;
 const DISPLAY_TTL_MS = 7_000;
 
-function useDisplayConnection(): {
+function useDisplayConnection(storeId: string): {
   state: ConnectionState;
   connectedCount: number;
   lastSeen: number | null;
@@ -338,7 +342,7 @@ function useDisplayConnection(): {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const ch = new BroadcastChannel('customer_display');
+    const ch = new BroadcastChannel(getCustomerDisplayChannelName(storeId));
     channelRef.current = ch;
 
     const onMessage = (event: MessageEvent) => {
@@ -369,7 +373,7 @@ function useDisplayConnection(): {
       ch.close();
       channelRef.current = null;
     };
-  }, [reconcile]);
+  }, [reconcile, storeId]);
 
   const refresh = useCallback(() => {
     channelRef.current?.postMessage({ type: 'PING' });
@@ -744,8 +748,12 @@ export function CustomerDisplaySectionV4() {
   const openDisplay = useCallback(() => {
     const w = orientation === 'portrait' ? 768 : 1024;
     const h = orientation === 'portrait' ? 1024 : 768;
-    window.open('/display', 'customer_display', `width=${w},height=${h},menubar=no,toolbar=no`);
-  }, [orientation]);
+    window.open(
+      '/display',
+      getCustomerDisplayWindowName(storeConfig.id),
+      `width=${w},height=${h},menubar=no,toolbar=no`,
+    );
+  }, [orientation, storeConfig.id]);
 
   const onLogoDrop = useCallback((_a: File[], rej: File[]) => {
     if (rej.length) setErrorMsg('Solo imágenes (JPG, PNG, WebP) de máximo 2 MB.');
@@ -834,11 +842,11 @@ export function CustomerDisplaySectionV4() {
   // PREMIUM helpers
   // ─────────────────────────────────────────────────────────
   const [selectedTab, setSelectedTab] = useState(0);
-  const connection = useDisplayConnection();
+  const connection = useDisplayConnection(storeConfig.id);
 
   const sendTestSale = useCallback(() => {
     if (typeof window === 'undefined') return;
-    const ch = new BroadcastChannel('customer_display');
+    const ch = new BroadcastChannel(getCustomerDisplayChannelName(storeConfig.id));
     ch.postMessage({
       type: 'TEST_SALE',
       payload: {
@@ -852,6 +860,8 @@ export function CustomerDisplaySectionV4() {
         total: 137.5,
         cardSurcharge: 0,
         discountAmount: 0,
+        amountPaid: 150,
+        change: 12.5,
         paymentMethod: 'efectivo',
         status: 'active',
       },
@@ -859,7 +869,7 @@ export function CustomerDisplaySectionV4() {
     ch.close();
     setStatus('saved');
     setTimeout(() => setStatus('idle'), 1500);
-  }, []);
+  }, [storeConfig.id]);
 
   const applyTemplate = useCallback(
     async (preset: PresetTemplate) => {
@@ -1709,7 +1719,7 @@ export function CustomerDisplaySectionV4() {
                   Sincronización en tiempo real
                 </Text>
                 <Text variant="bodySm" as="p" tone="subdued">
-                  Cambios se reflejan al instante via BroadcastChannel.
+                  Los cambios se reflejan al instante en la pantalla vinculada.
                 </Text>
               </BlockStack>
               <Badge tone="success">Activa</Badge>

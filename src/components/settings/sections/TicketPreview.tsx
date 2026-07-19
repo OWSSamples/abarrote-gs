@@ -114,7 +114,7 @@ const SEP_CHAR: Record<string, string> = {
   dots: '·',
   line: '━',
   double: '═',
-  stars: '✦',
+  stars: '*',
   none: '',
 };
 

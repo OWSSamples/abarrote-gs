@@ -602,6 +602,13 @@ export function RegisterForm() {
 
       setIsLoading(true);
       try {
+        if (isAdditionalTenant) {
+          await completeProvisioning(normalizedEmail);
+          toast.showSuccess('Negocio creado y seleccionado correctamente.');
+          window.location.assign('/dashboard');
+          return;
+        }
+
         const preflight = await checkRegistrationPreflight({
           tenantName: normalizedTenant,
           email: normalizedEmail,
@@ -623,14 +630,6 @@ export function RegisterForm() {
             'email',
             'Ya existe una identidad con este correo. Inicia sesión y usa "Crear otro negocio" para crear otro tenant.',
           );
-          return;
-        }
-
-        if (isAdditionalTenant) {
-          await completeProvisioning(normalizedEmail);
-          toast.showSuccess('Negocio creado y seleccionado correctamente.');
-          router.refresh();
-          router.push('/');
           return;
         }
 
@@ -713,7 +712,16 @@ export function RegisterForm() {
         router.refresh();
         router.push('/');
       } catch (error) {
-        const err = error as { name?: string };
+        const err = error as { name?: string; code?: string; message?: string };
+        if (isAdditionalTenant && err.code === 'VALIDATION_ERROR') {
+          const message = getAuthErrorMessage(error);
+          if (err.message?.toLowerCase().includes('nombre') || err.message?.toLowerCase().includes('tienda')) {
+            setFieldError('tenantName', message);
+          } else {
+            setFormLevelError('No fue posible crear el negocio.', message);
+          }
+          return;
+        }
         if (err.name === 'LimitExceededException') {
           setConfirmationMessage(
             'La cuenta fue creada, pero AWS limitó temporalmente el envío. Espera unos minutos y usa Reenviar código de registro.',
@@ -1214,9 +1222,9 @@ export function RegisterForm() {
             <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-center">
               {isAdditionalTenant ? '¿Prefieres conservar solo tus negocios actuales? ' : '¿Ya tienes cuenta? '}
               <Link
-                href={isAdditionalTenant ? '/' : '/auth/login'}
+                href={isAdditionalTenant ? '/dashboard' : '/auth/login'}
                 variant="inline"
-                render={<NextLink href={isAdditionalTenant ? '/' : '/auth/login'} />}
+                render={<NextLink href={isAdditionalTenant ? '/dashboard' : '/auth/login'} />}
               >
                 {isAdditionalTenant ? 'Volver al panel' : 'Inicia sesión'}
               </Link>

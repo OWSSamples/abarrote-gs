@@ -88,7 +88,7 @@ export default function DashboardOverviewPage() {
         byProduct[item.productId].revenue += item.subtotal;
       }
     }
-    if (Object.keys(byProduct).length === 0) return undefined;
+    if (Object.keys(byProduct).length === 0) return [];
     return Object.entries(byProduct)
       .sort(([, a], [, b]) => b.unitsSold - a.unitsSold)
       .slice(0, 5)
@@ -358,7 +358,7 @@ export default function DashboardOverviewPage() {
               <BlockStack gap="400">
                 <TopProducts
                   products={topProductsData}
-                  period={todaySales.length > 0 ? 'Hoy' : 'General'}
+                  period={todaySales.length > 0 ? 'Hoy' : saleRecords.length > 0 ? 'General' : 'Sin actividad'}
                 />
 
                 {/* Hourly breakdown mini-card */}

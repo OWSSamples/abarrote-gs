@@ -23,10 +23,6 @@ const ticketEmailItemSchema = z.object({
 
 const sendTestEmailSchema = z.object({
   to: z.string().email('Correo electrónico inválido'),
-  fromEmail: z.string().email('Correo remitente inválido'),
-  fromName: z.string().max(100).optional(),
-  storeName: z.string().min(1).max(120),
-  logoUrl: z.string().url().optional().or(z.literal('')),
 });
 
 const sendTicketEmailSchema = z.object({
@@ -48,13 +44,7 @@ const sendTicketEmailSchema = z.object({
 /**
  * Send a test email to verify AWS SES integration.
  */
-async function _sendTestEmailAction(params: {
-  to: string;
-  fromEmail: string;
-  fromName: string;
-  storeName: string;
-  logoUrl?: string;
-}): Promise<{ success: boolean; message: string }> {
+async function _sendTestEmailAction(params: { to: string }): Promise<{ success: boolean; message: string }> {
   await requireOwner();
 
   const parsed = sendTestEmailSchema.safeParse(params);
@@ -62,18 +52,28 @@ async function _sendTestEmailAction(params: {
     return { success: false, message: 'Datos inválidos para enviar correo de prueba' };
   }
   const data = parsed.data;
+  const config = await getStoreConfig();
+  if (!config.emailEnabled) {
+    return { success: false, message: 'Habilita y guarda el correo electrónico antes de realizar la prueba.' };
+  }
+
+  const sender = normalizeEmailAddress(config.emailFrom || '');
+  if (!z.string().email().safeParse(sender).success) {
+    return { success: false, message: 'El correo remitente guardado no es válido.' };
+  }
+
   const recipient = normalizeEmailAddress(data.to);
   const recipientLog = {
     to_hash: await hashIdentifierForLog(recipient),
     to_domain: getEmailDomain(recipient),
   };
 
-  const template = testEmailTemplate(data.storeName, data.logoUrl || undefined);
+  const template = testEmailTemplate(config.storeName, config.logoUrl || undefined);
 
   const result = await sendEmail(
     { to: recipient, subject: template.subject, html: template.html, text: template.text },
-    data.fromEmail,
-    data.fromName || data.storeName,
+    sender,
+    config.emailFromName || config.storeName,
   );
 
   if (result.success) {
@@ -81,7 +81,7 @@ async function _sendTestEmailAction(params: {
     return { success: true, message: 'Correo de prueba enviado.' };
   }
 
-  return { success: false, message: result.error || 'Error al enviar correo de prueba' };
+  return { success: false, message: 'No fue posible enviar el correo de prueba. Revisa la configuración guardada.' };
 }
 
 export const sendTestEmailAction = withLogging('email.sendTestEmail', _sendTestEmailAction);

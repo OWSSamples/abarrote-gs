@@ -37,6 +37,12 @@ import { emitDomainEvent } from '@/domain/events';
 import { getStoreConfig } from '@/server/store-config-service';
 import { calculateSalePricing } from '@/domain/services/SalePricingService';
 import { consumeSaleDiscountApproval } from '@/server/sale-discount-approval-service';
+import {
+  evaluateSalesSchedule,
+  getCurrentDateInTimezone,
+  resolveBusinessTimezone,
+} from '@/domain/services/pos-operating-hours';
+import { runAutoCashCloseForStore } from '@/server/auto-cash-close-service';
 
 const UNSUPPORTED_SINGLE_TENDER_METHODS = new Set([
   'tarjeta',
@@ -291,6 +297,35 @@ async function _createSale(
       }
 
       const storeConfiguration = await getStoreConfig();
+      const schedule = evaluateSalesSchedule(storeConfiguration);
+      if (!schedule.allowed) {
+        throw new AppError(
+          'SALES_SCHEDULE_CLOSED',
+          `El punto de venta está fuera de horario. Opera de ${storeConfiguration.salesOpenTime} a ${storeConfiguration.closeSystemTime}.`,
+          409,
+        );
+      }
+
+      const businessTimezone = resolveBusinessTimezone(storeConfiguration.businessTimezone);
+      const businessDate = getCurrentDateInTimezone(new Date(), businessTimezone);
+      const [closedRegister] = await db
+        .select({ id: cortesCaja.id })
+        .from(cortesCaja)
+        .where(
+          and(
+            eq(cortesCaja.storeId, storeId),
+            eq(cortesCaja.businessDate, businessDate),
+            eq(cortesCaja.status, 'cerrado'),
+          ),
+        )
+        .limit(1);
+      if (closedRegister) {
+        throw new AppError(
+          'CASH_REGISTER_CLOSED',
+          'La caja ya fue cerrada para el día operativo actual.',
+          409,
+        );
+      }
 
       // ── Idempotency guard: prevent duplicate sale creation from double-clicks/retries ──
       // Prefer a client-provided request id (one per checkout attempt). Fall back
@@ -967,7 +1002,18 @@ async function _createCorteCaja(data: {
     throw new AppError('INVALID_CASH_CLOSE', 'Los datos del corte de caja son inválidos.', 400);
   }
   const input = parsed.data;
-  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+  const config = await getStoreConfig();
+  const businessTimezone = resolveBusinessTimezone(config.businessTimezone);
+  const todayStr = getCurrentDateInTimezone(new Date(), businessTimezone);
+
+  const [existingClose] = await db
+    .select({ id: cortesCaja.id })
+    .from(cortesCaja)
+    .where(and(eq(cortesCaja.storeId, storeId), eq(cortesCaja.businessDate, todayStr)))
+    .limit(1);
+  if (existingClose) {
+    throw new AppError('CASH_REGISTER_ALREADY_CLOSED', 'La caja ya fue cerrada para el día de hoy.', 409);
+  }
 
   const salesRows = await db
     .select()
@@ -975,7 +1021,7 @@ async function _createCorteCaja(data: {
     .where(
       and(
         eq(saleRecords.storeId, storeId),
-        sql`(${saleRecords.date} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date AND ${saleRecords.status} != 'cancelada'`,
+        sql`(${saleRecords.date} AT TIME ZONE 'UTC' AT TIME ZONE ${businessTimezone})::date = ${todayStr}::date AND ${saleRecords.status} != 'cancelada'`,
       ),
     );
 
@@ -994,7 +1040,7 @@ async function _createCorteCaja(data: {
     .where(
       and(
         eq(gastos.storeId, storeId),
-        sql`(${gastos.fecha} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`,
+        sql`(${gastos.fecha} AT TIME ZONE 'UTC' AT TIME ZONE ${businessTimezone})::date = ${todayStr}::date`,
       ),
     );
   const gastosDelDia = gastosRows.reduce((sum, g) => sum + numVal(g.monto), 0);
@@ -1024,6 +1070,7 @@ async function _createCorteCaja(data: {
   await db.insert(cortesCaja).values({
     id: corte.id,
     fecha: new Date(),
+    businessDate: todayStr,
     cajero: corte.cajero,
     ventasEfectivo: String(corte.ventasEfectivo),
     ventasTarjeta: String(corte.ventasTarjeta),
@@ -1055,72 +1102,8 @@ async function _createCorteCaja(data: {
 }
 
 async function _createAutoCorteCaja(): Promise<void> {
-  await requirePermission('corte.create');
   const { storeId } = await requireStoreScope();
-  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
-
-  await withLock(
-    `corte:auto:${storeId}:${todayStr}`,
-    async () => {
-      const [existingCorte] = await db
-        .select({ id: cortesCaja.id })
-        .from(cortesCaja)
-        .where(
-          and(
-            eq(cortesCaja.storeId, storeId),
-            sql`(${cortesCaja.fecha} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`,
-          ),
-        )
-        .limit(1);
-      if (existingCorte) return;
-
-      const todaySales = await db
-        .select()
-        .from(saleRecords)
-        .where(
-          and(
-            eq(saleRecords.storeId, storeId),
-            sql`(${saleRecords.date} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date AND ${saleRecords.status} != 'cancelada'`,
-          ),
-        );
-      if (todaySales.length === 0) return;
-
-      const summary = summarizeSalesByPaymentMethod(todaySales);
-      const todayGastosRows = await db
-        .select({ monto: gastos.monto })
-        .from(gastos)
-        .where(
-          and(
-            eq(gastos.storeId, storeId),
-            sql`(${gastos.fecha} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date = ${todayStr}::date`,
-          ),
-        );
-      const todayGastos = todayGastosRows.reduce((sum, gasto) => sum + numVal(gasto.monto), 0);
-      const fondoInicial = 500;
-      const efectivoEsperado = fondoInicial + summary.ventasEfectivo - todayGastos;
-
-      await db.insert(cortesCaja).values({
-        id: `corte-${crypto.randomUUID()}`,
-        fecha: new Date(),
-        cajero: 'Sistema (automático)',
-        ventasEfectivo: String(summary.ventasEfectivo),
-        ventasTarjeta: String(summary.ventasTarjeta),
-        ventasTransferencia: String(summary.ventasTransferencia),
-        ventasFiado: String(summary.ventasFiado),
-        totalVentas: String(summary.totalVentas),
-        totalTransacciones: summary.totalTransacciones,
-        efectivoEsperado: String(efectivoEsperado),
-        efectivoContado: String(efectivoEsperado),
-        diferencia: '0',
-        fondoInicial: String(fondoInicial),
-        gastosDelDia: String(todayGastos),
-        notas: 'Corte automático generado a medianoche',
-        status: 'cerrado',
-        storeId,
-      });
-    },
-    { ttlMs: 15_000, waitMs: 2_000 },
-  );
+  await runAutoCashCloseForStore(storeId);
 }
 
 async function _deleteCortes(corteIds: string[]): Promise<void> {

@@ -4,6 +4,7 @@ import { requireOwner } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { withLogging } from '@/lib/errors';
 import { redactStoreConfigSecrets, toPublicDisplayConfig } from '@/lib/store-config-public';
+import type { PublicDisplayContext } from '@/lib/store-config-public';
 import { getStoreConfig, saveStoreConfigForOwner } from '@/server/store-config-service';
 import type { StoreConfig } from '@/types';
 
@@ -22,9 +23,10 @@ async function _fetchStoreConfig(): Promise<StoreConfig> {
   };
 }
 
-async function _fetchPublicDisplayConfig() {
+async function _fetchPublicDisplayConfig(): Promise<PublicDisplayContext> {
+  const { storeId } = await requireStoreScope();
   const config = await getStoreConfig();
-  return toPublicDisplayConfig(config);
+  return { storeId, config: toPublicDisplayConfig(config) };
 }
 
 async function _saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig> {

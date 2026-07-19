@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Popover, ActionList, Icon, Spinner, UnstyledButton } from '@shopify/polaris';
 import { StoreIcon, CheckSmallIcon, ChevronDownIcon, PlusIcon } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
@@ -12,6 +13,7 @@ export interface StoreInfo {
 }
 
 export function StoreSelector() {
+  const router = useRouter();
   const [active, setActive] = useState(false);
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const activeStoreId = useDashboardStore((s) => s.activeStoreId);
@@ -70,7 +72,10 @@ export function StoreSelector() {
           {
             content: 'Crear otro negocio',
             prefix: <Icon source={PlusIcon} />,
-            onAction: () => window.location.assign('/auth/register?mode=additional'),
+            onAction: () => {
+              setActive(false);
+              router.push('/dashboard/businesses/new');
+            },
             disabled: changing,
           },
         ]}

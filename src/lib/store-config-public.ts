@@ -36,6 +36,9 @@ export type PublicDisplayConfig = Pick<
   | 'phone'
   | 'logoUrl'
   | 'clabeNumber'
+  | 'currency'
+  | 'ivaRate'
+  | 'pricesIncludeIva'
   | 'customerDisplayEnabled'
   | 'customerDisplayWelcome'
   | 'customerDisplayFarewell'
@@ -57,7 +60,12 @@ export type PublicDisplayConfig = Pick<
   | 'customerDisplayMessageStyle'
 >;
 
-/** Explicit allowlist for the unauthenticated customer display. */
+export interface PublicDisplayContext {
+  storeId: string;
+  config: PublicDisplayConfig;
+}
+
+/** Explicit allowlist for the customer-facing display payload. */
 export function toPublicDisplayConfig(config: StoreConfig): PublicDisplayConfig {
   return {
     storeName: config.storeName,
@@ -65,6 +73,9 @@ export function toPublicDisplayConfig(config: StoreConfig): PublicDisplayConfig 
     phone: config.phone,
     logoUrl: config.logoUrl,
     clabeNumber: config.clabeNumber,
+    currency: config.currency,
+    ivaRate: config.ivaRate,
+    pricesIncludeIva: config.pricesIncludeIva,
     customerDisplayEnabled: config.customerDisplayEnabled,
     customerDisplayWelcome: config.customerDisplayWelcome,
     customerDisplayFarewell: config.customerDisplayFarewell,

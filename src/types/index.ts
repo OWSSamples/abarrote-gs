@@ -310,6 +310,7 @@ export interface StoreConfig {
   lowStockThreshold: string;
   expirationWarningDays: string;
   printReceipts: boolean;
+  openCashDrawerOnCashSale: boolean;
   autoBackup: boolean;
   ticketFooter: string;
   ticketServicePhone: string;
@@ -397,8 +398,12 @@ export interface StoreConfig {
   clipApiKey?: string;
   clipSerialNumber?: string;
   // System Schedules
+  salesScheduleEnabled: boolean;
+  salesOpenTime: string;
   closeSystemTime: string;
+  autoCorteEnabled: boolean;
   autoCorteTime: string;
+  businessTimezone: string;
   defaultStartingFund: number;
   // Customer Display
   customerDisplayEnabled: boolean;
@@ -462,6 +467,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   lowStockThreshold: '25',
   expirationWarningDays: '7',
   printReceipts: true,
+  openCashDrawerOnCashSale: false,
   autoBackup: false,
   ticketFooter: 'Espera algo especial\nSU TICKET DE COMPRA SERA\nREVISADO AL SALIR DE ACUERDO\nAL REGLAMENTO',
   ticketServicePhone: '800-000-0000',
@@ -495,8 +501,12 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   pointsValue: 1, // 1 point = $1 discount
   inventoryGeneralColumns: '["title","sku","available","onHand"]',
   defaultMargin: '30',
+  salesScheduleEnabled: false,
+  salesOpenTime: '06:00',
   closeSystemTime: '23:00',
+  autoCorteEnabled: false,
   autoCorteTime: '00:00',
+  businessTimezone: 'America/Mexico_City',
   defaultStartingFund: 500,
   mpEnabled: false,
   conektaEnabled: false,

@@ -1,0 +1,68 @@
+.sectionTrigger {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 2px 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sectionTrigger:focus-visible {
+  outline: 2px solid var(--p-color-border-focus, #005bd3);
+  outline-offset: 3px;
+}
+
+.sectionIcon,
+.sectionChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.sectionCopy {
+  display: grid;
+  min-width: 0;
+  row-gap: 3px;
+}
+
+.sectionTitle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.sectionTitleText,
+.sectionDescription {
+  display: block;
+  min-width: 0;
+}
+
+.sectionDescription {
+  line-height: 1.35;
+}
+
+.sectionChevron {
+  justify-self: end;
+  transition: color 120ms ease;
+}
+
+.sectionTrigger:hover .sectionChevron {
+  color: var(--p-color-text, #303030);
+}
+
+@media screen and (max-width: 489px) {
+  .sectionTrigger {
+    grid-template-columns: 18px minmax(0, 1fr) 18px;
+    column-gap: 10px;
+  }
+}

@@ -15,6 +15,8 @@ interface PrintOptions {
   fallbackHtml?: string;
 }
 
+const sharedPrinter = new ThermalPrinter();
+
 /**
  * useTicketPrinter — Unified printing driver.
  *
@@ -25,35 +27,23 @@ interface PrintOptions {
  */
 export function useTicketPrinter() {
   const toast = useToast();
-  const printerRef = useRef<ThermalPrinter | null>(null);
-  const [printerStatus, setPrinterStatus] = useState<PrinterStatus>('disconnected');
-  const [printerInfo, setPrinterInfo] = useState<PrinterInfo>({
-    status: 'disconnected',
-    portName: '',
-  });
+  const printerRef = useRef<ThermalPrinter>(sharedPrinter);
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus>(sharedPrinter.status);
+  const [printerInfo, setPrinterInfo] = useState<PrinterInfo>(sharedPrinter.info);
 
-  // Initialize printer instance on mount
+  // All consumers share one WebSerial session for the lifetime of the tab.
   useEffect(() => {
-    const printer = new ThermalPrinter();
-    printerRef.current = printer;
-
-    const unsubscribe = printer.onStatusChange((info) => {
+    setPrinterStatus(sharedPrinter.status);
+    setPrinterInfo(sharedPrinter.info);
+    return sharedPrinter.onStatusChange((info) => {
       setPrinterStatus(info.status);
       setPrinterInfo(info);
     });
-
-    return () => {
-      unsubscribe();
-      printer.destroy();
-      printerRef.current = null;
-    };
   }, []);
 
   /** Connect to a thermal printer via WebSerial (requires user gesture) */
   const connectPrinter = useCallback(async (): Promise<boolean> => {
     const printer = printerRef.current;
-    if (!printer) return false;
-
     if (!ThermalPrinter.isSupported()) {
       toast.showError('WebSerial no disponible. Usa Chrome o Edge en escritorio.');
       return false;
@@ -68,7 +58,7 @@ export function useTicketPrinter() {
 
   /** Disconnect from the thermal printer */
   const disconnectPrinter = useCallback(async (): Promise<void> => {
-    await printerRef.current?.disconnect();
+    await printerRef.current.disconnect();
     toast.showInfo('Impresora desconectada');
   }, [toast]);
 
@@ -83,7 +73,7 @@ export function useTicketPrinter() {
       invariant(ticketData, 'No hay datos proporcionados para la impresión del ticket.');
 
       const printer = printerRef.current;
-      const isThermalReady = printer && printer.status === 'ready';
+      const isThermalReady = printer.status === 'ready';
 
       try {
         // Strategy 1: ESC/POS direct to thermal printer
@@ -120,7 +110,7 @@ export function useTicketPrinter() {
     async (pin: 2 | 5 = 2) => {
       const printer = printerRef.current;
 
-      if (printer && printer.status === 'ready') {
+      if (printer.status === 'ready') {
         const drawerCmd = buildDrawerKick(pin);
         const success = await printer.print(drawerCmd);
         if (success) {

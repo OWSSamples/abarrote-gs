@@ -132,10 +132,9 @@ const SETTINGS_CATEGORIES = [
   {
     id: 'pos',
     title: 'Punto de Venta y Recibos',
-    description: 'Personaliza los tickets impresos y la estructura de códigos de barras.',
+    description: 'Configura la operación de caja, impresión y reglas de cierre.',
     icon: PrintIcon,
     iconFilled: PrintIcon,
-    beta: true,
   },
   {
     id: 'hardware',
@@ -214,6 +213,12 @@ const SETTINGS_CATEGORIES = [
 import { uploadFile } from '@/lib/storage';
 
 export function ConfiguracionPage() {
+  const activeStoreId = useDashboardStore((s) => s.activeStoreId);
+
+  return <TenantConfigurationPage key={activeStoreId} />;
+}
+
+function TenantConfigurationPage() {
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const saveStoreConfig = useDashboardStore((s) => s.saveStoreConfig);
 
@@ -250,6 +255,7 @@ export function ConfiguracionPage() {
       lowStockThreshold: useField(storeConfig.lowStockThreshold || '25'),
       expirationWarningDays: useField(storeConfig.expirationWarningDays || '7'),
       printReceipts: useField(storeConfig.printReceipts ?? true),
+      openCashDrawerOnCashSale: useField(storeConfig.openCashDrawerOnCashSale ?? false),
       autoBackup: useField(storeConfig.autoBackup ?? false),
       ticketFooter: useField(storeConfig.ticketFooter || ''),
       ticketServicePhone: useField(storeConfig.ticketServicePhone || ''),
@@ -271,8 +277,12 @@ export function ConfiguracionPage() {
       defaultMargin: useField(storeConfig.defaultMargin || '30'),
       ticketTemplateVenta: useField(storeConfig.ticketTemplateVenta || ''),
       ticketTemplateProveedor: useField(storeConfig.ticketTemplateProveedor || ''),
+      salesScheduleEnabled: useField(storeConfig.salesScheduleEnabled ?? false),
+      salesOpenTime: useField(storeConfig.salesOpenTime || '06:00'),
       closeSystemTime: useField(storeConfig.closeSystemTime || '23:00'),
+      autoCorteEnabled: useField(storeConfig.autoCorteEnabled ?? false),
       autoCorteTime: useField(storeConfig.autoCorteTime || '00:00'),
+      businessTimezone: useField(storeConfig.businessTimezone || 'America/Mexico_City'),
       defaultStartingFund: useField(storeConfig.defaultStartingFund ?? 500),
       clabeNumber: useField(storeConfig.clabeNumber || ''),
       paypalUsername: useField(storeConfig.paypalUsername || ''),
@@ -562,23 +572,23 @@ export function ConfiguracionPage() {
       setEmailTestResult({ success: false, message: 'Configura el correo remitente y los destinatarios primero' });
       return;
     }
+    if (isDirty) {
+      setEmailTestResult({ success: false, message: 'Guarda los cambios de este negocio antes de probar el envío.' });
+      return;
+    }
     const firstRecipient = recipients.split(',')[0].trim();
     setEmailTesting(true);
     setEmailTestResult(null);
     try {
       const result = await sendTestEmailAction({
         to: firstRecipient,
-        fromEmail: from,
-        fromName: fields.emailFromName.value || config.storeName,
-        storeName: config.storeName,
-        logoUrl: config.logoUrl,
       });
       setEmailTestResult(result);
     } catch (err) {
       setEmailTestResult({ success: false, message: err instanceof Error ? err.message : 'Error al enviar correo de prueba' });
     }
     setEmailTesting(false);
-  }, [fields.emailFrom.value, fields.emailRecipients.value, fields.emailFromName.value, config.storeName, config.logoUrl]);
+  }, [fields.emailFrom.value, fields.emailRecipients.value, isDirty]);
 
   // ================= MAIN RENDER ================= //
 

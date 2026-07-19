@@ -5,7 +5,6 @@ import { pgTable, text, integer, boolean, numeric, timestamp, date, index, jsonb
 export const storeConfig = pgTable('store_config', {
   id: text('id')
     .primaryKey()
-    .default('main')
     .references(() => stores.id),
   storeName: text('store_name').notNull().default('MI TIENDA'),
   legalName: text('legal_name').notNull().default('MI TIENDA S DE RL DE CV'),
@@ -35,6 +34,7 @@ export const storeConfig = pgTable('store_config', {
   lowStockThreshold: text('low_stock_threshold').notNull().default('25'),
   expirationWarningDays: text('expiration_warning_days').notNull().default('7'),
   printReceipts: boolean('print_receipts').notNull().default(true),
+  openCashDrawerOnCashSale: boolean('open_cash_drawer_on_cash_sale').notNull().default(false),
   autoBackup: boolean('auto_backup').notNull().default(false),
   ticketFooter: text('ticket_footer')
     .notNull()
@@ -147,6 +147,12 @@ export const storeConfig = pgTable('store_config', {
   aiModel: text('ai_model').notNull().default('nvidia/nemotron-3-super:free'),
   inventoryGeneralColumns: text('inventory_general_columns').notNull().default('["title","sku","available","onHand"]'),
   defaultMargin: text('default_margin').notNull().default('30'),
+  salesScheduleEnabled: boolean('sales_schedule_enabled').notNull().default(false),
+  salesOpenTime: text('sales_open_time').notNull().default('06:00'),
+  closeSystemTime: text('close_system_time').notNull().default('23:00'),
+  autoCorteEnabled: boolean('auto_corte_enabled').notNull().default(false),
+  autoCorteTime: text('auto_corte_time').notNull().default('00:00'),
+  businessTimezone: text('business_timezone').notNull().default('America/Mexico_City'),
   defaultStartingFund: numeric('default_starting_fund', { precision: 10, scale: 2 }).notNull().default('500'),
   loyaltyExpirationDays: integer('loyalty_expiration_days').notNull().default(365),
   exchangeRateUsdMxn: numeric('exchange_rate_usd_mxn', { precision: 10, scale: 4 }).notNull().default('17.5'),
@@ -160,7 +166,6 @@ export const aiProviderConfigs = pgTable(
     id: text('id').notNull(), // provider id: openrouter | openai | google | ...
     storeId: text('store_id')
       .notNull()
-      .default('main')
       .references(() => storeConfig.id, { onDelete: 'cascade' }),
     apiKeyEnc: text('api_key_enc'),
     enabled: boolean('enabled').notNull().default(false),
@@ -284,7 +289,6 @@ export const paymentProviderConnections = pgTable(
     provider: text('provider').notNull(), // 'mercadopago' | 'conekta' | 'stripe' | 'clip'
     storeId: text('store_id')
       .notNull()
-      .default('main')
       .references(() => storeConfig.id, { onDelete: 'cascade' }),
     status: text('status').notNull().default('disconnected'), // 'connected' | 'disconnected' | 'expired'
     accessTokenEnc: text('access_token_enc'),
@@ -319,7 +323,6 @@ export const oauthStates = pgTable(
     provider: text('provider').notNull(),
     storeId: text('store_id')
       .notNull()
-      .default('main')
       .references(() => storeConfig.id, { onDelete: 'cascade' }),
     codeVerifier: text('code_verifier').notNull(),
     state: text('state').notNull().unique(),
@@ -808,6 +811,7 @@ export const cortesCaja = pgTable(
   {
     id: text('id').primaryKey(),
     fecha: timestamp('fecha').notNull().defaultNow(),
+    businessDate: date('business_date').notNull().default(sql`CURRENT_DATE`),
     cajero: text('cajero').notNull(),
     ventasEfectivo: numeric('ventas_efectivo', { precision: 10, scale: 2 }).notNull(),
     ventasTarjeta: numeric('ventas_tarjeta', { precision: 10, scale: 2 }).notNull(),
@@ -830,6 +834,7 @@ export const cortesCaja = pgTable(
   (t) => [
     index('cortes_caja_fecha_idx').on(t.fecha),
     index('cortes_caja_store_idx').on(t.storeId),
+    index('cortes_caja_store_business_date_idx').on(t.storeId, t.businessDate),
     uniqueIndex('cortes_caja_store_id_unique_idx').on(t.storeId, t.id),
   ],
 );

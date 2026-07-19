@@ -3,6 +3,7 @@ import { DEFAULT_STORE_CONFIG } from '@/types';
 import type { DashboardStore } from './types';
 import { fetchDashboardFromDB, saveStoreConfig as dbSaveStoreConfig } from '@/app/actions/db-actions';
 import { toPublicDisplayConfig } from '@/lib/store-config-public';
+import { getCustomerDisplayChannelName } from '@/lib/customer-display-channel';
 import { logger } from '@/lib/logger';
 import { parseError } from '@/lib/errors';
 
@@ -167,7 +168,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => {
 
         // Broadcast config change to /display window
         try {
-          const channel = new BroadcastChannel('customer_display');
+          const channel = new BroadcastChannel(getCustomerDisplayChannelName(updatedConfig.id));
           channel.postMessage({ type: 'UPDATE_CONFIG', payload: toPublicDisplayConfig(updatedConfig) });
           channel.close();
         } catch {

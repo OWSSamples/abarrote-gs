@@ -51,28 +51,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [user, getUserRole]);
 
-  // Handle auto-corte based on config time
+  // Trigger the idempotent server-side close while an authenticated console is active.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !storeConfig.autoCorteEnabled) return;
 
-    const interval = setInterval(
-      () => {
-        const now = new Date();
-        const currentH = now.getHours().toString().padStart(2, '0');
-        const currentM = now.getMinutes().toString().padStart(2, '0');
-        const currentTime = `${currentH}:${currentM}`;
-
-        // If we reach or pass the auto-corte time, trigger it
-        // The server action handles idempotency for today
-        if (storeConfig.autoCorteTime && currentTime >= storeConfig.autoCorteTime) {
-          checkMidnightCorte();
-        }
-      },
-      1000 * 60 * 10,
-    ); // Check every 10 mins
+    const runAutoClose = () => void checkMidnightCorte();
+    runAutoClose();
+    const interval = setInterval(runAutoClose, 1000 * 60 * 5);
 
     return () => clearInterval(interval);
-  }, [user, storeConfig.autoCorteTime, checkMidnightCorte]);
+  }, [user, storeConfig.autoCorteEnabled, storeConfig.autoCorteTime, checkMidnightCorte]);
 
   // Handle Auth Expiration: FORCE REDIRECT - NO VISUALIZATION ALLOWED
   // IMPORTANT: Only trigger logout for SPECIFIC auth error patterns from auth guard,

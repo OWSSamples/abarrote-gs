@@ -188,6 +188,8 @@ function mapStoreConfigRow(row: any): StoreConfig {
     lowStockThreshold: row.lowStockThreshold,
     expirationWarningDays: row.expirationWarningDays,
     printReceipts: row.printReceipts,
+    openCashDrawerOnCashSale:
+      row.openCashDrawerOnCashSale ?? DEFAULT_STORE_CONFIG.openCashDrawerOnCashSale,
     autoBackup: row.autoBackup,
     ticketFooter: row.ticketFooter,
     ticketServicePhone: row.ticketServicePhone,
@@ -233,9 +235,16 @@ function mapStoreConfigRow(row: any): StoreConfig {
     customerDisplayFarewell: row.customerDisplayFarewell ?? DEFAULT_STORE_CONFIG.customerDisplayFarewell,
     customerDisplayPromoText: row.customerDisplayPromoText ?? DEFAULT_STORE_CONFIG.customerDisplayPromoText,
     customerDisplayPromoImage: row.customerDisplayPromoImage ?? DEFAULT_STORE_CONFIG.customerDisplayPromoImage,
+    salesScheduleEnabled:
+      row.salesScheduleEnabled ?? DEFAULT_STORE_CONFIG.salesScheduleEnabled,
+    salesOpenTime: (row.salesOpenTime as string) ?? DEFAULT_STORE_CONFIG.salesOpenTime,
     closeSystemTime: (row.closeSystemTime as string) ?? DEFAULT_STORE_CONFIG.closeSystemTime,
+    autoCorteEnabled: row.autoCorteEnabled ?? DEFAULT_STORE_CONFIG.autoCorteEnabled,
     autoCorteTime: (row.autoCorteTime as string) ?? DEFAULT_STORE_CONFIG.autoCorteTime,
-    defaultStartingFund: Number(row.defaultStartingFund) || DEFAULT_STORE_CONFIG.defaultStartingFund,
+    businessTimezone: (row.businessTimezone as string) ?? DEFAULT_STORE_CONFIG.businessTimezone,
+    defaultStartingFund: Number.isFinite(Number(row.defaultStartingFund))
+      ? Number(row.defaultStartingFund)
+      : DEFAULT_STORE_CONFIG.defaultStartingFund,
     customerDisplayIdleAnimation: row.customerDisplayIdleAnimation ?? DEFAULT_STORE_CONFIG.customerDisplayIdleAnimation,
     customerDisplayTransitionSpeed:
       row.customerDisplayTransitionSpeed ?? DEFAULT_STORE_CONFIG.customerDisplayTransitionSpeed,

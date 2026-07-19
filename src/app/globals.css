@@ -183,6 +183,46 @@ body,
   outline: none;
 }
 
+/* POS settings: compact enterprise rows inside one Polaris surface. */
+.pos-settings-console .Polaris-Tabs__Wrapper {
+  padding-inline: 12px;
+  border-bottom: 1px solid var(--p-color-border-secondary, #e3e3e3);
+}
+
+.pos-settings-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.2fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: start;
+  padding: 28px 32px;
+  border-top: 1px solid var(--p-color-border-secondary, #e3e3e3);
+}
+
+.pos-settings-row__control {
+  min-width: 0;
+  width: 100%;
+  max-width: 640px;
+  justify-self: end;
+}
+
+.pos-settings-grid-span {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+@media screen and (max-width: 768px) {
+  .pos-settings-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding: 20px 16px;
+  }
+
+  .pos-settings-row__control {
+    max-width: none;
+    justify-self: stretch;
+  }
+}
+
 /* Ocultación radical de scrollbar en todos los niveles */
 html,
 body,

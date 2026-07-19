@@ -36,6 +36,9 @@ import { PaymentDetailsSection } from './sale/PaymentDetailsSection';
 import { PinPadModal } from './PinPadModal';
 import { posEngine } from '@/lib/pos/pos-engine';
 import { sendTicketEmailAction } from '@/app/actions/email-actions';
+import { evaluateSalesSchedule } from '@/domain/services/pos-operating-hours';
+import { buildSaleTicket, resolveDrawerPin } from '@/lib/escpos';
+import { getCustomerDisplayChannelName } from '@/lib/customer-display-channel';
 
 interface SaleTicketModalProps {
   open: boolean;
@@ -218,7 +221,8 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
   });
 
   // Ticket printer
-  const { printTicket } = useTicketPrinter();
+  const { printTicket, openDrawer } = useTicketPrinter();
+  const autoHandledSaleRef = useRef<string | null>(null);
 
   // ── Callbacks ──
 
@@ -514,7 +518,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
 
   // ── Customer Display Synchronization ──
   useEffect(() => {
-    const channel = new BroadcastChannel('customer_display');
+    const channel = new BroadcastChannel(getCustomerDisplayChannelName(storeConfig.id));
 
     // Determine status
     let status: 'idle' | 'active' | 'paying' | 'finished' = 'idle';
@@ -537,6 +541,10 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         paymentMethod: fields.paymentMethod.value,
         status,
         folio: completedSale?.folio,
+        amountPaid:
+          completedSale?.amountPaid ??
+          (fields.paymentMethod.value === 'efectivo' ? Number(fields.amountPaid.value) || 0 : total),
+        change: completedSale?.change ?? (fields.paymentMethod.value === 'efectivo' ? change : 0),
       },
     });
 
@@ -555,11 +563,11 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
       return;
     }
 
-    // Verificar horario de cierre
-    const now = new Date();
-    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    if (storeConfig.closeSystemTime && currentTime >= storeConfig.closeSystemTime) {
-      showError(`Sistema cerrado. Cierre: ${storeConfig.closeSystemTime}`);
+    const schedule = evaluateSalesSchedule(storeConfig);
+    if (!schedule.allowed) {
+      showError(
+        `Punto de venta fuera de horario. Opera de ${storeConfig.salesOpenTime} a ${storeConfig.closeSystemTime}.`,
+      );
       return;
     }
 
@@ -592,7 +600,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     total,
     clientes,
     mpConfig.enabled,
-    storeConfig.closeSystemTime,
+    storeConfig,
     validateCheckout,
     showError,
     finishSale,
@@ -734,6 +742,72 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
     return '';
   }, [completedSale, storeConfig, clientes, fields.clienteId.value]);
 
+  const escposData = useMemo(() => {
+    if (!completedSale) return undefined;
+    const saleDate = new Date(completedSale.date);
+    const cliente = clientes.find((candidate) => candidate.id === fields.clienteId.value);
+    return buildSaleTicket(
+      {
+        storeName: storeConfig.storeName || 'Tienda',
+        address: storeConfig.address,
+        phone: storeConfig.phone,
+        rfc: storeConfig.rfc,
+        folio: completedSale.folio,
+        date: saleDate.toLocaleDateString('es-MX'),
+        time: saleDate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+        cashier: completedSale.cajero,
+        paymentMethod: PAYMENT_LABELS[completedSale.paymentMethod] ?? completedSale.paymentMethod,
+        items: completedSale.items.map((item) => ({
+          name: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal,
+          sku: item.sku,
+        })),
+        subtotal: completedSale.subtotal,
+        iva: completedSale.iva ?? 0,
+        discount: completedSale.discount ?? 0,
+        total: completedSale.total,
+        amountPaid: completedSale.amountPaid ?? completedSale.total,
+        change: completedSale.change ?? 0,
+        clientName: cliente?.name,
+        footer: storeConfig.ticketFooter,
+        servicePhone: storeConfig.ticketServicePhone,
+        vigencia: storeConfig.ticketVigencia,
+      },
+      false,
+      resolveDrawerPin(storeConfig.cashDrawerPort),
+    );
+  }, [completedSale, clientes, fields.clienteId.value, storeConfig]);
+
+  useEffect(() => {
+    if (!completedSale || autoHandledSaleRef.current === completedSale.id) return;
+
+    const shouldOpenDrawer =
+      storeConfig.openCashDrawerOnCashSale && completedSale.paymentMethod === 'efectivo';
+    const shouldPrint = storeConfig.printReceipts && Boolean(designHtml);
+    if (!shouldOpenDrawer && !shouldPrint) return;
+
+    autoHandledSaleRef.current = completedSale.id;
+    void (async () => {
+      if (shouldOpenDrawer) {
+        await openDrawer(resolveDrawerPin(storeConfig.cashDrawerPort));
+      }
+      if (shouldPrint) {
+        await printTicket(completedSale, { escposData, fallbackHtml: designHtml });
+      }
+    })();
+  }, [
+    completedSale,
+    designHtml,
+    escposData,
+    openDrawer,
+    printTicket,
+    storeConfig.cashDrawerPort,
+    storeConfig.openCashDrawerOnCashSale,
+    storeConfig.printReceipts,
+  ]);
+
   // ── Ticket preview (after sale completed) ──
   if (completedSale) {
     return (
@@ -745,7 +819,7 @@ export function SaleTicketModal({ open, onClose }: SaleTicketModalProps) {
         clientes={clientes}
         customerEmail={customerEmail}
         designHtml={designHtml}
-        onPrint={() => printTicket(completedSale, { fallbackHtml: designHtml || undefined })}
+        onPrint={() => printTicket(completedSale, { escposData, fallbackHtml: designHtml || undefined })}
         onNewSale={resetForm}
         onClose={handleClose}
       />

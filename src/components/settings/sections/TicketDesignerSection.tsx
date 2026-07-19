@@ -20,7 +20,6 @@ import {
   Button,
   Collapsible,
   Tooltip,
-  ProgressBar,
 } from '@shopify/polaris';
 import {
   ReceiptIcon,
@@ -65,6 +64,7 @@ import {
   DEFAULT_SECTION_ORDER,
   DEFAULT_SECTION_ORDER_PROVEEDOR,
 } from '@/types';
+import styles from './TicketDesignerSection.module.css';
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -108,11 +108,11 @@ const FONT_OPTS: { label: string; value: TicketFontSize }[] = [
 ];
 
 const SEP_OPTS: { label: string; value: TicketSeparatorStyle }[] = [
-  { label: '─ Guiones', value: 'dashes' },
-  { label: '· Puntos', value: 'dots' },
-  { label: '━ Línea', value: 'line' },
-  { label: '═ Doble', value: 'double' },
-  { label: '✦ Estrellas', value: 'stars' },
+  { label: 'Guiones', value: 'dashes' },
+  { label: 'Puntos', value: 'dots' },
+  { label: 'Línea continua', value: 'line' },
+  { label: 'Línea doble', value: 'double' },
+  { label: 'Estrellas', value: 'stars' },
   { label: 'Ninguno', value: 'none' },
 ];
 
@@ -204,40 +204,38 @@ function SectionHeader({
   description?: string;
 }) {
   return (
-    <div
+    <button
+      type="button"
+      className={styles.sectionTrigger}
       onClick={onToggle}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') onToggle();
-      }}
-      style={{ cursor: 'pointer', userSelect: 'none' }}
+      aria-expanded={open}
     >
-      <BlockStack gap="100">
-        <InlineStack align="space-between" blockAlign="center">
-          <InlineStack gap="300" blockAlign="center">
-            <Box background="bg-surface-secondary" borderRadius="200" padding="150">
-              <Icon source={icon} tone="base" />
-            </Box>
-            <Text variant="headingSm" as="h3">
+      <span className={styles.sectionIcon} aria-hidden="true">
+        <Icon source={icon} tone="base" />
+      </span>
+      <span className={styles.sectionCopy}>
+        <span className={styles.sectionTitle}>
+          <span className={styles.sectionTitleText}>
+            <Text variant="headingSm" as="span">
               {title}
             </Text>
-            {badge && <Badge tone="info">{badge}</Badge>}
-          </InlineStack>
-          <Icon source={open ? ChevronUpIcon : ChevronDownIcon} tone="subdued" />
-        </InlineStack>
+          </span>
+          {badge && <Badge tone="info">{badge}</Badge>}
+        </span>
         {description && !open && (
-          <Box paddingInlineStart="1000">
-            <Text as="p" variant="bodySm" tone="subdued">
+          <span className={styles.sectionDescription}>
+            <Text as="span" variant="bodySm" tone="subdued">
               {description}
             </Text>
-          </Box>
+          </span>
         )}
-      </BlockStack>
-    </div>
+      </span>
+      <span className={styles.sectionChevron} aria-hidden="true">
+        <Icon source={open ? ChevronUpIcon : ChevronDownIcon} tone="subdued" />
+      </span>
+    </button>
   );
 }
-
 // ═══════════════════════════════════════════════════════════
 // Section labels for reorder panel
 // ═══════════════════════════════════════════════════════════
@@ -285,7 +283,6 @@ function SortableSectionRow({ id }: { id: TicketSectionKey }) {
               {SECTION_LABELS[id]}
             </Text>
           </InlineStack>
-          <Badge tone="info">{String(SECTION_LABELS[id].length > 0 ? '☰' : '')}</Badge>
         </InlineStack>
       </Box>
     </div>
@@ -448,15 +445,13 @@ export function TicketDesignerSection() {
 
   // ── Stats ──
   const enabledCount = useMemo(() => countEnabled(currentDesign), [currentDesign]);
-  const maxFields = ALL_BOOL_FIELDS.length;
-  const completionPct = Math.round((enabledCount / maxFields) * 100);
 
   const isBusy = isPending || status === 'saving';
 
   const tabs = [
-    { id: 'venta', content: '🧾 Ticket de Venta' },
-    { id: 'corte', content: '💰 Corte de Caja' },
-    { id: 'proveedor', content: '📦 Orden de Proveedor' },
+    { id: 'venta', content: 'Ticket de venta' },
+    { id: 'corte', content: 'Corte de caja' },
+    { id: 'proveedor', content: 'Orden de proveedor' },
   ];
 
   const tabDescriptions: Record<TicketTab, string> = {
@@ -491,23 +486,18 @@ export function TicketDesignerSection() {
       <Card padding="0">
         <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
           <Box padding="400" paddingBlockStart="300">
-            <BlockStack gap="300">
-              <InlineStack align="space-between" blockAlign="center">
-                <InlineStack gap="200" blockAlign="center">
-                  <Icon source={tabIcons[activeTab]} tone="base" />
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    {tabDescriptions[activeTab]}
-                  </Text>
-                </InlineStack>
-                <InlineStack gap="200" blockAlign="center">
-                  {isBusy && <Badge tone="attention">Guardando…</Badge>}
-                  <Badge>{`${enabledCount} campos activos`}</Badge>
-                </InlineStack>
+            <InlineStack align="space-between" blockAlign="center">
+              <InlineStack gap="200" blockAlign="center">
+                <Icon source={tabIcons[activeTab]} tone="base" />
+                <Text as="p" variant="bodySm" tone="subdued">
+                  {tabDescriptions[activeTab]}
+                </Text>
               </InlineStack>
-              <Tooltip content={`${enabledCount} de ${maxFields} campos habilitados (${completionPct}%)`}>
-                <ProgressBar progress={completionPct} tone="primary" size="small" />
-              </Tooltip>
-            </BlockStack>
+              <InlineStack gap="200" blockAlign="center">
+                {isBusy && <Badge tone="attention">Guardando...</Badge>}
+                <Badge>{`${enabledCount} campos activos`}</Badge>
+              </InlineStack>
+            </InlineStack>
           </Box>
         </Tabs>
       </Card>

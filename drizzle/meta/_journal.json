@@ -253,6 +253,20 @@
       "when": 1784505600000,
       "tag": "0035_tenant_role_boundaries",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784592000000,
+      "tag": "0036_pos_operational_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1784678400000,
+      "tag": "0037_tenant_configuration_fail_closed",
+      "breakpoints": true
     }
   ]
 }

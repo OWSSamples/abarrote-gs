@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sendDailyTelegramReport } from '@/app/actions/analytics-advanced-actions';
 import { logger } from '@/lib/logger';
 import { idempotencyCheck } from '@/infrastructure/redis';
-import { env } from '@/lib/env';
+import { verifyCronAuth } from '../_auth';
 
 /**
  * Cron endpoint for the automated daily Telegram report.
@@ -15,13 +15,8 @@ import { env } from '@/lib/env';
  * Protected by a shared secret to prevent unauthorized triggers.
  */
 export async function GET(req: NextRequest) {
-  const cronSecret = env.CRON_SECRET;
-  const authHeader = req.headers.get('authorization');
-
-  // CRON_SECRET is mandatory — if not set, reject all requests
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+  const unauthorized = verifyCronAuth(req);
+  if (unauthorized) return unauthorized;
 
   try {
     // Idempotency: prevent duplicate reports if cron retries

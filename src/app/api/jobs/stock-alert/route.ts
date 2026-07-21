@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyQStashSignature } from '@/infrastructure/qstash';
+import { readVerifiedJobBody } from '../_verify';
 import { logger } from '@/lib/logger';
+import { escapeTelegramHtml } from '@/lib/text-escape';
 import { stockAlertPayloadSchema, parseJobPayload } from '@/infrastructure/jobs/schemas';
 
 // ══════════════════════════════════════════════════════════════
@@ -14,15 +15,10 @@ import { stockAlertPayloadSchema, parseJobPayload } from '@/infrastructure/jobs/
 // Payload: { storeId: string, productName: string, currentStock: number, minStock: number }
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  const signature = request.headers.get('upstash-signature') ?? '';
+  const verified = await readVerifiedJobBody(request);
+  if (!verified.ok) return verified.response;
 
-  const isValid = await verifyQStashSignature(signature, body);
-  if (!isValid) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const parsed = parseJobPayload(stockAlertPayloadSchema, body);
+  const parsed = parseJobPayload(stockAlertPayloadSchema, verified.body);
   if (!parsed.success) {
     logger.warn('Stock alert invalid payload', { action: 'job_stock_alert_validation', error: parsed.error });
     return NextResponse.json({ error: parsed.error }, { status: 400 });
@@ -33,7 +29,7 @@ export async function POST(request: NextRequest) {
     const { sendNotificationDirect } = await import('@/infrastructure/qstash/handlers');
     await sendNotificationDirect(
       `<b>REPORTE DE STOCK CRÍTICO</b>\n\n` +
-        `Producto: ${escapeHTML(payload.productName)}\n` +
+        `Producto: ${escapeTelegramHtml(payload.productName)}\n` +
         `Stock actual: ${payload.currentStock}\n` +
         `Mínimo sugerido: ${payload.minStock}`,
       payload.storeId,
@@ -47,9 +43,4 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
   }
-}
-
-function escapeHTML(text: string): string {
-  if (!text) return '';
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyQStashSignature } from '@/infrastructure/qstash';
+import { readVerifiedJobBody } from '../_verify';
 import { logger } from '@/lib/logger';
 import { db } from '@/db';
 import { storeConfig, stores } from '@/db/schema';
@@ -17,13 +17,8 @@ import { sendNotificationDirect } from '@/infrastructure/qstash/handlers';
 // Payload: {} (no data needed)
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  const signature = request.headers.get('upstash-signature') ?? '';
-
-  const isValid = await verifyQStashSignature(signature, body);
-  if (!isValid) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const verified = await readVerifiedJobBody(request);
+  if (!verified.ok) return verified.response;
 
   try {
     const activeStores = await db

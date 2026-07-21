@@ -14,6 +14,7 @@
 
 import { logger } from '@/lib/logger';
 import { constantTimeStringEqual } from '@/lib/constant-time';
+import { requestJson } from './http-client';
 import type {
   ServiciosProvider,
   TopupRequest,
@@ -58,35 +59,18 @@ export class InfopagoProvider implements ServiciosProvider {
     this.baseUrl = sandbox ? SANDBOX_BASE_URL : PROD_BASE_URL;
   }
 
-  private async request<T>(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.apiKey}`,
-    };
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const msg = (data as { message?: string }).message ?? `HTTP ${response.status}`;
-        throw new Error(`Infopago API error: ${msg}`);
-      }
-
-      return data as T;
-    } finally {
-      clearTimeout(timeout);
-    }
+  private request<T>(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<T> {
+    return requestJson<T>({
+      method,
+      url: `${this.baseUrl}${path}`,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body,
+      formatError: (status, data) =>
+        `Infopago API error: ${(data as { message?: string }).message ?? `HTTP ${status}`}`,
+    });
   }
 
   // ── Health Check ──

@@ -21,6 +21,7 @@ import { getAppUrl } from '@/lib/env';
 import { AuthError, requireAuth, requirePermission } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { withLogging, ValidationError } from '@/lib/errors';
+import { escapeHtml } from '@/lib/text-escape';
 import type { TenantInvitation } from '@/types';
 
 const INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
@@ -36,16 +37,6 @@ function normalizeEmail(value: string): string {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[char] ?? char);
 }
 
 function maskEmail(email: string): string {

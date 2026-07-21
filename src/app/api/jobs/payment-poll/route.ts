@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyQStashSignature } from '@/infrastructure/qstash';
+import { readVerifiedJobBody } from '../_verify';
 import { logger } from '@/lib/logger';
 import { paymentPollPayloadSchema, parseJobPayload } from '@/infrastructure/jobs/schemas';
 
@@ -14,15 +14,10 @@ import { paymentPollPayloadSchema, parseJobPayload } from '@/infrastructure/jobs
 // Payload: { storeId: string, chargeId: string, provider: 'conekta' | 'stripe' | 'clip' }
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  const signature = request.headers.get('upstash-signature') ?? '';
+  const verified = await readVerifiedJobBody(request);
+  if (!verified.ok) return verified.response;
 
-  const isValid = await verifyQStashSignature(signature, body);
-  if (!isValid) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const parsed = parseJobPayload(paymentPollPayloadSchema, body);
+  const parsed = parseJobPayload(paymentPollPayloadSchema, verified.body);
   if (!parsed.success) {
     logger.warn('Payment poll invalid payload', { action: 'job_payment_poll_validation', error: parsed.error });
     return NextResponse.json({ error: parsed.error }, { status: 400 });

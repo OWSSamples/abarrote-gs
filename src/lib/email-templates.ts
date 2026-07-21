@@ -13,6 +13,8 @@
  * - Light/professional aesthetic
  */
 
+import { escapeHtml } from '@/lib/text-escape';
+
 // ══════════════════════════════════════════════════════════════
 // SHARED LAYOUT
 // ══════════════════════════════════════════════════════════════
@@ -71,15 +73,6 @@ function baseLayout(opts: {
   </table>
 </body>
 </html>`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 // ══════════════════════════════════════════════════════════════

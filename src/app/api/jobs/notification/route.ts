@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyQStashSignature } from '@/infrastructure/qstash';
+import { readVerifiedJobBody } from '../_verify';
 import { logger } from '@/lib/logger';
 import { notificationPayloadSchema, parseJobPayload } from '@/infrastructure/jobs/schemas';
 
@@ -13,18 +13,15 @@ import { notificationPayloadSchema, parseJobPayload } from '@/infrastructure/job
 // Payload: { message: string, storeId: string }
 
 export async function POST(request: NextRequest) {
-  const body = await request.text();
-  const signature = request.headers.get('upstash-signature') ?? '';
-
-  const isValid = await verifyQStashSignature(signature, body);
-  if (!isValid) {
+  const verified = await readVerifiedJobBody(request);
+  if (!verified.ok) {
     logger.warn('Invalid QStash signature on notification job', {
       action: 'job_notification_auth_fail',
     });
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return verified.response;
   }
 
-  const parsed = parseJobPayload(notificationPayloadSchema, body);
+  const parsed = parseJobPayload(notificationPayloadSchema, verified.body);
   if (!parsed.success) {
     logger.warn('Notification invalid payload', { action: 'job_notification_validation', error: parsed.error });
     return NextResponse.json({ error: parsed.error }, { status: 400 });

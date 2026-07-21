@@ -2,19 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sendWeeklyTelegramReport } from '@/app/actions/analytics-advanced-actions';
 import { logger } from '@/lib/logger';
 import { idempotencyCheck } from '@/infrastructure/redis';
-import { env } from '@/lib/env';
+import { verifyCronAuth } from '../_auth';
 
 /**
  * Cron endpoint for the automated weekly Telegram report.
  * Runs every Monday at 7:00 AM CST (vercel.json).
  */
 export async function GET(req: NextRequest) {
-  const cronSecret = env.CRON_SECRET;
-  const authHeader = req.headers.get('authorization');
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+  const unauthorized = verifyCronAuth(req);
+  if (unauthorized) return unauthorized;
 
   try {
     const weekKey = getISOWeekKey();

@@ -13,6 +13,15 @@ export function formatCurrency(amount: number, currency: 'MXN' | 'USD' = 'MXN'):
 }
 
 /**
+ * Formats a number as a `$`-prefixed amount with grouped thousands and two
+ * decimals (es-MX). Unlike {@link formatCurrency}, the sign stays before the
+ * `$` (e.g. `$-5.00`).
+ */
+export function formatMoney(amount: number): string {
+  return `$${amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
  * Convert MXN to USD using the store's configured exchange rate.
  * Falls back to 17.5 if no rate is provided.
  */

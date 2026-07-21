@@ -16,6 +16,7 @@ import {
 } from '@shopify/polaris';
 import type { InventoryAgingAnalysis, AgingBucket } from '@/types';
 import { fetchInventoryAging } from '@/app/actions/analytics-advanced-actions';
+import { formatMoney } from '@/lib/utils';
 
 const BUCKET_LABELS: Record<AgingBucket, string> = {
   '0-30': '0-30 días',
@@ -30,10 +31,6 @@ const BUCKET_TONES: Record<AgingBucket, 'success' | 'info' | 'warning' | 'critic
   '60-90': 'warning',
   '90+': 'critical',
 };
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function InventoryAgingView() {
   const [data, setData] = useState<InventoryAgingAnalysis | null>(null);

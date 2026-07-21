@@ -16,13 +16,8 @@ import { isFeatureEnabled } from '@/infrastructure/feature-flags';
 import { sendEmail } from '@/lib/email';
 import { alertEmailTemplate, type AlertEmailData } from '@/lib/email-templates';
 
-/**
- * Escapes characters that would break Telegram HTML parse mode.
- */
-export function escapeHTML(text: string): string {
-  if (!text) return '';
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+/** Escapes characters that would break Telegram HTML parse mode. */
+export { escapeTelegramHtml as escapeHTML } from '@/lib/text-escape';
 
 /**
  * Sends a Telegram notification.

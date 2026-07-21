@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { expireStalePointsForStore } from '@/server/loyalty-expiration-service';
 import { logger } from '@/lib/logger';
-import { env } from '@/lib/env';
+import { verifyCronAuth } from '../_auth';
 import { db } from '@/db';
 import { storeConfig, stores } from '@/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -11,12 +11,8 @@ import { and, eq, isNull } from 'drizzle-orm';
  * Reads loyaltyExpirationDays from storeConfig (default: 365).
  */
 export async function GET(req: NextRequest) {
-  const cronSecret = env.CRON_SECRET;
-  const authHeader = req.headers.get('authorization');
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+  const unauthorized = verifyCronAuth(req);
+  if (unauthorized) return unauthorized;
 
   try {
     const configs = await db

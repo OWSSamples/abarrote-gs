@@ -6,14 +6,11 @@ import { products, saleItems, saleRecords } from '@/db/schema';
 import { isNotDeleted } from '@/infrastructure/soft-delete';
 import { getStoreConfigForStore } from '@/server/store-config-service';
 import { isTenantActive } from '@/server/tenant-status-service';
+import { escapeTelegramHtml } from '@/lib/text-escape';
 
 function numberValue(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function escapeTelegramHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export interface DailyStoreReport {

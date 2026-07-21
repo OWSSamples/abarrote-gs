@@ -4,7 +4,7 @@ import { paymentProviderConnections, oauthStates, paymentCharges } from '@/db/sc
 import { eq, lt, and } from 'drizzle-orm';
 import { refreshMPAccessToken } from '@/lib/oauth-providers';
 import { logger } from '@/lib/logger';
-import { env } from '@/lib/env';
+import { verifyCronAuth } from '../_auth';
 
 /**
  * Token maintenance cron — runs every 6 hours.
@@ -14,12 +14,8 @@ import { env } from '@/lib/env';
  * 3. Transitions stale payment charges from 'pending' → 'expired'
  */
 export async function GET(req: NextRequest) {
-  const cronSecret = env.CRON_SECRET;
-  const authHeader = req.headers.get('authorization');
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+  const unauthorized = verifyCronAuth(req);
+  if (unauthorized) return unauthorized;
 
   const results = {
     tokensRefreshed: 0,

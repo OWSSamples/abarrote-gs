@@ -16,6 +16,7 @@
 
 import { logger } from '@/lib/logger';
 import { constantTimeStringEqual } from '@/lib/constant-time';
+import { requestJson } from './http-client';
 import type {
   ServiciosProvider,
   TopupRequest,
@@ -94,36 +95,19 @@ export class TuRecargaProvider implements ServiciosProvider {
 
   // ── Helpers ──
 
-  private async request<T>(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-Api-Key': this.apiKey,
-      'X-Api-Secret': this.apiSecret,
-    };
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const err = data as { error?: TuRecargaApiError };
-        throw new Error(err.error?.message ?? `TuRecarga API error: HTTP ${response.status}`);
-      }
-
-      return data as T;
-    } finally {
-      clearTimeout(timeout);
-    }
+  private request<T>(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<T> {
+    return requestJson<T>({
+      method,
+      url: `${this.baseUrl}${path}`,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': this.apiKey,
+        'X-Api-Secret': this.apiSecret,
+      },
+      body,
+      formatError: (status, data) =>
+        (data as { error?: TuRecargaApiError }).error?.message ?? `TuRecarga API error: HTTP ${status}`,
+    });
   }
 
   private mapStatus(apiStatus: string): ProviderResponse['status'] {

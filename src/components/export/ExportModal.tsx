@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Modal, BlockStack, ChoiceList, Banner, Checkbox } from '@shopify/polaris';
 import { ExportIcon } from '@shopify/polaris-icons';
+import { escapeXml } from '@/lib/text-escape';
 // jsPDF y autoTable se importan dinámicamente en generatePDF() para evitar
 // que fflate/node.cjs rompa el SSR de Next.js 16.2+
 
@@ -133,8 +134,6 @@ export function downloadFile(content: string | Blob, filename: string, mimeType?
 export async function generateXLSX(data: Record<string, unknown>[], sheetName = 'Datos'): Promise<Blob> {
   if (data.length === 0) throw new Error('No hay datos para exportar');
 
-  const escapeXml = (v: string) =>
-    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const colLetter = (i: number): string =>
     i < 26 ? String.fromCharCode(65 + i) : colLetter(Math.floor(i / 26) - 1) + colLetter(i % 26);
 

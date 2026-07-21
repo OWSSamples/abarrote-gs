@@ -18,10 +18,7 @@ import {
 } from '@shopify/polaris';
 import type { ProductMarginReport } from '@/types';
 import { fetchProductMargins } from '@/app/actions/analytics-advanced-actions';
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { formatMoney } from '@/lib/utils';
 
 function marginTone(margin: number): 'success' | 'attention' | 'critical' {
   if (margin >= 30) return 'success';

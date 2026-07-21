@@ -193,7 +193,7 @@ function CategoryRow({ title, description, checked, disabled, onChange }: Catego
           className={`absolute h-4 w-5 transition-transform ${
             checked ? 'translate-x-4.5' : 'translate-x-0.5'
           }`}
-          enable-background="new 0 0 30 14"
+          enableBackground="new 0 0 30 14"
           version="1.1"
           viewBox="0 0 30 14"
           xmlns="http://www.w3.org/2000/svg"

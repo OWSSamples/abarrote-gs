@@ -29,7 +29,8 @@ async function _fetchClientes(): Promise<Cliente[]> {
     .select()
     .from(clientes)
     .where(and(eq(clientes.storeId, storeId), isNotDeleted(clientes)))
-    .orderBy(clientes.name);
+    .orderBy(clientes.name)
+    .limit(500);
   return rows.map((r) => ({
     id: r.id,
     name: r.name,

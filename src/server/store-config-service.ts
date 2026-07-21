@@ -305,14 +305,22 @@ function mapStoreConfigRow(row: any): StoreConfig {
 }
 
 async function fetchStoreConfigById(storeId: string, createIfMissing: boolean): Promise<StoreConfig | null> {
+  const cacheKey = `storeConfig:${storeId}`;
+  const cached = await cache.get<StoreConfig>(cacheKey);
+  if (cached) return cached;
+
   try {
     const rows = await db.select().from(storeConfig).where(eq(storeConfig.id, storeId)).limit(1);
     if (rows.length === 0) {
       if (!createIfMissing) return null;
       await db.insert(storeConfig).values({ id: storeId }).onConflictDoNothing();
-      return { ...DEFAULT_STORE_CONFIG, id: storeId };
+      const fallback = { ...DEFAULT_STORE_CONFIG, id: storeId };
+      await cache.set(cacheKey, fallback, { ttlMs: 60_000 });
+      return fallback;
     }
-    return mapStoreConfigRow(rows[0]);
+    const config = mapStoreConfigRow(rows[0]);
+    await cache.set(cacheKey, config, { ttlMs: 60_000 });
+    return config;
   } catch (error) {
     if (!isUndefinedColumnError(error)) throw error;
 
@@ -341,9 +349,13 @@ async function fetchStoreConfigById(storeId: string, createIfMissing: boolean): 
         if (rows.length === 0) {
           if (!createIfMissing) return null;
           await db.insert(storeConfig).values({ id: storeId }).onConflictDoNothing();
-          return { ...DEFAULT_STORE_CONFIG, id: storeId };
+          const fallback = { ...DEFAULT_STORE_CONFIG, id: storeId };
+          await cache.set(cacheKey, fallback, { ttlMs: 60_000 });
+          return fallback;
         }
-        return mapStoreConfigRow(rows[0]);
+        const config = mapStoreConfigRow(rows[0]);
+        await cache.set(cacheKey, config, { ttlMs: 60_000 });
+        return config;
       } catch (retryError) {
         lastError = retryError;
         if (!isUndefinedColumnError(retryError)) throw retryError;
@@ -461,7 +473,7 @@ async function _saveStoreConfig(data: Partial<StoreConfig>): Promise<StoreConfig
   }
 
   // Invalidate cached config so next read picks up changes
-  await cache.invalidate(`config:${storeId}`);
+  await cache.invalidate(`storeConfig:${storeId}`);
 
   const changedKeys = Object.keys(fields);
   for (const key of changedKeys) {

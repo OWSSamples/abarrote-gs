@@ -14,6 +14,7 @@ import { requireStoreScope } from '@/lib/auth/store-scope';
 import { logger } from '@/lib/logger';
 import type { KPIData } from '@/types';
 import { DEFAULT_STORE_CONFIG } from '@/types';
+import { cacheGet, cacheSet } from '@/infrastructure/redis/cache';
 
 import { parseError, withLogging } from '@/lib/errors';
 
@@ -63,7 +64,20 @@ const DEFAULT_KPI: KPIData = {
 async function _fetchDashboardFromDB() {
   // Resolve the server-owned tenant boundary before loading any dashboard module.
   const scope = await requireStoreScope();
+  const storeId = scope.storeId;
   const accessibleStores = scope.accessibleStores;
+
+  // ── L1/L2 Cache check ──
+  const cacheKey = `dashboard:v1:${storeId}`;
+  const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+  if (cached) {
+    // Merge fresh scope metadata (stores may change between cache hits)
+    return {
+      ...cached,
+      activeStoreId: storeId,
+      stores: accessibleStores.map(({ id, name }) => ({ id, name })),
+    };
+  }
 
   const results = await Promise.all([
     safe(fetchKPIData(), DEFAULT_KPI, 'KPI'),
@@ -115,7 +129,7 @@ async function _fetchDashboardFromDB() {
     description: string;
   }[];
 
-  return {
+  const result = {
     kpiData: kpiDataReq.data,
     products: allProductsReq.data,
     inventoryAlerts: inventoryAlertsReq.data,
@@ -135,10 +149,15 @@ async function _fetchDashboardFromDB() {
     loyaltyTransactions: loyaltyTransactionsListReq.data,
     hourlySalesData: hourlySalesListReq.data,
     categories: categoriesListReq.data,
-    activeStoreId: scope.storeId,
+    activeStoreId: storeId,
     stores: accessibleStores.map(({ id, name }) => ({ id, name })),
-    partialErrors, // Nuevo: el frontend ahora sabrá exactamente QUÉ falló y POR QUÉ
+    partialErrors,
   };
+
+  // Cache for 30 seconds to reduce DB load on repeated dashboard loads / sync polling
+  await cacheSet(cacheKey, result, { ttlMs: 30_000 });
+
+  return result;
 }
 
 // ==================== EXPORTS WITH LOGGING ====================

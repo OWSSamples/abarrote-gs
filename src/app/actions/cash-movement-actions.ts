@@ -32,11 +32,13 @@ async function _fetchCashMovements(corteId?: string): Promise<CashMovement[]> {
         .from(cashMovements)
         .where(and(eq(cashMovements.corteId, corteId), eq(cashMovements.storeId, storeId)))
         .orderBy(desc(cashMovements.fecha))
+        .limit(200)
     : await db
         .select()
         .from(cashMovements)
         .where(eq(cashMovements.storeId, storeId))
-        .orderBy(desc(cashMovements.fecha));
+        .orderBy(desc(cashMovements.fecha))
+        .limit(200);
   return rows.map(mapMovement);
 }
 

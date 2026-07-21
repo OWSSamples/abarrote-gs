@@ -9,9 +9,10 @@ neonConfig.webSocketConstructor = ws;
 
 const pool = new Pool({
   connectionString: env.DATABASE_URL,
-  max: parseInt(env.DB_POOL_MAX ?? '20', 10),
+  max: parseInt(env.DB_POOL_MAX ?? '30', 10),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
+  allowExitOnIdle: false,
 });
 
 export const db = drizzle(pool, { schema });

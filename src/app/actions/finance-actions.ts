@@ -32,7 +32,8 @@ async function _fetchGastos(): Promise<Gasto[]> {
     .select()
     .from(gastos)
     .where(eq(gastos.storeId, storeId))
-    .orderBy(desc(gastos.fecha));
+    .orderBy(desc(gastos.fecha))
+    .limit(200);
   return rows.map((r) => ({
     id: r.id,
     concepto: r.concepto,
@@ -110,7 +111,8 @@ async function _fetchProveedores(): Promise<Proveedor[]> {
     .select()
     .from(proveedores)
     .where(and(eq(proveedores.storeId, storeId), isNotDeleted(proveedores)))
-    .orderBy(proveedores.nombre);
+    .orderBy(proveedores.nombre)
+    .limit(200);
   return rows.map((r) => ({
     id: r.id,
     nombre: r.nombre,

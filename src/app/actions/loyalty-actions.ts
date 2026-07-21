@@ -39,11 +39,13 @@ async function _fetchLoyaltyTransactions(clienteId?: string): Promise<LoyaltyTra
           and(eq(loyaltyTransactions.clienteId, clienteId), eq(loyaltyTransactions.storeId, storeId)),
         )
         .orderBy(desc(loyaltyTransactions.fecha))
+        .limit(200)
     : await db
         .select()
         .from(loyaltyTransactions)
         .where(eq(loyaltyTransactions.storeId, storeId))
-        .orderBy(desc(loyaltyTransactions.fecha));
+        .orderBy(desc(loyaltyTransactions.fecha))
+        .limit(200);
   return rows.map(mapTransaction);
 }
 

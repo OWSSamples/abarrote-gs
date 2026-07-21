@@ -1,10 +1,10 @@
 'use server';
 
-import { requirePermission, requireAuth, validateId } from '@/lib/auth/guard';
+import { requirePermission, validateId } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { db } from '@/db';
 import { products, mermaRecords, inventoryAudits, inventoryAuditItems } from '@/db/schema';
-import { eq, gte, lte, and, desc, sql } from 'drizzle-orm';
+import { eq, gte, lte, lt, and, desc, sql } from 'drizzle-orm';
 import type { InventoryAlert, KPIData, MermaRecord } from '@/types';
 import type { InventoryAudit, InventoryAuditItem } from '@/types';
 import { numVal } from './_helpers';
@@ -19,60 +19,199 @@ import {
   idSchema,
 } from '@/lib/validation/schemas';
 import { withLogging } from '@/lib/errors';
+import { isNotDeleted } from '@/infrastructure/soft-delete';
 
-// ==================== INVENTORY ALERTS (computed) ====================
+// ==================== INVENTORY ALERTS (computed in SQL) ====================
 
 async function _fetchInventoryAlerts(): Promise<InventoryAlert[]> {
-  await requireAuth();
-  const allProducts = await fetchAllProducts();
+  const { storeId } = await requireStoreScope();
   const now = new Date();
-  const alerts: InventoryAlert[] = [];
+  const todayStr = now.toISOString().split('T')[0];
+  const sevenDaysLaterStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  for (const product of allProducts) {
-    const isLowStock = product.currentStock < product.minStock;
-    const isExpiring = product.expirationDate
-      ? new Date(product.expirationDate).getTime() - now.getTime() < 7 * 24 * 60 * 60 * 1000
-      : false;
-    const isExpired = product.expirationDate ? new Date(product.expirationDate) < now : false;
+  // 3 parallel SQL queries — no N+1, no JS iteration over all products
+  const [lowStockRows, expiringRows, expiredRows] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        name: products.name,
+        sku: products.sku,
+        barcode: products.barcode,
+        description: products.description,
+        currentStock: products.currentStock,
+        minStock: products.minStock,
+        expirationDate: products.expirationDate,
+        category: products.category,
+        costPrice: products.costPrice,
+        unitPrice: products.unitPrice,
+        unit: products.unit,
+        unitMultiple: products.unitMultiple,
+        isPerishable: products.isPerishable,
+        imageUrl: products.imageUrl,
+      })
+      .from(products)
+      .where(
+        and(
+          eq(products.storeId, storeId),
+          isNotDeleted(products),
+          sql`${products.currentStock} < ${products.minStock}`,
+        ),
+      )
+      .orderBy(products.name),
+    db
+      .select({
+        id: products.id,
+        name: products.name,
+        sku: products.sku,
+        barcode: products.barcode,
+        description: products.description,
+        currentStock: products.currentStock,
+        minStock: products.minStock,
+        expirationDate: products.expirationDate,
+        category: products.category,
+        costPrice: products.costPrice,
+        unitPrice: products.unitPrice,
+        unit: products.unit,
+        unitMultiple: products.unitMultiple,
+        isPerishable: products.isPerishable,
+        imageUrl: products.imageUrl,
+      })
+      .from(products)
+      .where(
+        and(
+          eq(products.storeId, storeId),
+          isNotDeleted(products),
+          sql`${products.expirationDate} IS NOT NULL`,
+          gte(products.expirationDate, todayStr),
+          lte(products.expirationDate, sevenDaysLaterStr),
+        ),
+      )
+      .orderBy(products.name),
+    db
+      .select({
+        id: products.id,
+        name: products.name,
+        sku: products.sku,
+        barcode: products.barcode,
+        description: products.description,
+        currentStock: products.currentStock,
+        minStock: products.minStock,
+        expirationDate: products.expirationDate,
+        category: products.category,
+        costPrice: products.costPrice,
+        unitPrice: products.unitPrice,
+        unit: products.unit,
+        unitMultiple: products.unitMultiple,
+        isPerishable: products.isPerishable,
+        imageUrl: products.imageUrl,
+      })
+      .from(products)
+      .where(
+        and(
+          eq(products.storeId, storeId),
+          isNotDeleted(products),
+          sql`${products.expirationDate} IS NOT NULL`,
+          lt(products.expirationDate, todayStr),
+        ),
+      )
+      .orderBy(products.name),
+  ]);
 
-    if (isLowStock || isExpiring || isExpired) {
-      const severity: 'critical' | 'warning' | 'info' = isExpired
-        ? 'critical'
-        : isLowStock && product.currentStock <= product.minStock * 0.25
-          ? 'critical'
-          : isLowStock || isExpiring
-            ? 'warning'
-            : 'info';
+  const alertMap = new Map<string, InventoryAlert>();
 
-      const alertType: 'low_stock' | 'expiration' | 'expired' = isExpired
-        ? 'expired'
-        : isLowStock
-          ? 'low_stock'
-          : 'expiration';
+  for (const r of expiredRows) {
+    const product = rowToProduct(r);
+    alertMap.set(product.id, {
+      id: `alert-${product.id}`,
+      product,
+      alertType: 'expired',
+      severity: 'critical',
+      message: 'Producto vencido',
+      createdAt: now.toISOString(),
+    });
+  }
 
-      let message = '';
-      if (isExpired) message = 'Producto vencido';
-      else if (isExpiring && product.expirationDate) {
-        const days = Math.ceil((new Date(product.expirationDate).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
-        message = days <= 1 ? 'Vence mañana' : `Vence en ${days} días`;
-      }
-      if (isLowStock) message = message ? `${message} - Stock bajo` : 'Stock bajo';
-
-      alerts.push({
+  for (const r of expiringRows) {
+    const product = rowToProduct(r);
+    const days = product.expirationDate
+      ? Math.ceil((new Date(product.expirationDate).getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+      : 0;
+    const msg = days <= 1 ? 'Vence mañana' : `Vence en ${days} días`;
+    const existing = alertMap.get(product.id);
+    if (existing) {
+      existing.message = `${existing.message} - ${msg}`;
+    } else {
+      alertMap.set(product.id, {
         id: `alert-${product.id}`,
         product,
-        alertType,
-        severity,
-        message,
+        alertType: 'expiration',
+        severity: 'warning',
+        message: msg,
         createdAt: now.toISOString(),
       });
     }
   }
 
-  return alerts.sort((a, b) => {
+  for (const r of lowStockRows) {
+    const product = rowToProduct(r);
+    const isCritical = product.currentStock <= product.minStock * 0.25;
+    const msg = isCritical ? 'Stock crítico' : 'Stock bajo';
+    const existing = alertMap.get(product.id);
+    if (existing) {
+      existing.severity = 'critical';
+      existing.message = `${existing.message} - ${msg}`;
+    } else {
+      alertMap.set(product.id, {
+        id: `alert-${product.id}`,
+        product,
+        alertType: 'low_stock',
+        severity: isCritical ? 'critical' : 'warning',
+        message: msg,
+        createdAt: now.toISOString(),
+      });
+    }
+  }
+
+  return Array.from(alertMap.values()).sort((a, b) => {
     const sev = { critical: 0, warning: 1, info: 2 };
     return sev[a.severity] - sev[b.severity];
   });
+}
+
+function rowToProduct(r: {
+  id: string;
+  name: string;
+  sku: string;
+  barcode: string;
+  description: string | null;
+  currentStock: number;
+  minStock: number;
+  expirationDate: string | null;
+  category: string;
+  costPrice: string | null;
+  unitPrice: string | null;
+  unit: string;
+  unitMultiple: number;
+  isPerishable: boolean;
+  imageUrl: string | null;
+}): Product {
+  return {
+    id: r.id,
+    name: r.name,
+    sku: r.sku,
+    barcode: r.barcode,
+    description: r.description ?? null,
+    currentStock: r.currentStock,
+    minStock: r.minStock,
+    expirationDate: r.expirationDate,
+    category: r.category,
+    costPrice: numVal(r.costPrice),
+    unitPrice: numVal(r.unitPrice),
+    unit: r.unit,
+    unitMultiple: r.unitMultiple,
+    isPerishable: r.isPerishable,
+    imageUrl: r.imageUrl ?? undefined,
+  };
 }
 
 // ==================== KPI (computed) ====================
@@ -156,7 +295,8 @@ async function _fetchMermaRecords(): Promise<MermaRecord[]> {
     .select()
     .from(mermaRecords)
     .where(eq(mermaRecords.storeId, storeId))
-    .orderBy(desc(mermaRecords.date));
+    .orderBy(desc(mermaRecords.date))
+    .limit(200);
   return rows.map((r) => ({
     id: r.id,
     productId: r.productId,
@@ -211,7 +351,8 @@ async function _fetchInventoryAudits(): Promise<InventoryAudit[]> {
     .select()
     .from(inventoryAudits)
     .where(eq(inventoryAudits.storeId, storeId))
-    .orderBy(desc(inventoryAudits.date));
+    .orderBy(desc(inventoryAudits.date))
+    .limit(50);
   return rows.map((r) => ({
     id: r.id,
     title: r.title,

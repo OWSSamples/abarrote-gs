@@ -34,7 +34,10 @@ export function useSyncEngine(enabled: boolean = true) {
 
   // Use refs for callbacks so the useEffect doesn't re-run when they change
   const fetchRef = useRef(fetchDashboardData);
-  fetchRef.current = fetchDashboardData;
+
+  useEffect(() => {
+    fetchRef.current = fetchDashboardData;
+  }, [fetchDashboardData]);
 
   // ── Initialize online engine on mount ──
   useEffect(() => {
@@ -42,10 +45,10 @@ export function useSyncEngine(enabled: boolean = true) {
     if (!enabled) return;
 
     const engine = new SyncEngine({
-      pollingIntervalMs: 30_000,
-      staleThresholdMs: 45_000,
+      pollingIntervalMs: 120_000,
+      staleThresholdMs: 180_000,
       channelName: 'pos-sync-v1',
-      visibilityDebounceMs: 500,
+      visibilityDebounceMs: 1_000,
       maxConsecutiveErrors: 5,
       circuitBreakerCooldownMs: 60_000,
     });
@@ -77,7 +80,7 @@ export function useSyncEngine(enabled: boolean = true) {
       engineRef.current = null;
       initialLoadDone.current = false;
     };
-  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- callbacks use refs to avoid re-init loops
+  }, [enabled]);
 
   // ── Exposed APIs ──
 

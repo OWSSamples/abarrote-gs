@@ -37,7 +37,8 @@ async function _fetchDevoluciones(): Promise<Devolucion[]> {
     .select()
     .from(devoluciones)
     .where(eq(devoluciones.storeId, storeId))
-    .orderBy(desc(devoluciones.fecha));
+    .orderBy(desc(devoluciones.fecha))
+    .limit(200);
   if (rows.length === 0) return [];
 
   // Batch-fetch all items in one query instead of N+1

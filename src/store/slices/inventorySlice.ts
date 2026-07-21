@@ -31,6 +31,7 @@ export const createInventorySlice = (set: StoreSet, get: StoreGet): InventorySli
       set({ inventoryAlerts: alerts, kpiData: kpi });
     } catch (error) {
       console.error('[store:inventory] registerMerma failed', error);
+      throw error;
     }
   },
 
@@ -48,6 +49,7 @@ export const createInventorySlice = (set: StoreSet, get: StoreGet): InventorySli
       // Rollback to previous state
       set({ products: prev });
       console.error('[store:inventory] adjustStock failed', error);
+      throw error;
     }
   },
 
@@ -123,6 +125,7 @@ export const createInventorySlice = (set: StoreSet, get: StoreGet): InventorySli
       set({ categories: [newCat, ...state.categories] });
     } catch (error) {
       console.error('[store:inventory] createCategory failed', error);
+      throw error;
     }
   },
 
@@ -133,6 +136,7 @@ export const createInventorySlice = (set: StoreSet, get: StoreGet): InventorySli
       set({ categories: state.categories.map((c) => (c.id === id ? updated : c)) });
     } catch (error) {
       console.error('[store:inventory] updateCategory failed', error);
+      throw error;
     }
   },
 
@@ -143,6 +147,7 @@ export const createInventorySlice = (set: StoreSet, get: StoreGet): InventorySli
       set({ categories: state.categories.filter((c) => c.id !== id) });
     } catch (error) {
       console.error('[store:inventory] deleteCategory failed', error);
+      throw error;
     }
   },
 });

@@ -211,7 +211,12 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
       showError(`El cliente excede su límite de crédito de ${formatCurrency(cliente.creditLimit)}`);
       return;
     }
-    await registerFiado(fiadoClienteId, parseFloat(fiadoAmount), fiadoDescription.trim());
+    try {
+      await registerFiado(fiadoClienteId, parseFloat(fiadoAmount), fiadoDescription.trim());
+    } catch {
+      showError('No se pudo registrar el fiado');
+      return;
+    }
     showSuccess(`Fiado de ${formatCurrency(parseFloat(fiadoAmount))} registrado`);
     setFiadoClienteId('');
     setFiadoAmount('');
@@ -224,7 +229,12 @@ export function FiadoManager({ mode = 'all' }: FiadoManagerProps) {
       showError('Selecciona un cliente y monto');
       return;
     }
-    await registerAbono(abonoClienteId, parseFloat(abonoAmount), abonoDescription.trim() || 'Abono');
+    try {
+      await registerAbono(abonoClienteId, parseFloat(abonoAmount), abonoDescription.trim() || 'Abono');
+    } catch {
+      showError('No se pudo registrar el abono');
+      return;
+    }
     showSuccess(`Abono de ${formatCurrency(parseFloat(abonoAmount))} registrado`);
     setAbonoClienteId('');
     setAbonoAmount('');

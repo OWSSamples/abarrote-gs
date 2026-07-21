@@ -22,6 +22,7 @@ export const createFinanceSlice = (set: StoreSet, get: StoreGet): FinanceSlice =
       set({ gastos: [newGasto, ...state.gastos] });
     } catch (error) {
       console.error('[store:finance] registerGasto failed', error);
+      throw error;
     }
   },
 
@@ -66,6 +67,7 @@ export const createFinanceSlice = (set: StoreSet, get: StoreGet): FinanceSlice =
       set({ proveedores: state.proveedores.map((p) => (p.id === id ? { ...p, ...data } : p)) });
     } catch (error) {
       console.error('[store:finance] updateProveedor failed', error);
+      throw error;
     }
   },
 

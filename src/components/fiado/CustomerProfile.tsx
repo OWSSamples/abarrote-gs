@@ -28,6 +28,7 @@ import {
 } from '@shopify/polaris-icons';
 import { useState, useMemo } from 'react';
 import { useDashboardStore } from '@/store/dashboardStore';
+import { useToast } from '@/components/notifications/ToastProvider';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Cliente, FiadoTransaction, LoyaltyTransaction } from '@/types';
 
@@ -48,6 +49,7 @@ export function CustomerProfile({
 }: CustomerProfileProps) {
   const deleteCliente = useDashboardStore((s) => s.deleteCliente);
   const registerAbono = useDashboardStore((s) => s.registerAbono);
+  const { showSuccess, showError } = useToast();
   const [comment, setComment] = useState('');
 
   const stats = useMemo(() => {
@@ -107,7 +109,12 @@ export function CustomerProfile({
                     `¿Saldar ${formatCurrency(cliente.balance)} de ${cliente.name}? Su saldo quedará en $0.00.`,
                   )
                 ) {
-                  await registerAbono(cliente.id, cliente.balance, 'Ajuste administrativo: Deuda saldada');
+                  try {
+                    await registerAbono(cliente.id, cliente.balance, 'Ajuste administrativo: Deuda saldada');
+                    showSuccess('Deuda saldada correctamente');
+                  } catch {
+                    showError('No se pudo saldar la deuda');
+                  }
                 }
               },
             },
@@ -121,7 +128,12 @@ export function CustomerProfile({
                     `¿Eliminar permanentemente a ${cliente.name}? Esta acción no se puede deshacer.`,
                   )
                 ) {
-                  await deleteCliente(cliente.id);
+                  try {
+                    await deleteCliente(cliente.id);
+                  } catch {
+                    showError('No se pudo eliminar el cliente');
+                    return;
+                  }
                   if (onDelete) onDelete();
                   onBack();
                 }

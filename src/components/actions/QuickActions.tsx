@@ -113,14 +113,19 @@ export function QuickActions() {
     if (!mermaProducto || !mermaCantidad || !selectedMermaProduct) return;
 
     const qty = parseInt(mermaCantidad, 10);
-    await registerMerma({
-      productId: mermaProducto,
-      productName: selectedMermaProduct.name,
-      quantity: qty,
-      reason: mermaRazon as 'expiration' | 'damage' | 'spoilage' | 'other',
-      date: mermaDate.toISOString(),
-      value: qty * selectedMermaProduct.unitPrice,
-    });
+    try {
+      await registerMerma({
+        productId: mermaProducto,
+        productName: selectedMermaProduct.name,
+        quantity: qty,
+        reason: mermaRazon as 'expiration' | 'damage' | 'spoilage' | 'other',
+        date: mermaDate.toISOString(),
+        value: qty * selectedMermaProduct.unitPrice,
+      });
+    } catch {
+      toast.showError('No se pudo registrar la merma');
+      return;
+    }
 
     toast.showSuccess(`Merma registrada: ${qty} unidades de ${selectedMermaProduct.name}`);
     setMermaModalOpen(false);
@@ -140,11 +145,16 @@ export function QuickActions() {
         cantidad: a.product.minStock - a.product.currentStock,
       }));
 
-    await createPedido({
-      proveedor: pedidoProveedor,
-      productos: lowStockProducts,
-      notas: pedidoNotas,
-    });
+    try {
+      await createPedido({
+        proveedor: pedidoProveedor,
+        productos: lowStockProducts,
+        notas: pedidoNotas,
+      });
+    } catch {
+      toast.showError('No se pudo crear el pedido');
+      return;
+    }
 
     toast.showSuccess(`Pedido creado para ${pedidoProveedor} con ${lowStockProducts.length} productos`);
     setPedidoModalOpen(false);
@@ -156,7 +166,12 @@ export function QuickActions() {
     if (!ajusteProducto || !ajusteNuevaCantidad || !ajusteRazon || !selectedAjusteProduct) return;
 
     const newQty = parseInt(ajusteNuevaCantidad, 10);
-    await adjustStock(ajusteProducto, newQty, ajusteRazon);
+    try {
+      await adjustStock(ajusteProducto, newQty, ajusteRazon);
+    } catch {
+      toast.showError('No se pudo ajustar el stock');
+      return;
+    }
 
     const diff = newQty - selectedAjusteProduct.currentStock;
     toast.showSuccess(`Stock de ${selectedAjusteProduct.name} ajustado: ${diff >= 0 ? '+' : ''}${diff} unidades`);
@@ -168,7 +183,12 @@ export function QuickActions() {
 
   const handleAbono = useCallback(async () => {
     if (!abonoClienteId || !abonoAmount) return;
-    await registerAbono(abonoClienteId, parseFloat(abonoAmount), abonoDescription.trim() || 'Abono');
+    try {
+      await registerAbono(abonoClienteId, parseFloat(abonoAmount), abonoDescription.trim() || 'Abono');
+    } catch {
+      toast.showError('No se pudo registrar el abono');
+      return;
+    }
     toast.showSuccess(`Abono de ${formatCurrency(parseFloat(abonoAmount))} registrado`);
     setAbonoClienteId('');
     setAbonoAmount('');

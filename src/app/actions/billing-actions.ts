@@ -44,6 +44,23 @@ export interface BillingEntitlement {
   expiresAt: string | null;
 }
 
+export interface BillingAvailablePlan {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  priceId: string;
+  baseAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  taxRate: number;
+  currency: string;
+  interval: 'month' | 'year' | 'unknown';
+  maxUsers: number | null;
+  maxStores: number | null;
+  highlights: string[];
+}
+
 export interface BillingOverview {
   tenantId: string;
   billingAccountId: string | null;
@@ -51,6 +68,7 @@ export interface BillingOverview {
   status: BillingSubscriptionStatus;
   planName: string | null;
   planCode: string | null;
+  planId: string | null;
   amount: number | null;
   currency: string;
   interval: 'month' | 'year' | 'unknown';
@@ -60,6 +78,7 @@ export interface BillingOverview {
   paymentMethod: BillingPaymentMethod | null;
   invoices: BillingInvoice[];
   entitlements: BillingEntitlement[];
+  availablePlans: BillingAvailablePlan[];
   portalUrl: string | null;
 }
 
@@ -194,6 +213,94 @@ function firstRecordFromPayload(payload: unknown, keys: string[]): Record<string
   return source;
 }
 
+function recordsFromPayload(payload: unknown, keys: string[]): Record<string, unknown>[] {
+  const root = readRecord(payload);
+  if (Array.isArray(root.data)) return root.data.map(readRecord);
+
+  const data = readRecord(root.data);
+  for (const key of keys) {
+    const direct = root[key];
+    if (Array.isArray(direct)) return direct.map(readRecord);
+    const nested = data[key];
+    if (Array.isArray(nested)) return nested.map(readRecord);
+  }
+
+  if (Array.isArray(data.items)) return data.items.map(readRecord);
+  if (Array.isArray(root.items)) return root.items.map(readRecord);
+  return [];
+}
+
+function readFeatureLimit(features: Record<string, unknown>, code: string): number | null {
+  const raw = features[code];
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0) return raw;
+  const definition = readRecord(raw);
+  return readNumber(definition, ['value']);
+}
+
+function normalizeAvailablePlans(planPayload: unknown, pricePayload: unknown): BillingAvailablePlan[] {
+  const plans = recordsFromPayload(planPayload, ['plans', 'items']);
+  const prices = recordsFromPayload(pricePayload, ['prices', 'items']);
+
+  return plans.flatMap((plan): BillingAvailablePlan[] => {
+    const id = readString(plan, ['id']);
+    const metadata = readRecord(plan.metadata);
+    const code = readString(metadata, ['catalogCode']);
+    if (
+      !id ||
+      !code ||
+      readString(metadata, ['catalog']) !== 'opendex-kiosko' ||
+      plan.isActive === false ||
+      readString(plan, ['status']) === 'inactive'
+    ) {
+      return [];
+    }
+
+    const nestedPrices = Array.isArray(plan.prices) ? plan.prices.map(readRecord) : [];
+    const price = [...nestedPrices, ...prices].find((candidate) =>
+      readString(candidate, ['planId']) === id &&
+      candidate.isActive !== false &&
+      normalizeInterval(readString(candidate, ['interval'])) === 'month',
+    );
+    if (!price) return [];
+
+    const priceId = readString(price, ['id']);
+    const totalAmountCents = readNumber(price, ['amount', 'amountCents']);
+    if (!priceId || totalAmountCents === null) return [];
+
+    const priceMetadata = readRecord(price.metadata);
+    const baseAmountCents = readNumber(priceMetadata, ['baseAmountCents'])
+      ?? readNumber(metadata, ['baseAmountCents']);
+    const taxAmountCents = readNumber(priceMetadata, ['taxAmountCents'])
+      ?? readNumber(metadata, ['taxAmountCents']);
+    const taxRateBps = readNumber(priceMetadata, ['taxRateBps'])
+      ?? readNumber(metadata, ['taxRateBps'])
+      ?? 0;
+    if (baseAmountCents === null || taxAmountCents === null) return [];
+
+    const highlights = Array.isArray(metadata.highlights)
+      ? metadata.highlights.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : [];
+    const features = readRecord(plan.features);
+
+    return [{
+      id,
+      code,
+      name: readString(plan, ['name']) ?? code,
+      description: readString(plan, ['description']),
+      priceId,
+      baseAmount: baseAmountCents / 100,
+      taxAmount: taxAmountCents / 100,
+      totalAmount: totalAmountCents / 100,
+      taxRate: taxRateBps / 100,
+      currency: readString(price, ['currency'])?.toUpperCase() ?? 'MXN',
+      interval: normalizeInterval(readString(price, ['interval'])),
+      maxUsers: readFeatureLimit(features, 'max_users'),
+      maxStores: readFeatureLimit(features, 'max_stores'),
+      highlights,
+    }];
+  }).sort((left, right) => left.baseAmount - right.baseAmount);
+}
+
 function normalizeBillingOverview(
   subscriptionPayload: unknown,
   tenantId: string,
@@ -206,13 +313,9 @@ function normalizeBillingOverview(
 ): BillingOverview {
   const subscription = firstRecordFromPayload(subscriptionPayload, ['subscriptions', 'items']);
   const nestedPlan = readRecord(subscription.subscriptionPlan ?? subscription.plan);
-  const plan = Object.keys(nestedPlan).length > 0
-    ? nestedPlan
-    : firstRecordFromPayload(planPayload, ['plans', 'items']);
+  const plan = nestedPlan;
   const nestedPrice = readRecord(subscription.price);
-  const price = Object.keys(nestedPrice).length > 0
-    ? nestedPrice
-    : firstRecordFromPayload(pricePayload, ['prices', 'items']);
+  const price = nestedPrice;
   const paymentMethodRoot = readRecord(paymentMethodPayload);
   const externalPaymentMethod = readRecord(paymentMethodRoot.data);
   const nestedPaymentMethod = readRecord(
@@ -265,9 +368,11 @@ function normalizeBillingOverview(
     status: normalizeStatus(readString(subscription, ['status'])),
     planName: readString(plan, ['name', 'title']) ?? readString(subscription, ['planName', 'plan']),
     planCode:
-      readString(plan, ['code', 'id'])
+      readString(readRecord(plan.metadata), ['catalogCode'])
+      ?? readString(plan, ['code', 'id'])
       ?? readString(price, ['code', 'id'])
       ?? readString(subscription, ['planCode', 'priceId']),
+    planId: readString(subscription, ['planId']) ?? readString(plan, ['id']),
     amount: subscriptionAmountCents !== null
       ? subscriptionAmountCents / 100
       : readNumber(subscription, ['amount', 'unitAmount']),
@@ -293,6 +398,7 @@ function normalizeBillingOverview(
       : null,
     invoices: rawInvoices.map(normalizeInvoice),
     entitlements,
+    availablePlans: normalizeAvailablePlans(planPayload, pricePayload),
     portalUrl: safeUrl(readString(subscription, ['portalUrl', 'customerPortalUrl'])),
   };
 }

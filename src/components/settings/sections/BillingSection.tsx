@@ -1,69 +1,81 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Badge, type BadgeVariant } from '@cloudflare/kumo/components/badge';
+import { Banner } from '@cloudflare/kumo/components/banner';
+import { Button, LinkButton } from '@cloudflare/kumo/components/button';
+import { DropdownMenu } from '@cloudflare/kumo/components/dropdown';
+import { Input } from '@cloudflare/kumo/components/input';
+import { LayerCard } from '@cloudflare/kumo/components/layer-card';
+import { Loader, SkeletonLine } from '@cloudflare/kumo/components/loader';
+import { Select } from '@cloudflare/kumo/components/select';
+import { Tabs } from '@cloudflare/kumo/components/tabs';
 import {
-  Badge,
-  Banner,
-  BlockStack,
-  Box,
-  Button,
-  ButtonGroup,
-  Card,
-  Divider,
-  Icon,
-  IndexTable,
-  InlineGrid,
-  InlineStack,
-  Layout,
-  Select,
-  Spinner,
-  Text,
-} from '@shopify/polaris';
+  Add20Filled,
+  ArrowClockwise20Filled,
+  ArrowDownload20Filled,
+  ArrowReset20Filled,
+  Calculator20Filled,
+  Calendar20Filled,
+  CardUi20Filled,
+  CheckmarkCircle20Filled,
+  Clock20Filled,
+  DataBarVertical20Filled,
+  Delete20Filled,
+  Document20Filled,
+  Edit20Filled,
+  Mail20Filled,
+  Money20Filled,
+  MoreHorizontal20Filled,
+  Open20Filled,
+  Payment20Filled,
+  Search20Filled,
+  WalletCreditCard20Filled,
+} from '@fluentui/react-icons';
 import {
-  CalendarIcon,
-  CreditCardIcon,
-  OrderIcon,
-  PlanIcon,
-  ReceiptDollarIcon,
-} from '@shopify/polaris-icons';
-import {
+  createBillingCheckoutSession,
   createBillingPortalSession,
   fetchBillingOverview,
+  type BillingAvailablePlan,
   type BillingInvoice,
   type BillingOverview,
+  type BillingSubscriptionStatus,
 } from '@/app/actions/billing-actions';
 import { synchronizeServerSession } from '@/lib/auth/session-client';
 import type { SettingsSectionProps } from './types';
 
+type BillingTab = 'subscriptions' | 'usage' | 'invoices';
+type SubscriptionFilter = 'all' | 'active' | 'free' | 'paid';
 type InvoiceFilter = 'all' | 'paid' | 'open' | 'void';
-type BillingCycle = 'monthly' | 'annual';
-type InvoiceDelivery = 'email' | 'portal_email';
-type BadgeTone = 'success' | 'attention' | 'warning' | 'critical' | undefined;
 
-const INVOICE_FILTER_OPTIONS = [
-  { label: 'Todas las facturas', value: 'all' },
+const BILLING_TABS = [
+  { value: 'subscriptions', label: 'Suscripciones' },
+  { value: 'usage', label: 'Uso facturable' },
+  { value: 'invoices', label: 'Facturas y documentos' },
+];
+
+const SUBSCRIPTION_FILTER_OPTIONS: ReadonlyArray<{ label: string; value: SubscriptionFilter }> = [
+  { label: 'Todas', value: 'all' },
+  { label: 'Activas', value: 'active' },
+  { label: 'Sin costo', value: 'free' },
+  { label: 'De pago', value: 'paid' },
+];
+
+const INVOICE_FILTER_OPTIONS: ReadonlyArray<{ label: string; value: InvoiceFilter }> = [
+  { label: 'Todas', value: 'all' },
   { label: 'Pagadas', value: 'paid' },
   { label: 'Pendientes', value: 'open' },
   { label: 'Canceladas', value: 'void' },
 ];
 
-const BILLING_CYCLE_OPTIONS = [
-  { label: 'Mensual', value: 'monthly' },
-  { label: 'Anual', value: 'annual' },
-];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const INVOICE_DELIVERY_OPTIONS = [
-  { label: 'Enviar al correo fiscal', value: 'email' },
-  { label: 'Guardar en portal y enviar correo', value: 'portal_email' },
-];
-
-function textOrPending(value: string | undefined | null): string {
-  const normalized = value?.trim();
-  return normalized ? normalized : 'Pendiente';
+function normalizeEmail(value: string): string {
+  return value.trim().replace(/[\u200B-\u200D\uFEFF]/g, '').toLowerCase();
 }
 
 function formatMoney(amount: number | null, currency: string): string {
-  if (amount === null) return 'Sin importe';
+  if (amount === null) return '-';
   return new Intl.NumberFormat('es-MX', {
     style: 'currency',
     currency: currency || 'MXN',
@@ -71,54 +83,112 @@ function formatMoney(amount: number | null, currency: string): string {
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return 'Sin programar';
+  if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(date);
 }
 
-function subscriptionStatus(status: BillingOverview['status']): { label: string; tone: BadgeTone } {
+function subscriptionStatus(status: BillingSubscriptionStatus): {
+  label: string;
+  variant: BadgeVariant;
+} {
   switch (status) {
     case 'active':
-      return { label: 'Activa', tone: 'success' };
+      return { label: 'Activo', variant: 'success' };
     case 'trialing':
-      return { label: 'Prueba', tone: 'attention' };
+      return { label: 'Periodo de prueba', variant: 'info' };
     case 'past_due':
-      return { label: 'Pago pendiente', tone: 'critical' };
+      return { label: 'Pago pendiente', variant: 'error' };
     case 'canceled':
-      return { label: 'Cancelada', tone: 'warning' };
+      return { label: 'Cancelado', variant: 'warning' };
     case 'incomplete':
-      return { label: 'Incompleta', tone: 'attention' };
+      return { label: 'Configuración pendiente', variant: 'warning' };
     case 'none':
-      return { label: 'Sin activar', tone: 'warning' };
+      return { label: 'Sin suscripción', variant: 'neutral' };
     default:
-      return { label: 'Por revisar', tone: 'attention' };
+      return { label: 'Por revisar', variant: 'neutral' };
   }
 }
 
-function invoiceStatus(status: BillingInvoice['status']): { label: string; tone: BadgeTone } {
+function invoiceStatus(status: BillingInvoice['status']): {
+  label: string;
+  variant: BadgeVariant;
+} {
   switch (status) {
     case 'paid':
-      return { label: 'Pagada', tone: 'success' };
+      return { label: 'Pagada', variant: 'success' };
     case 'open':
-      return { label: 'Pendiente', tone: 'attention' };
+      return { label: 'Pendiente', variant: 'warning' };
     case 'void':
-      return { label: 'Cancelada', tone: 'warning' };
+      return { label: 'Cancelada', variant: 'neutral' };
     case 'draft':
-      return { label: 'Borrador', tone: undefined };
+      return { label: 'Borrador', variant: 'info' };
     default:
-      return { label: 'Por revisar', tone: 'attention' };
+      return { label: 'Por revisar', variant: 'neutral' };
   }
 }
 
-export function BillingSection({ config }: SettingsSectionProps) {
+function BillingLoadingState() {
+  return (
+    <div className="mx-auto grid w-full max-w-[1680px] gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-10 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="space-y-4" aria-label="Cargando facturación">
+        <LayerCard className="space-y-3 p-4">
+          <SkeletonLine className="w-2/3" />
+          <SkeletonLine className="w-full" />
+        </LayerCard>
+        <LayerCard className="space-y-3 p-4">
+          <SkeletonLine className="w-1/3" />
+          <SkeletonLine className="w-full" />
+          <SkeletonLine className="w-full" />
+        </LayerCard>
+      </div>
+      <LayerCard className="space-y-3 p-4">
+        <SkeletonLine className="w-1/2" />
+        <SkeletonLine className="w-full" />
+        <SkeletonLine className="w-full" />
+      </LayerCard>
+    </div>
+  );
+}
+
+function EmptyTableState({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+      <div className="flex size-9 items-center justify-center rounded-md bg-kumo-recessed text-kumo-subtle">
+        <Document20Filled aria-hidden="true" />
+      </div>
+      <p className="text-sm font-semibold text-kumo-default">{title}</p>
+      <p className="max-w-md text-xs leading-5 text-kumo-subtle">{description}</p>
+    </div>
+  );
+}
+
+export function BillingSection({ config, updateField, savePatch, saving }: SettingsSectionProps) {
+  const sourceEmail = config.contactEmail || config.emailRecipients || config.emailFrom || '';
+  const [activeTab, setActiveTab] = useState<BillingTab>('subscriptions');
+  const [subscriptionFilter, setSubscriptionFilter] = useState<SubscriptionFilter>('all');
+  const [subscriptionSearch, setSubscriptionSearch] = useState('');
+  const [usagePeriod, setUsagePeriod] = useState('current');
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>('all');
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
-  const [invoiceDelivery, setInvoiceDelivery] = useState<InvoiceDelivery>('portal_email');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
   const [overview, setOverview] = useState<BillingOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [configuredEmail, setConfiguredEmail] = useState(sourceEmail);
+  const [emailDraft, setEmailDraft] = useState(sourceEmail);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editingEmail) setEmailDraft(configuredEmail);
+  }, [configuredEmail, editingEmail]);
+
+  useEffect(() => {
+    setConfiguredEmail(sourceEmail);
+  }, [sourceEmail]);
 
   const loadBilling = useCallback(async () => {
     setLoading(true);
@@ -136,8 +206,7 @@ export function BillingSection({ config }: SettingsSectionProps) {
         return;
       }
 
-      const data = await fetchBillingOverview();
-      setOverview(data);
+      setOverview(await fetchBillingOverview());
     } catch {
       setOverview(null);
       setError('No fue posible consultar la información de facturación. Intenta de nuevo en unos momentos.');
@@ -152,9 +221,9 @@ export function BillingSection({ config }: SettingsSectionProps) {
 
   const openBillingPortal = useCallback(async () => {
     const billingAccountId = overview?.billingAccountId ?? null;
-    const portalUrl = overview?.portalUrl ?? null;
+    const existingPortalUrl = overview?.portalUrl ?? null;
 
-    if (!billingAccountId && !portalUrl) {
+    if (!billingAccountId && !existingPortalUrl) {
       setError('No hay una cuenta de facturación asociada a este negocio. Primero activa una suscripción.');
       return;
     }
@@ -162,11 +231,9 @@ export function BillingSection({ config }: SettingsSectionProps) {
     setPortalLoading(true);
     setError(null);
     try {
-      let url = portalUrl;
+      let url = existingPortalUrl;
       if (!url) {
-        if (!billingAccountId) {
-          throw new Error('Billing account is required to open the portal.');
-        }
+        if (!billingAccountId) throw new Error('Billing account is required.');
         url = (await createBillingPortalSession(billingAccountId)).url;
       }
       window.location.assign(url);
@@ -177,326 +244,670 @@ export function BillingSection({ config }: SettingsSectionProps) {
     }
   }, [overview?.billingAccountId, overview?.portalUrl]);
 
+  const startCheckout = useCallback(async (plan: BillingAvailablePlan) => {
+    const billingAccountId = overview?.billingAccountId;
+    if (!billingAccountId) {
+      setError('No hay una cuenta de facturación asociada a este negocio. Actualiza la página e intenta nuevamente.');
+      return;
+    }
+
+    setCheckoutPlanId(plan.id);
+    setError(null);
+    try {
+      const { url } = await createBillingCheckoutSession({
+        billingAccountId,
+        priceId: plan.priceId,
+        quantity: 1,
+      });
+      window.location.assign(url);
+    } catch {
+      setError('No fue posible preparar el pago de la suscripción. Verifica tu acceso e intenta nuevamente.');
+    } finally {
+      setCheckoutPlanId(null);
+    }
+  }, [overview?.billingAccountId]);
+
+  const saveBillingEmail = useCallback(async () => {
+    const normalizedEmail = normalizeEmail(emailDraft);
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setEmailError('Ingresa un correo de facturación válido.');
+      return;
+    }
+
+    setEmailError(null);
+    try {
+      if (savePatch) {
+        await savePatch({ contactEmail: normalizedEmail });
+        setConfiguredEmail(normalizedEmail);
+      } else {
+        updateField('contactEmail', normalizedEmail);
+      }
+      setEditingEmail(false);
+    } catch {
+      setEmailError('No fue posible guardar el correo. Intenta nuevamente.');
+    }
+  }, [emailDraft, savePatch, updateField]);
+
   const status = subscriptionStatus(overview?.status ?? 'none');
   const invoices = useMemo(() => {
-    const list = overview?.invoices ?? [];
-    return invoiceFilter === 'all' ? list : list.filter((invoice) => invoice.status === invoiceFilter);
-  }, [invoiceFilter, overview?.invoices]);
+    const query = invoiceSearch.trim().toLowerCase();
+    return (overview?.invoices ?? []).filter((invoice) => {
+      const matchesStatus = invoiceFilter === 'all' || invoice.status === invoiceFilter;
+      const matchesQuery = !query
+        || invoice.number.toLowerCase().includes(query)
+        || invoice.period.toLowerCase().includes(query);
+      return matchesStatus && matchesQuery;
+    });
+  }, [invoiceFilter, invoiceSearch, overview?.invoices]);
 
-  const planAmount = overview
-    ? formatMoney(overview.amount, overview.currency)
-    : 'Sin importe';
-  const paymentMethod = overview?.paymentMethod?.last4
-    ? `${overview.paymentMethod.brand ?? 'Tarjeta'} terminación ${overview.paymentMethod.last4}`
-    : 'No configurado';
+  const paymentMethod = overview?.paymentMethod ?? null;
+  const currentPeriodLabel = overview?.currentPeriodEnd
+    ? `Hasta ${formatDate(overview.currentPeriodEnd)}`
+    : 'Periodo actual';
+  const usagePlanLabel = overview?.planName || 'Sin suscripción activa';
+  const availablePlans = useMemo(() => {
+    const query = subscriptionSearch.trim().toLowerCase();
+    return (overview?.availablePlans ?? []).filter((plan) => {
+      const matchesQuery = !query
+        || plan.name.toLowerCase().includes(query)
+        || plan.description?.toLowerCase().includes(query)
+        || plan.code.toLowerCase().includes(query);
+      const isCurrent = plan.id === overview?.planId;
+      const matchesFilter = subscriptionFilter === 'all'
+        || (subscriptionFilter === 'active' && isCurrent)
+        || (subscriptionFilter === 'paid' && plan.totalAmount > 0)
+        || (subscriptionFilter === 'free' && plan.totalAmount === 0);
+      return matchesQuery && matchesFilter;
+    });
+  }, [overview?.availablePlans, overview?.planId, subscriptionFilter, subscriptionSearch]);
 
   return (
-    <BlockStack gap="500">
+    <section className="min-h-[620px] bg-kumo-canvas" aria-label="Facturación">
+      <div className="border-b border-kumo-line bg-kumo-base">
+        <div className="mx-auto w-full max-w-[1680px] px-6 py-3 lg:px-10">
+          <Tabs
+            tabs={BILLING_TABS}
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as BillingTab)}
+            variant="segmented"
+            size="sm"
+            activateOnFocus
+            className="w-fit"
+          />
+        </div>
+      </div>
+
       {error && (
-        <Banner tone="critical" title="Facturación no disponible" onDismiss={() => setError(null)}>
-          <p>{error}</p>
-        </Banner>
+        <div className="mx-auto w-full max-w-[1680px] px-6 pt-5 lg:px-10">
+          <Banner
+            variant="error"
+            title="Facturación no disponible"
+            description={error}
+            action={(
+              <div className="flex items-center gap-2">
+                <Badge variant="error">No disponible</Badge>
+                <Button
+                  shape="square"
+                  size="sm"
+                  variant="ghost"
+                  aria-label="Reintentar consulta de facturación"
+                  title="Reintentar"
+                  onClick={loadBilling}
+                  icon={<ArrowClockwise20Filled />}
+                  className="text-kumo-danger hover:bg-kumo-danger-tint/60"
+                />
+              </div>
+            )}
+          />
+        </div>
       )}
 
-      <Layout>
-        <Layout.Section>
-          <BlockStack gap="400">
-            <Card>
-              <BlockStack gap="400">
-                <InlineStack align="space-between" blockAlign="start" gap="300">
-                  <BlockStack gap="100">
-                    <InlineStack gap="200" blockAlign="center">
-                      <Icon source={PlanIcon} tone="base" />
-                      <Text as="h2" variant="headingMd">
-                        Suscripción del negocio
-                      </Text>
-                      <Badge tone={status.tone}>{status.label}</Badge>
-                    </InlineStack>
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Consulta el plan contratado, usuarios incluidos, renovación, facturas y método de pago.
-                    </Text>
-                  </BlockStack>
-                  <ButtonGroup>
-                    <Button onClick={loadBilling} loading={loading}>
+      {loading ? (
+        <BillingLoadingState />
+      ) : (
+        <div
+          className={activeTab === 'subscriptions'
+            ? 'mx-auto grid w-full max-w-[1680px] gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-10 xl:grid-cols-[minmax(0,1fr)_420px]'
+            : 'mx-auto w-full max-w-[1680px] px-6 py-8 lg:px-10'}
+        >
+          <div className="min-w-0 space-y-4">
+            {activeTab === 'subscriptions' && (
+              <>
+                <LayerCard className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="max-w-3xl text-xs leading-5 text-kumo-subtle">
+                    Todas las suscripciones se renovarán automáticamente al final del periodo actual, salvo que
+                    canceles la renovación. Los cambios de plan, métodos de pago y cancelaciones se confirman en
+                    el portal seguro de facturación.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={openBillingPortal}
+                    loading={portalLoading}
+                    icon={<Open20Filled />}
+                    className="shrink-0"
+                  >
+                    Administrar facturación
+                  </Button>
+                </LayerCard>
+
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_164px]">
+                  <div className="relative">
+                    <Search20Filled
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-kumo-subtle"
+                    />
+                    <Input
+                      aria-label="Buscar suscripciones"
+                      placeholder="Buscar"
+                      value={subscriptionSearch}
+                      onChange={(event) => setSubscriptionSearch(event.currentTarget.value)}
+                      className="w-full pl-10"
+                    />
+                  </div>
+                  <Select<SubscriptionFilter>
+                    aria-label="Filtrar suscripciones por categoría"
+                    value={subscriptionFilter}
+                    onValueChange={(value) => setSubscriptionFilter(value)}
+                    items={SUBSCRIPTION_FILTER_OPTIONS}
+                    renderValue={(value) => SUBSCRIPTION_FILTER_OPTIONS.find((option) => option.value === value)?.label}
+                  >
+                    {SUBSCRIPTION_FILTER_OPTIONS.map((option) => (
+                      <Select.Option key={option.value} value={option.value}>{option.label}</Select.Option>
+                    ))}
+                  </Select>
+                </div>
+
+                <LayerCard className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-kumo-line bg-kumo-base text-kumo-default">
+                          <th className="px-4 py-3 font-semibold">Producto</th>
+                          <th className="px-4 py-3 font-semibold">Estado del servicio</th>
+                          <th className="px-4 py-3 font-semibold">Se renueva el</th>
+                          <th className="px-4 py-3 font-semibold">Precio</th>
+                          <th className="w-12 px-3 py-3"><span className="sr-only">Acciones</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-kumo-hairline bg-kumo-recessed/60">
+                          <th colSpan={5} className="px-4 py-2 text-xs font-medium uppercase text-kumo-subtle">
+                            Planes
+                          </th>
+                        </tr>
+                        {availablePlans.length > 0 ? availablePlans.map((plan) => {
+                          const isCurrent = plan.id === overview?.planId;
+                          return (
+                            <tr key={plan.id} className="border-b border-kumo-hairline last:border-b-0">
+                              <td className="px-4 py-3">
+                                <p className="font-semibold text-kumo-default">{plan.name}</p>
+                                <p className="mt-0.5 max-w-md text-xs text-kumo-subtle">{plan.description}</p>
+                                <p className="mt-1 text-xs text-kumo-subtle">
+                                  {plan.maxUsers ?? '-'} usuarios · {plan.maxStores ?? '-'} sucursales
+                                </p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <Badge variant={isCurrent ? status.variant : 'neutral'}>
+                                  {isCurrent ? status.label : 'Disponible'}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-3 text-kumo-subtle">
+                                {isCurrent
+                                  ? overview?.cancelAtPeriodEnd
+                                    ? 'No se renovará'
+                                    : formatDate(overview?.currentPeriodEnd ?? null)
+                                  : 'Mensual'}
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="font-semibold text-kumo-default">
+                                  {formatMoney(plan.totalAmount, plan.currency)} / mes
+                                </p>
+                                <p className="mt-0.5 text-xs text-kumo-subtle">
+                                  {formatMoney(plan.baseAmount, plan.currency)} + {formatMoney(plan.taxAmount, plan.currency)} IVA
+                                </p>
+                              </td>
+                              <td className="px-3 py-3 text-right">
+                                {isCurrent ? (
+                                  <DropdownMenu>
+                                    <DropdownMenu.Trigger>
+                                      <Button
+                                        shape="square"
+                                        size="sm"
+                                        variant="ghost"
+                                        aria-label={`Abrir acciones del plan ${plan.name}`}
+                                        icon={<MoreHorizontal20Filled />}
+                                      />
+                                    </DropdownMenu.Trigger>
+                                    <DropdownMenu.Content>
+                                      <DropdownMenu.Item icon={<Open20Filled />} onClick={openBillingPortal}>
+                                        Administrar suscripción
+                                      </DropdownMenu.Item>
+                                      <DropdownMenu.Item icon={<ArrowClockwise20Filled />} onClick={loadBilling}>
+                                        Actualizar información
+                                      </DropdownMenu.Item>
+                                    </DropdownMenu.Content>
+                                  </DropdownMenu>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    loading={checkoutPlanId === plan.id}
+                                    disabled={checkoutPlanId !== null}
+                                    onClick={() => void startCheckout(plan)}
+                                  >
+                                    Elegir
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        }) : (
+                          <tr>
+                            <td colSpan={5}>
+                              <EmptyTableState
+                                title={overview ? 'No hay resultados' : 'No hay una suscripción disponible'}
+                                description={overview
+                                  ? 'Ajusta la búsqueda o cambia la categoría seleccionada.'
+                                  : 'Cuando actives un plan para este negocio, aparecerá en esta tabla.'}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </LayerCard>
+              </>
+            )}
+
+            {activeTab === 'usage' && (
+              <div className="grid min-h-[650px] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <aside className="border-r border-kumo-line pr-6" aria-label="Filtros de uso facturable">
+                  <div className="flex items-center justify-between border-b border-kumo-line pb-3">
+                    <h2 className="text-sm font-semibold text-kumo-default">Filtros</h2>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={<ArrowReset20Filled />}
+                      onClick={() => setUsagePeriod('current')}
+                    >
+                      Reiniciar
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4 pt-4">
+                    <LayerCard className="overflow-hidden p-0">
+                      <div className="border-b border-kumo-line px-4 py-3">
+                        <p className="text-sm font-medium text-kumo-subtle">Suscripción</p>
+                      </div>
+                      <div className="p-4">
+                        <Select<string>
+                          aria-label="Filtrar por suscripción"
+                          value="current"
+                          items={[{ label: usagePlanLabel, value: 'current' }]}
+                          renderValue={() => usagePlanLabel}
+                        >
+                          <Select.Option value="current">{usagePlanLabel}</Select.Option>
+                        </Select>
+                      </div>
+                    </LayerCard>
+
+                    <LayerCard className="overflow-hidden p-0">
+                      <div className="border-b border-kumo-line px-4 py-3">
+                        <p className="text-sm font-medium text-kumo-subtle">Periodo de facturación</p>
+                      </div>
+                      <div className="p-4">
+                        <Select<string>
+                          aria-label="Filtrar por periodo de facturación"
+                          value={usagePeriod}
+                          onValueChange={setUsagePeriod}
+                          items={[{ label: currentPeriodLabel, value: 'current' }]}
+                          renderValue={() => currentPeriodLabel}
+                        >
+                          <Select.Option value="current">
+                            <span className="inline-flex items-center gap-2">
+                              <Calendar20Filled aria-hidden="true" />
+                              {currentPeriodLabel}
+                            </span>
+                          </Select.Option>
+                        </Select>
+                      </div>
+                    </LayerCard>
+                  </div>
+                </aside>
+
+                <div className="min-w-0 space-y-5">
+                  <div className="flex min-h-9 items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 text-kumo-subtle">
+                      <DataBarVertical20Filled aria-hidden="true" />
+                      <span className="text-xs">Consumo del periodo seleccionado</span>
+                    </div>
+                    <Button
+                      size="base"
+                      variant="secondary"
+                      icon={<Add20Filled />}
+                      disabled
+                      title="Requiere soporte de alertas de presupuesto en el servicio de facturación"
+                    >
+                      Crear alerta de presupuesto
+                    </Button>
+                  </div>
+
+                  <LayerCard className="overflow-hidden p-0">
+                    <div className="border-b border-kumo-line px-4 py-3">
+                      <h2 className="text-sm font-semibold text-kumo-subtle">Resumen de gastos</h2>
+                    </div>
+                    <dl className="grid sm:grid-cols-3">
+                      {[
+                        {
+                          label: 'Costo total',
+                          value: '-',
+                          description: 'Sin consumo medido reportado',
+                          icon: <Money20Filled aria-hidden="true" />,
+                        },
+                        {
+                          label: 'Costo del ciclo proyectado',
+                          value: '-',
+                          description: currentPeriodLabel,
+                          icon: <Calculator20Filled aria-hidden="true" />,
+                        },
+                        {
+                          label: 'Costo medio diario',
+                          value: '-',
+                          description: 'Sin observaciones suficientes',
+                          icon: <Clock20Filled aria-hidden="true" />,
+                        },
+                      ].map((metric) => (
+                        <div
+                          key={metric.label}
+                          className="border-b border-kumo-line px-5 py-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"
+                        >
+                          <dt className="flex items-center gap-2 text-xs font-medium uppercase text-kumo-subtle">
+                            {metric.icon}
+                            {metric.label}
+                          </dt>
+                          <dd className="mt-1 text-lg font-semibold text-kumo-default">{metric.value}</dd>
+                          <p className="mt-1 text-xs text-kumo-subtle">{metric.description}</p>
+                        </div>
+                      ))}
+                    </dl>
+                  </LayerCard>
+
+                  <LayerCard className="overflow-hidden p-0">
+                    <div className="border-b border-kumo-line px-4 py-3">
+                      <h2 className="text-sm font-semibold text-kumo-subtle">Desglose de costos</h2>
+                    </div>
+                    <div className="flex min-h-[430px] flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+                      <DataBarVertical20Filled className="text-kumo-subtle" aria-hidden="true" />
+                      <p className="text-sm font-medium text-kumo-default">
+                        No hay datos de uso disponibles para mostrar
+                      </p>
+                      <p className="max-w-lg text-xs leading-5 text-kumo-subtle">
+                        El servicio de facturación todavía no reporta cargos medidos para esta suscripción y periodo.
+                      </p>
+                    </div>
+                  </LayerCard>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'invoices' && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+                  <div className="relative">
+                    <Search20Filled
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-kumo-subtle"
+                    />
+                    <Input
+                      aria-label="Buscar facturas"
+                      placeholder="Buscar por folio o periodo"
+                      value={invoiceSearch}
+                      onChange={(event) => setInvoiceSearch(event.currentTarget.value)}
+                      className="w-full pl-10"
+                    />
+                  </div>
+                  <Select<InvoiceFilter>
+                    aria-label="Filtrar facturas por estado"
+                    value={invoiceFilter}
+                    onValueChange={(value) => setInvoiceFilter(value)}
+                    items={INVOICE_FILTER_OPTIONS}
+                    renderValue={(value) => INVOICE_FILTER_OPTIONS.find((option) => option.value === value)?.label}
+                  >
+                    {INVOICE_FILTER_OPTIONS.map((option) => (
+                      <Select.Option key={option.value} value={option.value}>{option.label}</Select.Option>
+                    ))}
+                  </Select>
+                </div>
+
+                <LayerCard className="overflow-hidden p-0">
+                  {invoices.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-kumo-line bg-kumo-recessed/60">
+                            <th className="px-4 py-3 font-semibold">Documento</th>
+                            <th className="px-4 py-3 font-semibold">Periodo</th>
+                            <th className="px-4 py-3 font-semibold">Importe</th>
+                            <th className="px-4 py-3 font-semibold">Estado</th>
+                            <th className="px-4 py-3 text-right font-semibold">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {invoices.map((invoice) => {
+                            const invoiceBadge = invoiceStatus(invoice.status);
+                            return (
+                              <tr key={invoice.id} className="border-b border-kumo-hairline last:border-b-0">
+                                <td className="px-4 py-3">
+                                  <p className="font-medium text-kumo-default">{invoice.number}</p>
+                                  <p className="mt-0.5 text-xs text-kumo-subtle">{formatDate(invoice.issuedAt)}</p>
+                                </td>
+                                <td className="px-4 py-3 text-kumo-subtle">{invoice.period}</td>
+                                <td className="px-4 py-3 font-medium text-kumo-default">
+                                  {formatMoney(invoice.amount, invoice.currency)}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <Badge variant={invoiceBadge.variant}>
+                                    {invoiceBadge.label}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex justify-end gap-2">
+                                    {invoice.hostedUrl && (
+                                      <LinkButton
+                                        size="sm"
+                                        variant="secondary"
+                                        href={invoice.hostedUrl}
+                                        external
+                                        icon={<Open20Filled />}
+                                      >
+                                        Ver
+                                      </LinkButton>
+                                    )}
+                                    {invoice.pdfUrl && (
+                                      <LinkButton
+                                        size="sm"
+                                        variant="secondary"
+                                        href={invoice.pdfUrl}
+                                        external
+                                        icon={<ArrowDownload20Filled />}
+                                      >
+                                        PDF
+                                      </LinkButton>
+                                    )}
+                                    {!invoice.hostedUrl && !invoice.pdfUrl && (
+                                      <span className="text-xs text-kumo-subtle">Sin archivo</span>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <EmptyTableState
+                      title="No hay facturas para mostrar"
+                      description="Los documentos emitidos para este negocio aparecerán aquí."
+                    />
+                  )}
+                </LayerCard>
+              </>
+            )}
+          </div>
+
+          {activeTab === 'subscriptions' && (
+          <aside className="space-y-4" aria-label="Datos de facturación">
+            <LayerCard className="overflow-hidden p-0">
+              <div className="border-b border-kumo-line px-4 py-3">
+                <h2 className="text-sm font-semibold text-kumo-subtle">Correo de facturación</h2>
+              </div>
+              <div className="p-4">
+                {editingEmail ? (
+                  <div className="space-y-3">
+                    <Input
+                      label="Correo para documentos y avisos"
+                      type="email"
+                      value={emailDraft}
+                      onChange={(event) => setEmailDraft(event.currentTarget.value)}
+                      error={emailError ?? undefined}
+                      autoComplete="email"
+                      className="w-full"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEmailDraft(configuredEmail);
+                          setEmailError(null);
+                          setEditingEmail(false);
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button size="sm" variant="primary" onClick={saveBillingEmail} loading={saving}>
+                        Guardar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2 text-sm text-kumo-default">
+                      <Mail20Filled className="shrink-0 text-kumo-subtle" aria-hidden="true" />
+                      <span className="truncate">{configuredEmail || 'Sin correo configurado'}</span>
+                    </div>
+                    <Button
+                      shape="square"
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Editar correo de facturación"
+                      icon={<Edit20Filled />}
+                      onClick={() => setEditingEmail(true)}
+                    />
+                  </div>
+                )}
+              </div>
+            </LayerCard>
+
+            <div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-kumo-default">Método de facturación</h2>
+                  <p className="mt-0.5 text-xs text-kumo-subtle">Método principal del negocio</p>
+                </div>
+                <Payment20Filled className="text-kumo-subtle" aria-hidden="true" />
+              </div>
+
+              {paymentMethod?.last4 ? (
+                <LayerCard className="overflow-hidden p-0">
+                  <div className="min-h-44 bg-kumo-recessed/55 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex size-10 items-center justify-center rounded-md border border-kumo-line bg-kumo-base text-kumo-subtle">
+                        <CardUi20Filled aria-hidden="true" />
+                      </div>
+                      <Badge variant="success">Principal</Badge>
+                    </div>
+                    <div className="mt-8 space-y-1 font-mono text-sm text-kumo-default">
+                      <p className="tracking-[0.14em]">•••• •••• •••• {paymentMethod.last4}</p>
+                      <p className="capitalize">{paymentMethod.brand || 'Tarjeta'}</p>
+                      {paymentMethod.expMonth && paymentMethod.expYear && (
+                        <p className="pt-2 text-xs text-kumo-subtle">
+                          Expira {String(paymentMethod.expMonth).padStart(2, '0')}/{paymentMethod.expYear}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-kumo-line p-3">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={openBillingPortal}
+                      loading={portalLoading}
+                      icon={<Edit20Filled />}
+                    >
                       Actualizar
                     </Button>
                     <Button
-                      variant="primary"
+                      size="sm"
+                      variant="secondary-destructive"
                       onClick={openBillingPortal}
                       loading={portalLoading}
-                      disabled={loading}
+                      icon={<Delete20Filled />}
                     >
-                      Abrir portal de cobro
+                      Eliminar
                     </Button>
-                  </ButtonGroup>
-                </InlineStack>
-
-                {loading ? (
-                  <Box padding="600">
-                    <InlineStack align="center" blockAlign="center" gap="200">
-                      <Spinner accessibilityLabel="Consultando facturación" size="small" />
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        Consultando facturación...
-                      </Text>
-                    </InlineStack>
-                  </Box>
-                ) : (
-                  <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="300">
-                    {[
-                      {
-                        label: 'Plan',
-                        value: overview?.planName ?? 'Sin plan activo',
-                        caption: overview?.planCode ?? 'El portal de cobro no reporta un plan activo.',
-                        icon: PlanIcon,
-                      },
-                      {
-                        label: 'Usuarios incluidos',
-                        value: String(overview?.includedUsers ?? Math.max(1, Number(config.estimatedUsers ?? 1))),
-                        caption: 'Límite usado para altas de colaboradores activos.',
-                        icon: OrderIcon,
-                      },
-                      {
-                        label: 'Costo recurrente',
-                        value: planAmount,
-                        caption: overview?.interval === 'year' ? 'Cobro anual' : overview?.interval === 'month' ? 'Cobro mensual' : 'Ciclo no informado',
-                        icon: ReceiptDollarIcon,
-                      },
-                      {
-                        label: 'Método de pago',
-                        value: paymentMethod,
-                        caption: overview?.paymentMethod ? 'Método predeterminado del portal.' : 'Sin método asociado al negocio.',
-                        icon: CreditCardIcon,
-                      },
-                    ].map((stat) => (
-                      <Box
-                        key={stat.label}
-                        padding="400"
-                        borderColor="border"
-                        borderWidth="025"
-                        borderRadius="300"
-                        background="bg-surface-secondary"
-                      >
-                        <BlockStack gap="200">
-                          <InlineStack align="space-between" blockAlign="center">
-                            <Text as="span" variant="bodySm" tone="subdued">
-                              {stat.label}
-                            </Text>
-                            <Icon source={stat.icon} tone="subdued" />
-                          </InlineStack>
-                          <Text as="p" variant="headingMd" truncate>
-                            {stat.value}
-                          </Text>
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            {stat.caption}
-                          </Text>
-                        </BlockStack>
-                      </Box>
-                    ))}
-                  </InlineGrid>
-                )}
-              </BlockStack>
-            </Card>
-
-            <Card padding="0">
-              <Box padding="400">
-                <InlineStack align="space-between" blockAlign="center" gap="300">
-                  <BlockStack gap="100">
-                    <Text as="h2" variant="headingMd">
-                      Facturas y recibos
-                    </Text>
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Historial sincronizado desde el portal de facturación del tenant.
-                    </Text>
-                  </BlockStack>
-                  <Select
-                    label="Filtrar facturas"
-                    labelHidden
-                    options={INVOICE_FILTER_OPTIONS}
-                    value={invoiceFilter}
-                    onChange={(value) => setInvoiceFilter(value as InvoiceFilter)}
-                  />
-                </InlineStack>
-              </Box>
-              <Divider />
-              <IndexTable
-                resourceName={{ singular: 'factura', plural: 'facturas' }}
-                itemCount={invoices.length}
-                selectable={false}
-                headings={[
-                  { title: 'Factura' },
-                  { title: 'Periodo' },
-                  { title: 'Importe' },
-                  { title: 'Estado' },
-                  { title: 'Acciones' },
-                ]}
-              >
-                {invoices.map((invoice, index) => {
-                  const invoiceBadge = invoiceStatus(invoice.status);
-                  return (
-                    <IndexTable.Row id={invoice.id} key={invoice.id} position={index}>
-                      <IndexTable.Cell>
-                        <BlockStack gap="050">
-                          <Text as="span" variant="bodyMd" fontWeight="semibold">
-                            {invoice.number}
-                          </Text>
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {formatDate(invoice.issuedAt)}
-                          </Text>
-                        </BlockStack>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>{invoice.period}</IndexTable.Cell>
-                      <IndexTable.Cell>{formatMoney(invoice.amount, invoice.currency)}</IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Badge tone={invoiceBadge.tone}>{invoiceBadge.label}</Badge>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <InlineStack gap="200">
-                          {invoice.hostedUrl && (
-                            <Button url={invoice.hostedUrl} target="_blank" size="slim">
-                              Ver
-                            </Button>
-                          )}
-                          {invoice.pdfUrl && (
-                            <Button url={invoice.pdfUrl} target="_blank" size="slim">
-                              PDF
-                            </Button>
-                          )}
-                          {!invoice.hostedUrl && !invoice.pdfUrl && (
-                            <Text as="span" variant="bodySm" tone="subdued">
-                              Sin enlace
-                            </Text>
-                          )}
-                        </InlineStack>
-                      </IndexTable.Cell>
-                    </IndexTable.Row>
-                  );
-                })}
-              </IndexTable>
-              {invoices.length === 0 && (
-                <Box padding="500">
-                  <BlockStack gap="300" inlineAlign="center">
-                    <Box padding="300" background="bg-surface-secondary" borderRadius="300">
-                      <Icon source={ReceiptDollarIcon} tone="subdued" />
-                    </Box>
-                    <BlockStack gap="100" inlineAlign="center">
-                      <Text as="h3" variant="headingMd">
-                        No hay facturas para mostrar
-                      </Text>
-                      <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-                        Cuando el portal emita facturas para este tenant, aparecerán en esta tabla.
-                      </Text>
-                    </BlockStack>
-                  </BlockStack>
-                </Box>
+                  </div>
+                </LayerCard>
+              ) : (
+                <LayerCard className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-kumo-recessed text-kumo-subtle">
+                      <WalletCreditCard20Filled aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-kumo-default">Sin método de pago</p>
+                      <p className="mt-1 text-xs leading-5 text-kumo-subtle">
+                        Agrega un método seguro para activar renovaciones y compras.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={openBillingPortal}
+                    loading={portalLoading}
+                    disabled={!overview?.billingAccountId && !overview?.portalUrl}
+                    icon={<WalletCreditCard20Filled />}
+                    className="mt-4 w-full"
+                  >
+                    Agregar método
+                  </Button>
+                </LayerCard>
               )}
-            </Card>
-          </BlockStack>
-        </Layout.Section>
+            </div>
 
-        <Layout.Section variant="oneThird">
-          <BlockStack gap="400">
-            <Card>
-              <BlockStack gap="400">
-                <InlineStack gap="200" blockAlign="center">
-                  <Icon source={CreditCardIcon} tone="base" />
-                  <Text as="h2" variant="headingMd">
-                    Cobro
-                  </Text>
-                </InlineStack>
-                <Select
-                  label="Ciclo de cobro"
-                  options={BILLING_CYCLE_OPTIONS}
-                  value={billingCycle}
-                  onChange={(value) => setBillingCycle(value as BillingCycle)}
-                />
-                <Select
-                  label="Entrega de factura"
-                  options={INVOICE_DELIVERY_OPTIONS}
-                  value={invoiceDelivery}
-                  onChange={(value) => setInvoiceDelivery(value as InvoiceDelivery)}
-                />
-                <Divider />
-                <BlockStack gap="200">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      Estado de pago
-                    </Text>
-                    <Badge tone={status.tone}>{status.label}</Badge>
-                  </InlineStack>
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      Renovación
-                    </Text>
-                    <Text as="span" variant="bodySm">
-                      {formatDate(overview?.currentPeriodEnd ?? null)}
-                    </Text>
-                  </InlineStack>
-                </BlockStack>
-                <Button onClick={openBillingPortal} loading={portalLoading} disabled={loading} fullWidth>
-                  Actualizar método de pago
-                </Button>
-              </BlockStack>
-            </Card>
+            <div className="border-t border-dashed border-kumo-line pt-4">
+              <div className="flex items-start gap-3 text-xs leading-5 text-kumo-subtle">
+                <CheckmarkCircle20Filled className="mt-0.5 shrink-0 text-kumo-success" aria-hidden="true" />
+                <p>
+                  Los cambios del método de pago se realizan en el portal seguro y permanecen aislados para este negocio.
+                </p>
+              </div>
+            </div>
 
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack gap="200" blockAlign="center">
-                  <Icon source={CalendarIcon} tone="base" />
-                  <Text as="h2" variant="headingMd">
-                    Perfil fiscal
-                  </Text>
-                </InlineStack>
-                <BlockStack gap="200">
-                  {[
-                    {
-                      label: 'Razón social',
-                      value: textOrPending(config.legalName || config.storeName),
-                      status: config.legalName ? 'Listo' : 'Revisar',
-                      tone: config.legalName ? 'success' : 'attention',
-                    },
-                    {
-                      label: 'RFC o identificador fiscal',
-                      value: textOrPending(config.rfc),
-                      status: config.rfc ? 'Validado' : 'Pendiente',
-                      tone: config.rfc ? 'success' : 'warning',
-                    },
-                    {
-                      label: 'Correo de facturación',
-                      value: textOrPending(config.contactEmail || config.emailRecipients || config.emailFrom),
-                      status: config.contactEmail || config.emailRecipients || config.emailFrom ? 'Activo' : 'Revisar',
-                      tone: config.contactEmail || config.emailRecipients || config.emailFrom ? 'success' : 'attention',
-                    },
-                    {
-                      label: 'País',
-                      value: textOrPending(config.country),
-                      status: config.country ? 'Localizado' : 'Pendiente',
-                      tone: config.country ? 'success' : 'warning',
-                    },
-                  ].map((item) => (
-                    <Box key={item.label} paddingBlockEnd="200">
-                      <InlineStack align="space-between" blockAlign="start" gap="300" wrap={false}>
-                        <BlockStack gap="050">
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {item.label}
-                          </Text>
-                          <Text as="span" variant="bodyMd" fontWeight="semibold" truncate>
-                            {item.value}
-                          </Text>
-                        </BlockStack>
-                        <Badge tone={item.tone as BadgeTone}>{item.status}</Badge>
-                      </InlineStack>
-                    </Box>
-                  ))}
-                </BlockStack>
-                <Divider />
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Los datos fiscales se toman del perfil del negocio para mantener un solo registro por tenant.
-                </Text>
-              </BlockStack>
-            </Card>
-          </BlockStack>
-        </Layout.Section>
-      </Layout>
-    </BlockStack>
+          </aside>
+          )}
+        </div>
+      )}
+
+      {portalLoading && (
+        <span className="sr-only" role="status">
+          <Loader size="sm" aria-label="Abriendo portal de facturación" />
+        </span>
+      )}
+    </section>
   );
 }

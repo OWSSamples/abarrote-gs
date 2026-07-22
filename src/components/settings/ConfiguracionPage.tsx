@@ -37,6 +37,7 @@ import {
   StoreFilledIcon,
   ReceiptDollarIcon,
   ReceiptDollarFilledIcon,
+  BillIcon,
   InventoryIcon,
   InventoryFilledIcon,
   NotificationIcon,
@@ -110,6 +111,9 @@ const AISection = dynamic(() => import('./sections/AISection').then((m) => m.AIS
 const EmailSection = dynamic(() => import('./sections/EmailSection').then((m) => m.EmailSection), {
   loading: () => SectionLoader,
 });
+const BillingSection = dynamic(() => import('./sections/BillingSection').then((m) => m.BillingSection), {
+  loading: () => SectionLoader,
+});
 import { parseError } from '@/lib/errors';
 import { sendTestEmailAction } from '@/app/actions/email-actions';
 import { testTelegramNotification } from '@/app/actions/store-config-actions';
@@ -179,6 +183,13 @@ const SETTINGS_CATEGORIES = [
     icon: CreditCardIcon,
     iconFilled: PaymentFilledIcon,
     beta: true,
+  },
+  {
+    id: 'billing',
+    title: 'Suscripción y Facturación',
+    description: 'Gestiona plan, método de pago, facturas y preferencias fiscales del negocio.',
+    icon: BillIcon,
+    iconFilled: ReceiptDollarFilledIcon,
   },
   {
     id: 'customer-display',
@@ -391,6 +402,7 @@ export function ConfiguracionPage() {
         label: emailConfigured ? 'Activo' : 'Sin configurar',
       },
       payments: { configured: mpLinked, label: mpLinked ? 'Vinculado' : 'Sin vincular' },
+      billing: { configured: true, label: 'Portal' },
       'customer-display': { configured: displayEnabled, label: displayEnabled ? 'Activo' : 'Inactivo' },
       servicios: {
         configured: storeConfig.serviciosProvider !== 'local',
@@ -641,6 +653,8 @@ export function ConfiguracionPage() {
             cobrarQrUrlField={fields.cobrarQrUrl}
           />
         );
+      case 'billing':
+        return <BillingSection config={config} updateField={updateField} />;
       case 'customer-display':
         // CustomerDisplaySectionV4 is self-sufficient: uses store directly,
         // each field auto-saves independently. No props needed.

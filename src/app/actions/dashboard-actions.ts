@@ -61,7 +61,37 @@ const DEFAULT_KPI: KPIData = {
   mermaRateChange: 0,
 };
 
-async function _fetchDashboardFromDB() {
+interface DashboardPartialError {
+  title: string;
+  description: string;
+}
+
+interface DashboardData {
+  kpiData: Awaited<ReturnType<typeof fetchKPIData>>;
+  products: Awaited<ReturnType<typeof fetchAllProducts>>;
+  inventoryAlerts: Awaited<ReturnType<typeof fetchInventoryAlerts>>;
+  salesData: Awaited<ReturnType<typeof fetchSalesData>>;
+  saleRecords: Awaited<ReturnType<typeof fetchSaleRecords>>;
+  mermaRecords: Awaited<ReturnType<typeof fetchMermaRecords>>;
+  pedidos: Awaited<ReturnType<typeof fetchPedidos>>;
+  clientes: Awaited<ReturnType<typeof fetchClientes>>;
+  fiadoTransactions: Awaited<ReturnType<typeof fetchFiadoTransactions>>;
+  gastos: Awaited<ReturnType<typeof fetchGastos>>;
+  proveedores: Awaited<ReturnType<typeof fetchProveedores>>;
+  cortesHistory: Awaited<ReturnType<typeof fetchCortesHistory>>;
+  inventoryAudits: Awaited<ReturnType<typeof fetchInventoryAudits>>;
+  storeConfig: Awaited<ReturnType<typeof fetchStoreConfig>>;
+  devoluciones: Awaited<ReturnType<typeof fetchDevoluciones>>;
+  cashMovements: Awaited<ReturnType<typeof fetchCashMovements>>;
+  loyaltyTransactions: Awaited<ReturnType<typeof fetchLoyaltyTransactions>>;
+  hourlySalesData: Awaited<ReturnType<typeof fetchHourlySalesData>>;
+  categories: Awaited<ReturnType<typeof fetchCategories>>;
+  activeStoreId: string;
+  stores: Array<{ id: string; name: string }>;
+  partialErrors: DashboardPartialError[];
+}
+
+async function _fetchDashboardFromDB(): Promise<DashboardData> {
   // Resolve the server-owned tenant boundary before loading any dashboard module.
   const scope = await requireStoreScope();
   const storeId = scope.storeId;
@@ -69,7 +99,7 @@ async function _fetchDashboardFromDB() {
 
   // ── L1/L2 Cache check ──
   const cacheKey = `dashboard:v1:${storeId}`;
-  const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+  const cached = await cacheGet<DashboardData>(cacheKey);
   if (cached) {
     // Merge fresh scope metadata (stores may change between cache hits)
     return {
@@ -124,12 +154,11 @@ async function _fetchDashboardFromDB() {
   ] = results;
 
   // Extract all non-null errors to report them to Sileo UI
-  const partialErrors = results.map((r) => r.error).filter((e) => e !== null) as {
-    title: string;
-    description: string;
-  }[];
+  const partialErrors = results
+    .map((request) => request.error)
+    .filter((error): error is DashboardPartialError => error !== null);
 
-  const result = {
+  const result: DashboardData = {
     kpiData: kpiDataReq.data,
     products: allProductsReq.data,
     inventoryAlerts: inventoryAlertsReq.data,

@@ -446,7 +446,7 @@ export function BillingSection({ config }: SettingsSectionProps) {
                     Perfil fiscal
                   </Text>
                 </InlineStack>
-                <BlockStack gap="250">
+                <BlockStack gap="200">
                   {[
                     {
                       label: 'Razón social',

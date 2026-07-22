@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { db } from '@/db';
-import { roleDefinitions, stores, userRoles } from '@/db/schema';
+import { roleDefinitions, stores, tenantMemberships, tenants, userRoles } from '@/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { requireAuth, AuthError, type AuthenticatedUser } from '@/lib/auth/guard';
 import { logger } from '@/lib/logger';
@@ -26,12 +26,14 @@ const STORE_COOKIE = '__store_id';
 
 export interface StoreScope {
   user: AuthenticatedUser;
+  tenantId: string;
   storeId: string;
   accessibleStores: AccessibleStore[];
 }
 
 export interface AccessibleStore {
   id: string;
+  tenantId: string;
   name: string;
   isDefault: boolean;
 }
@@ -58,6 +60,7 @@ async function listAccessibleMemberships(user: AuthenticatedUser): Promise<Acces
   const rows = await db
     .select({
       id: stores.id,
+      tenantId: stores.tenantId,
       name: stores.name,
       isDefault: userRoles.isDefault,
       membershipId: userRoles.id,
@@ -68,11 +71,21 @@ async function listAccessibleMemberships(user: AuthenticatedUser): Promise<Acces
     })
     .from(userRoles)
     .innerJoin(stores, eq(stores.id, userRoles.storeId))
+    .innerJoin(tenants, eq(tenants.id, stores.tenantId))
+    .innerJoin(
+      tenantMemberships,
+      and(
+        eq(tenantMemberships.tenantId, stores.tenantId),
+        eq(tenantMemberships.cognitoSub, userRoles.cognitoSub),
+      ),
+    )
     .leftJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
     .where(
       and(
         eq(userRoles.cognitoSub, user.uid),
         eq(userRoles.status, 'activo'),
+        eq(tenantMemberships.status, 'active'),
+        eq(tenants.status, 'active'),
         eq(stores.status, 'active'),
         isNull(stores.deletedAt),
       ),
@@ -85,7 +98,7 @@ async function listAccessibleMemberships(user: AuthenticatedUser): Promise<Acces
 
 export async function listAccessibleStores(user: AuthenticatedUser): Promise<AccessibleStore[]> {
   const memberships = await listAccessibleMemberships(user);
-  return memberships.map(({ id, name, isDefault }) => ({ id, name, isDefault }));
+  return memberships.map(({ id, tenantId, name, isDefault }) => ({ id, tenantId, name, isDefault }));
 }
 
 /**
@@ -114,7 +127,7 @@ const resolveStoreScope = cache(async (): Promise<StoreScope> => {
     });
     throw new AuthError('Tu acceso al negocio no tiene un rol válido. Contacta al administrador.', 403);
   }
-  const accessibleStores = memberships.map(({ id, name, isDefault }) => ({ id, name, isDefault }));
+  const accessibleStores = memberships.map(({ id, tenantId, name, isDefault }) => ({ id, tenantId, name, isDefault }));
   const tenantUser: AuthenticatedUser = {
     ...user,
     roleId: selected.roleId,
@@ -123,7 +136,7 @@ const resolveStoreScope = cache(async (): Promise<StoreScope> => {
     displayName: selected.displayName || user.displayName,
   };
 
-  return { user: tenantUser, storeId: selected.id, accessibleStores };
+  return { user: tenantUser, tenantId: selected.tenantId, storeId: selected.id, accessibleStores };
 });
 
 export async function requireStoreScope(): Promise<StoreScope> {

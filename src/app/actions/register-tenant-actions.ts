@@ -4,11 +4,22 @@ import crypto from 'crypto';
 import { cookies, headers } from 'next/headers';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { auditLogs, roleDefinitions, storeConfig, stores, userRoles, userStoreAccess } from '@/db/schema';
+import {
+  auditLogs,
+  roleDefinitions,
+  storeConfig,
+  stores,
+  tenantMemberships,
+  tenants,
+  userRoles,
+  userStoreAccess,
+} from '@/db/schema';
 import { checkRateLimitAsync } from '@/infrastructure/redis/rate-limit';
-import { AuthError, requireAuth } from '@/lib/auth/guard';
+import { AuthError, requireAuth, requireCurrentAccessJwt } from '@/lib/auth/guard';
 import { listCognitoUsers } from '@/lib/cognito-admin';
 import { withLogging, ValidationError } from '@/lib/errors';
+import { assertHumanRequest } from '@/lib/security/bot-protection';
+import { fetchAndSyncTenantEntitlements } from '@/server/billing-entitlement-service';
 
 const STORE_COOKIE = '__store_id';
 const SUPPORTED_BUSINESS_TYPES = new Set(['miscelania', 'abarrotes', 'ropa', 'comida_rapida', 'otro_retail']);
@@ -93,20 +104,37 @@ async function storeNameExists(tenantName: string): Promise<boolean> {
   return Boolean(existingStore);
 }
 
-async function findActiveTenantForUser(userId: string): Promise<{ id: string; name: string } | null> {
+async function findActiveTenantForUser(
+  userId: string,
+  preferredStoreId?: string,
+): Promise<{ id: string; tenantId: string; name: string } | null> {
   const [tenant] = await db
-    .select({ id: stores.id, name: stores.name })
+    .select({ id: stores.id, tenantId: stores.tenantId, name: stores.name })
     .from(userRoles)
     .innerJoin(stores, eq(stores.id, userRoles.storeId))
+    .innerJoin(tenants, eq(tenants.id, stores.tenantId))
+    .innerJoin(
+      tenantMemberships,
+      and(
+        eq(tenantMemberships.tenantId, stores.tenantId),
+        eq(tenantMemberships.cognitoSub, userRoles.cognitoSub),
+      ),
+    )
     .where(
       and(
         eq(userRoles.cognitoSub, userId),
         eq(userRoles.status, 'activo'),
+        eq(tenantMemberships.status, 'active'),
+        eq(tenants.status, 'active'),
         eq(stores.status, 'active'),
         isNull(stores.deletedAt),
       ),
     )
-    .orderBy(sql`${userRoles.isDefault} DESC`, userRoles.createdAt)
+    .orderBy(
+      sql`CASE WHEN ${stores.id} = ${preferredStoreId ?? ''} THEN 0 ELSE 1 END`,
+      sql`${userRoles.isDefault} DESC`,
+      userRoles.createdAt,
+    )
     .limit(1);
 
   return tenant ?? null;
@@ -152,6 +180,7 @@ async function getRegistrationClientIp(): Promise<string> {
 async function _checkRegistrationPreflight(
   input: RegistrationPreflightInput,
 ): Promise<RegistrationPreflightResult> {
+  await assertHumanRequest();
   const tenantName = normalizeTenantName(input.tenantName);
   const email = normalizeEmail(input.email);
 
@@ -201,6 +230,7 @@ export const checkRegistrationPreflight = withLogging(
 async function _preparePendingSignupVerification(
   input: PendingSignupVerificationInput,
 ): Promise<PendingSignupVerificationResult> {
+  await assertHumanRequest();
   const email = normalizeEmail(input.email);
   if (!email) {
     throw new ValidationError('Ingresa un correo válido para continuar el registro.');
@@ -279,7 +309,12 @@ interface ProvisionRegisteredTenantInput {
   mode?: 'initial' | 'additional';
 }
 
-async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput): Promise<{ storeId: string; tenantName: string }> {
+async function _provisionRegisteredTenant(
+  input: ProvisionRegisteredTenantInput,
+): Promise<{ tenantId: string; storeId: string; tenantName: string }> {
+  if (input.mode !== 'additional') {
+    await assertHumanRequest();
+  }
   const user = await requireAuth();
   const tenantName = normalizeTenantName(input.tenantName);
   const country = normalizeCountry(input.country);
@@ -310,11 +345,20 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
     throw new ValidationError('Captura el identificador fiscal y régimen tributario del país.');
   }
 
-  const existingUserStore = await findActiveTenantForUser(user.uid);
+  const cookieStore = await cookies();
+  const preferredStoreId = cookieStore.get(STORE_COOKIE)?.value;
+  const existingUserStore = await findActiveTenantForUser(user.uid, preferredStoreId);
+  const additionalEntitlements = existingUserStore && input.mode === 'additional'
+    ? await fetchAndSyncTenantEntitlements(
+        existingUserStore.tenantId,
+        await requireCurrentAccessJwt(),
+      )
+    : [];
+  const maxStores = additionalEntitlements.find((item) => item.code === 'max_stores')?.value
+    ?? null;
 
   if (existingUserStore && input.mode !== 'additional') {
     if (normalizeTenantName(existingUserStore.name).toLowerCase() === tenantName.toLowerCase()) {
-      const cookieStore = await cookies();
       cookieStore.set(STORE_COOKIE, existingUserStore.id, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -322,11 +366,15 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
         path: '/',
         maxAge: 60 * 60 * 24 * 30,
       });
-      return { storeId: existingUserStore.id, tenantName: existingUserStore.name };
+      return {
+        tenantId: existingUserStore.tenantId,
+        storeId: existingUserStore.id,
+        tenantName: existingUserStore.name,
+      };
     }
 
     throw new AuthError(
-      'Esta cuenta ya pertenece a un negocio. Inicia sesión y usa "Crear otro negocio" para registrar un tenant adicional.',
+      'Esta cuenta ya pertenece a un negocio. Inicia sesión y usa "Crear otro negocio" para agregar otro negocio al workspace.',
       409,
     );
   }
@@ -353,6 +401,7 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
     throw new Error('Los roles del sistema no están inicializados.');
   }
 
+  const tenantId = existingUserStore?.tenantId ?? createTenantId();
   const storeId = createTenantId();
   const now = new Date();
 
@@ -360,6 +409,26 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
     await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`tenant-provision:${user.uid}`}))`);
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`identity-membership:${user.uid}`}))`);
+
+      if (existingUserStore && input.mode === 'additional' && maxStores !== null) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`tenant-store-capacity:${tenantId}`}))`);
+        const [activeStores] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(stores)
+          .where(
+            and(
+              eq(stores.tenantId, tenantId),
+              eq(stores.status, 'active'),
+              isNull(stores.deletedAt),
+            ),
+          );
+        if (Number(activeStores?.count ?? 0) >= maxStores) {
+          throw new AuthError(
+            `Tu plan permite ${maxStores} negocio(s) activo(s).`,
+            409,
+          );
+        }
+      }
 
       const [concurrentAccess] = await tx
         .select({ storeId: userRoles.storeId })
@@ -370,9 +439,19 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
         throw new ValidationError('Tu cuenta ya está vinculada a un negocio. Actualiza la página para continuar.');
       }
 
+      if (!existingUserStore) {
+        await tx.insert(tenants).values({
+          id: tenantId,
+          name: tenantName,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
       await tx
         .insert(stores)
-        .values({ id: storeId, name: tenantName, createdAt: now });
+        .values({ id: storeId, tenantId, name: tenantName, createdAt: now });
 
       await tx
         .insert(storeConfig)
@@ -397,6 +476,27 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
         .update(userRoles)
         .set({ isDefault: false, updatedAt: now })
         .where(eq(userRoles.cognitoSub, user.uid));
+
+      await tx
+        .update(tenantMemberships)
+        .set({ isDefault: false, updatedAt: now })
+        .where(eq(tenantMemberships.cognitoSub, user.uid));
+      await tx
+        .insert(tenantMemberships)
+        .values({
+          id: crypto.randomUUID(),
+          tenantId,
+          cognitoSub: user.uid,
+          role: 'owner',
+          status: 'active',
+          isDefault: true,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [tenantMemberships.tenantId, tenantMemberships.cognitoSub],
+          set: { role: 'owner', status: 'active', isDefault: true, updatedAt: now },
+        });
 
       const [createdOwner] = await tx
         .insert(userRoles)
@@ -448,8 +548,10 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
         changes: {
           after: {
             storeId,
+            tenantId,
             tenantName,
-            tenantIdLength: storeId.length,
+            tenantIdLength: tenantId.length,
+            storeIdLength: storeId.length,
             country,
             businessType,
             estimatedUsers,
@@ -466,7 +568,6 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
     throw error;
   }
 
-  const cookieStore = await cookies();
   cookieStore.set(STORE_COOKIE, storeId, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -475,7 +576,7 @@ async function _provisionRegisteredTenant(input: ProvisionRegisteredTenantInput)
     maxAge: 60 * 60 * 24 * 30,
   });
 
-  return { storeId, tenantName };
+  return { tenantId, storeId, tenantName };
 }
 
 export const provisionRegisteredTenant = withLogging(
@@ -487,7 +588,7 @@ type AdditionalTenantInput = Omit<ProvisionRegisteredTenantInput, 'mode'>;
 
 async function _provisionAdditionalTenant(
   input: AdditionalTenantInput,
-): Promise<{ storeId: string; tenantName: string }> {
+): Promise<{ tenantId: string; storeId: string; tenantName: string }> {
   return _provisionRegisteredTenant({ ...input, mode: 'additional' });
 }
 

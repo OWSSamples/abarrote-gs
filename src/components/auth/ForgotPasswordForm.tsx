@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { confirmResetPassword, resetPassword, resendSignUpCode } from '@/lib/cognito';
 import { logAuthEvent } from '@/lib/auth/auth-logger';
 import { evaluatePassword } from '@/lib/auth/password-policy';
-import { checkAuthRateLimit } from '@/app/actions/auth-rate-limit';
+import { checkAuthRateLimit, verifyAuthHumanRequest } from '@/app/actions/auth-rate-limit';
 import { preparePendingSignupVerification } from '@/app/actions/register-tenant-actions';
 import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
 import { useToast } from '@/components/notifications/ToastProvider';
@@ -223,6 +223,7 @@ export function ForgotPasswordForm() {
       setFieldErrors({});
 
       try {
+        await verifyAuthHumanRequest();
         await confirmResetPassword({
           username: email,
           confirmationCode: normalizedCode,

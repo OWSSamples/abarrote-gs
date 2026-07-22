@@ -77,7 +77,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const decoded = await verifyIdToken(parsed.data.token);
     if (parsed.data.accessToken) {
-      await verifyAccessToken(parsed.data.accessToken);
+      const accessToken = await verifyAccessToken(parsed.data.accessToken);
+      if (accessToken.sub !== decoded.sub) {
+        return noStoreJson({ error: 'Los tokens de sesión no pertenecen al mismo usuario.' }, 401);
+      }
     }
 
     const nowSeconds = Math.floor(Date.now() / 1000);

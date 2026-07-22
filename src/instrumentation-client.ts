@@ -3,6 +3,22 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from '@sentry/nextjs';
+import { initBotId } from 'botid/client/core';
+
+if (process.env.NODE_ENV === 'production') {
+  initBotId({
+    protect: [
+      { path: '/auth/login', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
+      { path: '/auth/register', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
+      { path: '/auth/forgot-password', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
+      { path: '/auth/reset-password', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
+      { path: '/auth/mfa-recovery', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
+      { path: '/auth/accept-invitation', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
+      { path: '/dashboard/settings/roles', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
+      { path: '/dashboard/settings', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
+    ],
+  });
+}
 
 const isProduction = process.env.NODE_ENV === 'production';
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN

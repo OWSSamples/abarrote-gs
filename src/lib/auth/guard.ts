@@ -1,6 +1,6 @@
 import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
-import { verifyIdToken } from '@/lib/cognito-admin';
+import { verifyAccessToken, verifyIdToken } from '@/lib/cognito-admin';
 import { db } from '@/db';
 import { userIdentities } from '@/db/schema';
 import type { PermissionKey } from '@/types';
@@ -61,11 +61,16 @@ export async function requireCurrentJwt(): Promise<string> {
 export async function requireCurrentAccessJwt(): Promise<string> {
   const cookieStore = await cookies();
   const accessToken = cookieStore.get('__cognito_access')?.value;
-  if (accessToken) {
-    return accessToken;
+  if (!accessToken) {
+    throw new AuthError('La sesión de acceso no está sincronizada. Inicia sesión nuevamente.', 401);
   }
 
-  return requireCurrentJwt();
+  try {
+    await verifyAccessToken(accessToken);
+    return accessToken;
+  } catch {
+    throw new AuthError('La sesión de acceso expiró. Inicia sesión nuevamente.', 401);
+  }
 }
 
 // ==================== CORE AUTH FUNCTION ====================

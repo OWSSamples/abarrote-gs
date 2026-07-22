@@ -133,6 +133,15 @@ export interface CognitoDecodedToken {
   name?: string;
 }
 
+export interface CognitoAccessToken {
+  sub: string;
+  client_id: string;
+  token_use: 'access';
+  scope?: string;
+  exp: number;
+  iat: number;
+}
+
 /**
  * Verify and decode a Cognito ID token.
  * @throws if the token is invalid or expired.
@@ -142,8 +151,9 @@ export async function verifyIdToken(token: string): Promise<CognitoDecodedToken>
   return payload as unknown as CognitoDecodedToken;
 }
 
-export async function verifyAccessToken(token: string): Promise<void> {
-  await getCognitoAccessVerifier().verify(token);
+export async function verifyAccessToken(token: string): Promise<CognitoAccessToken> {
+  const payload = await getCognitoAccessVerifier().verify(token);
+  return payload as unknown as CognitoAccessToken;
 }
 
 // ══════════════════════════════════════════════════════════════

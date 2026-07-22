@@ -14,6 +14,7 @@ import {
   hashIdentifierForLog,
   normalizeEmailAddress as normalizeEmailForLog,
 } from '@/lib/security/redaction';
+import { assertHumanRequest } from '@/lib/security/bot-protection';
 import { getStoreConfig } from '@/server/store-config-service';
 
 // ══════════════════════════════════════════════════════════════
@@ -252,6 +253,7 @@ export async function verifyRecoveryCodeAction(
   email: string,
   code: string,
 ): Promise<VerifyRecoveryCodeResult> {
+  await assertHumanRequest();
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedCode = normalizeCode(code);
 

@@ -1,1 +1,20 @@
-Nothing needs to be added to .gitignore since only a README.md file was modified and no build artifacts, dependencies, or temporary files were detected in the changes.
+# Dependencies
+/node_modules
+
+# Next.js and generated build output
+/.next
+/out
+/next-env.d.ts
+
+# Local tooling
+/.swc
+/.vercel
+
+# Environment files may contain credentials
+.env
+.env.*
+!.env.example
+
+# Logs and local OS files
+*.log
+.DS_Store

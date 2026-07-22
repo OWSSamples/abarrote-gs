@@ -11,6 +11,8 @@ import {
   storeConfig,
   stores,
   tenantInvitations,
+  tenantBillingEntitlements,
+  tenantMemberships,
   userIdentities,
   userRoles,
   userStoreAccess,
@@ -18,10 +20,15 @@ import {
 import { checkRateLimitAsync } from '@/infrastructure/redis';
 import { sendEmail } from '@/lib/email';
 import { getAppUrl } from '@/lib/env';
-import { AuthError, requireAuth, requirePermission } from '@/lib/auth/guard';
+import { AuthError, requireAuth, requireCurrentAccessJwt, requirePermission } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { withLogging, ValidationError } from '@/lib/errors';
+import { logger } from '@/lib/logger';
+import { assertHumanRequest } from '@/lib/security/bot-protection';
 import type { TenantInvitation } from '@/types';
+import { fetchAndSyncTenantEntitlements } from '@/server/billing-entitlement-service';
+import { expireTenantInvitationWorkflow } from '@/workflows/expire-tenant-invitation';
+import { start } from 'workflow/api';
 
 const INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
 const STORE_COOKIE = '__store_id';
@@ -89,8 +96,11 @@ async function _createTenantInvitation(input: {
   email: string;
   roleId: string;
 }): Promise<TenantInvitation> {
+  await assertHumanRequest();
   const actor = await requirePermission('roles.manage');
-  const { storeId } = await requireStoreScope();
+  const { tenantId, storeId } = await requireStoreScope();
+  const accessToken = await requireCurrentAccessJwt();
+  const entitlements = await fetchAndSyncTenantEntitlements(tenantId, accessToken);
   const email = normalizeEmail(input.email);
   const emailRateKey = hashToken(email).slice(0, 24);
   const rateLimit = await checkRateLimitAsync(
@@ -113,12 +123,19 @@ async function _createTenantInvitation(input: {
       .where(and(eq(stores.id, storeId), eq(stores.status, 'active'), isNull(stores.deletedAt)))
       .limit(1),
     db
-      .select({ from: storeConfig.emailFrom, fromName: storeConfig.emailFromName, replyTo: storeConfig.emailReplyTo })
+      .select({
+        from: storeConfig.emailFrom,
+        fromName: storeConfig.emailFromName,
+        replyTo: storeConfig.emailReplyTo,
+        estimatedUsers: storeConfig.estimatedUsers,
+      })
       .from(storeConfig)
       .where(eq(storeConfig.id, storeId))
       .limit(1),
   ]);
   if (!tenant) throw new AuthError('El negocio no está disponible para recibir usuarios.', 409);
+  const maxUsers = entitlements.find((item) => item.code === 'max_users')?.value
+    ?? Math.max(1, Number(config?.estimatedUsers ?? 1));
 
   const [existingMember] = await db
     .select({ id: userRoles.id })
@@ -138,6 +155,7 @@ async function _createTenantInvitation(input: {
   await db.transaction(async (tx) => {
     await setTenantTransactionContext(tx, storeId, actor.uid);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`tenant-invite:${storeId}:${email}`}))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`tenant-seat-capacity:${tenantId}`}))`);
     await tx
       .update(tenantInvitations)
       .set({ status: 'revoked', updatedAt: now })
@@ -148,6 +166,38 @@ async function _createTenantInvitation(input: {
           eq(tenantInvitations.status, 'pending'),
         ),
       );
+    const [[activeMembers], [pendingInvitations]] = await Promise.all([
+      tx
+        .select({ count: sql<number>`count(*)` })
+        .from(tenantMemberships)
+        .where(
+          and(
+            eq(tenantMemberships.tenantId, tenantId),
+            eq(tenantMemberships.status, 'active'),
+          ),
+        ),
+      tx
+        .select({ count: sql<number>`count(*)` })
+        .from(tenantInvitations)
+        .innerJoin(stores, eq(stores.id, tenantInvitations.storeId))
+        .where(
+          and(
+            eq(stores.tenantId, tenantId),
+            eq(tenantInvitations.status, 'pending'),
+            gt(tenantInvitations.expiresAt, now),
+          ),
+        ),
+    ]);
+    if (
+      Number(activeMembers?.count ?? 0)
+      + Number(pendingInvitations?.count ?? 0)
+      >= maxUsers
+    ) {
+      throw new AuthError(
+        `El tenant alcanzó su límite de ${maxUsers} usuario(s), incluyendo invitaciones pendientes.`,
+        409,
+      );
+    }
     await tx.insert(tenantInvitations).values({
       id: invitationId,
       storeId,
@@ -188,6 +238,22 @@ async function _createTenantInvitation(input: {
     );
   }
 
+  let workflowRunId: string | null = null;
+  try {
+    const run = await start(expireTenantInvitationWorkflow, [
+      invitationId,
+      storeId,
+      expiresAt.toISOString(),
+    ]);
+    workflowRunId = run.runId;
+  } catch (error) {
+    logger.warn('Invitation expiration workflow could not be queued', {
+      action: 'tenant_invitation_expiration_enqueue_failed',
+      invitationId,
+      errorCode: error instanceof Error ? error.name : 'UnknownError',
+    });
+  }
+
   await db.insert(auditLogs).values({
     id: randomUUID(),
     storeId,
@@ -196,7 +262,13 @@ async function _createTenantInvitation(input: {
     action: 'create',
     entity: 'tenantInvitation',
     entityId: invitationId,
-    changes: { after: { roleId: role.id, expiresAt: expiresAt.toISOString() } },
+    changes: {
+      after: {
+        roleId: role.id,
+        expiresAt: expiresAt.toISOString(),
+        workflowRunId,
+      },
+    },
     timestamp: now,
   });
 
@@ -246,6 +318,7 @@ async function _getTenantInvitationPreview(token: string): Promise<{
 }
 
 async function _acceptTenantInvitation(token: string): Promise<{ storeId: string }> {
+  await assertHumanRequest();
   const identity = await requireAuth();
   if (!token || token.length > 256) throw new ValidationError('La invitación no es válida.');
   const tokenHash = hashToken(token);
@@ -272,7 +345,7 @@ async function _acceptTenantInvitation(token: string): Promise<{ storeId: string
     await setTenantTransactionContext(tx, invitation.storeId, identity.uid);
 
     const [tenant] = await tx
-      .select({ id: stores.id })
+      .select({ id: stores.id, tenantId: stores.tenantId })
       .from(stores)
       .where(
         and(
@@ -283,6 +356,38 @@ async function _acceptTenantInvitation(token: string): Promise<{ storeId: string
       )
       .limit(1);
     if (!tenant) throw new ValidationError('El negocio de esta invitación ya no está disponible.');
+
+    const [assignedRole] = await tx
+      .select({ name: roleDefinitions.name })
+      .from(roleDefinitions)
+      .where(eq(roleDefinitions.id, invitation.roleId))
+      .limit(1);
+    if (!assignedRole) {
+      throw new ValidationError('El rol de la invitación ya no está disponible.');
+    }
+    const tenantRole = assignedRole.name === 'Administrador' ? 'admin' : 'member';
+
+    const [anyActiveTenantMembership] = await tx
+      .select({ id: tenantMemberships.id })
+      .from(tenantMemberships)
+      .where(
+        and(
+          eq(tenantMemberships.cognitoSub, identity.uid),
+          eq(tenantMemberships.status, 'active'),
+        ),
+      )
+      .limit(1);
+    const [currentTenantMembership] = await tx
+      .select({ id: tenantMemberships.id })
+      .from(tenantMemberships)
+      .where(
+        and(
+          eq(tenantMemberships.tenantId, tenant.tenantId),
+          eq(tenantMemberships.cognitoSub, identity.uid),
+          eq(tenantMemberships.status, 'active'),
+        ),
+      )
+      .limit(1);
 
     const [existing] = await tx
       .select({ id: userRoles.id })
@@ -296,28 +401,42 @@ async function _acceptTenantInvitation(token: string): Promise<{ storeId: string
       .limit(1);
 
     if (!existing) {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`tenant-user-capacity:${invitation.storeId}`}))`,
-      );
-      const [[config], [activeCount], [anyMembership]] = await Promise.all([
-        tx
-          .select({ estimatedUsers: storeConfig.estimatedUsers })
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`tenant-seat-capacity:${tenant.tenantId}`}))`);
+      const [[config], [entitlement], [activeCount], [anyMembership]] = await Promise.all([
+        tx.select({ estimatedUsers: storeConfig.estimatedUsers })
           .from(storeConfig)
           .where(eq(storeConfig.id, invitation.storeId))
           .limit(1),
-        tx
-          .select({ count: sql<number>`count(*)` })
-          .from(userRoles)
-          .where(and(eq(userRoles.storeId, invitation.storeId), eq(userRoles.status, 'activo'))),
-        tx
-          .select({ id: userRoles.id })
+        tx.select({ value: tenantBillingEntitlements.value })
+          .from(tenantBillingEntitlements)
+          .where(
+            and(
+              eq(tenantBillingEntitlements.tenantId, tenant.tenantId),
+              eq(tenantBillingEntitlements.code, 'max_users'),
+              or(
+                isNull(tenantBillingEntitlements.expiresAt),
+                gt(tenantBillingEntitlements.expiresAt, now),
+              ),
+            ),
+          )
+          .limit(1),
+        tx.select({ count: sql<number>`count(*)` })
+          .from(tenantMemberships)
+          .where(
+            and(
+              eq(tenantMemberships.tenantId, tenant.tenantId),
+              eq(tenantMemberships.status, 'active'),
+            ),
+          ),
+        tx.select({ id: userRoles.id })
           .from(userRoles)
           .where(eq(userRoles.cognitoSub, identity.uid))
           .limit(1),
       ]);
-      const limit = Math.max(1, Number(config?.estimatedUsers ?? 1));
-      if (Number(activeCount?.count ?? 0) >= limit) {
-        throw new AuthError(`El negocio alcanzó su límite de ${limit} usuario(s) activos.`, 409);
+      const limit = entitlement?.value
+        ?? Math.max(1, Number(config?.estimatedUsers ?? 1));
+      if (!currentTenantMembership && Number(activeCount?.count ?? 0) >= limit) {
+        throw new AuthError(`El tenant alcanzó su límite de ${limit} usuario(s) activos.`, 409);
       }
 
       await tx.insert(userRoles).values({
@@ -344,6 +463,36 @@ async function _acceptTenantInvitation(token: string): Promise<{ storeId: string
         })
         .onConflictDoNothing();
     }
+
+    await tx
+      .insert(tenantMemberships)
+      .values({
+        id: randomUUID(),
+        tenantId: tenant.tenantId,
+        cognitoSub: identity.uid,
+        role: tenantRole,
+        status: 'active',
+        isDefault: !anyActiveTenantMembership,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [tenantMemberships.tenantId, tenantMemberships.cognitoSub],
+        set: {
+          role: sql`CASE
+            WHEN ${tenantMemberships.role} = 'owner' THEN 'owner'
+            WHEN ${tenantRole} = 'admin' THEN 'admin'
+            ELSE ${tenantMemberships.role}
+          END`,
+          status: 'active',
+          isDefault: sql`CASE
+            WHEN ${tenantMemberships.status} = 'revoked' AND ${!anyActiveTenantMembership}
+              THEN true
+            ELSE ${tenantMemberships.isDefault}
+          END`,
+          updatedAt: now,
+        },
+      });
 
     await tx
       .update(tenantInvitations)

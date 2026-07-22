@@ -242,7 +242,7 @@ export async function proxy(request: Parameters<typeof authHandler>[0]) {
 
 export const config = {
   matcher: [
-    // Exclude: api, static, auth, display, legal pages, etc.
-    '/((?!api|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt|auth|display|terms|privacy|cookies|security|login-brand\\.svg|device-mfa\\.svg|pass_recovery\\.svg|backgrounds).*)',
+    // Exclude: API, Workflow internals, static assets, auth and public pages.
+    '/((?!api|_next/static|_next/image|\\.well-known/workflow/|favicon\\.ico|sitemap\\.xml|robots\\.txt|auth|display|terms|privacy|cookies|security|login-brand\\.svg|device-mfa\\.svg|pass_recovery\\.svg|backgrounds).*)',
   ],
 };

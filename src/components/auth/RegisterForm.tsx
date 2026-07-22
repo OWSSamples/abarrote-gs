@@ -17,6 +17,7 @@ import {
   provisionAdditionalTenant,
   provisionRegisteredTenant,
 } from '@/app/actions/register-tenant-actions';
+import { verifyAuthHumanRequest } from '@/app/actions/auth-rate-limit';
 import { evaluatePassword } from '@/lib/auth/password-policy';
 import { synchronizeServerSession } from '@/lib/auth/session-client';
 import { useToast } from '@/components/notifications/ToastProvider';
@@ -819,6 +820,7 @@ export function RegisterForm() {
       setIsLoading(true);
       try {
         if (!isCognitoConfirmed) {
+          await verifyAuthHumanRequest();
           const result = await confirmSignUp({
             username: cognitoUsername,
             confirmationCode: normalizedConfirmationCode,

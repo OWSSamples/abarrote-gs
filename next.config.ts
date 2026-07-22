@@ -1,5 +1,7 @@
 import { withSentryConfig } from '@sentry/nextjs';
+import { withBotId } from 'botid/next/config';
 import type { NextConfig } from 'next';
+import { withWorkflow } from 'workflow/next';
 
 /** ─── Security Headers ──────────────────────────────────────────────────────
  * NOTE: Content-Security-Policy is managed by proxy.ts (supports dev/prod variants).
@@ -130,6 +132,11 @@ const nextConfig: NextConfig = {
         hostname: 'cdn.simpleicons.org',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'lx6h1myvbfcpag73.public.blob.vercel-storage.com',
+        pathname: '/CDN-ASSETS/**',
+      },
     ],
     formats: ['image/avif', 'image/webp'],
     minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
@@ -188,7 +195,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withSentryConfig(nextConfig, {
+export default withSentryConfig(withBotId(withWorkflow(nextConfig)), {
   // For all available options, see:
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 

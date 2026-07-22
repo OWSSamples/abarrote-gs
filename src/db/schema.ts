@@ -173,13 +173,35 @@ export const aiProviderConfigs = pgTable(
   ],
 );
 
-// ==================== TENANT STORES (ADR-001) ====================
-// `stores.id` is the current business tenant boundary. A future branch model
-// must introduce a separate tenant_id instead of granting cross-store access.
+// ==================== TENANTS AND STORES ====================
+// A tenant is the customer workspace and billing boundary. Stores are isolated
+// operational businesses that belong to exactly one tenant.
+export const tenants = pgTable(
+  'tenants',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    status: text('status').notNull().default('active'), // active | suspended | archived
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    suspendedAt: timestamp('suspended_at'),
+    archivedAt: timestamp('archived_at'),
+    deletedAt: timestamp('deleted_at'),
+  },
+  (t) => [
+    index('tenants_status_idx').on(t.status),
+    check('tenants_id_format_check', sql`${t.id} ~ '^[0-9a-f]{32}$'`),
+    check('tenants_status_check', sql`${t.status} IN ('active', 'suspended', 'archived')`),
+  ],
+);
+
 export const stores = pgTable(
   'stores',
   {
     id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     name: text('name').notNull(),
     status: text('status').notNull().default('active'), // active | suspended | archived
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -188,6 +210,8 @@ export const stores = pgTable(
     deletedAt: timestamp('deleted_at'),
   },
   (t) => [
+    index('stores_tenant_idx').on(t.tenantId),
+    index('stores_tenant_status_idx').on(t.tenantId, t.status),
     uniqueIndex('stores_active_name_unique_idx')
       .on(sql`lower(${t.name})`)
       .where(sql`${t.deletedAt} IS NULL`),
@@ -234,6 +258,59 @@ export const userIdentities = pgTable(
   ],
 );
 
+// Workspace membership is separate from per-store RBAC. Billing and other
+// tenant-wide services authorize against this projection, while user_roles
+// continues to control access inside each individual business.
+export const tenantMemberships = pgTable(
+  'tenant_memberships',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    cognitoSub: text('cognito_sub')
+      .notNull()
+      .references(() => userIdentities.cognitoSub),
+    role: text('role').notNull().default('member'), // owner | admin | member
+    status: text('status').notNull().default('active'), // active | revoked
+    isDefault: boolean('is_default').notNull().default(false),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('tenant_memberships_tenant_user_unique_idx').on(t.tenantId, t.cognitoSub),
+    uniqueIndex('tenant_memberships_single_default_idx')
+      .on(t.cognitoSub)
+      .where(sql`${t.isDefault} = true`),
+    index('tenant_memberships_user_status_idx').on(t.cognitoSub, t.status),
+    index('tenant_memberships_tenant_status_idx').on(t.tenantId, t.status),
+    check('tenant_memberships_role_check', sql`${t.role} IN ('owner', 'admin', 'member')`),
+    check('tenant_memberships_status_check', sql`${t.status} IN ('active', 'revoked')`),
+  ],
+);
+
+// Local authorization projection sourced from Billing. Billing remains the
+// source of truth; Kiosko uses this table for transactional limit checks.
+export const tenantBillingEntitlements = pgTable(
+  'tenant_billing_entitlements',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    value: integer('value').notNull(),
+    expiresAt: timestamp('expires_at'),
+    syncedAt: timestamp('synced_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.code], name: 'tenant_billing_entitlements_pk' }),
+    index('tenant_billing_entitlements_expiry_idx').on(t.expiresAt),
+    check('tenant_billing_entitlements_code_check', sql`${t.code} ~ '^[a-z][a-z0-9_]{0,63}$'`),
+    check('tenant_billing_entitlements_value_check', sql`${t.value} >= 0`),
+  ],
+);
+
 // Platform administration is intentionally separate from tenant RBAC. Rows
 // are provisioned through an audited operational process, never at sign-up.
 export const platformAdministrators = pgTable(
@@ -256,7 +333,7 @@ export const platformAdministrators = pgTable(
 );
 
 // Compatibility projection for callers that still consume the historical
-// access pivot. `user_roles` is the authoritative tenant membership.
+// access pivot. `user_roles` is the authoritative per-store membership.
 export const userStoreAccess = pgTable(
   'user_store_access',
   {

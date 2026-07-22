@@ -32,6 +32,7 @@ import {
   type BillingInvoice,
   type BillingOverview,
 } from '@/app/actions/billing-actions';
+import { synchronizeServerSession } from '@/lib/auth/session-client';
 import type { SettingsSectionProps } from './types';
 
 type InvoiceFilter = 'all' | 'paid' | 'open' | 'void';
@@ -123,6 +124,18 @@ export function BillingSection({ config }: SettingsSectionProps) {
     setLoading(true);
     setError(null);
     try {
+      const sessionStatus = await synchronizeServerSession();
+      if (sessionStatus === 'unauthenticated') {
+        setOverview(null);
+        setError('Tu sesión expiró. Inicia sesión nuevamente para consultar la facturación.');
+        return;
+      }
+      if (sessionStatus === 'unavailable') {
+        setOverview(null);
+        setError('No fue posible sincronizar tu sesión de acceso. Intenta nuevamente.');
+        return;
+      }
+
       const data = await fetchBillingOverview();
       setOverview(data);
     } catch {

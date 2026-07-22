@@ -1,7 +1,7 @@
 'use client';
 
+import Image from 'next/image';
 import NextLink from 'next/link';
-import { Switch } from '@cloudflare/kumo/components/switch';
 import { useCookieConsent } from '@/components/cookies/CookieConsentProvider';
 
 interface FooterLink {
@@ -17,9 +17,7 @@ const LINKS: FooterLink[] = [
 ];
 
 export function SiteFooter() {
-  const { preferences, openPreferences } = useCookieConsent();
-  const enabled =
-    preferences.functional || preferences.analytics || preferences.marketing;
+  const { openPreferences } = useCookieConsent();
   const year = new Date().getFullYear();
 
   return (
@@ -62,13 +60,25 @@ export function SiteFooter() {
           ·
         </span>
 
-        <Switch
-          checked={enabled}
-          label="Preferencias de cookies"
-          size="sm"
-          onCheckedChange={openPreferences}
-          className="shrink-0"
-        />
+        <NextLink
+          href="/cookies"
+          onClick={(event) => {
+            event.preventDefault();
+            openPreferences();
+          }}
+          className="inline-flex items-center gap-1.5 hover:text-kumo-text-primary hover:underline"
+        >
+          <Image
+            src="https://lx6h1myvbfcpag73.public.blob.vercel-storage.com/CDN-ASSETS/badges_trusth-Ss1QozX7JJwKeO0hoK5HDrUSuM4q7c.svg"
+            alt=""
+            aria-hidden="true"
+            width={30}
+            height={14}
+            unoptimized
+            className="h-3.5 w-[30px] shrink-0"
+          />
+          <span>Preferencias de cookies</span>
+        </NextLink>
 
         <span aria-hidden="true" className="select-none text-gray-300">
           ·

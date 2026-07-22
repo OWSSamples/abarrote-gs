@@ -1,10 +1,27 @@
 'use server';
 
-import { AuthError, requireOwner, requirePermission, requireAuth, validateId } from '@/lib/auth/guard';
+import {
+  AuthError,
+  requireAuth,
+  requireCurrentAccessJwt,
+  requireOwner,
+  requirePermission,
+  validateId,
+} from '@/lib/auth/guard';
 import { disableCognitoUser, enableCognitoUser } from '@/lib/cognito-admin';
 import { db } from '@/db';
 import { setTenantTransactionContext } from '@/db/tenant-context';
-import { userIdentities, userRoles, roleDefinitions, auditLogs, userStoreAccess, storeConfig } from '@/db/schema';
+import {
+  userIdentities,
+  userRoles,
+  roleDefinitions,
+  auditLogs,
+  userStoreAccess,
+  storeConfig,
+  stores,
+  tenantMemberships,
+  tenantInvitations,
+} from '@/db/schema';
 import { and, eq, isNotNull, or, sql } from 'drizzle-orm';
 import type { UserRoleRecord, RoleDefinition, PermissionKey } from '@/types';
 import { DEFAULT_SYSTEM_ROLES } from '@/types';
@@ -25,6 +42,7 @@ import {
   saleDiscountApprovalContextSchema,
   type SaleDiscountApprovalContext,
 } from '@/lib/validation/schemas';
+import { fetchAndSyncTenantEntitlements } from '@/server/billing-entitlement-service';
 
 // ==================== PIN RATE LIMITING ====================
 
@@ -392,7 +410,7 @@ async function _updateUserPin(cognitoSub: string, pinCode: string): Promise<void
 
 async function _updateUserRole(cognitoSub: string, newRoleId: string, assignedByUid: string): Promise<void> {
   const currentUser = await requirePermission('roles.manage');
-  const { storeId } = await requireStoreScope();
+  const { tenantId, storeId } = await requireStoreScope();
   validateSchema(idSchema, newRoleId, 'updateUserRole.newRoleId');
   validateSchema(idSchema, assignedByUid, 'updateUserRole.assignedByUid');
   if (assignedByUid !== currentUser.uid) {
@@ -407,33 +425,80 @@ async function _updateUserRole(cognitoSub: string, newRoleId: string, assignedBy
     throw new AuthError('El rol Propietario requiere un flujo explícito de transferencia.', 403);
   }
 
-  const existing = await getTenantUser(cognitoSub, storeId);
-  if (!existing) {
-    throw new Error('Usuario no encontrado en la base de datos.');
-  }
-  const previousRole = await getAccessibleRole(existing.roleId, storeId);
-  if (previousRole?.name === OWNER_ROLE_NAME) {
-    throw new AuthError('No puedes cambiar el rol del propietario desde este formulario.', 403);
-  }
-  const previousRoleId = existing.roleId;
-
   const now = new Date();
-  await db
-    .update(userRoles)
-    .set({ roleId: newRoleId, updatedAt: now, assignedBy: currentUser.uid })
-    .where(and(eq(userRoles.cognitoSub, cognitoSub), eq(userRoles.storeId, storeId)));
+  let previousRoleId = '';
+  await db.transaction(async (tx) => {
+    await setTenantTransactionContext(tx, storeId, currentUser.uid);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`identity-membership:${cognitoSub}`}))`);
 
-  // Audit log — critical for compliance
-  await db.insert(auditLogs).values({
-    id: crypto.randomUUID(),
-    storeId,
-    userId: currentUser.uid,
-    userEmail: currentUser.email,
-    action: 'update',
-    entity: 'userRole',
-    entityId: cognitoSub,
-    changes: { before: { roleId: previousRoleId }, after: { roleId: newRoleId, storeId } },
-    timestamp: now,
+    const [existing] = await tx
+      .select({ roleId: userRoles.roleId })
+      .from(userRoles)
+      .where(and(eq(userRoles.cognitoSub, cognitoSub), eq(userRoles.storeId, storeId)))
+      .for('update')
+      .limit(1);
+    if (!existing) {
+      throw new Error('Usuario no encontrado en la base de datos.');
+    }
+
+    const [previousRole] = await tx
+      .select({ name: roleDefinitions.name })
+      .from(roleDefinitions)
+      .where(eq(roleDefinitions.id, existing.roleId))
+      .limit(1);
+    if (previousRole?.name === OWNER_ROLE_NAME) {
+      throw new AuthError('No puedes cambiar el rol del propietario desde este formulario.', 403);
+    }
+    previousRoleId = existing.roleId;
+
+    await tx
+      .update(userRoles)
+      .set({ roleId: newRoleId, updatedAt: now, assignedBy: currentUser.uid })
+      .where(and(eq(userRoles.cognitoSub, cognitoSub), eq(userRoles.storeId, storeId)));
+
+    const tenantRoles = await tx
+      .select({ name: roleDefinitions.name })
+      .from(userRoles)
+      .innerJoin(stores, eq(stores.id, userRoles.storeId))
+      .innerJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
+      .where(
+        and(
+          eq(userRoles.cognitoSub, cognitoSub),
+          eq(userRoles.status, 'activo'),
+          eq(stores.tenantId, tenantId),
+        ),
+      );
+    const resolvedTenantRole = tenantRoles.some((role) => role.name === OWNER_ROLE_NAME)
+      ? 'owner'
+      : tenantRoles.some((role) => role.name === 'Administrador')
+        ? 'admin'
+        : 'member';
+
+    await tx
+      .update(tenantMemberships)
+      .set({ role: resolvedTenantRole, updatedAt: now })
+      .where(
+        and(
+          eq(tenantMemberships.tenantId, tenantId),
+          eq(tenantMemberships.cognitoSub, cognitoSub),
+          eq(tenantMemberships.status, 'active'),
+        ),
+      );
+
+    await tx.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      storeId,
+      userId: currentUser.uid,
+      userEmail: currentUser.email,
+      action: 'update',
+      entity: 'userRole',
+      entityId: cognitoSub,
+      changes: {
+        before: { roleId: previousRoleId },
+        after: { roleId: newRoleId, tenantRole: resolvedTenantRole, storeId, tenantId },
+      },
+      timestamp: now,
+    });
   });
 
   logger.info('User role updated', {
@@ -505,7 +570,7 @@ async function _generateGlobalId(cognitoSub: string): Promise<string> {
 
 async function _deactivateUser(cognitoSub: string): Promise<void> {
   const currentUser = await requireOwner();
-  const { storeId } = await requireStoreScope();
+  const { tenantId, storeId } = await requireStoreScope();
   if (currentUser.uid === cognitoSub) throw new AuthError('No puedes desactivar tu propia cuenta.', 403);
   const now = new Date();
   let cognitoWasDisabled = false;
@@ -552,6 +617,46 @@ async function _deactivateUser(cognitoSub: string): Promise<void> {
         .update(userRoles)
         .set({ status: 'baja', deactivatedAt: now, updatedAt: now })
         .where(and(eq(userRoles.id, membership.id), eq(userRoles.storeId, storeId)));
+
+      const activeTenantRoles = await tx
+        .select({ name: roleDefinitions.name })
+        .from(userRoles)
+        .innerJoin(stores, eq(stores.id, userRoles.storeId))
+        .innerJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
+        .where(
+          and(
+            eq(userRoles.cognitoSub, cognitoSub),
+            eq(userRoles.status, 'activo'),
+            eq(stores.tenantId, tenantId),
+          ),
+        );
+      if (activeTenantRoles.length === 0) {
+        await tx
+          .update(tenantMemberships)
+          .set({ status: 'revoked', isDefault: false, updatedAt: now })
+          .where(
+            and(
+              eq(tenantMemberships.tenantId, tenantId),
+              eq(tenantMemberships.cognitoSub, cognitoSub),
+            ),
+          );
+      } else {
+        const resolvedTenantRole = activeTenantRoles.some((role) => role.name === OWNER_ROLE_NAME)
+          ? 'owner'
+          : activeTenantRoles.some((role) => role.name === 'Administrador')
+            ? 'admin'
+            : 'member';
+        await tx
+          .update(tenantMemberships)
+          .set({ role: resolvedTenantRole, updatedAt: now })
+          .where(
+            and(
+              eq(tenantMemberships.tenantId, tenantId),
+              eq(tenantMemberships.cognitoSub, cognitoSub),
+              eq(tenantMemberships.status, 'active'),
+            ),
+          );
+      }
       if (!otherMembership) {
         await tx
           .update(userIdentities)
@@ -581,7 +686,9 @@ async function _deactivateUser(cognitoSub: string): Promise<void> {
 
 async function _reactivateUser(cognitoSub: string): Promise<void> {
   const currentUser = await requireOwner();
-  const { storeId } = await requireStoreScope();
+  const { tenantId, storeId } = await requireStoreScope();
+  const accessToken = await requireCurrentAccessJwt();
+  const entitlements = await fetchAndSyncTenantEntitlements(tenantId, accessToken);
   const targetUser = await getTenantUser(cognitoSub, storeId);
   if (!targetUser) throw new Error('Usuario no encontrado en tu negocio.');
   if (targetUser.status === 'activo') throw new Error('Este usuario ya está activo');
@@ -592,9 +699,15 @@ async function _reactivateUser(cognitoSub: string): Promise<void> {
     await db.transaction(async (tx) => {
       await setTenantTransactionContext(tx, storeId, currentUser.uid);
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`identity-membership:${cognitoSub}`}))`);
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`tenant-user-capacity:${storeId}`}))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`tenant-seat-capacity:${tenantId}`}))`);
 
-      const [[membership], [config], [activeUsers]] = await Promise.all([
+      const [
+        [membership],
+        [config],
+        [activeUsers],
+        [pendingInvitations],
+        [activeTenantMembership],
+      ] = await Promise.all([
         tx
           .select({ id: userRoles.id, status: userRoles.status, isDefault: userRoles.isDefault })
           .from(userRoles)
@@ -608,13 +721,41 @@ async function _reactivateUser(cognitoSub: string): Promise<void> {
           .limit(1),
         tx
           .select({ count: sql<number>`count(*)` })
-          .from(userRoles)
-          .where(and(eq(userRoles.storeId, storeId), eq(userRoles.status, 'activo'))),
+          .from(tenantMemberships)
+          .where(and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.status, 'active'))),
+        tx
+          .select({ count: sql<number>`count(*)` })
+          .from(tenantInvitations)
+          .innerJoin(stores, eq(stores.id, tenantInvitations.storeId))
+          .where(
+            and(
+              eq(stores.tenantId, tenantId),
+              eq(tenantInvitations.status, 'pending'),
+              sql`${tenantInvitations.expiresAt} > now()`,
+            ),
+          ),
+        tx
+          .select({ id: tenantMemberships.id })
+          .from(tenantMemberships)
+          .where(
+            and(
+              eq(tenantMemberships.tenantId, tenantId),
+              eq(tenantMemberships.cognitoSub, cognitoSub),
+              eq(tenantMemberships.status, 'active'),
+            ),
+          )
+          .limit(1),
       ]);
       if (!membership) throw new Error('Usuario no encontrado en tu negocio.');
       if (membership.status === 'activo') throw new Error('Este usuario ya está activo');
-      const limit = Math.max(1, Number(config?.estimatedUsers ?? 1));
-      if (Number(activeUsers?.count ?? 0) >= limit) throw createTenantCapacityError(limit);
+      const limit = entitlements.find((item) => item.code === 'max_users')?.value
+        ?? Math.max(1, Number(config?.estimatedUsers ?? 1));
+      if (
+        !activeTenantMembership
+        && Number(activeUsers?.count ?? 0) + Number(pendingInvitations?.count ?? 0) >= limit
+      ) {
+        throw createTenantCapacityError(limit);
+      }
 
       await enableCognitoUser(cognitoSub);
       cognitoWasEnabled = true;
@@ -633,6 +774,58 @@ async function _reactivateUser(cognitoSub: string): Promise<void> {
         .onConflictDoUpdate({
           target: [userStoreAccess.userId, userStoreAccess.storeId],
           set: { isDefault: membership.isDefault },
+        });
+      const tenantRoles = await tx
+        .select({ name: roleDefinitions.name })
+        .from(userRoles)
+        .innerJoin(stores, eq(stores.id, userRoles.storeId))
+        .innerJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
+        .where(
+          and(
+            eq(userRoles.cognitoSub, cognitoSub),
+            eq(userRoles.status, 'activo'),
+            eq(stores.tenantId, tenantId),
+          ),
+        );
+      const resolvedTenantRole = tenantRoles.some((role) => role.name === OWNER_ROLE_NAME)
+        ? 'owner'
+        : tenantRoles.some((role) => role.name === 'Administrador')
+          ? 'admin'
+          : 'member';
+      const [anyActiveTenantMembership] = await tx
+        .select({ id: tenantMemberships.id })
+        .from(tenantMemberships)
+        .where(
+          and(
+            eq(tenantMemberships.cognitoSub, cognitoSub),
+            eq(tenantMemberships.status, 'active'),
+          ),
+        )
+        .limit(1);
+      await tx
+        .insert(tenantMemberships)
+        .values({
+          id: crypto.randomUUID(),
+          tenantId,
+          cognitoSub,
+          role: resolvedTenantRole,
+          status: 'active',
+          isDefault: !anyActiveTenantMembership,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [tenantMemberships.tenantId, tenantMemberships.cognitoSub],
+          set: {
+            role: resolvedTenantRole,
+            status: 'active',
+            isDefault: sql`CASE
+              WHEN ${tenantMemberships.status} = 'revoked' AND ${!anyActiveTenantMembership}
+                THEN true
+              ELSE ${tenantMemberships.isDefault}
+            END`,
+            updatedAt: now,
+          },
         });
       await tx.insert(auditLogs).values({
         id: crypto.randomUUID(),

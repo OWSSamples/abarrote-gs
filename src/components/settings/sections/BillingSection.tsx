@@ -342,7 +342,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
           <Tabs
             tabs={BILLING_TABS}
             value={activeTab}
-            onValueChange={(value) => setActiveTab(value as BillingTab)}
+            onValueChange={(value) => {
+              if (value) setActiveTab(value as BillingTab);
+            }}
             variant="segmented"
             size="sm"
             activateOnFocus
@@ -422,7 +424,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                   <Select<SubscriptionFilter>
                     aria-label="Filtrar suscripciones por categoría"
                     value={subscriptionFilter}
-                    onValueChange={(value) => setSubscriptionFilter(value)}
+                    onValueChange={(value) => {
+                      if (value) setSubscriptionFilter(value);
+                    }}
                     items={SUBSCRIPTION_FILTER_OPTIONS}
                     renderValue={(value) => SUBSCRIPTION_FILTER_OPTIONS.find((option) => option.value === value)?.label}
                   >
@@ -577,7 +581,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                         <Select<string>
                           aria-label="Filtrar por periodo de facturación"
                           value={usagePeriod}
-                          onValueChange={setUsagePeriod}
+                          onValueChange={(value) => {
+                            if (value) setUsagePeriod(value);
+                          }}
                           items={[{ label: currentPeriodLabel, value: 'current' }]}
                           renderValue={() => currentPeriodLabel}
                         >
@@ -687,7 +693,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                   <Select<InvoiceFilter>
                     aria-label="Filtrar facturas por estado"
                     value={invoiceFilter}
-                    onValueChange={(value) => setInvoiceFilter(value)}
+                    onValueChange={(value) => {
+                      if (value) setInvoiceFilter(value);
+                    }}
                     items={INVOICE_FILTER_OPTIONS}
                     renderValue={(value) => INVOICE_FILTER_OPTIONS.find((option) => option.value === value)?.label}
                   >

@@ -53,13 +53,11 @@ async function getConektaClient(storeId: string): Promise<OrdersApi> {
     )
     .limit(1);
 
-  let apiKey: string;
-
   if (!connection?.accessTokenEnc) {
     throw new Error('Conekta no configurado. Agrega tu API Key en Configuración → Pagos.');
   }
 
-  apiKey = decrypt(connection.accessTokenEnc);
+  const apiKey = decrypt(connection.accessTokenEnc);
 
   const config = new Configuration({ accessToken: apiKey });
   return new OrdersApi(config);

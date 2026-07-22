@@ -88,10 +88,12 @@ export function ReceiptScanner({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!file || !file.type.startsWith('image/')) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Clear stale object URL preview when the selected file is not an image.
       setPreviewUrl(null);
       return;
     }
     const objUrl = URL.createObjectURL(file);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Object URLs are created in effects and must be reflected in state.
     setPreviewUrl(objUrl);
     return () => URL.revokeObjectURL(objUrl);
   }, [file]);
@@ -101,10 +103,12 @@ export function ReceiptScanner({
   const phaseTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!isAnalyzing) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset scanner progress when analysis stops.
       setPhaseIdx(0);
       if (phaseTimer.current) clearInterval(phaseTimer.current);
       return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Start each analysis run from the first scanner phase.
     setPhaseIdx(0);
     phaseTimer.current = setInterval(() => {
       setPhaseIdx((p) => Math.min(p + 1, SCAN_PHASES.length - 1));

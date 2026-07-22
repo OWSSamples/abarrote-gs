@@ -84,16 +84,13 @@ async function getClipAuthToken(storeId: string): Promise<string> {
     )
     .limit(1);
 
-  let apiKey: string;
-  let secretKey: string;
-
   if (!connection?.accessTokenEnc || !connection.publicKey) {
     throw new Error('Clip no configurado. Agrega tus credenciales en Configuración → Pagos.');
   }
 
   // accessTokenEnc stores the encrypted secret key; publicKey stores the API key
-  secretKey = decrypt(connection.accessTokenEnc);
-  apiKey = connection.publicKey;
+  const secretKey = decrypt(connection.accessTokenEnc);
+  const apiKey = connection.publicKey;
 
   // Clip requires Basic auth: base64(apiKey:secretKey)
   const token = Buffer.from(`${apiKey}:${secretKey}`).toString('base64');

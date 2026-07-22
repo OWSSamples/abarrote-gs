@@ -73,7 +73,7 @@ test.describe('API Routes — Error Resilience', () => {
   });
 
   test('deeply nested JSON is handled', async ({ request }) => {
-    let obj: Record<string, unknown> = { id: 'test', type: 'charge.paid', data: { id: 'x' } };
+    const obj: Record<string, unknown> = { id: 'test', type: 'charge.paid', data: { id: 'x' } };
     let current = obj;
     for (let i = 0; i < 50; i++) {
       current.nested = {};

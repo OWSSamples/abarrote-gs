@@ -113,6 +113,7 @@ export function CookieConsentProvider({ children }: ProviderProps) {
   useEffect(() => {
     const stored = readStored();
     if (stored) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydrate consent state from browser storage on mount.
       setPreferences(stored.preferences);
       setHasDecided(true);
     }

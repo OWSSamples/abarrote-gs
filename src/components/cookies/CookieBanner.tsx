@@ -58,6 +58,7 @@ export function CookiePreferencesModal() {
 
   // Sincronizar draft cada vez que se abre el modal
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset draft only when the preferences modal opens.
     if (showPreferences) setDraft(preferences);
   }, [showPreferences, preferences]);
 

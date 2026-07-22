@@ -195,6 +195,7 @@ describe('Validation Schemas', () => {
           createSaleSchema.parse({
             ...validSale,
             paymentMethod: method,
+            clienteId: method === 'fiado' ? 'cliente-1' : undefined,
           }),
         ).not.toThrow();
       }

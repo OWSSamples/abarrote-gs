@@ -51,6 +51,7 @@ export function AddUserModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset invite form fields whenever the modal opens.
     setEmail('');
     setRoleId(defaultRoleId);
   }, [defaultRoleId, open]);

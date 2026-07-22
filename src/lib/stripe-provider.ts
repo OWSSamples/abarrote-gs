@@ -52,13 +52,11 @@ async function getStripeClient(storeId: string): Promise<Stripe> {
     )
     .limit(1);
 
-  let secretKey: string;
-
   if (!connection?.accessTokenEnc) {
     throw new Error('Stripe no configurado. Agrega tu Secret Key en Configuración → Pagos.');
   }
 
-  secretKey = decrypt(connection.accessTokenEnc);
+  const secretKey = decrypt(connection.accessTokenEnc);
 
   return new Stripe(secretKey, { apiVersion: '2026-06-24.dahlia' });
 }

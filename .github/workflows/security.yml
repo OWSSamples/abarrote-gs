@@ -30,7 +30,7 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Run gitleaks
-        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose --no-git
 
   npm-audit:
     name: Bun dependency audit

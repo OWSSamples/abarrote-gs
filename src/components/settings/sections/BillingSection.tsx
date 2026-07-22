@@ -33,6 +33,7 @@ import {
   WalletCreditCard20Filled,
 } from '@fluentui/react-icons';
 import {
+  activateFreeBillingPlan,
   createBillingCheckoutSession,
   createBillingPortalSession,
   fetchBillingOverview,
@@ -254,6 +255,15 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
     setCheckoutPlanId(plan.id);
     setError(null);
     try {
+      if (plan.totalAmount === 0) {
+        await activateFreeBillingPlan({
+          billingAccountId,
+          planId: plan.id,
+        });
+        await loadBilling();
+        return;
+      }
+
       const { url } = await createBillingCheckoutSession({
         billingAccountId,
         priceId: plan.priceId,
@@ -261,11 +271,15 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
       });
       window.location.assign(url);
     } catch {
-      setError('No fue posible preparar el pago de la suscripción. Verifica tu acceso e intenta nuevamente.');
+      setError(
+        plan.totalAmount === 0
+          ? 'No fue posible activar el plan Básico. Verifica que no tengas otra suscripción activa.'
+          : 'No fue posible preparar el pago de la suscripción. Verifica tu acceso e intenta nuevamente.',
+      );
     } finally {
       setCheckoutPlanId(null);
     }
-  }, [overview?.billingAccountId]);
+  }, [loadBilling, overview?.billingAccountId]);
 
   const saveBillingEmail = useCallback(async () => {
     const normalizedEmail = normalizeEmail(emailDraft);
@@ -375,9 +389,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
               <>
                 <LayerCard className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="max-w-3xl text-xs leading-5 text-kumo-subtle">
-                    Todas las suscripciones se renovarán automáticamente al final del periodo actual, salvo que
-                    canceles la renovación. Los cambios de plan, métodos de pago y cancelaciones se confirman en
-                    el portal seguro de facturación.
+                    El plan Básico permanece activo sin costo y no requiere tarjeta. Los planes de pago se renuevan
+                    automáticamente al final del periodo actual, salvo que canceles la renovación. Los cambios de
+                    pago y cancelaciones se confirman en el portal seguro de facturación.
                   </p>
                   <Button
                     size="sm"
@@ -453,7 +467,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                 </Badge>
                               </td>
                               <td className="px-4 py-3 text-kumo-subtle">
-                                {isCurrent
+                                {plan.totalAmount === 0
+                                  ? 'No requiere renovación'
+                                  : isCurrent
                                   ? overview?.cancelAtPeriodEnd
                                     ? 'No se renovará'
                                     : formatDate(overview?.currentPeriodEnd ?? null)
@@ -496,7 +512,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                     disabled={checkoutPlanId !== null}
                                     onClick={() => void startCheckout(plan)}
                                   >
-                                    Elegir
+                                    {plan.totalAmount === 0 ? 'Activar gratis' : 'Elegir'}
                                   </Button>
                                 )}
                               </td>

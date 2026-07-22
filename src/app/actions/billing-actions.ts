@@ -88,6 +88,11 @@ export interface BillingCheckoutRequest {
   quantity?: number;
 }
 
+export interface BillingFreePlanRequest {
+  planId: string;
+  billingAccountId: string;
+}
+
 function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -538,6 +543,21 @@ async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Pro
   };
 }
 
+async function _activateFreeBillingPlan(input: BillingFreePlanRequest): Promise<void> {
+  await assertHumanRequest();
+  await requireOwner();
+  const { tenantId } = await requireStoreScope();
+  const token = await requireCurrentAccessJwt();
+  const planId = validateId(input.planId, 'planId');
+  const billingAccountId = validateId(input.billingAccountId, 'billingAccountId');
+
+  await billingRequest('/billing/subscriptions/free', token, tenantId, {
+    method: 'POST',
+    body: JSON.stringify({ planId, billingAccountId }),
+  });
+}
+
 export const fetchBillingOverview = withLogging('billing.fetchOverview', _fetchBillingOverview);
 export const createBillingPortalSession = withLogging('billing.createPortalSession', _createBillingPortalSession);
 export const createBillingCheckoutSession = withLogging('billing.createCheckoutSession', _createBillingCheckoutSession);
+export const activateFreeBillingPlan = withLogging('billing.activateFreePlan', _activateFreeBillingPlan);

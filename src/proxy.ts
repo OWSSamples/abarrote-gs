@@ -186,6 +186,28 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
 // Main Proxy Export
 // ══════════════════════════════════════════════════════════════
 
+// Browser resource destinations that should never be gated by auth.
+// If we redirect a `<script>` request to /auth/login, the browser gets
+// HTML with a JS mime error and third-party runtimes (Vercel BotID's
+// opaque UUID paths) break, which in turn crashes Amplify signIn().
+const ASSET_FETCH_DESTS = new Set([
+  'script',
+  'style',
+  'image',
+  'font',
+  'worker',
+  'serviceworker',
+  'sharedworker',
+  'manifest',
+  'audio',
+  'video',
+  'track',
+  'object',
+  'embed',
+  'xslt',
+  'report',
+]);
+
 export async function proxy(request: Parameters<typeof authHandler>[0]) {
   const req = request as NextRequest;
 
@@ -197,6 +219,14 @@ export async function proxy(request: Parameters<typeof authHandler>[0]) {
   // 2. Block suspicious scanner probe paths
   if (isSuspiciousPath(req)) {
     return new NextResponse('Not Found', { status: 404 });
+  }
+
+  // 2b. Let browser asset requests through untouched so we never
+  // return HTML for script/style/image/etc. Also avoids breaking
+  // BotID's UUID-based script paths.
+  const secFetchDest = req.headers.get('sec-fetch-dest');
+  if (secFetchDest && ASSET_FETCH_DESTS.has(secFetchDest)) {
+    return applySecurityHeaders(NextResponse.next());
   }
 
   // 3. CSRF check for all state-mutating requests

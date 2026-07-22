@@ -39,9 +39,12 @@ const SECURITY_HEADERS = [
   },
 ];
 
+const projectRoot = process.cwd();
+
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: projectRoot,
   turbopack: {
-    root: '/home/aguzman/Escritorio/abarrote-gs',
+    root: projectRoot,
   },
   env: {
     COGNITO_USER_POOL_ID: process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
@@ -178,11 +181,6 @@ const nextConfig: NextConfig = {
       ...(isProd
         ? [
             {
-              // Long-lived immutable cache for hashed Next assets
-              source: '/_next/static/(.*)',
-              headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
-            },
-            {
               // Public icons / illustrations served from /public
               source: '/(icon|illustrations)/(.*)',
               headers: [
@@ -195,7 +193,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withSentryConfig(withBotId(withWorkflow(nextConfig)), {
+export default withSentryConfig(withWorkflow(withBotId(nextConfig)), {
   // For all available options, see:
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 

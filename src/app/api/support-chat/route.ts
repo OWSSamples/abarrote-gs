@@ -9,6 +9,7 @@ import { products, productCategories, storeConfig, paymentProviderConnections } 
 import { and, ilike, isNull, eq, or } from 'drizzle-orm';
 import { checkRateLimitAsync } from '@/infrastructure/redis';
 import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
+import { assertHumanRequest, getBotProtectionFailure } from '@/lib/security/bot-protection';
 
 const MAX_REQUEST_BYTES = 32 * 1024;
 
@@ -74,6 +75,7 @@ const requestSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    await assertHumanRequest();
     const { user, storeId } = await requireStoreScope();
     const rateLimit = await checkRateLimitAsync(`support_chat:${user.uid}`, { limit: 15, windowMs: 60_000 });
     if (rateLimit.isRateLimited) {
@@ -228,6 +230,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ reply: text.trim() });
   } catch (error: unknown) {
+    const botFailure = getBotProtectionFailure(error);
+    if (botFailure) {
+      return NextResponse.json({ error: botFailure.message }, { status: botFailure.status });
+    }
     logger.error('Support chat failed', {
       action: 'ai_support_chat_error',
       error: error instanceof Error ? error.message : 'Unknown',

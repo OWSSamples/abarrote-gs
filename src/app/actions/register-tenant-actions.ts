@@ -18,8 +18,11 @@ import { checkRateLimitAsync } from '@/infrastructure/redis/rate-limit';
 import { AuthError, requireAuth, requireCurrentAccessJwt } from '@/lib/auth/guard';
 import { listCognitoUsers } from '@/lib/cognito-admin';
 import { withLogging, ValidationError } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import { assertHumanRequest } from '@/lib/security/bot-protection';
 import { fetchAndSyncTenantEntitlements } from '@/server/billing-entitlement-service';
+import { handleUserSignupWorkflow } from '@/workflows/handle-user-signup';
+import { start } from 'workflow/api';
 
 const STORE_COOKIE = '__store_id';
 const SUPPORTED_BUSINESS_TYPES = new Set(['miscelania', 'abarrotes', 'ropa', 'comida_rapida', 'otro_retail']);
@@ -312,9 +315,7 @@ interface ProvisionRegisteredTenantInput {
 async function _provisionRegisteredTenant(
   input: ProvisionRegisteredTenantInput,
 ): Promise<{ tenantId: string; storeId: string; tenantName: string }> {
-  if (input.mode !== 'additional') {
-    await assertHumanRequest();
-  }
+  await assertHumanRequest();
   const user = await requireAuth();
   const tenantName = normalizeTenantName(input.tenantName);
   const country = normalizeCountry(input.country);
@@ -575,6 +576,29 @@ async function _provisionRegisteredTenant(
     path: '/',
     maxAge: 60 * 60 * 24 * 30,
   });
+
+  if (!existingUserStore) {
+    try {
+      const run = await start(handleUserSignupWorkflow, [{
+        userId: user.uid,
+        tenantId,
+        storeId,
+      }]);
+      logger.info('Signup onboarding workflow queued', {
+        action: 'signup_onboarding_queued',
+        tenantId,
+        storeId,
+        workflowRunId: run.runId,
+      });
+    } catch (error) {
+      logger.warn('Signup onboarding workflow could not be queued', {
+        action: 'signup_onboarding_enqueue_failed',
+        tenantId,
+        storeId,
+        errorCode: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
+  }
 
   return { tenantId, storeId, tenantName };
 }

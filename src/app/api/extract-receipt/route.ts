@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/guard';
 import { getAIModel } from '@/lib/ai';
 import { logger } from '@/lib/logger';
+import { assertHumanRequest, getBotProtectionFailure } from '@/lib/security/bot-protection';
 
 // 8 MB hard cap on uploads (matches /api/upload + a small margin for FormData overhead).
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -58,6 +59,7 @@ async function readReceipt(req: Request): Promise<
 
 export async function POST(req: Request) {
   try {
+    await assertHumanRequest();
     await requireAuth();
 
     const model = await getAIModel();
@@ -127,6 +129,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ data: object });
   } catch (error: unknown) {
+    const botFailure = getBotProtectionFailure(error);
+    if (botFailure) {
+      return NextResponse.json({ error: botFailure.message }, { status: botFailure.status });
+    }
     const message = error instanceof Error ? error.message : 'Error desconocido';
     logger.error('Receipt extraction failed', {
       action: 'ai_receipt_error',

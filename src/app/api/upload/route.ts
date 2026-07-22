@@ -8,6 +8,7 @@ import { checkRateLimit, getClientIp } from '@/infrastructure/redis';
 import { AuthError } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { logger } from '@/lib/logger';
+import { assertHumanRequest, getBotProtectionFailure } from '@/lib/security/bot-protection';
 import {
   ASSET_KINDS,
   type AssetKind,
@@ -86,6 +87,7 @@ function assertAssetPermission(
 
 export async function POST(req: NextRequest) {
   try {
+    await assertHumanRequest();
     const { user, storeId } = await requireStoreScope();
     const ip = getClientIp(req);
     const rl = checkRateLimit(`upload:post:${storeId}:${user.uid}:${ip}`, UPLOAD_RATE);
@@ -156,6 +158,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ assetId, url: accessUrl }, { status: 201 });
   } catch (error) {
+    const botFailure = getBotProtectionFailure(error);
+    if (botFailure) {
+      return NextResponse.json({ error: botFailure.message }, { status: botFailure.status });
+    }
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
@@ -172,6 +178,7 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    await assertHumanRequest();
     const { user, storeId } = await requireStoreScope();
     const ip = getClientIp(req);
     const rl = checkRateLimit(`upload:delete:${storeId}:${user.uid}:${ip}`, DELETE_RATE);
@@ -253,6 +260,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (error) {
+    const botFailure = getBotProtectionFailure(error);
+    if (botFailure) {
+      return NextResponse.json({ error: botFailure.message }, { status: botFailure.status });
+    }
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

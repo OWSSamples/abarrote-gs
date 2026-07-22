@@ -4,19 +4,11 @@
 
 import * as Sentry from '@sentry/nextjs';
 import { initBotId } from 'botid/client/core';
+import { BOT_ID_PROTECTED_ROUTES } from '@/lib/security/bot-protection-config';
 
 if (process.env.NODE_ENV === 'production') {
   initBotId({
-    protect: [
-      { path: '/auth/login', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
-      { path: '/auth/register', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
-      { path: '/auth/forgot-password', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
-      { path: '/auth/reset-password', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
-      { path: '/auth/mfa-recovery', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
-      { path: '/auth/accept-invitation', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
-      { path: '/dashboard/settings/roles', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
-      { path: '/dashboard/settings', method: 'POST', advancedOptions: { checkLevel: 'basic' } },
-    ],
+    protect: BOT_ID_PROTECTED_ROUTES,
   });
 }
 

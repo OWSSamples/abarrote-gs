@@ -82,6 +82,63 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+export interface SignupEmailData {
+  storeName: string;
+  displayName?: string;
+  appUrl: string;
+}
+
+export function signupWelcomeEmailTemplate(data: SignupEmailData) {
+  const storeName = escapeHtml(data.storeName);
+  const displayName = escapeHtml(data.displayName?.trim() || 'Propietario');
+  const appUrl = escapeHtml(data.appUrl.replace(/\/$/, ''));
+  const body = `
+    <h2 style="margin:0 0 12px;font-size:20px;color:#111827;">Tu espacio de trabajo está listo</h2>
+    <p style="margin:0 0 18px;font-size:14px;color:#374151;line-height:1.6;">
+      Hola ${displayName}. La cuenta de <strong>${storeName}</strong> fue creada correctamente y ya puedes comenzar a configurarla.
+    </p>
+    <p style="margin:0 0 22px;font-size:14px;color:#374151;line-height:1.6;">
+      Tus productos, colaboradores, ventas y configuraciones permanecen aislados dentro de tu espacio de trabajo.
+    </p>
+    <p style="margin:0;">
+      <a href="${appUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:7px;font-size:14px;font-weight:600;">Abrir mi negocio</a>
+    </p>
+  `;
+
+  return {
+    subject: `Tu espacio de trabajo de ${data.storeName} está listo`,
+    html: baseLayout({ storeName, title: 'Cuenta creada', body }),
+    text: `Hola ${data.displayName?.trim() || 'Propietario'}. Tu espacio de trabajo de ${data.storeName} está listo: ${data.appUrl}`,
+  };
+}
+
+export function signupOnboardingEmailTemplate(data: SignupEmailData) {
+  const storeName = escapeHtml(data.storeName);
+  const displayName = escapeHtml(data.displayName?.trim() || 'Propietario');
+  const appUrl = escapeHtml(data.appUrl.replace(/\/$/, ''));
+  const body = `
+    <h2 style="margin:0 0 12px;font-size:20px;color:#111827;">Continúa la configuración de tu negocio</h2>
+    <p style="margin:0 0 18px;font-size:14px;color:#374151;line-height:1.6;">
+      Hola ${displayName}. Completa estos pasos para comenzar a operar con <strong>${storeName}</strong>.
+    </p>
+    <ol style="margin:0 0 22px;padding-left:20px;color:#374151;font-size:14px;line-height:1.8;">
+      <li>Configura los datos fiscales y preferencias de venta.</li>
+      <li>Agrega tus productos y niveles iniciales de inventario.</li>
+      <li>Invita colaboradores y asigna únicamente los permisos necesarios.</li>
+      <li>Revisa la impresión de recibos y los métodos de pago.</li>
+    </ol>
+    <p style="margin:0;">
+      <a href="${appUrl}/dashboard/settings" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:7px;font-size:14px;font-weight:600;">Continuar configuración</a>
+    </p>
+  `;
+
+  return {
+    subject: `Primeros pasos para configurar ${data.storeName}`,
+    html: baseLayout({ storeName, title: 'Primeros pasos', body }),
+    text: `Continúa la configuración de ${data.storeName}: ${data.appUrl}/dashboard/settings`,
+  };
+}
+
 // ══════════════════════════════════════════════════════════════
 // TEMPLATE: RECORDATORIO DE ACTIVACIÓN MFA
 // ══════════════════════════════════════════════════════════════

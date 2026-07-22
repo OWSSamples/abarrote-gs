@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/guard';
 import { getAIModel } from '@/lib/ai';
 import { logger } from '@/lib/logger';
+import { assertHumanRequest, getBotProtectionFailure } from '@/lib/security/bot-protection';
 
 const requestSchema = z.object({
   name: z.string().min(1).max(200),
@@ -15,6 +16,7 @@ const requestSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    await assertHumanRequest();
     await requireAuth();
 
     const model = await getAIModel();
@@ -62,6 +64,10 @@ Reglas:
 
     return NextResponse.json({ description: text.trim() });
   } catch (error: unknown) {
+    const botFailure = getBotProtectionFailure(error);
+    if (botFailure) {
+      return NextResponse.json({ error: botFailure.message }, { status: botFailure.status });
+    }
     logger.error('Product description generation failed', {
       action: 'ai_product_description_error',
       error: error instanceof Error ? error.message : 'Unknown error',

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { verifyAccessToken, verifyIdToken } from '@/lib/cognito-admin';
 import { checkRateLimitAsync, getClientIp } from '@/infrastructure/redis';
 import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
+import { assertHumanRequest, getBotProtectionFailure } from '@/lib/security/bot-protection';
 
 export const runtime = 'nodejs';
 
@@ -58,6 +59,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    await assertHumanRequest();
+
     const rawBody = await readTextBodyWithLimit(request, MAX_BODY_BYTES);
     if (rawBody === null) {
       return noStoreJson({ error: 'Solicitud demasiado grande.' }, 413);
@@ -98,7 +101,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       response.cookies.set(ACCESS_TOKEN_COOKIE, parsed.data.accessToken, sessionCookieOptions(maxAge));
     }
     return response;
-  } catch {
+  } catch (error) {
+    const botFailure = getBotProtectionFailure(error);
+    if (botFailure) {
+      return noStoreJson({ error: botFailure.message }, botFailure.status);
+    }
     return noStoreJson({ error: 'No fue posible establecer la sesión.' }, 401);
   }
 }

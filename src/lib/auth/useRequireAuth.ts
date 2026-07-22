@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
 
 export function useRequireAuth() {
-  const { user, loading, refreshSession, signOut } = useAuth();
+  const { user, loading, refreshSession, markSessionExpired } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -19,8 +19,7 @@ export function useRequireAuth() {
         try {
           const syncStatus = await refreshSession();
           if (syncStatus === 'unauthenticated') {
-            console.warn('La sesión de Cognito ya no es válida. Cerrando sesión.');
-            await signOut();
+            markSessionExpired('route_guard_validation_failed');
           } else if (syncStatus === 'unavailable') {
             console.warn('No fue posible sincronizar la sesión con el servidor. Se conservará la sesión actual.');
           }
@@ -31,7 +30,7 @@ export function useRequireAuth() {
     };
 
     checkAuth();
-  }, [user, loading, router, refreshSession, signOut]);
+  }, [user, loading, router, refreshSession, markSessionExpired]);
 
   return { user, loading };
 }

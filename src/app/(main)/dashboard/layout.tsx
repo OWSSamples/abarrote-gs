@@ -35,9 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isProductDetailActive = useDashboardStore((s) => s.isProductDetailActive);
   const openProductDetail = useDashboardStore((s) => s.openProductDetail);
   const closeProductDetail = useDashboardStore((s) => s.closeProductDetail);
-  const [_sessionExpired, _setSessionExpired] = useState(false); // New lock state
-
-  const { signOut } = useAuth(); // Access signOut from AuthContext
+  const { markSessionExpired } = useAuth();
 
   // ── SyncEngine: cross-tab sync, visibility refresh, background polling ──
   // The SyncEngine handles ALL data fetching including initial load.
@@ -74,9 +72,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => clearInterval(interval);
   }, [user, storeConfig.autoCorteTime, checkMidnightCorte]);
 
-  // Handle Auth Expiration: FORCE REDIRECT - NO VISUALIZATION ALLOWED
-  // IMPORTANT: Only trigger logout for SPECIFIC auth error patterns from auth guard,
-  // NOT generic network errors or transient failures.
+  // Authentication failures open the global reauthentication layer. Network and
+  // permission errors remain visible in their own recovery surfaces.
   useEffect(() => {
     if (!error) return;
 
@@ -92,12 +89,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const isAuthExpired = AUTH_ERROR_PATTERNS.some((pattern) => error.includes(pattern));
 
     if (isAuthExpired) {
-      console.error('AUTH EXPIRED: Redirecting to login');
-      signOut().then(() => {
-        window.location.href = '/auth/login';
-      });
+      markSessionExpired('dashboard_auth_error');
     }
-  }, [error, signOut]);
+  }, [error, markSessionExpired]);
 
   const toggleMobileNav = useCallback(() => {
     setMobileNavActive((prev) => !prev);

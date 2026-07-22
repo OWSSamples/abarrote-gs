@@ -406,3 +406,20 @@ body,
   background: var(--color-kumo-recessed, #f9fafb);
   font-weight: 600;
 }
+
+/* Polaris renders title metadata after the heading. Billing uses its section
+   icon as a leading identifier, so only this marked header reverses that item. */
+.Polaris-Header-Title__TitleWrapper:has(.billing-page-title-icon) > .Polaris-Bleed {
+  order: -1;
+  margin-right: var(--p-space-200);
+}
+
+.Polaris-Header-Title__TitleWrapper:has(.billing-page-title-icon) .Polaris-Header-Title {
+  margin-right: 0;
+}
+
+.billing-page-title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

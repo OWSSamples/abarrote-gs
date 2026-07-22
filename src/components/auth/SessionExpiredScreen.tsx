@@ -1,155 +1,113 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { Button } from '@cloudflare/kumo/components/button';
+import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import {
-  Card,
-  BlockStack,
-  InlineStack,
-  Text,
-  Button,
-  Box,
-  Badge,
-  ProgressBar,
-  Divider,
-} from '@shopify/polaris';
-import { ArrowRight24Filled, LockClosedKey24Filled } from '@fluentui/react-icons';
+  ArrowRight24Filled,
+  LockClosedKey24Filled,
+  ShieldCheckmark24Filled,
+} from '@fluentui/react-icons';
 
 interface SessionExpiredScreenProps {
-  loginPath?: string;
   reference?: string;
-  autoRedirectSeconds?: number;
+  loading?: boolean;
+  onReauthenticate?: () => void;
 }
 
 export function SessionExpiredScreen({
-  loginPath = '/auth',
   reference,
-  autoRedirectSeconds = 10,
+  loading = false,
+  onReauthenticate,
 }: SessionExpiredScreenProps) {
-  const [secondsLeft, setSecondsLeft] = useState(autoRedirectSeconds);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  const handleReauthentication = () => {
+    if (onReauthenticate) {
+      onReauthenticate();
+      return;
+    }
+
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  };
 
   useEffect(() => {
-    if (autoRedirectSeconds <= 0) return;
-    const interval = setInterval(() => {
-      setSecondsLeft((s) => {
-        if (s <= 1) {
-          clearInterval(interval);
-          window.location.href = loginPath;
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [autoRedirectSeconds, loginPath]);
+    const dialog = dialogRef.current;
+    const primaryAction = dialog?.querySelector<HTMLButtonElement>('button');
+    primaryAction?.focus();
 
-  const progress =
-    autoRedirectSeconds > 0
-      ? ((autoRedirectSeconds - secondsLeft) / autoRedirectSeconds) * 100
-      : 0;
+    const keepFocusInDialog = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      event.preventDefault();
+      primaryAction?.focus();
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', keepFocusInDialog);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', keepFocusInDialog);
+    };
+  }, []);
 
   return (
     <div
-      role="alertdialog"
-      aria-labelledby="session-expired-title"
-      aria-describedby="session-expired-desc"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px',
-        background: 'var(--p-color-bg-surface-secondary, #f6f6f7)',
-        zIndex: 9999,
-        overflow: 'auto',
-      }}
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/35 px-4 py-8 backdrop-blur-[2px]"
+      role="presentation"
     >
-      <div style={{ maxWidth: '460px', width: '100%' }}>
-        <Card padding="600">
-          <BlockStack gap="500" inlineAlign="center">
-            <div
-              style={{
-                width: '64px',
-                height: '64px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '50%',
-                background: 'var(--p-color-bg-surface-caution, #fff5ea)',
-                border: '1px solid var(--p-color-border-caution, #ffd79d)',
-                animation: 'se-pulse 2s ease-in-out infinite',
-              }}
-              aria-hidden="true"
+      <div
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="session-expired-title"
+        aria-describedby="session-expired-description"
+        className="w-full max-w-[440px]"
+      >
+        <LayerCard className="shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
+          <LayerCard.Secondary className="justify-between">
+            <span className="flex min-w-0 items-center gap-2 text-kumo-default">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-kumo-tint text-kumo-subtle ring ring-kumo-line">
+                <LockClosedKey24Filled aria-hidden="true" />
+              </span>
+              Sesión protegida
+            </span>
+            <ShieldCheckmark24Filled className="shrink-0 text-kumo-success" aria-hidden="true" />
+          </LayerCard.Secondary>
+
+          <LayerCard.Primary className="gap-5 p-5 sm:p-6">
+            <div className="space-y-2">
+              <h2 id="session-expired-title" className="text-lg font-semibold text-kumo-strong">
+                Inicia sesión de nuevo
+              </h2>
+              <p id="session-expired-description" className="text-sm leading-6 text-kumo-subtle">
+                Tu sesión terminó después de un periodo sin actividad. Vuelve a identificarte para
+                continuar en el mismo punto de forma segura.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              size="lg"
+              variant="primary"
+              className="w-full justify-center"
+              icon={<ArrowRight24Filled />}
+              loading={loading}
+              disabled={loading}
+              onClick={handleReauthentication}
             >
-              <div style={{ width: '28px', height: '28px' }}>
-                <LockClosedKey24Filled style={{ color: 'var(--p-color-icon-caution, #8a6116)' }} />
-              </div>
-            </div>
+              Iniciar sesión de nuevo
+            </Button>
 
-            <Badge tone="warning">Sesión finalizada</Badge>
-
-            <BlockStack gap="200" inlineAlign="center">
-              <Text as="h1" variant="headingXl" alignment="center" id="session-expired-title">
-                Tu sesión expiró
-              </Text>
-              <Text as="p" variant="bodyMd" tone="subdued" alignment="center">
-                <span id="session-expired-desc">
-                  Por seguridad, cerramos tu sesión después de un periodo de inactividad. Inicia
-                  sesión nuevamente para continuar.
-                </span>
-              </Text>
-            </BlockStack>
-
-            {autoRedirectSeconds > 0 && secondsLeft > 0 && (
-              <div style={{ width: '100%' }}>
-                <BlockStack gap="200">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      Redirigiendo automáticamente
-                    </Text>
-                    <Text as="span" variant="bodySm" fontWeight="semibold">
-                      {secondsLeft}s
-                    </Text>
-                  </InlineStack>
-                  <ProgressBar progress={progress} size="small" />
-                </BlockStack>
-              </div>
-            )}
-
-            <div style={{ width: '100%' }}>
-              <BlockStack gap="200">
-<Button variant="primary" size="large" fullWidth url={loginPath} icon={ArrowRight24Filled}>
-                   Iniciar sesión
-                 </Button>
-                <Button variant="tertiary" size="large" fullWidth url="/dashboard">
-                  Ir al inicio
-                </Button>
-              </BlockStack>
-            </div>
-
-            {reference && (
-              <div style={{ width: '100%' }}>
-                <BlockStack gap="200">
-                  <Divider />
-                  <InlineStack gap="200" blockAlign="center" align="center">
-                    <Text as="span" variant="bodySm" tone="subdued">Referencia:</Text>
-                    <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">{reference}</Text>
-                  </InlineStack>
-                </BlockStack>
-              </div>
-            )}
-          </BlockStack>
-        </Card>
-
-        <Box paddingBlockStart="400">
-          <InlineStack align="center" gap="150" blockAlign="center">
-            <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--p-color-bg-fill-success, #00a47c)' }} aria-hidden="true" />
-            <Text as="span" variant="bodySm" tone="subdued">Sistema seguro · Conexión cifrada</Text>
-          </InlineStack>
-        </Box>
+            {reference ? (
+              <p className="border-t border-kumo-line pt-3 text-xs text-kumo-subtle">
+                Referencia de soporte: {reference}
+              </p>
+            ) : null}
+          </LayerCard.Primary>
+        </LayerCard>
       </div>
-
-      <style>{`@keyframes se-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }`}</style>
     </div>
   );
 }

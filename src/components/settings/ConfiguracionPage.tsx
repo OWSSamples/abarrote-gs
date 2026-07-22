@@ -3,6 +3,13 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useForm, useField } from '@shopify/react-form';
+import { Badge as KumoBadge } from '@cloudflare/kumo/components/badge';
+import { Banner as KumoBanner } from '@cloudflare/kumo/components/banner';
+import { Button as KumoButton } from '@cloudflare/kumo/components/button';
+import { Loader as KumoLoader } from '@cloudflare/kumo/components/loader';
+import {
+  CheckmarkCircle20Filled as FluentCheckmarkCircle20Filled,
+} from '@fluentui/react-icons';
 import {
   Text,
   BlockStack,
@@ -112,7 +119,11 @@ const EmailSection = dynamic(() => import('./sections/EmailSection').then((m) =>
   loading: () => SectionLoader,
 });
 const BillingSection = dynamic(() => import('./sections/BillingSection').then((m) => m.BillingSection), {
-  loading: () => SectionLoader,
+  loading: () => (
+    <div className="flex min-h-80 items-center justify-center bg-kumo-canvas">
+      <KumoLoader aria-label="Cargando facturación" />
+    </div>
+  ),
 });
 import { parseError } from '@/lib/errors';
 import { sendTestEmailAction } from '@/app/actions/email-actions';
@@ -470,6 +481,7 @@ export function ConfiguracionPage() {
         const { description } = parseError(error);
         setSaved(false);
         setQuickSaveError(description);
+        throw error;
       } finally {
         setQuickSavingDisplay(false);
       }
@@ -654,7 +666,14 @@ export function ConfiguracionPage() {
           />
         );
       case 'billing':
-        return <BillingSection config={config} updateField={updateField} />;
+        return (
+          <BillingSection
+            config={config}
+            updateField={updateField}
+            savePatch={_savePatch}
+            saving={_quickSavingDisplay}
+          />
+        );
       case 'customer-display':
         // CustomerDisplaySectionV4 is self-sufficient: uses store directly,
         // each field auto-saves independently. No props needed.
@@ -822,6 +841,71 @@ export function ConfiguracionPage() {
       </FooterHelp>
     </BlockStack>
   );
+
+  if (selectedCategory === 'billing' && activeCategory) {
+    return (
+      <Page
+        fullWidth
+        title={activeCategory.title}
+        subtitle={activeCategory.description}
+        backAction={{
+          content: 'Configuración del negocio',
+          onAction: () => setSelectedCategory(null),
+        }}
+        titleMetadata={
+          <span className="billing-page-title-icon" aria-hidden="true">
+            <Icon source={ReceiptDollarFilledIcon} tone="base" />
+          </span>
+        }
+      >
+        <main className="min-h-full w-full bg-kumo-canvas">
+          {isDirty && (
+            <div className="pb-4">
+              <KumoBanner
+                variant="alert"
+                title="Cambios sin guardar"
+                description="Guarda o descarta los cambios pendientes antes de salir de configuración."
+                action={(
+                  <div className="flex items-center gap-2">
+                    <KumoBadge variant="warning">Pendiente</KumoBadge>
+                    <KumoButton size="sm" variant="ghost" onClick={resetConfig}>
+                      Descartar
+                    </KumoButton>
+                    <KumoButton size="sm" variant="primary" onClick={handleSave} loading={saving}>
+                      Guardar
+                    </KumoButton>
+                  </div>
+                )}
+              />
+            </div>
+          )}
+          {saved && (
+            <div className="pb-4">
+              <KumoBanner
+                variant="default"
+                icon={<FluentCheckmarkCircle20Filled />}
+                title="Configuración guardada"
+                description="El correo de facturación se actualizó correctamente."
+                action={<KumoBadge variant="success">Guardado</KumoBadge>}
+              />
+            </div>
+          )}
+          {quickSaveError && (
+            <div className="pb-4">
+              <KumoBanner
+                variant="error"
+                title="No se pudo guardar el cambio"
+                description={quickSaveError}
+                action={<KumoBadge variant="error">Error</KumoBadge>}
+              />
+            </div>
+          )}
+
+          {getActiveView()}
+        </main>
+      </Page>
+    );
+  }
 
   // ── Section detail (when a specific category is selected) ──
   const SectionDetail = activeCategory ? <Box>{getActiveView()}</Box> : null;

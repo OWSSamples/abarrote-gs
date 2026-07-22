@@ -50,6 +50,24 @@ async function extractToken(): Promise<string | null> {
   return null;
 }
 
+export async function requireCurrentJwt(): Promise<string> {
+  const token = await extractToken();
+  if (!token) {
+    throw new AuthError('Autenticación requerida', 401);
+  }
+  return token;
+}
+
+export async function requireCurrentAccessJwt(): Promise<string> {
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get('__cognito_access')?.value;
+  if (accessToken) {
+    return accessToken;
+  }
+
+  return requireCurrentJwt();
+}
+
 // ==================== CORE AUTH FUNCTION ====================
 
 /**

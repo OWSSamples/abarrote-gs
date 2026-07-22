@@ -99,6 +99,9 @@ const envSchema = z.object({
   VERCEL_PROJECT_PRODUCTION_URL: z.string().min(1).optional(),
   VERCEL_GIT_COMMIT_SHA: z.string().min(1).optional(),
 
+  // ── Billing platform API ──
+  BILLING_API_BASE_URL: z.string().url().optional(),
+
   // ── Observability ──
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
   SENTRY_DSN: z.string().url().optional(),

@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { verifyIdToken } from '@/lib/cognito-admin';
+import { verifyAccessToken, verifyIdToken } from '@/lib/cognito-admin';
 import { checkRateLimitAsync, getClientIp } from '@/infrastructure/redis';
 import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
 
 export const runtime = 'nodejs';
 
 const SESSION_COOKIE = '__session';
+const ACCESS_TOKEN_COOKIE = '__cognito_access';
 const STORE_COOKIE = '__store_id';
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_ABSOLUTE_SESSION_SECONDS = 6 * 60 * 60;
-const sessionSchema = z.object({ token: z.string().min(100).max(12_000) });
+const sessionSchema = z.object({
+  token: z.string().min(100).max(12_000),
+  accessToken: z.string().min(100).max(12_000).optional(),
+});
 
 function noStoreJson(body: Record<string, unknown>, status = 200): NextResponse {
   const response = NextResponse.json(body, { status });
@@ -72,6 +76,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const decoded = await verifyIdToken(parsed.data.token);
+    if (parsed.data.accessToken) {
+      await verifyAccessToken(parsed.data.accessToken);
+    }
+
     const nowSeconds = Math.floor(Date.now() / 1000);
     const authenticatedAt = decoded.auth_time ?? decoded.iat ?? nowSeconds;
     const tokenRemaining = decoded.exp - nowSeconds;
@@ -83,6 +91,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const response = noStoreJson({ ok: true });
     response.cookies.set(SESSION_COOKIE, parsed.data.token, sessionCookieOptions(maxAge));
+    if (parsed.data.accessToken) {
+      response.cookies.set(ACCESS_TOKEN_COOKIE, parsed.data.accessToken, sessionCookieOptions(maxAge));
+    }
     return response;
   } catch {
     return noStoreJson({ error: 'No fue posible establecer la sesión.' }, 401);
@@ -96,6 +107,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
 
   const response = noStoreJson({ ok: true });
   response.cookies.set(SESSION_COOKIE, '', sessionCookieOptions(0));
+  response.cookies.set(ACCESS_TOKEN_COOKIE, '', sessionCookieOptions(0));
   response.cookies.set(STORE_COOKIE, '', sessionCookieOptions(0));
   return response;
 }

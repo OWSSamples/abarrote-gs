@@ -31,6 +31,7 @@ const cognitoClient = new CognitoIdentityProviderClient({
 });
 
 let lazyCognitoVerifier: ReturnType<typeof CognitoJwtVerifier.create> | null = null;
+let lazyCognitoAccessVerifier: ReturnType<typeof CognitoJwtVerifier.create> | null = null;
 
 function getCognitoConfig(): { userPoolId: string; clientId: string } {
   const userPoolId = process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
@@ -60,6 +61,19 @@ function getCognitoVerifier(): ReturnType<typeof CognitoJwtVerifier.create> {
   }
 
   return lazyCognitoVerifier;
+}
+
+function getCognitoAccessVerifier(): ReturnType<typeof CognitoJwtVerifier.create> {
+  if (!lazyCognitoAccessVerifier) {
+    const { userPoolId, clientId } = getCognitoConfig();
+    lazyCognitoAccessVerifier = CognitoJwtVerifier.create({
+      userPoolId,
+      tokenUse: 'access',
+      clientId,
+    });
+  }
+
+  return lazyCognitoAccessVerifier;
 }
 
 function isUserNotFoundError(err: unknown): boolean {
@@ -126,6 +140,10 @@ export interface CognitoDecodedToken {
 export async function verifyIdToken(token: string): Promise<CognitoDecodedToken> {
   const payload = await getCognitoVerifier().verify(token);
   return payload as unknown as CognitoDecodedToken;
+}
+
+export async function verifyAccessToken(token: string): Promise<void> {
+  await getCognitoAccessVerifier().verify(token);
 }
 
 // ══════════════════════════════════════════════════════════════

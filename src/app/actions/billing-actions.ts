@@ -1,10 +1,11 @@
 'use server';
 
 import { AppError, withLogging } from '@/lib/errors';
-import { requireOwner, requirePermission } from '@/lib/auth/guard';
+import { requireCurrentAccessJwt, requireOwner, requirePermission, validateId } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 
 const BILLING_API_BASE_URL = (process.env.BILLING_API_BASE_URL || 'https://billing.opendexapis.com').replace(/\/+$/, '');
+const BILLING_API_PREFIX = '/api/v1';
 
 export type BillingSubscriptionStatus =
   | 'active'
@@ -36,6 +37,7 @@ export interface BillingInvoice {
 
 export interface BillingOverview {
   tenantId: string;
+  billingAccountId: string | null;
   customerId: string | null;
   status: BillingSubscriptionStatus;
   planName: string | null;
@@ -49,6 +51,12 @@ export interface BillingOverview {
   paymentMethod: BillingPaymentMethod | null;
   invoices: BillingInvoice[];
   portalUrl: string | null;
+}
+
+export interface BillingCheckoutRequest {
+  priceId: string;
+  billingAccountId: string;
+  quantity?: number;
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
@@ -78,6 +86,18 @@ function readBoolean(record: Record<string, unknown>, keys: string[]): boolean {
     if (typeof value === 'boolean') return value;
   }
   return false;
+}
+
+function readArray(record: Record<string, unknown>, keys: string[]): unknown[] {
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) return value;
+
+    const nested = readRecord(value);
+    if (Array.isArray(nested.items)) return nested.items;
+    if (Array.isArray(nested.data)) return nested.data;
+  }
+  return [];
 }
 
 function safeUrl(value: string | null): string | null {
@@ -110,6 +130,18 @@ function normalizeInterval(value: string | null): BillingOverview['interval'] {
   return 'unknown';
 }
 
+function normalizeInvoiceStatus(value: string | null): BillingInvoice['status'] {
+  switch (value) {
+    case 'paid':
+    case 'open':
+    case 'void':
+    case 'draft':
+      return value;
+    default:
+      return 'unknown';
+  }
+}
+
 function normalizeInvoice(raw: unknown): BillingInvoice {
   const invoice = readRecord(raw);
   const amountCents = readNumber(invoice, ['amountCents', 'totalCents', 'amountDueCents']);
@@ -126,40 +158,71 @@ function normalizeInvoice(raw: unknown): BillingInvoice {
   };
 }
 
-function normalizeInvoiceStatus(value: string | null): BillingInvoice['status'] {
-  switch (value) {
-    case 'paid':
-    case 'open':
-    case 'void':
-    case 'draft':
-      return value;
-    default:
-      return 'unknown';
+function firstRecordFromPayload(payload: unknown, keys: string[]): Record<string, unknown> {
+  const root = readRecord(payload);
+  const data = root.data;
+  if (Array.isArray(data)) return readRecord(data[0]);
+
+  const dataRecord = readRecord(data);
+  const source = Object.keys(dataRecord).length > 0 ? dataRecord : root;
+
+  for (const key of keys) {
+    const value = source[key];
+    if (Array.isArray(value)) return readRecord(value[0]);
+
+    const nested = readRecord(value);
+    if (Array.isArray(nested.items)) return readRecord(nested.items[0]);
+    if (Array.isArray(nested.data)) return readRecord(nested.data[0]);
   }
+
+  return source;
 }
 
-function normalizeBillingOverview(payload: unknown, tenantId: string): BillingOverview {
-  const root = readRecord(payload);
-  const data = readRecord(root.data);
-  const source = Object.keys(data).length > 0 ? data : root;
-  const subscription = readRecord(source.subscription);
-  const plan = readRecord(source.plan);
-  const paymentMethod = readRecord(source.paymentMethod ?? source.defaultPaymentMethod);
-  const rawInvoices = source.invoices ?? readRecord(source.invoiceHistory).items;
+function normalizeBillingOverview(
+  subscriptionPayload: unknown,
+  tenantId: string,
+  planPayload?: unknown,
+  pricePayload?: unknown,
+): BillingOverview {
+  const subscription = firstRecordFromPayload(subscriptionPayload, ['subscriptions', 'items']);
+  const nestedPlan = readRecord(subscription.plan);
+  const plan = Object.keys(nestedPlan).length > 0
+    ? nestedPlan
+    : firstRecordFromPayload(planPayload, ['plans', 'items']);
+  const price = firstRecordFromPayload(pricePayload, ['prices', 'items']);
+  const paymentMethod = readRecord(subscription.paymentMethod ?? subscription.defaultPaymentMethod);
+  const billingAccount = readRecord(subscription.billingAccount ?? subscription.account ?? subscription.billing);
+  const rawInvoices = readArray(subscription, ['invoices', 'invoiceHistory']);
   const subscriptionAmountCents =
-    readNumber(subscription, ['amountCents', 'unitAmountCents']) ?? readNumber(plan, ['amountCents', 'unitAmountCents']);
+    readNumber(subscription, ['amountCents', 'unitAmountCents'])
+    ?? readNumber(price, ['amountCents', 'unitAmountCents'])
+    ?? readNumber(plan, ['amountCents', 'unitAmountCents']);
 
   return {
     tenantId,
-    customerId: readString(source, ['customerId', 'billingCustomerId']),
-    status: normalizeStatus(readString(subscription, ['status']) ?? readString(source, ['status'])),
+    billingAccountId:
+      readString(subscription, ['billingAccountId', 'billing_account_id'])
+      ?? readString(billingAccount, ['id', 'billingAccountId']),
+    customerId:
+      readString(subscription, ['customerId', 'billingCustomerId', 'stripeCustomerId'])
+      ?? readString(billingAccount, ['customerId', 'stripeCustomerId']),
+    status: normalizeStatus(readString(subscription, ['status'])),
     planName: readString(plan, ['name', 'title']) ?? readString(subscription, ['planName', 'plan']),
-    planCode: readString(plan, ['code', 'id']) ?? readString(subscription, ['planCode', 'priceId']),
+    planCode:
+      readString(plan, ['code', 'id'])
+      ?? readString(price, ['code', 'id'])
+      ?? readString(subscription, ['planCode', 'priceId']),
     amount: subscriptionAmountCents !== null
       ? subscriptionAmountCents / 100
-      : readNumber(subscription, ['amount', 'unitAmount']) ?? readNumber(plan, ['amount', 'unitAmount']),
-    currency: (readString(subscription, ['currency']) ?? readString(plan, ['currency']) ?? 'MXN').toUpperCase(),
-    interval: normalizeInterval(readString(subscription, ['interval']) ?? readString(plan, ['interval'])),
+      : readNumber(subscription, ['amount', 'unitAmount'])
+        ?? readNumber(price, ['amount', 'unitAmount'])
+        ?? readNumber(plan, ['amount', 'unitAmount']),
+    currency: (
+      readString(subscription, ['currency']) ?? readString(price, ['currency']) ?? readString(plan, ['currency']) ?? 'MXN'
+    ).toUpperCase(),
+    interval: normalizeInterval(
+      readString(subscription, ['interval']) ?? readString(price, ['interval']) ?? readString(plan, ['interval']),
+    ),
     currentPeriodEnd: readString(subscription, ['currentPeriodEnd', 'renewsAt', 'periodEnd']),
     cancelAtPeriodEnd: readBoolean(subscription, ['cancelAtPeriodEnd']),
     includedUsers:
@@ -172,17 +235,18 @@ function normalizeBillingOverview(payload: unknown, tenantId: string): BillingOv
           expYear: readNumber(paymentMethod, ['expYear', 'expirationYear']),
         }
       : null,
-    invoices: Array.isArray(rawInvoices) ? rawInvoices.map(normalizeInvoice) : [],
-    portalUrl: safeUrl(readString(source, ['portalUrl', 'customerPortalUrl'])),
+    invoices: rawInvoices.map(normalizeInvoice),
+    portalUrl: safeUrl(readString(subscription, ['portalUrl', 'customerPortalUrl'])),
   };
 }
 
-async function billingRequest(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(`${BILLING_API_BASE_URL}${path}`, {
+async function billingRequest(path: string, token: string, init?: RequestInit): Promise<unknown> {
+  const response = await fetch(`${BILLING_API_BASE_URL}${BILLING_API_PREFIX}${path}`, {
     ...init,
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
       ...init?.headers,
     },
     cache: 'no-store',
@@ -204,30 +268,26 @@ async function billingRequest(path: string, init?: RequestInit): Promise<unknown
 
 async function _fetchBillingOverview(): Promise<BillingOverview> {
   await requirePermission('settings.view');
-  const { storeId, user } = await requireStoreScope();
-  const payload = await billingRequest(`/v1/tenants/${encodeURIComponent(storeId)}/billing`, {
-    headers: {
-      'X-Tenant-Id': storeId,
-      'X-User-Id': user.uid,
-      'X-User-Email': user.email,
-    },
-  });
+  const { storeId } = await requireStoreScope();
+  const token = await requireCurrentAccessJwt();
+  const [subscriptions, plans, prices] = await Promise.all([
+    billingRequest('/billing/subscriptions', token),
+    billingRequest('/billing/plans', token).catch(() => null),
+    billingRequest('/billing/prices', token).catch(() => null),
+  ]);
 
-  return normalizeBillingOverview(payload, storeId);
+  return normalizeBillingOverview(subscriptions, storeId, plans, prices);
 }
 
-async function _createBillingPortalSession(): Promise<{ url: string }> {
-  const user = await requireOwner();
-  const { storeId } = await requireStoreScope();
+async function _createBillingPortalSession(billingAccountId: string): Promise<{ url: string }> {
+  await requireOwner();
+  await requireStoreScope();
+  const token = await requireCurrentAccessJwt();
+  const safeBillingAccountId = validateId(billingAccountId, 'billingAccountId');
   const payload = readRecord(
-    await billingRequest(`/v1/tenants/${encodeURIComponent(storeId)}/billing/portal`, {
+    await billingRequest('/billing/portal', token, {
       method: 'POST',
-      headers: {
-        'X-Tenant-Id': storeId,
-        'X-User-Id': user.uid,
-        'X-User-Email': user.email,
-      },
-      body: JSON.stringify({ tenantId: storeId, userId: user.uid, email: user.email }),
+      body: JSON.stringify({ billingAccountId: safeBillingAccountId }),
     }),
   );
 
@@ -240,5 +300,35 @@ async function _createBillingPortalSession(): Promise<{ url: string }> {
   return { url };
 }
 
+async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Promise<{ sessionId: string | null; url: string }> {
+  await requireOwner();
+  await requireStoreScope();
+  const token = await requireCurrentAccessJwt();
+  const priceId = validateId(input.priceId, 'priceId');
+  const billingAccountId = validateId(input.billingAccountId, 'billingAccountId');
+  const quantity = input.quantity === undefined ? 1 : Number(input.quantity);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
+    throw new AppError('BILLING_INVALID_QUANTITY', 'La cantidad de licencias no es válida.', 422);
+  }
+
+  const payload = readRecord(
+    await billingRequest('/billing/checkout', token, {
+      method: 'POST',
+      body: JSON.stringify({ priceId, billingAccountId, quantity }),
+    }),
+  );
+  const data = readRecord(payload.data);
+  const url = safeUrl(readString(data, ['url']) ?? readString(payload, ['url']));
+  if (!url) {
+    throw new AppError('BILLING_CHECKOUT_URL_MISSING', 'El checkout no devolvió una URL válida.', 502);
+  }
+
+  return {
+    sessionId: readString(data, ['sessionId']) ?? readString(payload, ['sessionId']),
+    url,
+  };
+}
+
 export const fetchBillingOverview = withLogging('billing.fetchOverview', _fetchBillingOverview);
 export const createBillingPortalSession = withLogging('billing.createPortalSession', _createBillingPortalSession);
+export const createBillingCheckoutSession = withLogging('billing.createCheckoutSession', _createBillingCheckoutSession);

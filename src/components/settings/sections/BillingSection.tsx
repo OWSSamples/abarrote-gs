@@ -138,17 +138,31 @@ export function BillingSection({ config }: SettingsSectionProps) {
   }, [loadBilling]);
 
   const openBillingPortal = useCallback(async () => {
+    const billingAccountId = overview?.billingAccountId ?? null;
+    const portalUrl = overview?.portalUrl ?? null;
+
+    if (!billingAccountId && !portalUrl) {
+      setError('No hay una cuenta de facturación asociada a este negocio. Primero activa una suscripción.');
+      return;
+    }
+
     setPortalLoading(true);
     setError(null);
     try {
-      const url = overview?.portalUrl ?? (await createBillingPortalSession()).url;
+      let url = portalUrl;
+      if (!url) {
+        if (!billingAccountId) {
+          throw new Error('Billing account is required to open the portal.');
+        }
+        url = (await createBillingPortalSession(billingAccountId)).url;
+      }
       window.location.assign(url);
     } catch {
       setError('No fue posible abrir el portal de facturación. Verifica tu acceso e intenta nuevamente.');
     } finally {
       setPortalLoading(false);
     }
-  }, [overview?.portalUrl]);
+  }, [overview?.billingAccountId, overview?.portalUrl]);
 
   const status = subscriptionStatus(overview?.status ?? 'none');
   const invoices = useMemo(() => {

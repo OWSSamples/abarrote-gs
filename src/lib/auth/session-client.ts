@@ -15,6 +15,7 @@ async function performServerSessionSynchronization(forceRefresh: boolean): Promi
   try {
     const session = await fetchAuthSession({ forceRefresh });
     const token = session.tokens?.idToken?.toString();
+    const accessToken = session.tokens?.accessToken?.toString();
     if (!token) return 'unauthenticated';
 
     const response = await fetch('/api/auth/session', {
@@ -22,7 +23,7 @@ async function performServerSessionSynchronization(forceRefresh: boolean): Promi
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, accessToken }),
     });
 
     if (response.ok) return 'established';

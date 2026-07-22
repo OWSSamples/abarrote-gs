@@ -70,6 +70,14 @@ function getLoginErrorMessage(error: unknown): string {
     return 'No fue posible conectar con el servicio de identidad. Revisa tu conexión e intenta de nuevo.';
   }
 
+  if (message.includes('verificar la seguridad') || message.includes('solicitud no pudo ser verificada')) {
+    return 'No fue posible verificar la seguridad de la solicitud. Recarga la página e intenta de nuevo.';
+  }
+
+  if (message.includes('sesión segura') || message.includes('establecer la sesión')) {
+    return 'El acceso fue validado, pero no fue posible crear la sesión del servidor. Intenta de nuevo en unos segundos.';
+  }
+
   if (err.name === 'NotAuthorizedException' || err.name === 'UserNotFoundException') {
     return 'No pudimos validar el acceso. Verifica el correo y la contraseña o restablece tu contraseña.';
   }

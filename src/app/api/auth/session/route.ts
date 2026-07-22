@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { verifyAccessToken, verifyIdToken } from '@/lib/cognito-admin';
 import { checkRateLimitAsync, getClientIp } from '@/infrastructure/redis';
 import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
-import { assertHumanRequest, getBotProtectionFailure } from '@/lib/security/bot-protection';
+import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 
@@ -59,8 +59,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    await assertHumanRequest();
-
     const rawBody = await readTextBodyWithLimit(request, MAX_BODY_BYTES);
     if (rawBody === null) {
       return noStoreJson({ error: 'Solicitud demasiado grande.' }, 413);
@@ -102,10 +100,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     return response;
   } catch (error) {
-    const botFailure = getBotProtectionFailure(error);
-    if (botFailure) {
-      return noStoreJson({ error: botFailure.message }, botFailure.status);
-    }
+    const err = error as { name?: string; message?: string };
+    logger.warn('Auth session establishment failed', {
+      action: 'auth.session.establish_failed',
+      errorName: err.name,
+      errorMessage: err.message,
+    });
     return noStoreJson({ error: 'No fue posible establecer la sesión.' }, 401);
   }
 }

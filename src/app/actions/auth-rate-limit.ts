@@ -15,7 +15,6 @@
 import { headers } from 'next/headers';
 import { checkRateLimitAsync } from '@/infrastructure/redis/rate-limit';
 import { logAuthEvent } from '@/lib/auth/auth-logger';
-import { assertHumanRequest } from '@/lib/security/bot-protection';
 
 const TIERS = {
   // Login: 5 attempts per 15 minutes per IP+email combo
@@ -46,7 +45,6 @@ async function getClientIp(): Promise<string> {
 }
 
 export async function checkAuthRateLimit(action: AuthAction, email?: string): Promise<AuthRateLimitResult> {
-  await assertHumanRequest();
   const ip = await getClientIp();
   const normalizedEmail = email?.toLowerCase().trim() || 'anon';
   const identifier = `auth:${action}:${ip}:${normalizedEmail}`;
@@ -79,5 +77,6 @@ export async function checkAuthRateLimit(action: AuthAction, email?: string): Pr
 }
 
 export async function verifyAuthHumanRequest(): Promise<void> {
+  const { assertHumanRequest } = await import('@/lib/security/bot-protection');
   await assertHumanRequest();
 }

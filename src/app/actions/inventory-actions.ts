@@ -5,7 +5,7 @@ import { requireStoreScope } from '@/lib/auth/store-scope';
 import { db } from '@/db';
 import { products, mermaRecords, inventoryAudits, inventoryAuditItems } from '@/db/schema';
 import { eq, gte, lte, lt, and, desc, sql } from 'drizzle-orm';
-import type { InventoryAlert, KPIData, MermaRecord } from '@/types';
+import type { InventoryAlert, KPIData, MermaRecord, Product } from '@/types';
 import type { InventoryAudit, InventoryAuditItem } from '@/types';
 import { numVal } from './_helpers';
 import { adjustStock, recordStockMovement } from './_stock';

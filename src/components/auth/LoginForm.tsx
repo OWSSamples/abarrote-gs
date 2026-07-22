@@ -41,6 +41,7 @@ function getSafeReturnTo(value: string | null): string | null {
 function getLoginErrorMessage(error: unknown): string {
   const err = error as { name?: string; message?: string };
   const message = (err.message ?? '').toLowerCase();
+  const diagnostic = err.name ? ` Código: ${err.name}.` : '';
 
   if (
     err.name === 'LimitExceededException' ||
@@ -82,7 +83,11 @@ function getLoginErrorMessage(error: unknown): string {
     return 'No pudimos validar el acceso. Verifica el correo y la contraseña o restablece tu contraseña.';
   }
 
-  return 'No fue posible iniciar sesión. Inténtalo de nuevo o contacta al administrador.';
+  if (process.env.NODE_ENV !== 'production') {
+    return `No fue posible iniciar sesión.${diagnostic}${err.message ? ` Detalle: ${err.message}` : ''}`;
+  }
+
+  return `No fue posible iniciar sesión.${diagnostic} Inténtalo de nuevo o contacta al administrador.`;
 }
 
 export function LoginForm() {
@@ -287,7 +292,7 @@ export function LoginForm() {
         }
       } catch (error: unknown) {
         const err = error as { name?: string; message?: string };
-        console.warn('[LoginForm] signIn failed:', err.name ?? 'UnknownAuthError');
+        console.warn('[LoginForm] signIn failed:', err.name ?? 'UnknownAuthError', err.message ?? '');
         void logAuthEvent({ event: 'sign_in_failure', email: normalizedEmail, errorCode: err.name });
         if (err.name === 'UserNotConfirmedException') {
           await continuePendingRegistration(normalizedEmail);

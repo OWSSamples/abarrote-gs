@@ -187,6 +187,11 @@ export function BillingCheckoutModal({
                       </EmbeddedCheckoutProvider>
                     </div>
                   )}
+                  {!loadingPayment && !embeddedSession && !error && (
+                    <div className="rounded-lg border border-kumo-line bg-kumo-recessed p-6 text-center text-sm text-kumo-subtle">
+                      Iniciando el formulario seguro de Stripe...
+                    </div>
+                  )}
                 </>
               )}
             </div>

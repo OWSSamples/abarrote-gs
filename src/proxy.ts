@@ -137,6 +137,7 @@ const scriptSrc = isDev
 const CSP = [
   "default-src 'self'",
   scriptSrc,
+  "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.shopify.com",
   "font-src 'self' data: https://fonts.gstatic.com https://cdn.shopify.com",
   "img-src 'self' data: blob: https://*.amazonaws.com https://*.mlstatic.com",

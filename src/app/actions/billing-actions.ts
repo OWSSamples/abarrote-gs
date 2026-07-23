@@ -458,6 +458,12 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
   await requirePermission('settings.view');
   const { tenantId } = await requireStoreScope();
   const token = await requireCurrentAccessJwt();
+  const swallow = (error: unknown): null => {
+    if (error instanceof AppError && (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 503)) {
+      return null;
+    }
+    throw error;
+  };
   const [
     subscriptions,
     plans,
@@ -467,13 +473,13 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
     invoices,
     paymentMethod,
   ] = await Promise.all([
-    billingRequest('/billing/subscriptions', token, tenantId),
-    billingRequest('/billing/plans', token, tenantId).catch(() => null),
-    billingRequest('/billing/prices', token, tenantId).catch(() => null),
-    billingRequest('/billing/account', token, tenantId),
-    billingRequest('/billing/entitlements', token, tenantId).catch(() => null),
-    billingRequest('/billing/invoices?limit=20', token, tenantId).catch(() => null),
-    billingRequest('/billing/payment-method', token, tenantId).catch(() => null),
+    billingRequest('/billing/subscriptions', token, tenantId).catch(swallow),
+    billingRequest('/billing/plans', token, tenantId).catch(swallow),
+    billingRequest('/billing/prices', token, tenantId).catch(swallow),
+    billingRequest('/billing/account', token, tenantId).catch(swallow),
+    billingRequest('/billing/entitlements', token, tenantId).catch(swallow),
+    billingRequest('/billing/invoices?limit=20', token, tenantId).catch(swallow),
+    billingRequest('/billing/payment-method', token, tenantId).catch(swallow),
   ]);
 
   if (entitlements) {

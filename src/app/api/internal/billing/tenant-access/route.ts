@@ -38,8 +38,19 @@ export async function POST(request: Request): Promise<Response> {
     return jsonResponse({ authorized: false }, 401);
   }
 
+  let principal: Awaited<ReturnType<typeof verifyAccessToken>>;
   try {
-    const principal = await verifyAccessToken(accessToken);
+    principal = await verifyAccessToken(accessToken);
+  } catch (error) {
+    logger.warn('Billing tenant-access token rejected', {
+      action: 'billing_tenant_access_token_rejected',
+      tenantId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return jsonResponse({ authorized: false }, 401);
+  }
+
+  try {
     logger.info('Billing tenant-access token verified', {
       action: 'billing_tenant_access_token_ok',
       tenantId,
@@ -122,11 +133,12 @@ export async function POST(request: Request): Promise<Response> {
       200,
     );
   } catch (error) {
-    logger.warn('Billing tenant-access verification failed', {
-      action: 'billing_tenant_access_failed',
+    logger.error('Billing tenant-access authorization lookup failed', {
+      action: 'billing_tenant_access_unavailable',
       tenantId,
+      sub: principal.sub,
       error: error instanceof Error ? error.message : String(error),
     });
-    return jsonResponse({ authorized: false }, 401);
+    return jsonResponse({ authorized: false, error: 'authorization_unavailable' }, 503);
   }
 }

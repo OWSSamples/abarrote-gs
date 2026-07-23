@@ -55,6 +55,7 @@ function getCognitoVerifier(): ReturnType<typeof CognitoJwtVerifier.create> {
       userPoolId,
       tokenUse: 'id',
       clientId,
+      graceSeconds: 300,
     });
   }
 
@@ -70,6 +71,7 @@ function getCognitoAccessVerifier(): ReturnType<typeof CognitoJwtVerifier.create
       // Access tokens may be minted by different public app clients in the
       // same pool. Tenant membership checks remain the authorization boundary.
       clientId: null,
+      graceSeconds: 300,
     });
   }
 
@@ -147,12 +149,14 @@ export interface CognitoAccessToken {
  * @throws if the token is invalid or expired.
  */
 export async function verifyIdToken(token: string): Promise<CognitoDecodedToken> {
-  const payload = await getCognitoVerifier().verify(token);
+  const payload = await getCognitoVerifier().verify(token, { graceSeconds: 300 });
   return payload as unknown as CognitoDecodedToken;
 }
 
 export async function verifyAccessToken(token: string): Promise<CognitoAccessToken> {
-  const payload = await getCognitoAccessVerifier().verify(token);
+  const payload = await getCognitoAccessVerifier().verify(token, {
+    graceSeconds: 300,
+  });
   return payload as unknown as CognitoAccessToken;
 }
 

@@ -11,27 +11,27 @@ import { Loader, SkeletonLine } from '@cloudflare/kumo/components/loader';
 import { Select } from '@cloudflare/kumo/components/select';
 import { Tabs } from '@cloudflare/kumo/components/tabs';
 import {
-  Add20Filled,
-  ArrowClockwise20Filled,
-  ArrowDownload20Filled,
-  ArrowReset20Filled,
-  Calculator20Filled,
-  Calendar20Filled,
-  CardUi20Filled,
-  CheckmarkCircle20Filled,
-  Clock20Filled,
-  DataBarVertical20Filled,
-  Delete20Filled,
-  Document20Filled,
-  Edit20Filled,
-  Mail20Filled,
-  Money20Filled,
-  MoreHorizontal20Filled,
-  Open20Filled,
-  Payment20Filled,
-  Search20Filled,
-  WalletCreditCard20Filled,
-} from '@fluentui/react-icons';
+  PlusIcon,
+  RefreshIcon,
+  ImportIcon,
+  ResetIcon,
+  CalculatorIcon,
+  CalendarIcon,
+  CreditCardIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ChartVerticalIcon,
+  DeleteIcon,
+  PageIcon,
+  EditIcon,
+  EmailIcon,
+  CashDollarIcon,
+  MenuHorizontalIcon,
+  ExternalIcon,
+  PaymentIcon,
+  SearchIcon,
+  WalletIcon,
+} from '@shopify/polaris-icons';
 import {
   activateFreeBillingPlan,
   createBillingCheckoutSession,
@@ -157,7 +157,7 @@ function EmptyTableState({ title, description }: { title: string; description: s
   return (
     <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
       <div className="flex size-9 items-center justify-center rounded-md bg-kumo-recessed text-kumo-subtle">
-        <Document20Filled aria-hidden="true" />
+        <PageIcon aria-hidden="true" className="h-5 w-5" />
       </div>
       <p className="text-sm font-semibold text-kumo-default">{title}</p>
       <p className="max-w-md text-xs leading-5 text-kumo-subtle">{description}</p>
@@ -369,7 +369,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                   aria-label="Reintentar consulta de facturación"
                   title="Reintentar"
                   onClick={loadBilling}
-                  icon={<ArrowClockwise20Filled />}
+                  icon={<RefreshIcon className="h-5 w-5" />}
                   className="text-kumo-danger hover:bg-kumo-danger-tint/60"
                 />
               </div>
@@ -400,7 +400,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                     variant="secondary"
                     onClick={openBillingPortal}
                     loading={portalLoading}
-                    icon={<Open20Filled />}
+                    icon={<ExternalIcon className="h-5 w-5" />}
                     className="shrink-0"
                   >
                     Administrar facturación
@@ -409,9 +409,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
 
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_164px]">
                   <div className="relative">
-                    <Search20Filled
+                    <SearchIcon
                       aria-hidden="true"
-                      className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-kumo-subtle"
+                      className="pointer-events-none absolute left-3 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-kumo-subtle"
                     />
                     <Input
                       aria-label="Buscar suscripciones"
@@ -496,14 +496,14 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                         size="sm"
                                         variant="ghost"
                                         aria-label={`Abrir acciones del plan ${plan.name}`}
-                                        icon={<MoreHorizontal20Filled />}
+                                        icon={<MenuHorizontalIcon className="h-5 w-5" />}
                                       />
                                     </DropdownMenu.Trigger>
                                     <DropdownMenu.Content>
-                                      <DropdownMenu.Item icon={<Open20Filled />} onClick={openBillingPortal}>
+                                      <DropdownMenu.Item icon={<ExternalIcon className="h-5 w-5" />} onClick={openBillingPortal}>
                                         Administrar suscripción
                                       </DropdownMenu.Item>
-                                      <DropdownMenu.Item icon={<ArrowClockwise20Filled />} onClick={loadBilling}>
+                                      <DropdownMenu.Item icon={<RefreshIcon className="h-5 w-5" />} onClick={loadBilling}>
                                         Actualizar información
                                       </DropdownMenu.Item>
                                     </DropdownMenu.Content>
@@ -549,7 +549,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                     <Button
                       size="sm"
                       variant="ghost"
-                      icon={<ArrowReset20Filled />}
+                      icon={<ResetIcon className="h-5 w-5" />}
                       onClick={() => setUsagePeriod('current')}
                     >
                       Reiniciar
@@ -589,7 +589,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                         >
                           <Select.Option value="current">
                             <span className="inline-flex items-center gap-2">
-                              <Calendar20Filled aria-hidden="true" />
+                              <CalendarIcon aria-hidden="true" className="h-5 w-5" />
                               {currentPeriodLabel}
                             </span>
                           </Select.Option>
@@ -602,13 +602,13 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                 <div className="min-w-0 space-y-5">
                   <div className="flex min-h-9 items-center justify-between gap-4">
                     <div className="flex items-center gap-2 text-kumo-subtle">
-                      <DataBarVertical20Filled aria-hidden="true" />
+                      <ChartVerticalIcon aria-hidden="true" className="h-5 w-5" />
                       <span className="text-xs">Consumo del periodo seleccionado</span>
                     </div>
                     <Button
                       size="base"
                       variant="secondary"
-                      icon={<Add20Filled />}
+                      icon={<PlusIcon className="h-5 w-5" />}
                       disabled
                       title="Requiere soporte de alertas de presupuesto en el servicio de facturación"
                     >
@@ -626,19 +626,19 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                           label: 'Costo total',
                           value: '-',
                           description: 'Sin consumo medido reportado',
-                          icon: <Money20Filled aria-hidden="true" />,
+                          icon: <CashDollarIcon aria-hidden="true" className="h-5 w-5" />,
                         },
                         {
                           label: 'Costo del ciclo proyectado',
                           value: '-',
                           description: currentPeriodLabel,
-                          icon: <Calculator20Filled aria-hidden="true" />,
+                          icon: <CalculatorIcon aria-hidden="true" className="h-5 w-5" />,
                         },
                         {
                           label: 'Costo medio diario',
                           value: '-',
                           description: 'Sin observaciones suficientes',
-                          icon: <Clock20Filled aria-hidden="true" />,
+                          icon: <ClockIcon aria-hidden="true" className="h-5 w-5" />,
                         },
                       ].map((metric) => (
                         <div
@@ -661,7 +661,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                       <h2 className="text-sm font-semibold text-kumo-subtle">Desglose de costos</h2>
                     </div>
                     <div className="flex min-h-[430px] flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-                      <DataBarVertical20Filled className="text-kumo-subtle" aria-hidden="true" />
+                      <ChartVerticalIcon className="h-5 w-5 text-kumo-subtle" aria-hidden="true" />
                       <p className="text-sm font-medium text-kumo-default">
                         No hay datos de uso disponibles para mostrar
                       </p>
@@ -678,9 +678,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
               <>
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
                   <div className="relative">
-                    <Search20Filled
+                    <SearchIcon
                       aria-hidden="true"
-                      className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-kumo-subtle"
+                      className="pointer-events-none absolute left-3 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-kumo-subtle"
                     />
                     <Input
                       aria-label="Buscar facturas"
@@ -744,7 +744,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                         variant="secondary"
                                         href={invoice.hostedUrl}
                                         external
-                                        icon={<Open20Filled />}
+                                        icon={<ExternalIcon className="h-5 w-5" />}
                                       >
                                         Ver
                                       </LinkButton>
@@ -755,7 +755,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                         variant="secondary"
                                         href={invoice.pdfUrl}
                                         external
-                                        icon={<ArrowDownload20Filled />}
+                                        icon={<ImportIcon className="h-5 w-5" />}
                                       >
                                         PDF
                                       </LinkButton>
@@ -783,11 +783,15 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
           </div>
 
           {activeTab === 'subscriptions' && (
-          <aside className="space-y-4" aria-label="Datos de facturación">
+          <aside aria-label="Datos de facturación">
             <LayerCard className="overflow-hidden p-0">
-              <div className="border-b border-kumo-line px-4 py-3">
-                <h2 className="text-sm font-semibold text-kumo-subtle">Correo de facturación</h2>
-              </div>
+              <section aria-labelledby="billing-email-heading">
+              <header className="flex items-center gap-2 border-b border-kumo-line px-4 py-3">
+                <EmailIcon aria-hidden="true" className="h-5 w-5 text-kumo-subtle" />
+                <h2 id="billing-email-heading" className="text-sm font-semibold text-kumo-subtle">
+                  Correo de facturación
+                </h2>
+              </header>
               <div className="p-4">
                 {editingEmail ? (
                   <div className="space-y-3">
@@ -820,7 +824,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                 ) : (
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2 text-sm text-kumo-default">
-                      <Mail20Filled className="shrink-0 text-kumo-subtle" aria-hidden="true" />
+                      <EmailIcon className="h-5 w-5 shrink-0 text-kumo-subtle" aria-hidden="true" />
                       <span className="truncate">{configuredEmail || 'Sin correo configurado'}</span>
                     </div>
                     <Button
@@ -828,29 +832,33 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                       size="sm"
                       variant="ghost"
                       aria-label="Editar correo de facturación"
-                      icon={<Edit20Filled />}
+                      icon={<EditIcon className="h-5 w-5" />}
                       onClick={() => setEditingEmail(true)}
                     />
                   </div>
                 )}
               </div>
-            </LayerCard>
+            </section>
 
-            <div>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-kumo-default">Método de facturación</h2>
-                  <p className="mt-0.5 text-xs text-kumo-subtle">Método principal del negocio</p>
+            <section aria-labelledby="billing-payment-heading" className="border-t border-kumo-line">
+              <header className="flex items-center justify-between gap-3 border-b border-kumo-line px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <PaymentIcon aria-hidden="true" className="h-5 w-5 text-kumo-subtle" />
+                  <div>
+                    <h2 id="billing-payment-heading" className="text-sm font-semibold text-kumo-default">
+                      Método de facturación
+                    </h2>
+                    <p className="text-xs text-kumo-subtle">Método principal del negocio</p>
+                  </div>
                 </div>
-                <Payment20Filled className="text-kumo-subtle" aria-hidden="true" />
-              </div>
+              </header>
 
               {paymentMethod?.last4 ? (
-                <LayerCard className="overflow-hidden p-0">
+                <div>
                   <div className="min-h-44 bg-kumo-recessed/55 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex size-10 items-center justify-center rounded-md border border-kumo-line bg-kumo-base text-kumo-subtle">
-                        <CardUi20Filled aria-hidden="true" />
+                        <CreditCardIcon aria-hidden="true" className="h-5 w-5" />
                       </div>
                       <Badge variant="success">Principal</Badge>
                     </div>
@@ -870,7 +878,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                       variant="secondary"
                       onClick={openBillingPortal}
                       loading={portalLoading}
-                      icon={<Edit20Filled />}
+                      icon={<EditIcon className="h-5 w-5" />}
                     >
                       Actualizar
                     </Button>
@@ -879,17 +887,17 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                       variant="secondary-destructive"
                       onClick={openBillingPortal}
                       loading={portalLoading}
-                      icon={<Delete20Filled />}
+                      icon={<DeleteIcon className="h-5 w-5" />}
                     >
                       Eliminar
                     </Button>
                   </div>
-                </LayerCard>
+                </div>
               ) : (
-                <LayerCard className="p-4">
+                <div className="p-4">
                   <div className="flex items-start gap-3">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-kumo-recessed text-kumo-subtle">
-                      <WalletCreditCard20Filled aria-hidden="true" />
+                      <WalletIcon aria-hidden="true" className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-kumo-default">Sin método de pago</p>
@@ -904,24 +912,27 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                     onClick={openBillingPortal}
                     loading={portalLoading}
                     disabled={!overview?.billingAccountId && !overview?.portalUrl}
-                    icon={<WalletCreditCard20Filled />}
+                    icon={<WalletIcon className="h-5 w-5" />}
                     className="mt-4 w-full"
                   >
                     Agregar método
                   </Button>
-                </LayerCard>
+                </div>
               )}
-            </div>
+            </section>
 
-            <div className="border-t border-dashed border-kumo-line pt-4">
+            <section
+              aria-labelledby="billing-security-heading"
+              className="border-t border-dashed border-kumo-line bg-kumo-recessed/40 px-4 py-3"
+            >
               <div className="flex items-start gap-3 text-xs leading-5 text-kumo-subtle">
-                <CheckmarkCircle20Filled className="mt-0.5 shrink-0 text-kumo-success" aria-hidden="true" />
-                <p>
+                <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-kumo-success" aria-hidden="true" />
+                <p id="billing-security-heading">
                   Los cambios del método de pago se realizan en el portal seguro y permanecen aislados para este negocio.
                 </p>
               </div>
-            </div>
-
+            </section>
+          </LayerCard>
           </aside>
           )}
         </div>

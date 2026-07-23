@@ -38,9 +38,7 @@ function getCognitoConfig(): { userPoolId: string; clientId: string } {
   const clientId = process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
 
   if (!userPoolId || !clientId) {
-    throw new Error(
-      'AWS Cognito no está configurado. Verifica COGNITO_USER_POOL_ID y COGNITO_CLIENT_ID.',
-    );
+    throw new Error('AWS Cognito no está configurado. Verifica COGNITO_USER_POOL_ID y COGNITO_CLIENT_ID.');
   }
 
   return { userPoolId, clientId };
@@ -65,11 +63,13 @@ function getCognitoVerifier(): ReturnType<typeof CognitoJwtVerifier.create> {
 
 function getCognitoAccessVerifier(): ReturnType<typeof CognitoJwtVerifier.create> {
   if (!lazyCognitoAccessVerifier) {
-    const { userPoolId, clientId } = getCognitoConfig();
+    const { userPoolId } = getCognitoConfig();
     lazyCognitoAccessVerifier = CognitoJwtVerifier.create({
       userPoolId,
       tokenUse: 'access',
-      clientId,
+      // Access tokens may be minted by different public app clients in the
+      // same pool. Tenant membership checks remain the authorization boundary.
+      clientId: null,
     });
   }
 
@@ -314,25 +314,19 @@ export async function getCognitoUser(usernameOrSub: string): Promise<CognitoUser
 /** Disables sign-in for a Cognito user (reversible). */
 export async function disableCognitoUser(username: string): Promise<void> {
   const resolvedUsername = await resolveCognitoUsername(username);
-  await cognitoClient.send(
-    new AdminDisableUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }),
-  );
+  await cognitoClient.send(new AdminDisableUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }));
 }
 
 /** Re-enables a previously disabled Cognito user. */
 export async function enableCognitoUser(username: string): Promise<void> {
   const resolvedUsername = await resolveCognitoUsername(username);
-  await cognitoClient.send(
-    new AdminEnableUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }),
-  );
+  await cognitoClient.send(new AdminEnableUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }));
 }
 
 /** Permanently deletes a Cognito user. Irreversible. */
 export async function deleteCognitoUser(username: string): Promise<void> {
   const resolvedUsername = await resolveCognitoUsername(username);
-  await cognitoClient.send(
-    new AdminDeleteUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }),
-  );
+  await cognitoClient.send(new AdminDeleteUserCommand({ UserPoolId: getUserPoolId(), Username: resolvedUsername }));
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -369,11 +363,7 @@ export async function adminResetUserPassword(username: string): Promise<void> {
  * Sets a password for the user without requiring the email-code flow.
  * Use `permanent: true` to skip the FORCE_CHANGE_PASSWORD challenge.
  */
-export async function adminSetUserPassword(
-  username: string,
-  password: string,
-  permanent = false,
-): Promise<void> {
+export async function adminSetUserPassword(username: string, password: string, permanent = false): Promise<void> {
   const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
     new AdminSetUserPasswordCommand({
@@ -406,10 +396,8 @@ export async function updateCognitoUserAttributes(
   if (attrs.email !== undefined) userAttributes.push({ Name: 'email', Value: attrs.email });
   if (attrs.emailVerified !== undefined)
     userAttributes.push({ Name: 'email_verified', Value: String(attrs.emailVerified) });
-  if (attrs.displayName !== undefined)
-    userAttributes.push({ Name: 'name', Value: attrs.displayName });
-  if (attrs.phoneNumber !== undefined)
-    userAttributes.push({ Name: 'phone_number', Value: attrs.phoneNumber });
+  if (attrs.displayName !== undefined) userAttributes.push({ Name: 'name', Value: attrs.displayName });
+  if (attrs.phoneNumber !== undefined) userAttributes.push({ Name: 'phone_number', Value: attrs.phoneNumber });
   if (attrs.phoneVerified !== undefined)
     userAttributes.push({ Name: 'phone_number_verified', Value: String(attrs.phoneVerified) });
   if (userAttributes.length === 0) return;
@@ -450,9 +438,7 @@ function toGroupSummary(g: GroupType): CognitoGroup {
 
 /** Lists all groups in the User Pool. */
 export async function listCognitoGroups(): Promise<CognitoGroup[]> {
-  const result = await cognitoClient.send(
-    new ListGroupsCommand({ UserPoolId: getUserPoolId(), Limit: 60 }),
-  );
+  const result = await cognitoClient.send(new ListGroupsCommand({ UserPoolId: getUserPoolId(), Limit: 60 }));
   return (result.Groups ?? []).map(toGroupSummary);
 }
 
@@ -549,10 +535,7 @@ export async function bulkGlobalSignOut(usernames: string[]): Promise<BulkOperat
 // ══════════════════════════════════════════════════════════════
 
 /** Enable or disable TOTP MFA for a Cognito user (admin operation). */
-export async function adminSetUserMfaPreference(
-  username: string,
-  enabled: boolean,
-): Promise<void> {
+export async function adminSetUserMfaPreference(username: string, enabled: boolean): Promise<void> {
   const resolvedUsername = await resolveCognitoUsername(username);
   await cognitoClient.send(
     new AdminSetUserMFAPreferenceCommand({

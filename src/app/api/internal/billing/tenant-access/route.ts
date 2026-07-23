@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db';
-import { tenantMemberships, tenants, userIdentities } from '@/db/schema';
+import { roleDefinitions, stores, tenantMemberships, tenants, userIdentities, userRoles } from '@/db/schema';
 import { verifyAccessToken } from '@/lib/cognito-admin';
 import { logger } from '@/lib/logger';
 
@@ -8,6 +8,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const TENANT_ID_PATTERN = /^[0-9a-f]{32}$/;
+
+function mapBillingRole(roleName: string | null, membershipRole: string): 'owner' | 'admin' | 'member' {
+  if (roleName === 'Propietario' || membershipRole === 'owner') return 'owner';
+  if (roleName === 'Administrador' || membershipRole === 'admin') return 'admin';
+  return 'member';
+}
 
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
   return Response.json(body, {
@@ -44,12 +50,19 @@ export async function POST(request: Request): Promise<Response> {
       .select({
         tenantId: tenantMemberships.tenantId,
         tenantName: tenants.name,
-        role: tenantMemberships.role,
+        membershipRole: tenantMemberships.role,
+        roleName: roleDefinitions.name,
         principalEmail: userIdentities.email,
       })
       .from(tenantMemberships)
       .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
       .innerJoin(userIdentities, eq(userIdentities.cognitoSub, tenantMemberships.cognitoSub))
+      .innerJoin(stores, eq(stores.tenantId, tenantMemberships.tenantId))
+      .innerJoin(
+        userRoles,
+        and(eq(userRoles.cognitoSub, tenantMemberships.cognitoSub), eq(userRoles.storeId, stores.id)),
+      )
+      .leftJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
       .where(
         and(
           eq(tenantMemberships.cognitoSub, principal.sub),
@@ -57,6 +70,9 @@ export async function POST(request: Request): Promise<Response> {
           eq(tenantMemberships.status, 'active'),
           eq(tenants.status, 'active'),
           isNull(tenants.deletedAt),
+          eq(stores.status, 'active'),
+          isNull(stores.deletedAt),
+          eq(userRoles.status, 'activo'),
           eq(userIdentities.status, 'active'),
         ),
       )
@@ -66,19 +82,27 @@ export async function POST(request: Request): Promise<Response> {
       return jsonResponse({ authorized: false }, 403);
     }
 
+    const role = mapBillingRole(membership.roleName, membership.membershipRole);
     let billingEmail: string | undefined;
-    if (membership.role === 'owner') {
+    if (role === 'owner') {
       billingEmail = membership.principalEmail;
-    } else if (membership.role === 'admin') {
+    } else if (role === 'admin') {
       const [owner] = await db
         .select({ email: userIdentities.email })
         .from(tenantMemberships)
         .innerJoin(userIdentities, eq(userIdentities.cognitoSub, tenantMemberships.cognitoSub))
+        .innerJoin(stores, eq(stores.tenantId, tenantMemberships.tenantId))
+        .innerJoin(
+          userRoles,
+          and(eq(userRoles.cognitoSub, tenantMemberships.cognitoSub), eq(userRoles.storeId, stores.id)),
+        )
+        .innerJoin(roleDefinitions, eq(roleDefinitions.id, userRoles.roleId))
         .where(
           and(
             eq(tenantMemberships.tenantId, tenantId),
-            eq(tenantMemberships.role, 'owner'),
+            eq(roleDefinitions.name, 'Propietario'),
             eq(tenantMemberships.status, 'active'),
+            eq(userRoles.status, 'activo'),
             eq(userIdentities.status, 'active'),
           ),
         )
@@ -92,7 +116,7 @@ export async function POST(request: Request): Promise<Response> {
         tenantId: membership.tenantId,
         tenantName: membership.tenantName,
         subject: principal.sub,
-        role: membership.role,
+        role,
         ...(billingEmail ? { billingEmail } : {}),
       },
       200,

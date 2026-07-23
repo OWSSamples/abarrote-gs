@@ -210,7 +210,10 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
       const data = await fetchBillingOverview();
       setOverview(data);
       if (data.billingUnavailable) {
-        setError('No pudimos conectar con el servicio de facturación. La sesión puede haber expirado o el servicio no está disponible. Reintenta o contacta a soporte.');
+        setError(
+          data.billingUnavailableDetail
+            ?? 'No pudimos conectar con el servicio de facturación. La sesión puede haber expirado o el servicio no está disponible. Reintenta o contacta a soporte.',
+        );
       }
     } catch (err) {
       setOverview(null);

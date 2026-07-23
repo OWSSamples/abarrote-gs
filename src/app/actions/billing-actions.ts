@@ -5,6 +5,7 @@ import { requireCurrentAccessJwt, requireOwner, requirePermission, validateId } 
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { assertHumanRequest } from '@/lib/security/bot-protection';
 import { persistTenantEntitlementsPayload } from '@/server/billing-entitlement-service';
+import { logger } from '@/lib/logger';
 
 const BILLING_API_BASE_URL = (process.env.BILLING_API_BASE_URL || 'https://billing.opendexapis.com').replace(/\/+$/, '');
 const BILLING_API_PREFIX = '/api/v1';
@@ -81,6 +82,7 @@ export interface BillingOverview {
   availablePlans: BillingAvailablePlan[];
   portalUrl: string | null;
   billingUnavailable?: boolean;
+  billingUnavailableDetail?: string;
 }
 
 export interface BillingCheckoutRequest {
@@ -444,6 +446,12 @@ async function billingRequest(
   const payload: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
+    logger.warn('Billing API request failed', {
+      action: 'billing_api_request_failed',
+      path,
+      status: response.status,
+      tenantId,
+    });
     throw new AppError(
       'BILLING_API_ERROR',
       'No fue posible consultar la información de facturación.',
@@ -459,29 +467,42 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
   await requirePermission('settings.view');
   const { tenantId } = await requireStoreScope();
   const token = await requireCurrentAccessJwt();
+  const failures: string[] = [];
   const swallow = (error: unknown): null => {
     if (error instanceof AppError && (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 503)) {
+      const upstreamStatus =
+        typeof error.details?.status === 'number'
+          ? error.details.status
+          : error.statusCode;
+      failures.push(`HTTP ${upstreamStatus}`);
       return null;
     }
     throw error;
   };
-  const [
-    subscriptions,
-    plans,
-    prices,
-    account,
-    entitlements,
-    invoices,
-    paymentMethod,
-  ] = await Promise.all([
-    billingRequest('/billing/subscriptions', token, tenantId).catch(swallow),
-    billingRequest('/billing/plans', token, tenantId).catch(swallow),
-    billingRequest('/billing/prices', token, tenantId).catch(swallow),
-    billingRequest('/billing/account', token, tenantId).catch(swallow),
-    billingRequest('/billing/entitlements', token, tenantId).catch(swallow),
-    billingRequest('/billing/invoices?limit=20', token, tenantId).catch(swallow),
-    billingRequest('/billing/payment-method', token, tenantId).catch(swallow),
-  ]);
+  const requests = [
+    ['suscripciones', '/billing/subscriptions'],
+    ['planes', '/billing/plans'],
+    ['precios', '/billing/prices'],
+    ['cuenta', '/billing/account'],
+    ['permisos', '/billing/entitlements'],
+    ['facturas', '/billing/invoices?limit=20'],
+    ['metodo de pago', '/billing/payment-method'],
+  ] as const;
+  const settled = await Promise.all(
+    requests.map(async ([name, path]) => ({
+      name,
+      result: await billingRequest(path, token, tenantId).catch(swallow),
+    })),
+  );
+  const resultFor = (name: (typeof requests)[number][0]) =>
+    settled.find((item) => item.name === name)?.result ?? null;
+  const subscriptions = resultFor('suscripciones');
+  const plans = resultFor('planes');
+  const prices = resultFor('precios');
+  const account = resultFor('cuenta');
+  const entitlements = resultFor('permisos');
+  const invoices = resultFor('facturas');
+  const paymentMethod = resultFor('metodo de pago');
 
   // If every request was rejected or the service was unavailable, the billing
   // microservice is either misconfigured or the token is not authorized.
@@ -489,6 +510,15 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
   // situation without throwing a Server Component error.
   const allFailed = !subscriptions && !plans && !prices && !account && !entitlements;
   if (allFailed) {
+    const failedResources = settled
+      .filter(({ result }) => result === null)
+      .map(({ name }) => name);
+    logger.error('Billing overview unavailable', {
+      action: 'billing_overview_unavailable',
+      tenantId,
+      failedResources,
+      failureStatuses: failures,
+    });
     return {
       tenantId,
       billingAccountId: null,
@@ -509,6 +539,7 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
       availablePlans: [],
       portalUrl: null,
       billingUnavailable: true,
+      billingUnavailableDetail: `No se pudo consultar la facturación (${failures.join(', ')}).`,
     };
   }
 

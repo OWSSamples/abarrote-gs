@@ -80,6 +80,7 @@ export interface BillingOverview {
   entitlements: BillingEntitlement[];
   availablePlans: BillingAvailablePlan[];
   portalUrl: string | null;
+  billingUnavailable?: boolean;
 }
 
 export interface BillingCheckoutRequest {
@@ -484,13 +485,31 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
 
   // If every request was rejected or the service was unavailable, the billing
   // microservice is either misconfigured or the token is not authorized.
-  // Surface this as a clear error instead of pretending there is no data.
-  if (!subscriptions && !plans && !prices && !account && !entitlements) {
-    throw new AppError(
-      'BILLING_AUTH_OR_UNAVAILABLE',
-      'No pudimos conectar con el servicio de facturación. Es posible que la sesión haya expirado o que el servicio no esté disponible. Reintenta o contacta a soporte.',
-      subscriptions === null && account === null ? 401 : 503,
-    );
+  // Return an empty but labeled overview so the client UI can explain the
+  // situation without throwing a Server Component error.
+  const allFailed = !subscriptions && !plans && !prices && !account && !entitlements;
+  if (allFailed) {
+    return {
+      tenantId,
+      billingAccountId: null,
+      customerId: null,
+      status: 'none' as const,
+      planName: null,
+      planCode: null,
+      planId: null,
+      amount: null,
+      currency: 'MXN',
+      interval: 'unknown' as const,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      includedUsers: null,
+      paymentMethod: null,
+      invoices: [],
+      entitlements: [],
+      availablePlans: [],
+      portalUrl: null,
+      billingUnavailable: true,
+    };
   }
 
   if (entitlements) {

@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { tenantMemberships, tenants, userIdentities } from '@/db/schema';
 import { verifyAccessToken } from '@/lib/cognito-admin';
+import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,12 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const principal = await verifyAccessToken(accessToken);
+    logger.info('Billing tenant-access token verified', {
+      action: 'billing_tenant_access_token_ok',
+      tenantId,
+      sub: principal.sub,
+      clientId: principal.client_id,
+    });
     const [membership] = await db
       .select({
         tenantId: tenantMemberships.tenantId,
@@ -90,7 +97,12 @@ export async function POST(request: Request): Promise<Response> {
       },
       200,
     );
-  } catch {
+  } catch (error) {
+    logger.warn('Billing tenant-access verification failed', {
+      action: 'billing_tenant_access_failed',
+      tenantId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return jsonResponse({ authorized: false }, 401);
   }
 }

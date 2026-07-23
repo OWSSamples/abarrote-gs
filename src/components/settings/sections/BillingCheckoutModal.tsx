@@ -74,14 +74,24 @@ export function BillingCheckoutModal({
     })
       .then(({ clientSecret, publishableKey }) => {
         if (!active) return;
+        if (!publishableKey || publishableKey.startsWith('sk_')) {
+          setError(
+            'La variable de entorno STRIPE_PUBLISHABLE_KEY en el servidor está configurada con una clave secreta (sk_). Debe cambiarse por la clave pública de Stripe (pk_live_...) en Railway/Vercel.',
+          );
+          return;
+        }
         setEmbeddedSession({
           clientSecret,
           stripe: loadStripe(publishableKey),
         });
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (active) {
-          setError('No fue posible preparar el método de pago. Cierra esta ventana e intenta nuevamente.');
+          const msg = err instanceof Error ? err.message : '';
+          setError(
+            msg ||
+              'No fue posible preparar el método de pago. Cierra esta ventana e intenta nuevamente.',
+          );
         }
       })
       .finally(() => {

@@ -208,9 +208,12 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
       }
 
       setOverview(await fetchBillingOverview());
-    } catch {
+    } catch (err) {
       setOverview(null);
-      setError('No fue posible consultar la información de facturación. Intenta de nuevo en unos momentos.');
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible consultar la información de facturación. Intenta de nuevo en unos momentos.';
+      setError(message);
     } finally {
       setLoading(false);
     }

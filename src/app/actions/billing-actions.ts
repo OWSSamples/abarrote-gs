@@ -585,7 +585,11 @@ async function _createBillingPortalSession(billingAccountId: string): Promise<{ 
   return { url };
 }
 
-async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Promise<{ sessionId: string | null; url: string }> {
+async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Promise<{
+  sessionId: string;
+  clientSecret: string;
+  publishableKey: string;
+}> {
   await assertHumanRequest();
   await requireOwner();
   const { tenantId } = await requireStoreScope();
@@ -603,15 +607,19 @@ async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Pro
     }),
   );
   const data = readRecord(payload.data);
-  const url = safeUrl(readString(data, ['url']) ?? readString(payload, ['url']));
-  if (!url) {
-    throw new AppError('BILLING_CHECKOUT_URL_MISSING', 'El checkout no devolvió una URL válida.', 502);
+  const sessionId = readString(data, ['sessionId']) ?? readString(payload, ['sessionId']);
+  const clientSecret = readString(data, ['clientSecret']) ?? readString(payload, ['clientSecret']);
+  const publishableKey =
+    readString(data, ['publishableKey']) ?? readString(payload, ['publishableKey']);
+  if (!sessionId || !clientSecret || !publishableKey) {
+    throw new AppError(
+      'BILLING_CHECKOUT_SECRET_MISSING',
+      'El checkout no devolvió una sesión integrada válida.',
+      502,
+    );
   }
 
-  return {
-    sessionId: readString(data, ['sessionId']) ?? readString(payload, ['sessionId']),
-    url,
-  };
+  return { sessionId, clientSecret, publishableKey };
 }
 
 async function _activateFreeBillingPlan(input: BillingFreePlanRequest): Promise<void> {

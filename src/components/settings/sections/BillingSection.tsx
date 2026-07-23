@@ -33,8 +33,6 @@ import {
   WalletIcon,
 } from '@shopify/polaris-icons';
 import {
-  activateFreeBillingPlan,
-  createBillingCheckoutSession,
   createBillingPortalSession,
   fetchBillingOverview,
   type BillingAvailablePlan,
@@ -44,6 +42,7 @@ import {
 } from '@/app/actions/billing-actions';
 import { synchronizeServerSession } from '@/lib/auth/session-client';
 import type { SettingsSectionProps } from './types';
+import { BillingCheckoutModal } from './BillingCheckoutModal';
 
 type BillingTab = 'subscriptions' | 'usage' | 'invoices';
 type SubscriptionFilter = 'all' | 'active' | 'free' | 'paid';
@@ -177,7 +176,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
-  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
+  const [checkoutPlan, setCheckoutPlan] = useState<BillingAvailablePlan | null>(null);
   const [editingEmail, setEditingEmail] = useState(false);
   const [configuredEmail, setConfiguredEmail] = useState(sourceEmail);
   const [emailDraft, setEmailDraft] = useState(sourceEmail);
@@ -262,34 +261,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
       return;
     }
 
-    setCheckoutPlanId(plan.id);
     setError(null);
-    try {
-      if (plan.totalAmount === 0) {
-        await activateFreeBillingPlan({
-          billingAccountId,
-          planId: plan.id,
-        });
-        await loadBilling();
-        return;
-      }
-
-      const { url } = await createBillingCheckoutSession({
-        billingAccountId,
-        priceId: plan.priceId,
-        quantity: 1,
-      });
-      window.location.assign(url);
-    } catch {
-      setError(
-        plan.totalAmount === 0
-          ? 'No fue posible activar el plan Básico. Verifica que no tengas otra suscripción activa.'
-          : 'No fue posible preparar el pago de la suscripción. Verifica tu acceso e intenta nuevamente.',
-      );
-    } finally {
-      setCheckoutPlanId(null);
-    }
-  }, [loadBilling, overview?.billingAccountId]);
+    setCheckoutPlan(plan);
+  }, [overview?.billingAccountId]);
 
   const saveBillingEmail = useCallback(async () => {
     const normalizedEmail = normalizeEmail(emailDraft);
@@ -347,6 +321,15 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
 
   return (
     <section className="min-h-[620px] bg-kumo-canvas" aria-label="Facturación">
+      {checkoutPlan && overview?.billingAccountId && (
+        <BillingCheckoutModal
+          plan={checkoutPlan}
+          billingAccountId={overview.billingAccountId}
+          billingEmail={configuredEmail}
+          onClose={() => setCheckoutPlan(null)}
+          onComplete={loadBilling}
+        />
+      )}
       <div className="border-b border-kumo-line bg-kumo-base">
         <div className="mx-auto w-full max-w-[1680px] px-6 py-3 lg:px-10">
           <Tabs
@@ -522,8 +505,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                   <Button
                                     size="sm"
                                     variant="secondary"
-                                    loading={checkoutPlanId === plan.id}
-                                    disabled={checkoutPlanId !== null}
+                                    disabled={checkoutPlan !== null}
                                     onClick={() => void startCheckout(plan)}
                                   >
                                     {plan.totalAmount === 0 ? 'Activar gratis' : 'Elegir'}

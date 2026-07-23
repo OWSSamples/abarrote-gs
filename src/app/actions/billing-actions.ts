@@ -1,10 +1,11 @@
 'use server';
 
 import { AppError, withLogging } from '@/lib/errors';
-import { requireCurrentAccessJwt, requireOwner, requirePermission, validateId } from '@/lib/auth/guard';
+import { requireOwner, requirePermission, validateId } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { assertHumanRequest } from '@/lib/security/bot-protection';
 import { persistTenantEntitlementsPayload } from '@/server/billing-entitlement-service';
+import { createBillingInternalToken } from '@/lib/billing/internal-token';
 import { logger } from '@/lib/logger';
 
 const BILLING_API_BASE_URL = (process.env.BILLING_API_BASE_URL || 'https://billing.opendexapis.com').replace(/\/+$/, '');
@@ -413,15 +414,20 @@ function normalizeBillingOverview(
 
 async function billingRequest(
   path: string,
-  token: string,
   tenantId: string,
   init?: RequestInit,
 ): Promise<unknown> {
+  const scope = await requireStoreScope();
+  const { token, requestId, tenantName, billingEmail } = await createBillingInternalToken(scope);
+
   const requestHeaders = new Headers(init?.headers);
   requestHeaders.set('Accept', 'application/json');
   requestHeaders.set('Content-Type', 'application/json');
   requestHeaders.set('Authorization', `Bearer ${token}`);
+  requestHeaders.set('X-Request-Id', requestId);
   requestHeaders.set('X-Opendex-Tenant-Id', tenantId);
+  if (tenantName) requestHeaders.set('X-Opendex-Tenant-Name', tenantName);
+  if (billingEmail) requestHeaders.set('X-Opendex-Billing-Email', billingEmail);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5_000);
@@ -451,6 +457,7 @@ async function billingRequest(
       path,
       status: response.status,
       tenantId,
+      requestId,
     });
     throw new AppError(
       'BILLING_API_ERROR',
@@ -466,7 +473,6 @@ async function billingRequest(
 async function _fetchBillingOverview(): Promise<BillingOverview> {
   await requirePermission('settings.view');
   const { tenantId } = await requireStoreScope();
-  const token = await requireCurrentAccessJwt();
   const failures: string[] = [];
   const swallow = (error: unknown): null => {
     if (error instanceof AppError && (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 503)) {
@@ -491,7 +497,7 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
   const settled = await Promise.all(
     requests.map(async ([name, path]) => ({
       name,
-      result: await billingRequest(path, token, tenantId).catch(swallow),
+      result: await billingRequest(path, tenantId).catch(swallow),
     })),
   );
   const resultFor = (name: (typeof requests)[number][0]) =>
@@ -562,10 +568,9 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
 async function _createBillingPortalSession(billingAccountId: string): Promise<{ url: string }> {
   await requireOwner();
   const { tenantId } = await requireStoreScope();
-  const token = await requireCurrentAccessJwt();
   const safeBillingAccountId = validateId(billingAccountId, 'billingAccountId');
   const payload = readRecord(
-    await billingRequest('/billing/portal', token, tenantId, {
+    await billingRequest('/billing/portal', tenantId, {
       method: 'POST',
       body: JSON.stringify({ billingAccountId: safeBillingAccountId }),
     }),
@@ -584,7 +589,6 @@ async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Pro
   await assertHumanRequest();
   await requireOwner();
   const { tenantId } = await requireStoreScope();
-  const token = await requireCurrentAccessJwt();
   const priceId = validateId(input.priceId, 'priceId');
   const billingAccountId = validateId(input.billingAccountId, 'billingAccountId');
   const quantity = input.quantity === undefined ? 1 : Number(input.quantity);
@@ -593,7 +597,7 @@ async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Pro
   }
 
   const payload = readRecord(
-    await billingRequest('/billing/checkout', token, tenantId, {
+    await billingRequest('/billing/checkout', tenantId, {
       method: 'POST',
       body: JSON.stringify({ priceId, billingAccountId, quantity }),
     }),
@@ -614,11 +618,10 @@ async function _activateFreeBillingPlan(input: BillingFreePlanRequest): Promise<
   await assertHumanRequest();
   await requireOwner();
   const { tenantId } = await requireStoreScope();
-  const token = await requireCurrentAccessJwt();
   const planId = validateId(input.planId, 'planId');
   const billingAccountId = validateId(input.billingAccountId, 'billingAccountId');
 
-  await billingRequest('/billing/subscriptions/free', token, tenantId, {
+  await billingRequest('/billing/subscriptions/free', tenantId, {
     method: 'POST',
     body: JSON.stringify({ planId, billingAccountId }),
   });

@@ -59,6 +59,7 @@
     "@vercel/blob": "^2.3.3",
     "@vercel/oidc-aws-credentials-provider": "^3.3.0",
     "@vercel/speed-insights": "^2.0.0",
+    "@ows-global/service-auth": "^0.1.0",
     "ai": "^6.0.175",
     "aws-amplify": "^6.17.0",
     "aws-jwt-verify": "^5.2.1",

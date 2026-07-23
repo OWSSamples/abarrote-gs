@@ -482,6 +482,17 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
     billingRequest('/billing/payment-method', token, tenantId).catch(swallow),
   ]);
 
+  // If every request was rejected or the service was unavailable, the billing
+  // microservice is either misconfigured or the token is not authorized.
+  // Surface this as a clear error instead of pretending there is no data.
+  if (!subscriptions && !plans && !prices && !account && !entitlements) {
+    throw new AppError(
+      'BILLING_AUTH_OR_UNAVAILABLE',
+      'No pudimos conectar con el servicio de facturación. Es posible que la sesión haya expirado o que el servicio no esté disponible. Reintenta o contacta a soporte.',
+      subscriptions === null && account === null ? 401 : 503,
+    );
+  }
+
   if (entitlements) {
     await persistTenantEntitlementsPayload(tenantId, entitlements);
   }

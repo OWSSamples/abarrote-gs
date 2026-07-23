@@ -31,6 +31,12 @@ interface HealthStatus {
     database: DatabaseHealth;
     redis: Pick<RedisHealth, 'connected' | 'latencyMs'>;
   };
+  cognito: {
+    userPoolId: string | null;
+    clientIdPrefix: string;
+    region: string;
+    source: string;
+  };
 }
 
 interface DatabaseHealth {
@@ -94,6 +100,24 @@ function getHealthHeaders(status: HealthStatus['status']): Record<string, string
   };
 }
 
+function getCognitoConfig() {
+  const nextPublicPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || null;
+  const nextPublicClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || null;
+  const serverPoolId = process.env.COGNITO_USER_POOL_ID || null;
+  const serverClientId = process.env.COGNITO_CLIENT_ID || null;
+
+  const userPoolId = nextPublicPoolId || serverPoolId;
+  const clientId = nextPublicClientId || serverClientId;
+  const region = process.env.NEXT_PUBLIC_COGNITO_REGION || process.env.COGNITO_REGION || 'us-east-1';
+
+  return {
+    userPoolId,
+    clientIdPrefix: (clientId || '').slice(0, 6),
+    region,
+    source: nextPublicPoolId ? 'NEXT_PUBLIC' : serverPoolId ? 'SERVER' : 'NONE',
+  };
+}
+
 export async function GET(): Promise<NextResponse<HealthStatus>> {
   const [dbHealth, redisHealth] = await Promise.all([checkDatabaseHealth(), checkRedisHealth()]);
 
@@ -109,6 +133,7 @@ export async function GET(): Promise<NextResponse<HealthStatus>> {
         latencyMs: redisHealth.latencyMs,
       },
     },
+    cognito: getCognitoConfig(),
   };
 
   return NextResponse.json(response, {

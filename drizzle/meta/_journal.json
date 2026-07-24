@@ -267,6 +267,20 @@
       "when": 1784678400000,
       "tag": "0037_tenant_billing_entitlements",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1784907983388,
+      "tag": "0038_red_mantis",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784908067200,
+      "tag": "0039_known_callisto",
+      "breakpoints": true
     }
   ]
 }

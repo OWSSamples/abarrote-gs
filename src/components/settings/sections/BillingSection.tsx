@@ -18,7 +18,6 @@ import {
   CalculatorIcon,
   CalendarIcon,
   CreditCardIcon,
-  CheckCircleIcon,
   ClockIcon,
   ChartVerticalIcon,
   DeleteIcon,
@@ -26,10 +25,10 @@ import {
   EditIcon,
   EmailIcon,
   CashDollarIcon,
+  LocationIcon,
   MenuHorizontalIcon,
   PaymentIcon,
   SearchIcon,
-  WalletIcon,
 } from '@shopify/polaris-icons';
 import {
   cancelBillingSubscription,
@@ -51,10 +50,15 @@ import { BillingPaymentMethodModal } from './BillingPaymentMethodModal';
 type BillingTab = 'subscriptions' | 'usage' | 'invoices';
 type SubscriptionFilter = 'all' | 'active' | 'free' | 'paid';
 type InvoiceFilter = 'all' | 'paid' | 'open' | 'void';
-type BillingAction =
-  | 'cancel-subscription'
-  | 'resume-subscription'
-  | 'delete-payment-method';
+type BillingAction = 'cancel-subscription' | 'resume-subscription' | 'delete-payment-method';
+
+interface BillingAddress {
+  legalName: string;
+  address: string;
+  city: string;
+  postalCode: string;
+  country: string;
+}
 
 const BILLING_TABS = [
   { value: 'subscriptions', label: 'Suscripciones' },
@@ -76,10 +80,20 @@ const INVOICE_FILTER_OPTIONS: ReadonlyArray<{ label: string; value: InvoiceFilte
   { label: 'Canceladas', value: 'void' },
 ];
 
+const COUNTRY_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: 'México', value: 'MX' },
+  { label: 'Estados Unidos', value: 'US' },
+  { label: 'Colombia', value: 'CO' },
+  { label: 'Chile', value: 'CL' },
+];
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function normalizeEmail(value: string): string {
-  return value.trim().replace(/[\u200B-\u200D\uFEFF]/g, '').toLowerCase();
+  return value
+    .trim()
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .toLowerCase();
 }
 
 function formatMoney(amount: number | null, currency: string): string {
@@ -95,6 +109,10 @@ function formatDate(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(date);
+}
+
+function countryLabel(country: string): string {
+  return COUNTRY_OPTIONS.find((option) => option.value === country)?.label || country;
 }
 
 function subscriptionStatus(status: BillingSubscriptionStatus): {
@@ -183,8 +201,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
   const [overview, setOverview] = useState<BillingOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [subscriptionPlan, setSubscriptionPlan] =
-    useState<BillingAvailablePlan | null>(null);
+  const [subscriptionPlan, setSubscriptionPlan] = useState<BillingAvailablePlan | null>(null);
   const [invoiceToPay, setInvoiceToPay] = useState<BillingInvoice | null>(null);
   const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
   const [billingAction, setBillingAction] = useState<BillingAction | null>(null);
@@ -194,6 +211,16 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
   const [configuredEmail, setConfiguredEmail] = useState(sourceEmail);
   const [emailDraft, setEmailDraft] = useState(sourceEmail);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [billingAddress, setBillingAddress] = useState<BillingAddress>({
+    legalName: config.legalName,
+    address: config.address,
+    city: config.city,
+    postalCode: config.postalCode,
+    country: config.country,
+  });
+  const [addressDraft, setAddressDraft] = useState<BillingAddress>(billingAddress);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!editingEmail) setEmailDraft(configuredEmail);
@@ -202,6 +229,20 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
   useEffect(() => {
     setConfiguredEmail(sourceEmail);
   }, [sourceEmail]);
+
+  useEffect(() => {
+    if (editingAddress) return;
+
+    const nextAddress = {
+      legalName: config.legalName,
+      address: config.address,
+      city: config.city,
+      postalCode: config.postalCode,
+      country: config.country,
+    };
+    setBillingAddress(nextAddress);
+    setAddressDraft(nextAddress);
+  }, [config.address, config.city, config.country, config.legalName, config.postalCode, editingAddress]);
 
   const loadBilling = useCallback(async () => {
     setLoading(true);
@@ -223,15 +264,16 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
       setOverview(data);
       if (data.billingUnavailable) {
         setError(
-          data.billingUnavailableDetail
-            ?? 'No pudimos conectar con el servicio de facturación. La sesión puede haber expirado o el servicio no está disponible. Reintenta o contacta a soporte.',
+          data.billingUnavailableDetail ??
+            'No pudimos conectar con el servicio de facturación. La sesión puede haber expirado o el servicio no está disponible. Reintenta o contacta a soporte.',
         );
       }
     } catch (err) {
       setOverview(null);
-      const message = err instanceof Error
-        ? err.message
-        : 'No fue posible consultar la información de facturación. Intenta de nuevo en unos momentos.';
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No fue posible consultar la información de facturación. Intenta de nuevo en unos momentos.';
       setError(message);
     } finally {
       setLoading(false);
@@ -244,9 +286,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
 
   const openPaymentMethod = useCallback(() => {
     if (!overview?.billingAccountId) {
-      setError(
-        'No hay una cuenta de facturación asociada a este negocio. Actualiza la página e intenta nuevamente.',
-      );
+      setError('No hay una cuenta de facturación asociada a este negocio. Actualiza la página e intenta nuevamente.');
       return;
     }
     setError(null);
@@ -315,16 +355,19 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
     }
   }, [billingAction, loadBilling, overview]);
 
-  const startSubscription = useCallback(async (plan: BillingAvailablePlan) => {
-    const billingAccountId = overview?.billingAccountId;
-    if (!billingAccountId) {
-      setError('No hay una cuenta de facturación asociada a este negocio. Actualiza la página e intenta nuevamente.');
-      return;
-    }
+  const startSubscription = useCallback(
+    async (plan: BillingAvailablePlan) => {
+      const billingAccountId = overview?.billingAccountId;
+      if (!billingAccountId) {
+        setError('No hay una cuenta de facturación asociada a este negocio. Actualiza la página e intenta nuevamente.');
+        return;
+      }
 
-    setError(null);
-    setSubscriptionPlan(plan);
-  }, [overview?.billingAccountId]);
+      setError(null);
+      setSubscriptionPlan(plan);
+    },
+    [overview?.billingAccountId],
+  );
 
   const saveBillingEmail = useCallback(async () => {
     const normalizedEmail = normalizeEmail(emailDraft);
@@ -347,25 +390,52 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
     }
   }, [emailDraft, savePatch, updateField]);
 
+  const saveBillingAddress = useCallback(async () => {
+    const nextAddress = {
+      legalName: addressDraft.legalName.trim(),
+      address: addressDraft.address.trim(),
+      city: addressDraft.city.trim(),
+      postalCode: addressDraft.postalCode.trim(),
+      country: addressDraft.country.trim(),
+    };
+
+    if (Object.values(nextAddress).some((value) => !value)) {
+      setAddressError('Completa todos los datos de la dirección de facturación.');
+      return;
+    }
+
+    setAddressError(null);
+    try {
+      if (savePatch) {
+        await savePatch(nextAddress);
+      } else {
+        updateField('legalName', nextAddress.legalName);
+        updateField('address', nextAddress.address);
+        updateField('city', nextAddress.city);
+        updateField('postalCode', nextAddress.postalCode);
+        updateField('country', nextAddress.country);
+      }
+      setBillingAddress(nextAddress);
+      setAddressDraft(nextAddress);
+      setEditingAddress(false);
+    } catch {
+      setAddressError('No fue posible guardar la dirección. Intenta nuevamente.');
+    }
+  }, [addressDraft, savePatch, updateField]);
+
   const status = subscriptionStatus(overview?.status ?? 'none');
   const invoices = useMemo(() => {
     const query = invoiceSearch.trim().toLowerCase();
     return (overview?.invoices ?? []).filter((invoice) => {
       const matchesStatus = invoiceFilter === 'all' || invoice.status === invoiceFilter;
-      const matchesQuery = !query
-        || invoice.number.toLowerCase().includes(query)
-        || invoice.period.toLowerCase().includes(query);
+      const matchesQuery =
+        !query || invoice.number.toLowerCase().includes(query) || invoice.period.toLowerCase().includes(query);
       return matchesStatus && matchesQuery;
     });
   }, [invoiceFilter, invoiceSearch, overview?.invoices]);
 
   const paymentMethod = overview?.paymentMethod ?? null;
-  const hasCurrentSubscription = [
-    'active',
-    'trialing',
-    'past_due',
-    'incomplete',
-  ].includes(overview?.status ?? 'none');
+  const hasCurrentSubscription = ['active', 'trialing', 'past_due', 'incomplete'].includes(overview?.status ?? 'none');
   const currentPeriodLabel = overview?.currentPeriodEnd
     ? `Hasta ${formatDate(overview.currentPeriodEnd)}`
     : 'Periodo actual';
@@ -373,24 +443,20 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
   const availablePlans = useMemo(() => {
     const query = subscriptionSearch.trim().toLowerCase();
     return (overview?.availablePlans ?? []).filter((plan) => {
-      const matchesQuery = !query
-        || plan.name.toLowerCase().includes(query)
-        || plan.description?.toLowerCase().includes(query)
-        || plan.code.toLowerCase().includes(query);
+      const matchesQuery =
+        !query ||
+        plan.name.toLowerCase().includes(query) ||
+        plan.description?.toLowerCase().includes(query) ||
+        plan.code.toLowerCase().includes(query);
       const isCurrent = hasCurrentSubscription && plan.id === overview?.planId;
-      const matchesFilter = subscriptionFilter === 'all'
-        || (subscriptionFilter === 'active' && isCurrent)
-        || (subscriptionFilter === 'paid' && plan.totalAmount > 0)
-        || (subscriptionFilter === 'free' && plan.totalAmount === 0);
+      const matchesFilter =
+        subscriptionFilter === 'all' ||
+        (subscriptionFilter === 'active' && isCurrent) ||
+        (subscriptionFilter === 'paid' && plan.totalAmount > 0) ||
+        (subscriptionFilter === 'free' && plan.totalAmount === 0);
       return matchesQuery && matchesFilter;
     });
-  }, [
-    hasCurrentSubscription,
-    overview?.availablePlans,
-    overview?.planId,
-    subscriptionFilter,
-    subscriptionSearch,
-  ]);
+  }, [hasCurrentSubscription, overview?.availablePlans, overview?.planId, subscriptionFilter, subscriptionSearch]);
   const actionDialog = billingAction
     ? billingAction === 'delete-payment-method'
       ? {
@@ -409,8 +475,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
           }
         : {
             title: 'Reanudar renovación',
-            description:
-              'La suscripción volverá a renovarse automáticamente con el método de pago principal.',
+            description: 'La suscripción volverá a renovarse automáticamente con el método de pago principal.',
             confirmLabel: 'Reanudar renovación',
             destructive: false,
           }
@@ -481,7 +546,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
             variant="error"
             title="Facturación no disponible"
             description={error}
-            action={(
+            action={
               <div className="flex items-center gap-2">
                 <Badge variant="error">No disponible</Badge>
                 <Button
@@ -495,7 +560,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                   className="text-kumo-danger hover:bg-kumo-danger-tint/60"
                 />
               </div>
-            )}
+            }
           />
         </div>
       )}
@@ -504,9 +569,11 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
         <BillingLoadingState />
       ) : (
         <div
-          className={activeTab === 'subscriptions'
-            ? 'mx-auto grid w-full max-w-[1680px] gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-10 xl:grid-cols-[minmax(0,1fr)_420px]'
-            : 'mx-auto w-full max-w-[1680px] px-6 py-8 lg:px-10'}
+          className={
+            activeTab === 'subscriptions'
+              ? 'mx-auto grid w-full max-w-[1680px] gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-10 xl:grid-cols-[minmax(0,1fr)_420px]'
+              : 'mx-auto w-full max-w-[1680px] px-6 py-8 lg:px-10'
+          }
         >
           <div className="min-w-0 space-y-4">
             {activeTab === 'subscriptions' && (
@@ -553,7 +620,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                     renderValue={(value) => SUBSCRIPTION_FILTER_OPTIONS.find((option) => option.value === value)?.label}
                   >
                     {SUBSCRIPTION_FILTER_OPTIONS.map((option) => (
-                      <Select.Option key={option.value} value={option.value}>{option.label}</Select.Option>
+                      <Select.Option key={option.value} value={option.value}>
+                        {option.label}
+                      </Select.Option>
                     ))}
                   </Select>
                 </div>
@@ -567,7 +636,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                           <th className="px-4 py-3 font-semibold">Estado del servicio</th>
                           <th className="px-4 py-3 font-semibold">Se renueva el</th>
                           <th className="px-4 py-3 font-semibold">Precio</th>
-                          <th className="w-12 px-3 py-3"><span className="sr-only">Acciones</span></th>
+                          <th className="w-12 px-3 py-3">
+                            <span className="sr-only">Acciones</span>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -576,97 +647,104 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                             Planes
                           </th>
                         </tr>
-                        {availablePlans.length > 0 ? availablePlans.map((plan) => {
-                          const isCurrent =
-                            hasCurrentSubscription && plan.id === overview?.planId;
-                          return (
-                            <tr key={plan.id} className="border-b border-kumo-hairline last:border-b-0">
-                              <td className="px-4 py-3">
-                                <p className="font-semibold text-kumo-default">{plan.name}</p>
-                                <p className="mt-0.5 max-w-md text-xs text-kumo-subtle">{plan.description}</p>
-                                <p className="mt-1 text-xs text-kumo-subtle">
-                                  {plan.maxUsers ?? '-'} usuarios · {plan.maxStores ?? '-'} sucursales
-                                </p>
-                              </td>
-                              <td className="px-4 py-3">
-                                <Badge variant={isCurrent ? status.variant : 'neutral'}>
-                                  {isCurrent ? status.label : 'Disponible'}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 text-kumo-subtle">
-                                {plan.totalAmount === 0
-                                  ? 'No requiere renovación'
-                                  : isCurrent
-                                  ? overview?.cancelAtPeriodEnd
-                                    ? 'No se renovará'
-                                    : formatDate(overview?.currentPeriodEnd ?? null)
-                                  : 'Mensual'}
-                              </td>
-                              <td className="px-4 py-3">
-                                <p className="font-semibold text-kumo-default">
-                                  {formatMoney(plan.totalAmount, plan.currency)} / mes
-                                </p>
-                                <p className="mt-0.5 text-xs text-kumo-subtle">
-                                  {formatMoney(plan.baseAmount, plan.currency)} + {formatMoney(plan.taxAmount, plan.currency)} IVA
-                                </p>
-                              </td>
-                              <td className="px-3 py-3 text-right">
-                                {isCurrent ? (
-                                  <DropdownMenu>
-                                    <DropdownMenu.Trigger>
-                                      <Button
-                                        shape="square"
-                                        size="sm"
-                                        variant="ghost"
-                                        aria-label={`Abrir acciones del plan ${plan.name}`}
-                                        icon={<MenuHorizontalIcon className="h-5 w-5" />}
-                                      />
-                                    </DropdownMenu.Trigger>
-                                    <DropdownMenu.Content>
-                                      <DropdownMenu.Item
-                                        icon={
-                                          overview?.cancelAtPeriodEnd
-                                            ? <RefreshIcon className="h-5 w-5" />
-                                            : <DeleteIcon className="h-5 w-5" />
-                                        }
-                                        onClick={() =>
-                                          requestBillingAction(
-                                            overview?.cancelAtPeriodEnd
-                                              ? 'resume-subscription'
-                                              : 'cancel-subscription',
-                                          )
-                                        }
-                                      >
-                                        {overview?.cancelAtPeriodEnd
-                                          ? 'Reanudar renovación'
-                                          : 'Cancelar renovación'}
-                                      </DropdownMenu.Item>
-                                      <DropdownMenu.Item icon={<RefreshIcon className="h-5 w-5" />} onClick={loadBilling}>
-                                        Actualizar información
-                                      </DropdownMenu.Item>
-                                    </DropdownMenu.Content>
-                                  </DropdownMenu>
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    disabled={subscriptionPlan !== null}
-                                    onClick={() => void startSubscription(plan)}
-                                  >
-                                    {plan.totalAmount === 0 ? 'Activar gratis' : 'Elegir'}
-                                  </Button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        }) : (
+                        {availablePlans.length > 0 ? (
+                          availablePlans.map((plan) => {
+                            const isCurrent = hasCurrentSubscription && plan.id === overview?.planId;
+                            return (
+                              <tr key={plan.id} className="border-b border-kumo-hairline last:border-b-0">
+                                <td className="px-4 py-3">
+                                  <p className="font-semibold text-kumo-default">{plan.name}</p>
+                                  <p className="mt-0.5 max-w-md text-xs text-kumo-subtle">{plan.description}</p>
+                                  <p className="mt-1 text-xs text-kumo-subtle">
+                                    {plan.maxUsers ?? '-'} usuarios · {plan.maxStores ?? '-'} sucursales
+                                  </p>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <Badge variant={isCurrent ? status.variant : 'neutral'}>
+                                    {isCurrent ? status.label : 'Disponible'}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-3 text-kumo-subtle">
+                                  {plan.totalAmount === 0
+                                    ? 'No requiere renovación'
+                                    : isCurrent
+                                      ? overview?.cancelAtPeriodEnd
+                                        ? 'No se renovará'
+                                        : formatDate(overview?.currentPeriodEnd ?? null)
+                                      : 'Mensual'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <p className="font-semibold text-kumo-default">
+                                    {formatMoney(plan.totalAmount, plan.currency)} / mes
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-kumo-subtle">
+                                    {formatMoney(plan.baseAmount, plan.currency)} +{' '}
+                                    {formatMoney(plan.taxAmount, plan.currency)} IVA
+                                  </p>
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  {isCurrent ? (
+                                    <DropdownMenu>
+                                      <DropdownMenu.Trigger>
+                                        <Button
+                                          shape="square"
+                                          size="sm"
+                                          variant="ghost"
+                                          aria-label={`Abrir acciones del plan ${plan.name}`}
+                                          icon={<MenuHorizontalIcon className="h-5 w-5" />}
+                                        />
+                                      </DropdownMenu.Trigger>
+                                      <DropdownMenu.Content>
+                                        <DropdownMenu.Item
+                                          icon={
+                                            overview?.cancelAtPeriodEnd ? (
+                                              <RefreshIcon className="h-5 w-5" />
+                                            ) : (
+                                              <DeleteIcon className="h-5 w-5" />
+                                            )
+                                          }
+                                          onClick={() =>
+                                            requestBillingAction(
+                                              overview?.cancelAtPeriodEnd
+                                                ? 'resume-subscription'
+                                                : 'cancel-subscription',
+                                            )
+                                          }
+                                        >
+                                          {overview?.cancelAtPeriodEnd ? 'Reanudar renovación' : 'Cancelar renovación'}
+                                        </DropdownMenu.Item>
+                                        <DropdownMenu.Item
+                                          icon={<RefreshIcon className="h-5 w-5" />}
+                                          onClick={loadBilling}
+                                        >
+                                          Actualizar información
+                                        </DropdownMenu.Item>
+                                      </DropdownMenu.Content>
+                                    </DropdownMenu>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="secondary"
+                                      disabled={subscriptionPlan !== null}
+                                      onClick={() => void startSubscription(plan)}
+                                    >
+                                      {plan.totalAmount === 0 ? 'Activar gratis' : 'Elegir'}
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
                           <tr>
                             <td colSpan={5}>
                               <EmptyTableState
                                 title={overview ? 'No hay resultados' : 'No hay una suscripción disponible'}
-                                description={overview
-                                  ? 'Ajusta la búsqueda o cambia la categoría seleccionada.'
-                                  : 'Cuando actives un plan para este negocio, aparecerá en esta tabla.'}
+                                description={
+                                  overview
+                                    ? 'Ajusta la búsqueda o cambia la categoría seleccionada.'
+                                    : 'Cuando actives un plan para este negocio, aparecerá en esta tabla.'
+                                }
                               />
                             </td>
                           </tr>
@@ -837,7 +915,9 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                     renderValue={(value) => INVOICE_FILTER_OPTIONS.find((option) => option.value === value)?.label}
                   >
                     {INVOICE_FILTER_OPTIONS.map((option) => (
-                      <Select.Option key={option.value} value={option.value}>{option.label}</Select.Option>
+                      <Select.Option key={option.value} value={option.value}>
+                        {option.label}
+                      </Select.Option>
                     ))}
                   </Select>
                 </div>
@@ -869,9 +949,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                   {formatMoney(invoice.amount, invoice.currency)}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <Badge variant={invoiceBadge.variant}>
-                                    {invoiceBadge.label}
-                                  </Badge>
+                                  <Badge variant={invoiceBadge.variant}>{invoiceBadge.label}</Badge>
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="flex justify-end gap-2">
@@ -919,158 +997,243 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
           </div>
 
           {activeTab === 'subscriptions' && (
-          <aside aria-label="Datos de facturación">
-            <LayerCard className="overflow-hidden p-0">
-              <section aria-labelledby="billing-email-heading">
-              <header className="flex items-center gap-2 border-b border-kumo-line px-4 py-3">
-                <EmailIcon aria-hidden="true" className="h-5 w-5 text-kumo-subtle" />
-                <h2 id="billing-email-heading" className="text-sm font-semibold text-kumo-subtle">
-                  Correo de facturación
-                </h2>
-              </header>
-              <div className="p-4">
-                {editingEmail ? (
-                  <div className="space-y-3">
-                    <Input
-                      label="Correo para documentos y avisos"
-                      type="email"
-                      value={emailDraft}
-                      onChange={(event) => setEmailDraft(event.currentTarget.value)}
-                      error={emailError ?? undefined}
-                      autoComplete="email"
-                      className="w-full"
-                    />
-                    <div className="flex justify-end gap-2">
+            <aside aria-label="Datos de facturación" className="space-y-4">
+              <LayerCard>
+                <LayerCard.Secondary>
+                  <h2 id="billing-email-heading" className="text-sm font-normal">
+                    Correo de facturación
+                  </h2>
+                </LayerCard.Secondary>
+                <LayerCard.Primary aria-labelledby="billing-email-heading">
+                  {editingEmail ? (
+                    <div className="space-y-3">
+                      <Input
+                        label="Correo para documentos y avisos"
+                        type="email"
+                        value={emailDraft}
+                        onChange={(event) => setEmailDraft(event.currentTarget.value)}
+                        error={emailError ?? undefined}
+                        autoComplete="email"
+                        className="w-full"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEmailDraft(configuredEmail);
+                            setEmailError(null);
+                            setEditingEmail(false);
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button size="sm" variant="primary" onClick={saveBillingEmail} loading={saving}>
+                          Guardar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex min-h-6 items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2 text-sm text-kumo-default">
+                        <EmailIcon className="h-4 w-4 shrink-0 text-kumo-subtle" aria-hidden="true" />
+                        <span className="truncate">{configuredEmail || 'Sin correo configurado'}</span>
+                      </div>
                       <Button
+                        shape="square"
                         size="sm"
                         variant="ghost"
-                        onClick={() => {
-                          setEmailDraft(configuredEmail);
-                          setEmailError(null);
-                          setEditingEmail(false);
-                        }}
-                      >
-                        Cancelar
-                      </Button>
-                      <Button size="sm" variant="primary" onClick={saveBillingEmail} loading={saving}>
-                        Guardar
-                      </Button>
+                        aria-label="Editar correo de facturación"
+                        icon={<EditIcon className="h-5 w-5" />}
+                        onClick={() => setEditingEmail(true)}
+                      />
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2 text-sm text-kumo-default">
-                      <EmailIcon className="h-5 w-5 shrink-0 text-kumo-subtle" aria-hidden="true" />
-                      <span className="truncate">{configuredEmail || 'Sin correo configurado'}</span>
-                    </div>
-                    <Button
-                      shape="square"
-                      size="sm"
-                      variant="ghost"
-                      aria-label="Editar correo de facturación"
-                      icon={<EditIcon className="h-5 w-5" />}
-                      onClick={() => setEditingEmail(true)}
-                    />
-                  </div>
-                )}
-              </div>
-            </section>
+                  )}
+                </LayerCard.Primary>
+              </LayerCard>
 
-            <section aria-labelledby="billing-payment-heading" className="border-t border-kumo-line">
-              <header className="flex items-center justify-between gap-3 border-b border-kumo-line px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <PaymentIcon aria-hidden="true" className="h-5 w-5 text-kumo-subtle" />
-                  <div>
-                    <h2 id="billing-payment-heading" className="text-sm font-semibold text-kumo-default">
-                      Método de facturación
-                    </h2>
-                    <p className="text-xs text-kumo-subtle">Método principal del negocio</p>
-                  </div>
-                </div>
-              </header>
-
-              {paymentMethod?.last4 ? (
-                <div>
-                  <div className="min-h-44 bg-kumo-recessed/55 p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex size-10 items-center justify-center rounded-md border border-kumo-line bg-kumo-base text-kumo-subtle">
-                        <CreditCardIcon aria-hidden="true" className="h-5 w-5" />
+              <LayerCard>
+                <LayerCard.Secondary>
+                  <h2 id="billing-payment-heading" className="text-sm font-normal">
+                    Método de facturación
+                  </h2>
+                </LayerCard.Secondary>
+                <LayerCard.Primary aria-labelledby="billing-payment-heading">
+                  {paymentMethod?.last4 ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <CreditCardIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-kumo-subtle" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-kumo-default">
+                            <span className="capitalize">{paymentMethod.brand || 'Tarjeta'}</span> ••••{' '}
+                            {paymentMethod.last4}
+                          </p>
+                          {paymentMethod.expMonth && paymentMethod.expYear && (
+                            <p className="text-xs text-kumo-subtle">
+                              Expira {String(paymentMethod.expMonth).padStart(2, '0')}/{paymentMethod.expYear}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <Badge variant="success">Principal</Badge>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button size="sm" variant="secondary" onClick={openPaymentMethod}>
+                          Cambiar
+                        </Button>
+                        <Button
+                          shape="square"
+                          size="sm"
+                          variant="ghost"
+                          aria-label="Eliminar método de pago"
+                          onClick={() => requestBillingAction('delete-payment-method')}
+                          icon={<DeleteIcon className="h-5 w-5" />}
+                        />
+                      </div>
                     </div>
-                    <div className="mt-8 space-y-1 font-mono text-sm text-kumo-default">
-                      <p className="tracking-[0.14em]">•••• •••• •••• {paymentMethod.last4}</p>
-                      <p className="capitalize">{paymentMethod.brand || 'Tarjeta'}</p>
-                      {paymentMethod.expMonth && paymentMethod.expYear && (
-                        <p className="pt-2 text-xs text-kumo-subtle">
-                          Expira {String(paymentMethod.expMonth).padStart(2, '0')}/{paymentMethod.expYear}
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-kumo-subtle">No hay ningún método de pago registrado</p>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={openPaymentMethod}
+                        disabled={!overview?.billingAccountId}
+                        icon={<PlusIcon className="h-4 w-4" />}
+                        className="shrink-0"
+                      >
+                        Agregar
+                      </Button>
+                    </div>
+                  )}
+                </LayerCard.Primary>
+              </LayerCard>
+
+              <LayerCard>
+                <LayerCard.Secondary>
+                  <h2 id="billing-address-heading" className="text-sm font-normal">
+                    Dirección de facturación
+                  </h2>
+                </LayerCard.Secondary>
+                <LayerCard.Primary aria-labelledby="billing-address-heading">
+                  {editingAddress ? (
+                    <div className="space-y-3">
+                      <Input
+                        label="Razón social"
+                        value={addressDraft.legalName}
+                        onChange={(event) =>
+                          setAddressDraft((current) => ({
+                            ...current,
+                            legalName: event.currentTarget.value,
+                          }))
+                        }
+                        className="w-full"
+                      />
+                      <Input
+                        label="Dirección"
+                        value={addressDraft.address}
+                        onChange={(event) =>
+                          setAddressDraft((current) => ({
+                            ...current,
+                            address: event.currentTarget.value,
+                          }))
+                        }
+                        autoComplete="street-address"
+                        className="w-full"
+                      />
+                      <div className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-3">
+                        <Input
+                          label="Ciudad"
+                          value={addressDraft.city}
+                          onChange={(event) =>
+                            setAddressDraft((current) => ({
+                              ...current,
+                              city: event.currentTarget.value,
+                            }))
+                          }
+                          autoComplete="address-level2"
+                        />
+                        <Input
+                          label="Código postal"
+                          value={addressDraft.postalCode}
+                          onChange={(event) =>
+                            setAddressDraft((current) => ({
+                              ...current,
+                              postalCode: event.currentTarget.value,
+                            }))
+                          }
+                          autoComplete="postal-code"
+                        />
+                      </div>
+                      <Select<string>
+                        label="País"
+                        value={addressDraft.country}
+                        onValueChange={(value) => {
+                          if (value) {
+                            setAddressDraft((current) => ({ ...current, country: value }));
+                          }
+                        }}
+                        items={COUNTRY_OPTIONS}
+                        renderValue={(value) => countryLabel(value)}
+                      >
+                        {COUNTRY_OPTIONS.map((option) => (
+                          <Select.Option key={option.value} value={option.value}>
+                            {option.label}
+                          </Select.Option>
+                        ))}
+                      </Select>
+                      {addressError && (
+                        <p role="alert" className="text-xs text-kumo-danger">
+                          {addressError}
                         </p>
                       )}
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setAddressDraft(billingAddress);
+                            setAddressError(null);
+                            setEditingAddress(false);
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button size="sm" variant="primary" loading={saving} onClick={saveBillingAddress}>
+                          Guardar
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 border-t border-kumo-line p-3">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={openPaymentMethod}
-                      icon={<EditIcon className="h-5 w-5" />}
-                    >
-                      Reemplazar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary-destructive"
-                      onClick={() => requestBillingAction('delete-payment-method')}
-                      icon={<DeleteIcon className="h-5 w-5" />}
-                    >
-                      Eliminar
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-kumo-recessed text-kumo-subtle">
-                      <WalletIcon aria-hidden="true" className="h-5 w-5" />
+                  ) : (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <LocationIcon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-kumo-subtle" />
+                        <address className="min-w-0 space-y-0.5 text-xs not-italic leading-5 text-kumo-default">
+                          <p className="font-medium">{config.storeName || billingAddress.legalName}</p>
+                          {config.storeName !== billingAddress.legalName && <p>{billingAddress.legalName}</p>}
+                          <p>{billingAddress.address}</p>
+                          <p>{[billingAddress.city, billingAddress.postalCode].filter(Boolean).join(', ')}</p>
+                          <p>{countryLabel(billingAddress.country)}</p>
+                        </address>
+                      </div>
+                      <Button
+                        shape="square"
+                        size="sm"
+                        variant="ghost"
+                        aria-label="Editar dirección de facturación"
+                        icon={<EditIcon className="h-5 w-5" />}
+                        onClick={() => {
+                          setAddressDraft(billingAddress);
+                          setAddressError(null);
+                          setEditingAddress(true);
+                        }}
+                      />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-kumo-default">Sin método de pago</p>
-                      <p className="mt-1 text-xs leading-5 text-kumo-subtle">
-                        Agrega un método seguro para activar renovaciones y compras.
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={openPaymentMethod}
-                    disabled={!overview?.billingAccountId}
-                    icon={<WalletIcon className="h-5 w-5" />}
-                    className="mt-4 w-full"
-                  >
-                    Agregar método
-                  </Button>
-                </div>
-              )}
-            </section>
-
-            <section
-              aria-labelledby="billing-security-heading"
-              className="border-t border-dashed border-kumo-line bg-kumo-recessed/40 px-4 py-3"
-            >
-              <div className="flex items-start gap-3 text-xs leading-5 text-kumo-subtle">
-                <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-kumo-success" aria-hidden="true" />
-                <p id="billing-security-heading">
-                  Kiosko controla esta interfaz. Stripe tokeniza y conserva los datos sensibles de la tarjeta de forma aislada para este negocio.
-                </p>
-              </div>
-            </section>
-          </LayerCard>
-          </aside>
+                  )}
+                </LayerCard.Primary>
+              </LayerCard>
+            </aside>
           )}
         </div>
       )}
-
     </section>
   );
 }

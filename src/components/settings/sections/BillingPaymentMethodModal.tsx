@@ -91,19 +91,36 @@ function PaymentMethodForm({
     }
 
     try {
-      await setDefaultBillingPaymentMethod({
+      const defaultResult = await setDefaultBillingPaymentMethod({
         billingAccountId,
         paymentMethodId,
       });
+      if (!defaultResult.success) {
+        setError(
+          defaultResult.error?.description ??
+            'La tarjeta fue verificada, pero no fue posible establecerla como principal. Intenta actualizar la sección.',
+        );
+        setSubmitting(false);
+        return;
+      }
       if (
         currentMethod?.id &&
         currentMethod.id !== paymentMethodId
       ) {
         try {
-          await deleteBillingPaymentMethod({
+          const deleteResult = await deleteBillingPaymentMethod({
             billingAccountId,
             paymentMethodId: currentMethod.id,
           });
+          if (!deleteResult.success) {
+            await onComplete();
+            setError(
+              deleteResult.error?.description ??
+                'La nueva tarjeta quedó como principal, pero la tarjeta anterior no pudo eliminarse. Puedes volver a intentarlo desde esta sección.',
+            );
+            setSubmitting(false);
+            return;
+          }
         } catch {
           await onComplete();
           setError(
@@ -274,8 +291,16 @@ export function BillingPaymentMethodModal({
   useEffect(() => {
     let active = true;
     void createBillingPaymentMethodSetup(billingAccountId)
-      .then(({ clientSecret, publishableKey }) => {
+      .then((result) => {
         if (!active) return;
+        if (!result.success || !result.data) {
+          setError(
+            result.error?.description ??
+              'No fue posible preparar el formulario seguro de tarjeta. Intenta nuevamente.',
+          );
+          return;
+        }
+        const { clientSecret, publishableKey } = result.data;
         if (!publishableKey || publishableKey.startsWith('sk_')) {
           setError(
             'La clave pública de Stripe no está configurada correctamente.',

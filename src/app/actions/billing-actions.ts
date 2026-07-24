@@ -1,6 +1,6 @@
 'use server';
 
-import { AppError, withLogging } from '@/lib/errors';
+import { AppError, createAction, withLogging } from '@/lib/errors';
 import { requireOwner, requirePermission, validateId } from '@/lib/auth/guard';
 import { requireStoreScope } from '@/lib/auth/store-scope';
 import { assertHumanRequest } from '@/lib/security/bot-protection';
@@ -838,36 +838,48 @@ async function _activateFreeBillingPlan(input: BillingFreePlanRequest): Promise<
 }
 
 export const fetchBillingOverview = withLogging('billing.fetchOverview', _fetchBillingOverview);
-export const createBillingSubscriptionIntent = withLogging(
+export const createBillingSubscriptionIntent = createAction(
   'billing.createSubscriptionIntent',
   _createBillingSubscriptionIntent,
+  { safe: true },
 );
-export const createBillingPaymentMethodSetup = withLogging(
+export const createBillingPaymentMethodSetup = createAction(
   'billing.createPaymentMethodSetup',
   _createBillingPaymentMethodSetup,
+  { safe: true },
 );
-export const createBillingInvoicePaymentIntent = withLogging(
+export const createBillingInvoicePaymentIntent = createAction(
   'billing.createInvoicePaymentIntent',
   _createBillingInvoicePaymentIntent,
+  { safe: true },
 );
-export const synchronizeBillingSubscriptionIntent = withLogging(
+export const synchronizeBillingSubscriptionIntent = createAction(
   'billing.synchronizeSubscriptionIntent',
   _synchronizeBillingSubscriptionIntent,
+  { safe: true },
 );
-export const setDefaultBillingPaymentMethod = withLogging(
+export const setDefaultBillingPaymentMethod = createAction(
   'billing.setDefaultPaymentMethod',
   _setDefaultBillingPaymentMethod,
+  { safe: true },
 );
-export const deleteBillingPaymentMethod = withLogging(
+export const deleteBillingPaymentMethod = createAction(
   'billing.deletePaymentMethod',
   _deleteBillingPaymentMethod,
+  { safe: true },
 );
-export const cancelBillingSubscription = withLogging(
+export const cancelBillingSubscription = createAction(
   'billing.cancelSubscription',
   _cancelBillingSubscription,
+  { safe: true },
 );
-export const resumeBillingSubscription = withLogging(
+export const resumeBillingSubscription = createAction(
   'billing.resumeSubscription',
   _resumeBillingSubscription,
+  { safe: true },
 );
-export const activateFreeBillingPlan = withLogging('billing.activateFreePlan', _activateFreeBillingPlan);
+export const activateFreeBillingPlan = createAction(
+  'billing.activateFreePlan',
+  _activateFreeBillingPlan,
+  { safe: true },
+);

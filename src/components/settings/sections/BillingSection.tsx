@@ -267,18 +267,39 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
         if (!overview?.billingAccountId || !overview.paymentMethod?.id) {
           throw new Error('No payment method is available.');
         }
-        await deleteBillingPaymentMethod({
+        const result = await deleteBillingPaymentMethod({
           billingAccountId: overview.billingAccountId,
           paymentMethodId: overview.paymentMethod.id,
         });
+        if (!result.success) {
+          setActionError(
+            result.error?.description ??
+              'No fue posible eliminar la tarjeta. Si existe una suscripción activa, agrega otra tarjeta antes de eliminar la principal.',
+          );
+          return;
+        }
       } else {
         if (!overview?.subscriptionId) {
           throw new Error('No subscription is available.');
         }
         if (billingAction === 'cancel-subscription') {
-          await cancelBillingSubscription(overview.subscriptionId);
+          const result = await cancelBillingSubscription(overview.subscriptionId);
+          if (!result.success) {
+            setActionError(
+              result.error?.description ??
+                'No fue posible actualizar la renovación de la suscripción. Intenta nuevamente.',
+            );
+            return;
+          }
         } else {
-          await resumeBillingSubscription(overview.subscriptionId);
+          const result = await resumeBillingSubscription(overview.subscriptionId);
+          if (!result.success) {
+            setActionError(
+              result.error?.description ??
+                'No fue posible actualizar la renovación de la suscripción. Intenta nuevamente.',
+            );
+            return;
+          }
         }
       }
       await loadBilling();

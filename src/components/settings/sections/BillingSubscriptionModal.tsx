@@ -126,7 +126,15 @@ function CustomKumoSubscriptionForm({
       (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing')
     ) {
       try {
-        await synchronizeBillingSubscriptionIntent(subscriptionId);
+        const result = await synchronizeBillingSubscriptionIntent(subscriptionId);
+        if (!result.success) {
+          setError(
+            result.error?.description ??
+              'El pago fue recibido, pero la suscripción aún se está sincronizando. Actualiza la sección de facturación en unos momentos.',
+          );
+          setSubmitting(false);
+          return;
+        }
         await onComplete();
         onClose();
       } catch {
@@ -378,8 +386,16 @@ export function BillingSubscriptionModal({
       priceId: plan.priceId,
       quantity: 1,
     })
-      .then(({ subscriptionId, clientSecret, publishableKey }) => {
+      .then((result) => {
         if (!active) return;
+        if (!result.success || !result.data) {
+          setError(
+            result.error?.description ??
+              'No fue posible preparar el método de pago. Cierra esta ventana e intenta nuevamente.',
+          );
+          return;
+        }
+        const { subscriptionId, clientSecret, publishableKey } = result.data;
         if (!publishableKey || publishableKey.startsWith('sk_')) {
           setError(
             'La variable de entorno STRIPE_PUBLISHABLE_KEY en el servidor está configurada con una clave secreta (sk_). Debe actualizarse con la clave pública de Stripe (pk_live_...) en Railway/Vercel.',
@@ -415,7 +431,14 @@ export function BillingSubscriptionModal({
     setActivating(true);
     setError(null);
     try {
-      await activateFreeBillingPlan({ billingAccountId, planId: plan.id });
+      const result = await activateFreeBillingPlan({ billingAccountId, planId: plan.id });
+      if (!result.success) {
+        setError(
+          result.error?.description ??
+            'No fue posible activar el plan. Verifica que no exista otra suscripción activa.',
+        );
+        return;
+      }
       await onComplete();
       onClose();
     } catch {

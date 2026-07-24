@@ -179,8 +179,16 @@ export function BillingInvoicePaymentModal({
   useEffect(() => {
     let active = true;
     void createBillingInvoicePaymentIntent(invoice.id)
-      .then(({ amount, currency, clientSecret, publishableKey }) => {
+      .then((result) => {
         if (!active) return;
+        if (!result.success || !result.data) {
+          setError(
+            result.error?.description ??
+              'No fue posible preparar el pago de esta factura dentro de Kiosko.',
+          );
+          return;
+        }
+        const { amount, currency, clientSecret, publishableKey } = result.data;
         if (!publishableKey || publishableKey.startsWith('sk_')) {
           setError(
             'La clave pública de Stripe no está configurada correctamente.',

@@ -14,6 +14,10 @@ import {
   EmptyState,
   Divider,
   InlineGrid,
+  Modal,
+  TextField,
+  Select,
+  FormLayout,
 } from '@shopify/polaris';
 import {
   AppsIcon,
@@ -29,6 +33,7 @@ import {
   useDashboardStore,
 } from '@/store/dashboardStore';
 import {
+  connectDeliveryProviderAction,
   disconnectDeliveryProviderAction,
   getDeliveryConnectionStatusAction,
 } from '@/app/actions/delivery-actions';
@@ -93,6 +98,12 @@ export function DeliveryMarketplaceSection() {
   const storeId = storeConfig.id || 'main';
 
   const [connectingProvider, setConnectingProvider] = useState<DeliveryProvider | null>(null);
+  const [providerStoreId, setProviderStoreId] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [environment, setEnvironment] = useState<'sandbox' | 'production'>('production');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [connections, setConnections] = useState<
     Record<DeliveryProvider, { connected: boolean; storeName?: string }>
@@ -129,9 +140,51 @@ export function DeliveryMarketplaceSection() {
   const handleConnect = useCallback(
     (provider: DeliveryProvider) => {
       setConnectingProvider(provider);
+      setProviderStoreId('');
+      setAccessToken('');
+      setWebhookSecret('');
+      setEnvironment('production');
+      setFormError(null);
     },
     [],
   );
+
+  const handleSubmitConnection = useCallback(async () => {
+    if (!connectingProvider) return;
+    if (!providerStoreId.trim() || !accessToken.trim()) {
+      setFormError('ID de tienda y Token de acceso son obligatorios.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    try {
+      const res = await connectDeliveryProviderAction({
+        storeId,
+        provider: connectingProvider,
+        providerStoreId: providerStoreId.trim(),
+        accessToken: accessToken.trim(),
+        webhookSecret: webhookSecret.trim() || undefined,
+        environment,
+      });
+
+      if (res.success) {
+        setActionMsg({
+          success: true,
+          message: `¡${connectingProvider === 'rappi' ? 'Rappi' : 'Uber Eats'} conectado correctamente!`,
+        });
+        setConnectingProvider(null);
+        await fetchStatus();
+      } else {
+        setFormError(res.message || 'Error al conectar la app');
+      }
+    } catch (err) {
+      setFormError(parseError(err).description);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [connectingProvider, providerStoreId, accessToken, webhookSecret, environment, storeId, fetchStatus]);
 
   const handleDisconnect = useCallback(
     async (provider: DeliveryProvider) => {
@@ -191,59 +244,111 @@ export function DeliveryMarketplaceSection() {
         </Banner>
       )}
 
-      {/* ═══════════ SETUP WIZARD ═══════════ */}
+      {/* ═══════════ SETUP MODAL ═══════════ */}
       {connectingProvider && (
-        <Card>
-          <BlockStack gap="400">
-            <InlineStack align="space-between" blockAlign="center">
-              <Text variant="headingMd" as="h3">
-                {DELIVERY_SETUP_GUIDES[connectingProvider].title}
+        <Modal
+          open={Boolean(connectingProvider)}
+          onClose={() => setConnectingProvider(null)}
+          title={`Conectar ${connectingProvider === 'rappi' ? 'Rappi' : 'Uber Eats'}`}
+          primaryAction={{
+            content: 'Guardar y conectar',
+            onAction: handleSubmitConnection,
+            loading: isSubmitting,
+          }}
+          secondaryActions={[
+            {
+              content: 'Cancelar',
+              onAction: () => setConnectingProvider(null),
+            },
+          ]}
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              {formError && (
+                <Banner tone="critical" onDismiss={() => setFormError(null)}>
+                  {formError}
+                </Banner>
+              )}
+
+              <Text as="p" variant="bodySm" tone="subdued">
+                Sigue las instrucciones a continuación para obtener tus credenciales de API e
+                ingrésalas para vincular tu tienda con {connectingProvider === 'rappi' ? 'Rappi' : 'Uber Eats'}.
               </Text>
-              <Button variant="plain" size="slim" onClick={() => setConnectingProvider(null)}>
-                Cerrar
-              </Button>
-            </InlineStack>
-            <Divider />
-            <BlockStack gap="300">
-              {DELIVERY_SETUP_GUIDES[connectingProvider].steps.map((step, i) => (
-                <InlineStack key={i} gap="200" blockAlign="start">
-                      <div
-                        style={{
-                          padding: 'var(--spacing-050)',
-                          background: 'var(--bg-fill-info)',
-                          borderRadius: 'var(--radius-full)',
-                          minWidth: '20px',
-                          minHeight: '20px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-<Text variant="bodySm" fontWeight="bold" tone="text-inverse" as="span">
+
+              <BlockStack gap="200">
+                <Text as="h4" variant="headingSm" fontWeight="bold">
+                  Pasos de configuración:
+                </Text>
+                {DELIVERY_SETUP_GUIDES[connectingProvider].steps.map((step, i) => (
+                  <InlineStack key={i} gap="200" blockAlign="start">
+                    <div
+                      style={{
+                        padding: 'var(--spacing-050)',
+                        background: 'var(--bg-fill-info)',
+                        borderRadius: 'var(--radius-full)',
+                        minWidth: '20px',
+                        minHeight: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text variant="bodySm" fontWeight="bold" tone="text-inverse" as="span">
                         {i + 1}
                       </Text>
                     </div>
-                  <Text variant="bodySm" as="p">
-                    {step}
-                  </Text>
-                </InlineStack>
-              ))}
+                    <Text variant="bodySm" as="p">
+                      {step}
+                    </Text>
+                  </InlineStack>
+                ))}
+              </BlockStack>
+
+              <Divider />
+
+              <FormLayout>
+                <TextField
+                  label="Store ID / ID de Tienda"
+                  value={providerStoreId}
+                  onChange={setProviderStoreId}
+                  placeholder="ej. store_12345"
+                  autoComplete="off"
+                  helpText="El ID de tu sucursal o tienda en la plataforma de delivery"
+                />
+
+                <TextField
+                  label="Access Token / API Key"
+                  value={accessToken}
+                  onChange={setAccessToken}
+                  type="password"
+                  placeholder="APP_USR-..."
+                  autoComplete="off"
+                  helpText="Token de autenticación generado en el portal de desarrolladores"
+                />
+
+                <TextField
+                  label="Webhook Secret (Opcional)"
+                  value={webhookSecret}
+                  onChange={setWebhookSecret}
+                  type="password"
+                  placeholder="whsec_..."
+                  autoComplete="off"
+                  helpText="Clave para verificar la firma de los webhooks de pedidos"
+                />
+
+                <Select
+                  label="Entorno"
+                  options={[
+                    { label: 'Producción (En vivo)', value: 'production' },
+                    { label: 'Sandbox (Pruebas)', value: 'sandbox' },
+                  ]}
+                  value={environment}
+                  onChange={(val) => setEnvironment(val as 'sandbox' | 'production')}
+                />
+              </FormLayout>
             </BlockStack>
-            <Button
-              variant="primary"
-              icon={ConnectIcon}
-              onClick={() => {
-                setConnectingProvider(null);
-                setActionMsg({
-                  success: true,
-                  message: `Conexión iniciada para ${connectingProvider}. Sigue los pasos arriba para completar.`,
-                });
-              }}
-            >
-              Entendido, iniciar conexión
-            </Button>
-          </BlockStack>
-        </Card>
+          </Modal.Section>
+        </Modal>
       )}
 
       {/* ═══════════ APP CARDS ═══════════ */}

@@ -14,11 +14,16 @@ import {
   HomeIcon,
   InventoryIcon,
   SidekickIcon,
+  PlusIcon,
+  GlobeIcon,
+  MobileIcon,
 } from '@shopify/polaris-icons';
 import Image from 'next/image';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
 import { HelpDrawer } from '@/components/support/HelpDrawer';
+import { getDeliveryConnectionStatusAction } from '@/app/actions/delivery-actions';
+import type { DeliveryProvider } from '@/infrastructure/delivery/delivery-types';
 
 interface CustomTopBarProps {
   userMenu: React.ReactNode;
@@ -67,6 +72,7 @@ export function CustomTopBar({
   const [isFocused, setIsFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [deliveryConnections, setDeliveryConnections] = useState<DeliveryProvider[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const products = useDashboardStore((s) => s.products);
   const _shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
@@ -100,6 +106,12 @@ export function CustomTopBar({
     setSelectedIndex(0);
   }, [query]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    getDeliveryConnectionStatusAction('main').then((rows) => {
+      setDeliveryConnections(rows.map((r) => r.provider as DeliveryProvider));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -306,6 +318,25 @@ export function CustomTopBar({
       {/* Right */}
       <div className="ctb-actions">
         {storeSelector}
+
+        {/* Delivery apps */}
+        {deliveryConnections.length > 0 && (
+          <div className="ctb-delivery-apps">
+            {deliveryConnections.map((provider) => (
+              <Tooltip key={provider} content={provider === 'rappi' ? 'Rappi' : provider === 'ubereats' ? 'Uber Eats' : provider}>
+                <button className="ctb-icon-btn" aria-label={`${provider} activo`}>
+                  <Icon source={provider === 'rappi' ? GlobeIcon : MobileIcon} tone="inherit" />
+                </button>
+              </Tooltip>
+            ))}
+          </div>
+        )}
+
+        <Tooltip content="Agregar app" dismissOnMouseOut>
+          <button className="ctb-icon-btn" aria-label="Agregar aplicación">
+            <Icon source={PlusIcon} tone="inherit" />
+          </button>
+        </Tooltip>
 
         <Tooltip content="Soporte y Ayuda" dismissOnMouseOut>
           <button className="ctb-icon-btn" onClick={openLiveChat} aria-label="Soporte">

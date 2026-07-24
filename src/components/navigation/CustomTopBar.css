@@ -307,6 +307,13 @@
   background: #f59e0b;
 }
 
+.ctb-delivery-apps {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
 /* Separador vertical entre grupos de iconos */
 .ctb-sep-v {
   width: 1px;

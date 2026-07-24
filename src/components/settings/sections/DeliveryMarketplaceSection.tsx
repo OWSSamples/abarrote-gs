@@ -39,7 +39,7 @@ interface DeliveryApp {
   id: DeliveryProvider;
   name: string;
   description: string;
-  icon: React.ReactNode;
+  icon: React.ElementType;
   category: string;
   status: 'disponible' | 'próximamente';
 }
@@ -88,7 +88,7 @@ const DELIVERY_APPS: readonly DeliveryApp[] = [
 
 export function DeliveryMarketplaceSection() {
   const storeConfig = useDashboardStore((s) => s.storeConfig);
-  const storeId = storeConfig.storeId || 'main';
+  const storeId = storeConfig.id || 'main';
 
   const [connectingProvider, setConnectingProvider] = useState<DeliveryProvider | null>(null);
 
@@ -205,18 +205,22 @@ export function DeliveryMarketplaceSection() {
             <BlockStack gap="300">
               {DELIVERY_SETUP_GUIDES[connectingProvider].steps.map((step, i) => (
                 <InlineStack key={i} gap="200" blockAlign="start">
-                  <Box
-                    padding="050"
-                    background="bg-fill-info"
-                    borderRadius="full"
-                    minWidth="20px"
-                    minHeight="20px"
-                    textAlign="center"
-                  >
-                    <Text variant="bodySm" fontWeight="bold" tone="text-inverse">
-                      {i + 1}
-                    </Text>
-                  </Box>
+                      <div
+                        style={{
+                          padding: 'var(--spacing-050)',
+                          background: 'var(--bg-fill-info)',
+                          borderRadius: 'var(--radius-full)',
+                          minWidth: '20px',
+                          minHeight: '20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+<Text variant="bodySm" fontWeight="bold" tone="text-inverse">
+                        {i + 1}
+                      </Text>
+                    </div>
                   <Text variant="bodySm" as="p">
                     {step}
                   </Text>

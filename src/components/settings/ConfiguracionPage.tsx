@@ -67,6 +67,7 @@ import {
   ShieldCheckMarkIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  AppsIcon,
 } from '@shopify/polaris-icons';
 
 // ── Dynamic imports for section components ──
@@ -112,6 +113,10 @@ const CustomerDisplaySectionV4 = dynamic(
 const ServiciosSection = dynamic(() => import('./sections/ServiciosSection').then((m) => m.ServiciosSection), {
   loading: () => SectionLoader,
 });
+const DeliveryMarketplaceSection = dynamic(
+  () => import('./sections/DeliveryMarketplaceSection').then((m) => m.DeliveryMarketplaceSection),
+  { loading: () => SectionLoader },
+);
 const AISection = dynamic(() => import('./sections/AISection').then((m) => m.AISection), {
   loading: () => SectionLoader,
 });
@@ -216,6 +221,13 @@ const SETTINGS_CATEGORIES = [
     description: 'Configura el proveedor para recargas telefónicas y pagos de servicios.',
     icon: SettingsIcon,
     iconFilled: SettingsFilledIcon,
+  },
+  {
+    id: 'delivery',
+    title: 'Marketplace de Delivery',
+    description: 'Instala apps de delivery como Rappi o Uber Eats y gestiona pedidos desde Kiosko.',
+    icon: AppsIcon,
+    iconFilled: AppsIcon,
   },
   {
     id: 'ai',
@@ -418,6 +430,10 @@ export function ConfiguracionPage() {
       servicios: {
         configured: storeConfig.serviciosProvider !== 'local',
         label: storeConfig.serviciosProvider !== 'local' ? 'Vinculado' : 'Local',
+      },
+      delivery: {
+        configured: false,
+        label: 'Marketplace',
       },
       ai: {
         configured: storeConfig.aiEnabled,
@@ -680,6 +696,8 @@ export function ConfiguracionPage() {
         return <CustomerDisplaySectionV4 />;
       case 'servicios':
         return <ServiciosSection />;
+      case 'delivery':
+        return <DeliveryMarketplaceSection />;
       case 'ai':
         return <AISection />;
       case 'system':

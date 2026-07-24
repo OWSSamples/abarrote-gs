@@ -1,18 +1,14 @@
 'use client';
 
-import { SkeletonPage, Layout, SkeletonBodyText, SkeletonDisplayText, BlockStack } from '@shopify/polaris';
+import { Classic } from '@/components/loading-ui/classic';
+import { BlockStack } from '@shopify/polaris';
 
 export default function MainLoading() {
   return (
-    <SkeletonPage title="Cargando..." fullWidth>
-      <Layout>
-        <Layout.Section>
-          <BlockStack gap="400">
-            <SkeletonDisplayText size="medium" />
-            <SkeletonBodyText lines={4} />
-          </BlockStack>
-        </Layout.Section>
-      </Layout>
-    </SkeletonPage>
+    <div className="flex min-h-screen items-center justify-center">
+      <BlockStack gap="400" align="center">
+        <Classic size={36} duration={1.2} />
+      </BlockStack>
+    </div>
   );
 }

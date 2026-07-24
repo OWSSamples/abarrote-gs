@@ -7,7 +7,7 @@ import { Button, LinkButton } from '@cloudflare/kumo/components/button';
 import { DropdownMenu } from '@cloudflare/kumo/components/dropdown';
 import { Input } from '@cloudflare/kumo/components/input';
 import { LayerCard } from '@cloudflare/kumo/components/layer-card';
-import { Loader, SkeletonLine } from '@cloudflare/kumo/components/loader';
+import { SkeletonLine } from '@cloudflare/kumo/components/loader';
 import { Select } from '@cloudflare/kumo/components/select';
 import { Tabs } from '@cloudflare/kumo/components/tabs';
 import {
@@ -27,14 +27,15 @@ import {
   EmailIcon,
   CashDollarIcon,
   MenuHorizontalIcon,
-  ExternalIcon,
   PaymentIcon,
   SearchIcon,
   WalletIcon,
 } from '@shopify/polaris-icons';
 import {
-  createBillingPortalSession,
+  cancelBillingSubscription,
+  deleteBillingPaymentMethod,
   fetchBillingOverview,
+  resumeBillingSubscription,
   type BillingAvailablePlan,
   type BillingInvoice,
   type BillingOverview,
@@ -42,11 +43,18 @@ import {
 } from '@/app/actions/billing-actions';
 import { synchronizeServerSession } from '@/lib/auth/session-client';
 import type { SettingsSectionProps } from './types';
-import { BillingCheckoutModal } from './BillingCheckoutModal';
+import { BillingActionDialog } from './BillingActionDialog';
+import { BillingInvoicePaymentModal } from './BillingInvoicePaymentModal';
+import { BillingSubscriptionModal } from './BillingSubscriptionModal';
+import { BillingPaymentMethodModal } from './BillingPaymentMethodModal';
 
 type BillingTab = 'subscriptions' | 'usage' | 'invoices';
 type SubscriptionFilter = 'all' | 'active' | 'free' | 'paid';
 type InvoiceFilter = 'all' | 'paid' | 'open' | 'void';
+type BillingAction =
+  | 'cancel-subscription'
+  | 'resume-subscription'
+  | 'delete-payment-method';
 
 const BILLING_TABS = [
   { value: 'subscriptions', label: 'Suscripciones' },
@@ -175,8 +183,13 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
   const [overview, setOverview] = useState<BillingOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [checkoutPlan, setCheckoutPlan] = useState<BillingAvailablePlan | null>(null);
+  const [subscriptionPlan, setSubscriptionPlan] =
+    useState<BillingAvailablePlan | null>(null);
+  const [invoiceToPay, setInvoiceToPay] = useState<BillingInvoice | null>(null);
+  const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
+  const [billingAction, setBillingAction] = useState<BillingAction | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState(false);
   const [configuredEmail, setConfiguredEmail] = useState(sourceEmail);
   const [emailDraft, setEmailDraft] = useState(sourceEmail);
@@ -229,32 +242,59 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
     void loadBilling();
   }, [loadBilling]);
 
-  const openBillingPortal = useCallback(async () => {
-    const billingAccountId = overview?.billingAccountId ?? null;
-    const existingPortalUrl = overview?.portalUrl ?? null;
-
-    if (!billingAccountId && !existingPortalUrl) {
-      setError('No hay una cuenta de facturación asociada a este negocio. Primero activa una suscripción.');
+  const openPaymentMethod = useCallback(() => {
+    if (!overview?.billingAccountId) {
+      setError(
+        'No hay una cuenta de facturación asociada a este negocio. Actualiza la página e intenta nuevamente.',
+      );
       return;
     }
-
-    setPortalLoading(true);
     setError(null);
-    try {
-      let url = existingPortalUrl;
-      if (!url) {
-        if (!billingAccountId) throw new Error('Billing account is required.');
-        url = (await createBillingPortalSession(billingAccountId)).url;
-      }
-      window.location.assign(url);
-    } catch {
-      setError('No fue posible abrir el portal de facturación. Verifica tu acceso e intenta nuevamente.');
-    } finally {
-      setPortalLoading(false);
-    }
-  }, [overview?.billingAccountId, overview?.portalUrl]);
+    setPaymentMethodOpen(true);
+  }, [overview?.billingAccountId]);
 
-  const startCheckout = useCallback(async (plan: BillingAvailablePlan) => {
+  const requestBillingAction = useCallback((action: BillingAction) => {
+    setActionError(null);
+    setBillingAction(action);
+  }, []);
+
+  const confirmBillingAction = useCallback(async () => {
+    if (!billingAction) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      if (billingAction === 'delete-payment-method') {
+        if (!overview?.billingAccountId || !overview.paymentMethod?.id) {
+          throw new Error('No payment method is available.');
+        }
+        await deleteBillingPaymentMethod({
+          billingAccountId: overview.billingAccountId,
+          paymentMethodId: overview.paymentMethod.id,
+        });
+      } else {
+        if (!overview?.subscriptionId) {
+          throw new Error('No subscription is available.');
+        }
+        if (billingAction === 'cancel-subscription') {
+          await cancelBillingSubscription(overview.subscriptionId);
+        } else {
+          await resumeBillingSubscription(overview.subscriptionId);
+        }
+      }
+      await loadBilling();
+      setBillingAction(null);
+    } catch {
+      setActionError(
+        billingAction === 'delete-payment-method'
+          ? 'No fue posible eliminar la tarjeta. Si existe una suscripción activa, agrega otra tarjeta antes de eliminar la principal.'
+          : 'No fue posible actualizar la renovación de la suscripción. Intenta nuevamente.',
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }, [billingAction, loadBilling, overview]);
+
+  const startSubscription = useCallback(async (plan: BillingAvailablePlan) => {
     const billingAccountId = overview?.billingAccountId;
     if (!billingAccountId) {
       setError('No hay una cuenta de facturación asociada a este negocio. Actualiza la página e intenta nuevamente.');
@@ -262,7 +302,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
     }
 
     setError(null);
-    setCheckoutPlan(plan);
+    setSubscriptionPlan(plan);
   }, [overview?.billingAccountId]);
 
   const saveBillingEmail = useCallback(async () => {
@@ -299,6 +339,12 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
   }, [invoiceFilter, invoiceSearch, overview?.invoices]);
 
   const paymentMethod = overview?.paymentMethod ?? null;
+  const hasCurrentSubscription = [
+    'active',
+    'trialing',
+    'past_due',
+    'incomplete',
+  ].includes(overview?.status ?? 'none');
   const currentPeriodLabel = overview?.currentPeriodEnd
     ? `Hasta ${formatDate(overview.currentPeriodEnd)}`
     : 'Periodo actual';
@@ -310,24 +356,86 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
         || plan.name.toLowerCase().includes(query)
         || plan.description?.toLowerCase().includes(query)
         || plan.code.toLowerCase().includes(query);
-      const isCurrent = plan.id === overview?.planId;
+      const isCurrent = hasCurrentSubscription && plan.id === overview?.planId;
       const matchesFilter = subscriptionFilter === 'all'
         || (subscriptionFilter === 'active' && isCurrent)
         || (subscriptionFilter === 'paid' && plan.totalAmount > 0)
         || (subscriptionFilter === 'free' && plan.totalAmount === 0);
       return matchesQuery && matchesFilter;
     });
-  }, [overview?.availablePlans, overview?.planId, subscriptionFilter, subscriptionSearch]);
+  }, [
+    hasCurrentSubscription,
+    overview?.availablePlans,
+    overview?.planId,
+    subscriptionFilter,
+    subscriptionSearch,
+  ]);
+  const actionDialog = billingAction
+    ? billingAction === 'delete-payment-method'
+      ? {
+          title: 'Eliminar método de pago',
+          description: `Se eliminará la tarjeta terminada en ${paymentMethod?.last4 || '****'}. Una suscripción activa debe conservar al menos un método válido.`,
+          confirmLabel: 'Eliminar tarjeta',
+          destructive: true,
+        }
+      : billingAction === 'cancel-subscription'
+        ? {
+            title: 'Cancelar renovación',
+            description:
+              'El plan seguirá disponible hasta finalizar el periodo pagado. Después no se realizarán nuevos cobros.',
+            confirmLabel: 'Cancelar renovación',
+            destructive: true,
+          }
+        : {
+            title: 'Reanudar renovación',
+            description:
+              'La suscripción volverá a renovarse automáticamente con el método de pago principal.',
+            confirmLabel: 'Reanudar renovación',
+            destructive: false,
+          }
+    : null;
 
   return (
     <section className="min-h-[620px] bg-kumo-canvas" aria-label="Facturación">
-      {checkoutPlan && overview?.billingAccountId && (
-        <BillingCheckoutModal
-          plan={checkoutPlan}
+      {subscriptionPlan && overview?.billingAccountId && (
+        <BillingSubscriptionModal
+          plan={subscriptionPlan}
           billingAccountId={overview.billingAccountId}
           billingEmail={configuredEmail}
-          onClose={() => setCheckoutPlan(null)}
+          onClose={() => setSubscriptionPlan(null)}
           onComplete={loadBilling}
+        />
+      )}
+      {paymentMethodOpen && overview?.billingAccountId && (
+        <BillingPaymentMethodModal
+          billingAccountId={overview.billingAccountId}
+          billingEmail={configuredEmail}
+          currentMethod={paymentMethod}
+          onClose={() => setPaymentMethodOpen(false)}
+          onComplete={loadBilling}
+        />
+      )}
+      {invoiceToPay && (
+        <BillingInvoicePaymentModal
+          invoice={invoiceToPay}
+          onClose={() => setInvoiceToPay(null)}
+          onComplete={loadBilling}
+        />
+      )}
+      {actionDialog && (
+        <BillingActionDialog
+          title={actionDialog.title}
+          description={actionDialog.description}
+          confirmLabel={actionDialog.confirmLabel}
+          destructive={actionDialog.destructive}
+          loading={actionLoading}
+          error={actionError}
+          onConfirm={() => void confirmBillingAction()}
+          onClose={() => {
+            if (actionLoading) return;
+            setBillingAction(null);
+            setActionError(null);
+          }}
         />
       )}
       <div className="border-b border-kumo-line bg-kumo-base">
@@ -385,18 +493,18 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                 <LayerCard className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="max-w-3xl text-xs leading-5 text-kumo-subtle">
                     El plan Básico permanece activo sin costo y no requiere tarjeta. Los planes de pago se renuevan
-                    automáticamente al final del periodo actual, salvo que canceles la renovación. Los cambios de
-                    pago y cancelaciones se confirman en el portal seguro de facturación.
+                    automáticamente al final del periodo actual, salvo que canceles la renovación. Suscripciones,
+                    tarjetas y renovaciones se administran directamente dentro de Kiosko.
                   </p>
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={openBillingPortal}
-                    loading={portalLoading}
-                    icon={<ExternalIcon className="h-5 w-5" />}
+                    onClick={openPaymentMethod}
+                    disabled={!overview?.billingAccountId}
+                    icon={<CreditCardIcon className="h-5 w-5" />}
                     className="shrink-0"
                   >
-                    Administrar facturación
+                    Método de pago
                   </Button>
                 </LayerCard>
 
@@ -448,7 +556,8 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                           </th>
                         </tr>
                         {availablePlans.length > 0 ? availablePlans.map((plan) => {
-                          const isCurrent = plan.id === overview?.planId;
+                          const isCurrent =
+                            hasCurrentSubscription && plan.id === overview?.planId;
                           return (
                             <tr key={plan.id} className="border-b border-kumo-hairline last:border-b-0">
                               <td className="px-4 py-3">
@@ -493,8 +602,23 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                       />
                                     </DropdownMenu.Trigger>
                                     <DropdownMenu.Content>
-                                      <DropdownMenu.Item icon={<ExternalIcon className="h-5 w-5" />} onClick={openBillingPortal}>
-                                        Administrar suscripción
+                                      <DropdownMenu.Item
+                                        icon={
+                                          overview?.cancelAtPeriodEnd
+                                            ? <RefreshIcon className="h-5 w-5" />
+                                            : <DeleteIcon className="h-5 w-5" />
+                                        }
+                                        onClick={() =>
+                                          requestBillingAction(
+                                            overview?.cancelAtPeriodEnd
+                                              ? 'resume-subscription'
+                                              : 'cancel-subscription',
+                                          )
+                                        }
+                                      >
+                                        {overview?.cancelAtPeriodEnd
+                                          ? 'Reanudar renovación'
+                                          : 'Cancelar renovación'}
                                       </DropdownMenu.Item>
                                       <DropdownMenu.Item icon={<RefreshIcon className="h-5 w-5" />} onClick={loadBilling}>
                                         Actualizar información
@@ -505,8 +629,8 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                   <Button
                                     size="sm"
                                     variant="secondary"
-                                    disabled={checkoutPlan !== null}
-                                    onClick={() => void startCheckout(plan)}
+                                    disabled={subscriptionPlan !== null}
+                                    onClick={() => void startSubscription(plan)}
                                   >
                                     {plan.totalAmount === 0 ? 'Activar gratis' : 'Elegir'}
                                   </Button>
@@ -730,16 +854,15 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="flex justify-end gap-2">
-                                    {invoice.hostedUrl && (
-                                      <LinkButton
+                                    {invoice.status === 'open' && (
+                                      <Button
                                         size="sm"
-                                        variant="secondary"
-                                        href={invoice.hostedUrl}
-                                        external
-                                        icon={<ExternalIcon className="h-5 w-5" />}
+                                        variant="primary"
+                                        onClick={() => setInvoiceToPay(invoice)}
+                                        icon={<PaymentIcon className="h-5 w-5" />}
                                       >
-                                        Ver
-                                      </LinkButton>
+                                        Pagar
+                                      </Button>
                                     )}
                                     {invoice.pdfUrl && (
                                       <LinkButton
@@ -752,7 +875,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                                         PDF
                                       </LinkButton>
                                     )}
-                                    {!invoice.hostedUrl && !invoice.pdfUrl && (
+                                    {invoice.status !== 'open' && !invoice.pdfUrl && (
                                       <span className="text-xs text-kumo-subtle">Sin archivo</span>
                                     )}
                                   </div>
@@ -868,17 +991,15 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={openBillingPortal}
-                      loading={portalLoading}
+                      onClick={openPaymentMethod}
                       icon={<EditIcon className="h-5 w-5" />}
                     >
-                      Actualizar
+                      Reemplazar
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary-destructive"
-                      onClick={openBillingPortal}
-                      loading={portalLoading}
+                      onClick={() => requestBillingAction('delete-payment-method')}
                       icon={<DeleteIcon className="h-5 w-5" />}
                     >
                       Eliminar
@@ -901,9 +1022,8 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
                   <Button
                     size="sm"
                     variant="primary"
-                    onClick={openBillingPortal}
-                    loading={portalLoading}
-                    disabled={!overview?.billingAccountId && !overview?.portalUrl}
+                    onClick={openPaymentMethod}
+                    disabled={!overview?.billingAccountId}
                     icon={<WalletIcon className="h-5 w-5" />}
                     className="mt-4 w-full"
                   >
@@ -920,7 +1040,7 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
               <div className="flex items-start gap-3 text-xs leading-5 text-kumo-subtle">
                 <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-kumo-success" aria-hidden="true" />
                 <p id="billing-security-heading">
-                  Los cambios del método de pago se realizan en el portal seguro y permanecen aislados para este negocio.
+                  Kiosko controla esta interfaz. Stripe tokeniza y conserva los datos sensibles de la tarjeta de forma aislada para este negocio.
                 </p>
               </div>
             </section>
@@ -930,11 +1050,6 @@ export function BillingSection({ config, updateField, savePatch, saving }: Setti
         </div>
       )}
 
-      {portalLoading && (
-        <span className="sr-only" role="status">
-          <Loader size="sm" aria-label="Abriendo portal de facturación" />
-        </span>
-      )}
     </section>
   );
 }

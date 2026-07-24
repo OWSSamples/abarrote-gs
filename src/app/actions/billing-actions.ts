@@ -21,10 +21,12 @@ export type BillingSubscriptionStatus =
   | 'unknown';
 
 export interface BillingPaymentMethod {
+  id: string;
   brand: string | null;
   last4: string | null;
   expMonth: number | null;
   expYear: number | null;
+  isDefault: boolean;
 }
 
 export interface BillingInvoice {
@@ -35,7 +37,6 @@ export interface BillingInvoice {
   currency: string;
   status: 'paid' | 'open' | 'void' | 'draft' | 'unknown';
   issuedAt: string | null;
-  hostedUrl: string | null;
   pdfUrl: string | null;
 }
 
@@ -65,6 +66,7 @@ export interface BillingAvailablePlan {
 
 export interface BillingOverview {
   tenantId: string;
+  subscriptionId: string | null;
   billingAccountId: string | null;
   customerId: string | null;
   status: BillingSubscriptionStatus;
@@ -81,12 +83,11 @@ export interface BillingOverview {
   invoices: BillingInvoice[];
   entitlements: BillingEntitlement[];
   availablePlans: BillingAvailablePlan[];
-  portalUrl: string | null;
   billingUnavailable?: boolean;
   billingUnavailableDetail?: string;
 }
 
-export interface BillingCheckoutRequest {
+export interface BillingSubscriptionIntentRequest {
   priceId: string;
   billingAccountId: string;
   quantity?: number;
@@ -95,6 +96,17 @@ export interface BillingCheckoutRequest {
 export interface BillingFreePlanRequest {
   planId: string;
   billingAccountId: string;
+}
+
+export interface BillingStripeIntent {
+  clientSecret: string;
+  publishableKey: string;
+}
+
+export interface BillingInvoicePaymentIntent extends BillingStripeIntent {
+  paymentIntentId: string;
+  amount: number;
+  currency: string;
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
@@ -148,6 +160,42 @@ function safeUrl(value: string | null): string | null {
   }
 }
 
+function validatePaymentMethodId(value: string): string {
+  const normalized = value.trim();
+  if (!/^pm_[A-Za-z0-9]+$/.test(normalized)) {
+    throw new AppError(
+      'BILLING_INVALID_PAYMENT_METHOD',
+      'El método de pago no es válido.',
+      422,
+    );
+  }
+  return normalized;
+}
+
+function validateStripeSubscriptionId(value: string): string {
+  const normalized = value.trim();
+  if (!/^sub_[A-Za-z0-9]+$/.test(normalized)) {
+    throw new AppError(
+      'BILLING_INVALID_SUBSCRIPTION_INTENT',
+      'La suscripción de pago no es válida.',
+      422,
+    );
+  }
+  return normalized;
+}
+
+function validateStripeInvoiceId(value: string): string {
+  const normalized = value.trim();
+  if (!/^in_[A-Za-z0-9]+$/.test(normalized)) {
+    throw new AppError(
+      'BILLING_INVALID_INVOICE',
+      'La factura no es válida.',
+      422,
+    );
+  }
+  return normalized;
+}
+
 function normalizeStatus(value: string | null): BillingSubscriptionStatus {
   switch (value) {
     case 'active':
@@ -157,6 +205,10 @@ function normalizeStatus(value: string | null): BillingSubscriptionStatus {
     case 'incomplete':
     case 'none':
       return value;
+    case 'incomplete_expired':
+      return 'none';
+    case 'unpaid':
+      return 'past_due';
     default:
       return value ? 'unknown' : 'none';
   }
@@ -197,7 +249,6 @@ function normalizeInvoice(raw: unknown): BillingInvoice {
     currency: readString(invoice, ['currency'])?.toUpperCase() ?? 'MXN',
     status: normalizeInvoiceStatus(readString(invoice, ['status'])),
     issuedAt: readString(invoice, ['issuedAt', 'createdAt', 'created']),
-    hostedUrl: safeUrl(readString(invoice, ['hostedUrl', 'hostedInvoiceUrl', 'url'])),
     pdfUrl: safeUrl(readString(invoice, ['pdfUrl', 'invoicePdf'])),
   };
 }
@@ -368,6 +419,7 @@ function normalizeBillingOverview(
 
   return {
     tenantId,
+    subscriptionId: readString(subscription, ['id', 'subscriptionId']),
     billingAccountId:
       readString(subscription, ['billingAccountId', 'billing_account_id'])
       ?? readString(billingAccount, ['id', 'billingAccountId']),
@@ -399,16 +451,17 @@ function normalizeBillingOverview(
       ?? readNumber(plan, ['includedUsers', 'seats']),
     paymentMethod: Object.keys(paymentMethod).length > 0
       ? {
+          id: readString(paymentMethod, ['id']) ?? '',
           brand: readString(paymentMethod, ['brand', 'type']),
           last4: readString(paymentMethod, ['last4']),
           expMonth: readNumber(paymentMethod, ['expMonth', 'expirationMonth']),
           expYear: readNumber(paymentMethod, ['expYear', 'expirationYear']),
+          isDefault: readBoolean(paymentMethod, ['isDefault']),
         }
       : null,
     invoices: rawInvoices.map(normalizeInvoice),
     entitlements,
     availablePlans: normalizeAvailablePlans(planPayload, pricePayload),
-    portalUrl: safeUrl(readString(subscription, ['portalUrl', 'customerPortalUrl'])),
   };
 }
 
@@ -527,6 +580,7 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
     });
     return {
       tenantId,
+      subscriptionId: null,
       billingAccountId: null,
       customerId: null,
       status: 'none' as const,
@@ -543,7 +597,6 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
       invoices: [],
       entitlements: [],
       availablePlans: [],
-      portalUrl: null,
       billingUnavailable: true,
       billingUnavailableDetail: `No se pudo consultar la facturación (${failures.join(', ')}).`,
     };
@@ -565,31 +618,9 @@ async function _fetchBillingOverview(): Promise<BillingOverview> {
   );
 }
 
-async function _createBillingPortalSession(billingAccountId: string): Promise<{ url: string }> {
-  await requireOwner();
-  const { tenantId } = await requireStoreScope();
-  const safeBillingAccountId = validateId(billingAccountId, 'billingAccountId');
-  const payload = readRecord(
-    await billingRequest('/billing/portal', tenantId, {
-      method: 'POST',
-      body: JSON.stringify({ billingAccountId: safeBillingAccountId }),
-    }),
-  );
-
-  const data = readRecord(payload.data);
-  const url = safeUrl(readString(data, ['url', 'portalUrl']) ?? readString(payload, ['url', 'portalUrl']));
-  if (!url) {
-    throw new AppError('BILLING_PORTAL_URL_MISSING', 'El portal de facturación no devolvió una URL válida.', 502);
-  }
-
-  return { url };
-}
-
-async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Promise<{
-  sessionId: string;
-  clientSecret: string;
-  publishableKey: string;
-}> {
+async function _createBillingSubscriptionIntent(
+  input: BillingSubscriptionIntentRequest,
+): Promise<BillingStripeIntent & { subscriptionId: string }> {
   await assertHumanRequest();
   await requireOwner();
   const { tenantId } = await requireStoreScope();
@@ -601,25 +632,196 @@ async function _createBillingCheckoutSession(input: BillingCheckoutRequest): Pro
   }
 
   const payload = readRecord(
-    await billingRequest('/billing/checkout', tenantId, {
+    await billingRequest('/billing/subscriptions/intent', tenantId, {
       method: 'POST',
       body: JSON.stringify({ priceId, billingAccountId, quantity }),
     }),
   );
   const data = readRecord(payload.data);
-  const sessionId = readString(data, ['sessionId']) ?? readString(payload, ['sessionId']);
+  const subscriptionId =
+    readString(data, ['subscriptionId']) ??
+    readString(payload, ['subscriptionId']);
   const clientSecret = readString(data, ['clientSecret']) ?? readString(payload, ['clientSecret']);
   const publishableKey =
     readString(data, ['publishableKey']) ?? readString(payload, ['publishableKey']);
-  if (!sessionId || !clientSecret || !publishableKey) {
+  if (!subscriptionId || !clientSecret || !publishableKey) {
     throw new AppError(
-      'BILLING_CHECKOUT_SECRET_MISSING',
-      'El checkout no devolvió una sesión integrada válida.',
+      'BILLING_SUBSCRIPTION_INTENT_MISSING',
+      'No fue posible preparar la suscripción dentro de Kiosko.',
       502,
     );
   }
 
-  return { sessionId, clientSecret, publishableKey };
+  return { subscriptionId, clientSecret, publishableKey };
+}
+
+async function _createBillingPaymentMethodSetup(
+  billingAccountId: string,
+): Promise<BillingStripeIntent & { setupIntentId: string }> {
+  await assertHumanRequest();
+  await requireOwner();
+  const { tenantId } = await requireStoreScope();
+  const safeBillingAccountId = validateId(
+    billingAccountId,
+    'billingAccountId',
+  );
+  const payload = readRecord(
+    await billingRequest('/billing/payment-methods/setup', tenantId, {
+      method: 'POST',
+      body: JSON.stringify({ billingAccountId: safeBillingAccountId }),
+    }),
+  );
+  const data = readRecord(payload.data);
+  const setupIntentId =
+    readString(data, ['setupIntentId']) ??
+    readString(payload, ['setupIntentId']);
+  const clientSecret =
+    readString(data, ['clientSecret']) ??
+    readString(payload, ['clientSecret']);
+  const publishableKey =
+    readString(data, ['publishableKey']) ??
+    readString(payload, ['publishableKey']);
+  if (!setupIntentId || !clientSecret || !publishableKey) {
+    throw new AppError(
+      'BILLING_SETUP_INTENT_MISSING',
+      'No fue posible preparar el formulario seguro de tarjeta.',
+      502,
+    );
+  }
+  return { setupIntentId, clientSecret, publishableKey };
+}
+
+async function _createBillingInvoicePaymentIntent(
+  invoiceId: string,
+): Promise<BillingInvoicePaymentIntent> {
+  await assertHumanRequest();
+  await requireOwner();
+  const { tenantId } = await requireStoreScope();
+  const safeInvoiceId = validateStripeInvoiceId(invoiceId);
+  const payload = readRecord(
+    await billingRequest(
+      `/billing/invoices/${encodeURIComponent(safeInvoiceId)}/payment-intent`,
+      tenantId,
+      { method: 'POST' },
+    ),
+  );
+  const data = readRecord(payload.data);
+  const paymentIntentId =
+    readString(data, ['paymentIntentId']) ??
+    readString(payload, ['paymentIntentId']);
+  const clientSecret =
+    readString(data, ['clientSecret']) ??
+    readString(payload, ['clientSecret']);
+  const publishableKey =
+    readString(data, ['publishableKey']) ??
+    readString(payload, ['publishableKey']);
+  const amountCents =
+    readNumber(data, ['amountCents']) ??
+    readNumber(payload, ['amountCents']);
+  const currency =
+    readString(data, ['currency']) ??
+    readString(payload, ['currency']);
+  if (
+    !paymentIntentId ||
+    !clientSecret ||
+    !publishableKey ||
+    amountCents === null ||
+    !currency
+  ) {
+    throw new AppError(
+      'BILLING_INVOICE_INTENT_MISSING',
+      'No fue posible preparar el pago de la factura dentro de Kiosko.',
+      502,
+    );
+  }
+  return {
+    paymentIntentId,
+    clientSecret,
+    publishableKey,
+    amount: amountCents / 100,
+    currency: currency.toUpperCase(),
+  };
+}
+
+async function _synchronizeBillingSubscriptionIntent(
+  stripeSubscriptionId: string,
+): Promise<void> {
+  await assertHumanRequest();
+  await requireOwner();
+  const { tenantId } = await requireStoreScope();
+  const safeSubscriptionId = validateStripeSubscriptionId(
+    stripeSubscriptionId,
+  );
+  await billingRequest(
+    `/billing/subscriptions/intent/${encodeURIComponent(safeSubscriptionId)}/sync`,
+    tenantId,
+    { method: 'POST' },
+  );
+}
+
+async function _setDefaultBillingPaymentMethod(input: {
+  billingAccountId: string;
+  paymentMethodId: string;
+}): Promise<void> {
+  await assertHumanRequest();
+  await requireOwner();
+  const { tenantId } = await requireStoreScope();
+  const billingAccountId = validateId(
+    input.billingAccountId,
+    'billingAccountId',
+  );
+  const paymentMethodId = validatePaymentMethodId(input.paymentMethodId);
+  await billingRequest('/billing/payment-methods/default', tenantId, {
+    method: 'PUT',
+    body: JSON.stringify({ billingAccountId, paymentMethodId }),
+  });
+}
+
+async function _deleteBillingPaymentMethod(input: {
+  billingAccountId: string;
+  paymentMethodId: string;
+}): Promise<void> {
+  await assertHumanRequest();
+  await requireOwner();
+  const { tenantId } = await requireStoreScope();
+  const billingAccountId = validateId(
+    input.billingAccountId,
+    'billingAccountId',
+  );
+  const paymentMethodId = validatePaymentMethodId(input.paymentMethodId);
+  await billingRequest(
+    `/billing/payment-methods/${encodeURIComponent(paymentMethodId)}?billingAccountId=${encodeURIComponent(billingAccountId)}`,
+    tenantId,
+    { method: 'DELETE' },
+  );
+}
+
+async function _cancelBillingSubscription(
+  subscriptionId: string,
+): Promise<void> {
+  await assertHumanRequest();
+  await requireOwner();
+  const { tenantId } = await requireStoreScope();
+  const safeSubscriptionId = validateId(subscriptionId, 'subscriptionId');
+  await billingRequest(
+    `/billing/subscriptions/${encodeURIComponent(safeSubscriptionId)}?immediately=false`,
+    tenantId,
+    { method: 'DELETE' },
+  );
+}
+
+async function _resumeBillingSubscription(
+  subscriptionId: string,
+): Promise<void> {
+  await assertHumanRequest();
+  await requireOwner();
+  const { tenantId } = await requireStoreScope();
+  const safeSubscriptionId = validateId(subscriptionId, 'subscriptionId');
+  await billingRequest(
+    `/billing/subscriptions/${encodeURIComponent(safeSubscriptionId)}/resume`,
+    tenantId,
+    { method: 'POST' },
+  );
 }
 
 async function _activateFreeBillingPlan(input: BillingFreePlanRequest): Promise<void> {
@@ -636,6 +838,36 @@ async function _activateFreeBillingPlan(input: BillingFreePlanRequest): Promise<
 }
 
 export const fetchBillingOverview = withLogging('billing.fetchOverview', _fetchBillingOverview);
-export const createBillingPortalSession = withLogging('billing.createPortalSession', _createBillingPortalSession);
-export const createBillingCheckoutSession = withLogging('billing.createCheckoutSession', _createBillingCheckoutSession);
+export const createBillingSubscriptionIntent = withLogging(
+  'billing.createSubscriptionIntent',
+  _createBillingSubscriptionIntent,
+);
+export const createBillingPaymentMethodSetup = withLogging(
+  'billing.createPaymentMethodSetup',
+  _createBillingPaymentMethodSetup,
+);
+export const createBillingInvoicePaymentIntent = withLogging(
+  'billing.createInvoicePaymentIntent',
+  _createBillingInvoicePaymentIntent,
+);
+export const synchronizeBillingSubscriptionIntent = withLogging(
+  'billing.synchronizeSubscriptionIntent',
+  _synchronizeBillingSubscriptionIntent,
+);
+export const setDefaultBillingPaymentMethod = withLogging(
+  'billing.setDefaultPaymentMethod',
+  _setDefaultBillingPaymentMethod,
+);
+export const deleteBillingPaymentMethod = withLogging(
+  'billing.deletePaymentMethod',
+  _deleteBillingPaymentMethod,
+);
+export const cancelBillingSubscription = withLogging(
+  'billing.cancelSubscription',
+  _cancelBillingSubscription,
+);
+export const resumeBillingSubscription = withLogging(
+  'billing.resumeSubscription',
+  _resumeBillingSubscription,
+);
 export const activateFreeBillingPlan = withLogging('billing.activateFreePlan', _activateFreeBillingPlan);

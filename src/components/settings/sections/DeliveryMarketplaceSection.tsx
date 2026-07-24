@@ -35,11 +35,13 @@ import {
 import type { DeliveryProvider } from '@/infrastructure/delivery/delivery-types';
 import { parseError } from '@/lib/errors';
 
+type DeliveryIconSource = typeof GlobeIcon;
+
 interface DeliveryApp {
   id: DeliveryProvider;
   name: string;
   description: string;
-  icon: React.ElementType;
+  icon: DeliveryIconSource;
   category: string;
   status: 'disponible' | 'próximamente';
 }
@@ -217,7 +219,7 @@ export function DeliveryMarketplaceSection() {
                           justifyContent: 'center',
                         }}
                       >
-<Text variant="bodySm" fontWeight="bold" tone="text-inverse">
+<Text variant="bodySm" fontWeight="bold" tone="text-inverse" as="span">
                         {i + 1}
                       </Text>
                     </div>
@@ -297,7 +299,7 @@ export function DeliveryMarketplaceSection() {
                       <Button
                         variant="plain"
                         size="slim"
-                        destructive
+                        tone="critical"
                         disabled={isLoading}
                         onClick={() => handleDisconnect(app.id)}
                         icon={DeleteIcon}
@@ -339,10 +341,10 @@ export function DeliveryMarketplaceSection() {
                     <Icon source={app.icon} tone="success" />
                   </Box>
                   <BlockStack gap="0">
-                    <Text variant="bodyMd" fontWeight="semibold">
+                    <Text variant="bodyMd" fontWeight="semibold" as="span">
                       {app.name}
                     </Text>
-                    <Text variant="bodySm" tone="subdued">
+                    <Text variant="bodySm" tone="subdued" as="span">
                       Conectado y activo
                     </Text>
                   </BlockStack>
@@ -360,7 +362,6 @@ export function DeliveryMarketplaceSection() {
       {!isAnyConnected && (
         <EmptyState
           heading="Aun no tienes apps de delivery instaladas"
-          description="Instala una app de delivery desde el Marketplace arriba para comenzar a recibir pedidos de Rappi o Uber Eats en Kiosko."
           action={{
             content: 'Ir al Marketplace',
             onAction: () => {
@@ -368,8 +369,12 @@ export function DeliveryMarketplaceSection() {
               if (el) el.scrollIntoView({ behavior: 'smooth' });
             },
           }}
-          image={<AppsIcon />}
-        />
+          image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-delivery.svg"
+        >
+          <Text as="p" variant="bodyMd" tone="subdued">
+            Instala una app de delivery desde el Marketplace arriba para comenzar a recibir pedidos de Rappi o Uber Eats en Kiosko.
+          </Text>
+        </EmptyState>
       )}
 
       <Banner tone="info" icon={CheckCircleIcon}>

@@ -505,6 +505,26 @@ async function billingRequest(
   const payload: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
+    const upstreamMessage = readString(readRecord(payload), ['message']);
+    const safeMessages: Record<string, string> = {
+      'Organization already has a current subscription':
+        'Ya existe una suscripción activa para tu negocio. Actualiza la sección de facturación antes de elegir otro plan.',
+      'Another subscription payment is already pending':
+        'Hay otro pago de suscripción pendiente. Cierra este formulario y vuelve a seleccionar el plan.',
+      'Only open invoices can be paid':
+        'Esta factura ya no está pendiente de pago. Actualiza la sección de facturación.',
+      'Add another payment method before removing the only card for an active subscription':
+        'Agrega otra tarjeta antes de eliminar el único método de pago de una suscripción activa.',
+      'Subscription payment is still being confirmed':
+        'Stripe todavía está confirmando el pago. Actualiza la sección de facturación en unos momentos.',
+      'Use the free subscription endpoint for zero-amount plans':
+        'El plan gratuito debe activarse desde su opción correspondiente.',
+    };
+    const message =
+      (upstreamMessage ? safeMessages[upstreamMessage] : undefined) ??
+      (response.status === 409
+        ? 'La operación entra en conflicto con el estado actual de la suscripción. Actualiza la sección de facturación e intenta nuevamente.'
+        : 'No fue posible consultar la información de facturación.');
     logger.warn('Billing API request failed', {
       action: 'billing_api_request_failed',
       path,
@@ -514,9 +534,8 @@ async function billingRequest(
     });
     throw new AppError(
       'BILLING_API_ERROR',
-      'No fue posible consultar la información de facturación.',
+      message,
       response.status >= 500 ? 503 : response.status,
-      { status: response.status },
     );
   }
 

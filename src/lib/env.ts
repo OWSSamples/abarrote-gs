@@ -43,11 +43,21 @@ const envSchema = z.object({
   MP_ACCESS_TOKEN: z.string().min(1).optional(),
   MP_WEBHOOK_SECRET: z.string().min(1).optional(),
 
-  // ── Uber Eats Merchant OAuth ──
-  UBER_EATS_CLIENT_ID: z.string().min(1).optional(),
-  UBER_EATS_CLIENT_SECRET: z.string().min(1).optional(),
-  UBER_EATS_WEBHOOK_SECRET: z.string().min(1).optional(),
-  UBER_EATS_REDIRECT_URI: z.string().url().optional(),
+  // ── Uber Eats Merchant OAuth (Flujo A y B) ──
+  UBER_DEVELOPER_CLIENT_ID: z.string().min(1).optional(),
+  UBER_DEVELOPER_CLIENT_SECRET: z.string().min(1).optional(),
+  UBER_OAUTH_REDIRECT_URI: z.string().url().optional(),
+  UBER_OAUTH_AUTHORIZE_URL: z.string().url().default('https://auth.uber.com/oauth/v2/authorize'),
+  UBER_OAUTH_TOKEN_URL: z.string().url().default('https://auth.uber.com/oauth/v2/token'),
+
+  // ── Cognito M2M para Webhooks de Uber (Flujo C) ──
+  COGNITO_UBER_WEBHOOK_ALLOWED_CLIENT_ID: z.string().min(1).optional(),
+  COGNITO_UBER_WEBHOOK_REQUIRED_SCOPE: z.string().default('opendexapis.com/uber-webhooks.receive'),
+  COGNITO_ISSUER: z.string().url().optional(),
+  COGNITO_JWKS_URL: z.string().url().optional(),
+
+  // ── JWT Internal ──
+  JWT_INTERNAL_SECRET: z.string().min(1).optional(),
 
   // ── AWS (file uploads + SES email) ──
   AWS_REGION: z.string().min(1).optional(),
@@ -191,7 +201,7 @@ export function isMercadoPagoConfigured(): boolean {
 
 /** Returns true if Uber Eats OAuth integration is configured */
 export function isUberEatsConfigured(): boolean {
-  return !!(env.UBER_EATS_CLIENT_ID && env.UBER_EATS_CLIENT_SECRET);
+  return !!(env.UBER_DEVELOPER_CLIENT_ID && env.UBER_DEVELOPER_CLIENT_SECRET);
 }
 
 /** Returns the resolved base URL for webhook registrations */

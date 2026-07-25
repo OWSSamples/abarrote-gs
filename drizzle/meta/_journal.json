@@ -281,6 +281,13 @@
       "when": 1784908067200,
       "tag": "0039_known_callisto",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1785010815849,
+      "tag": "0040_long_vivisector",
+      "breakpoints": true
     }
   ]
 }

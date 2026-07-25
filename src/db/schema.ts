@@ -1514,3 +1514,7 @@ export const cfdiRecords = pgTable(
     index('cfdi_store_status_idx').on(t.storeId, t.status),
   ],
 );
+
+export * from './schema-delivery';
+export * from './schema-uber';
+

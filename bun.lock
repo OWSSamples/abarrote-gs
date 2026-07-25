@@ -21,7 +21,6 @@
         "@mercadopago/sdk-react": "^1.0.7",
         "@neondatabase/serverless": "^1.1.0",
         "@ows-global/service-auth": "^0.1.0",
-        "@phosphor-icons/react": "^2.1.10",
         "@react-three/fiber": "^9.6.1",
         "@react-three/postprocessing": "^3.0.4",
         "@sentry/nextjs": "^10.52.0",
@@ -49,11 +48,9 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "conekta": "8.0.4",
-        "crypto-js": "^4.2.0",
         "csv-parse": "^6.2.1",
         "dotenv": "^17.4.2",
         "drizzle-orm": "^0.45.2",
-        "facturapi": "^4.16.0",
         "html5-qrcode": "^2.3.8",
         "jsbarcode": "^3.12.3",
         "jspdf": "^4.2.1",
@@ -93,7 +90,6 @@
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.3",
         "@types/three": "^0.184.1",
-        "@types/w3c-web-usb": "^1.0.14",
         "@types/ws": "^8.18.1",
         "@vitest/coverage-v8": "4.1.5",
         "babel-plugin-react-compiler": "1.0.0",
@@ -1233,8 +1229,6 @@
 
     "@types/uuid": ["@types/uuid@9.0.8", "", {}, "sha512-jg+97EGIcY9AGHJJRaaPVgetKDsrTgbRjQ5Msgjh/DQKEFl0DtyRr/VCOyD1T2R1MNeWPK/u7JoGhlDZnKBAfA=="],
 
-    "@types/w3c-web-usb": ["@types/w3c-web-usb@1.0.14", "", {}, "sha512-Qu3Nn6JFuF4+sHKYl+IcX9vYiI40ogleXzFFSxoE1W94rG98o/kXs8uJ0QSfFzuwBCZWlGfUGpPkgwuuX4PchA=="],
-
     "@types/webxr": ["@types/webxr@0.5.24", "", {}, "sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg=="],
 
     "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
@@ -1920,8 +1914,6 @@
     "ext-list": ["ext-list@2.2.2", "", { "dependencies": { "mime-db": "^1.28.0" } }, "sha512-u+SQgsubraE6zItfVA0tBuCBhfU9ogSRnsvygI7wht9TS510oLkBRXBsqopeUG/GBOIQyKZO9wjTqIu/sf5zFA=="],
 
     "ext-name": ["ext-name@5.0.0", "", { "dependencies": { "ext-list": "^2.0.0", "sort-keys-length": "^1.0.0" } }, "sha512-yblEwXAbGv1VQDmow7s38W77hzAgJAO50ztBLMcUyUBfxv1HC+LGwtiEN+Co6LtlqT/5uwVOxsD4TNIilWhwdQ=="],
-
-    "facturapi": ["facturapi@4.18.0", "", {}, "sha512-HR13NU6NNEe2PB8Y76uTQLCYn/3EGxjN8Y+cGiM4ZZkzwKe3QPavBnQINWp7Mo1HTX37nlVWmuG82HPjfBjYlQ=="],
 
     "fast-deep-equal": ["fast-deep-equal@3.1.3", "", {}, "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q=="],
 

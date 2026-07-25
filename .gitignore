@@ -19,3 +19,4 @@
 # Logs and local OS files
 *.log
 .DS_Store
+index.ts

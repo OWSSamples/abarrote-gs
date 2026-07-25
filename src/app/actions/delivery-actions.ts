@@ -10,7 +10,32 @@ import {
   rejectDeliveryOrder,
   markDeliveryOrderReady,
 } from '@/infrastructure/delivery/delivery-service';
+import { env } from '@/lib/env';
 import type { DeliveryProvider } from '@/infrastructure/delivery/delivery-types';
+
+// ── Conexion ──────────────────────────────────────────────────────
+
+export async function initiateUberOAuthAction(storeId: string): Promise<{ success: boolean; authUrl?: string; error?: string }> {
+  if (!env.UBER_EATS_CLIENT_ID || !env.UBER_EATS_CLIENT_SECRET) {
+    return { success: false, error: 'Uber Eats OAuth no está configurado en el servidor' };
+  }
+
+  const redirectUri = env.UBER_EATS_REDIRECT_URI ?? `${env.BASE_URL ?? env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/api/uber/callback`;
+  const state = crypto.randomUUID();
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: env.UBER_EATS_CLIENT_ID,
+    redirect_uri: redirectUri,
+    scope: 'profile orders',
+    state,
+  });
+
+  return {
+    success: true,
+    authUrl: `https://login.uber.com/oauth/v2/authorize?${params.toString()}`,
+  };
+}
 
 // ── Conexion ──────────────────────────────────────────────────
 

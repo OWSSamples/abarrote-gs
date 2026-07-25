@@ -43,6 +43,12 @@ const envSchema = z.object({
   MP_ACCESS_TOKEN: z.string().min(1).optional(),
   MP_WEBHOOK_SECRET: z.string().min(1).optional(),
 
+  // ── Uber Eats Merchant OAuth ──
+  UBER_EATS_CLIENT_ID: z.string().min(1).optional(),
+  UBER_EATS_CLIENT_SECRET: z.string().min(1).optional(),
+  UBER_EATS_WEBHOOK_SECRET: z.string().min(1).optional(),
+  UBER_EATS_REDIRECT_URI: z.string().url().optional(),
+
   // ── AWS (file uploads + SES email) ──
   AWS_REGION: z.string().min(1).optional(),
   AWS_SES_REGION: z.string().min(1).optional(),
@@ -181,6 +187,11 @@ export function isPrivateS3Configured(): boolean {
 /** Returns true if MercadoPago integration is configured */
 export function isMercadoPagoConfigured(): boolean {
   return !!(env.MP_APP_ID && env.MP_CLIENT_SECRET);
+}
+
+/** Returns true if Uber Eats OAuth integration is configured */
+export function isUberEatsConfigured(): boolean {
+  return !!(env.UBER_EATS_CLIENT_ID && env.UBER_EATS_CLIENT_SECRET);
 }
 
 /** Returns the resolved base URL for webhook registrations */

@@ -27,15 +27,18 @@ import {
   GlobeIcon,
   MobileIcon,
   ExternalIcon,
+  AlertCircleIcon,
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import {
   connectDeliveryProviderAction,
   disconnectDeliveryProviderAction,
   getDeliveryConnectionStatusAction,
+  initiateUberOAuthAction,
 } from '@/app/actions/delivery-actions';
 import type { DeliveryProvider } from '@/infrastructure/delivery/delivery-types';
 import { parseError } from '@/lib/errors';
+import { useSearchParams } from 'next/navigation';
 
 type DeliveryIconSource = typeof GlobeIcon;
 
@@ -77,16 +80,17 @@ export function DeliveryMarketplaceSection() {
   const storeId = storeConfig.id || 'main';
 
   const [connectingProvider, setConnectingProvider] = useState<DeliveryProvider | null>(null);
-  const [installStep, setInstallStep] = useState<'installing' | 'login'>('installing');
-  const [installProgress, setInstallProgress] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [oauthStep, setOauthStep] = useState<'installing' | 'oauth' | 'success' | 'error'>('installing');
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [isOAuthSubmitting, setIsOAuthSubmitting] = useState(false);
 
   const [connections, setConnections] = useState<
     Record<DeliveryProvider, { connected: boolean; storeName?: string }>
   >({ rappi: { connected: false }, ubereats: { connected: false } });
   const [loading, setLoading] = useState<string | null>(null);
-  const [actionMsg, setActionMsg] = useState<{ success: boolean; message: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<{ success: boolean; message: string } | null>(
+    null,
+  );
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -112,7 +116,28 @@ export function DeliveryMarketplaceSection() {
     fetchStatus();
   }, [fetchStatus]);
 
-  // Handle clicking "Instalar app"
+  // Detect OAuth success from query params (set by /api/uber/callback)
+  const searchParams = useSearchParams();
+  const oauthProvider = searchParams.get('oauth');
+  const oauthDeliveredProvider = searchParams.get('provider');
+
+  useEffect(() => {
+    if (oauthProvider === 'success' && oauthDeliveredProvider === 'ubereats') {
+      setConnectingProvider(null);
+      setOauthStep('success');
+      setTimeout(() => {
+        setOauthStep('installing');
+        fetchStatus();
+      }, 3000);
+    }
+    if (oauthProvider === 'denied' || oauthProvider === 'error') {
+      setConnectingProvider(null);
+      setOauthStep('error');
+      setOauthError(searchParams.get('msg') ?? 'La autorización fue cancelada o falló');
+    }
+  }, [oauthProvider, oauthDeliveredProvider, searchParams, fetchStatus]);
+
+  // Handle clicking "Instalar app" for Uber Eats
   const handleConnect = useCallback(
     (provider: DeliveryProvider) => {
       if (provider === 'rappi') {
@@ -122,59 +147,35 @@ export function DeliveryMarketplaceSection() {
         });
         return;
       }
-
       setConnectingProvider(provider);
-      setInstallStep('installing');
-      setInstallProgress(10);
-      setFormError(null);
+      setOauthStep('installing');
+      setOauthError(null);
 
-      // Simulate installation progress animation
-      const interval = setInterval(() => {
-        setInstallProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(interval);
-            setTimeout(() => {
-              setInstallStep('login');
-            }, 400);
-            return 100;
-          }
-          return prev + 30;
-        });
-      }, 500);
+      // Simulate installation sequence: animate for 2.2s then show OAuth screen
+      const timer = setTimeout(() => setOauthStep('oauth'), 2200);
+      return () => clearTimeout(timer);
     },
     [],
   );
 
-  // Handle OAuth Login completion for Uber Eats
-  const handleCompleteUberLogin = useCallback(async () => {
-    setIsSubmitting(true);
-    setFormError(null);
-
+  // Open Uber Eats OAuth popup
+  const handleOpenUberOAuth = useCallback(async () => {
+    setIsOAuthSubmitting(true);
+    setOauthError(null);
     try {
-      const res = await connectDeliveryProviderAction({
-        storeId,
-        provider: 'ubereats',
-        providerStoreId: `uber_merchant_${storeId}`,
-        accessToken: `oauth_token_${Date.now()}`,
-        environment: 'production',
-      });
-
-      if (res.success) {
-        setActionMsg({
-          success: true,
-          message: '¡Cuenta de Uber Eats for Merchants vinculada con éxito!',
-        });
-        setConnectingProvider(null);
-        await fetchStatus();
-      } else {
-        setFormError(res.message || 'Error al vincular con Uber Eats');
+      const result = await initiateUberOAuthAction(storeId);
+      if (!result.success || !result.authUrl) {
+        setOauthError(result.error ?? 'No se pudo iniciar la conexión con Uber Eats');
+        setIsOAuthSubmitting(false);
+        return;
       }
+      window.open(result.authUrl, 'uber_oauth', 'width=650,height=750,resizable=yes,scrollbars=yes');
+      setIsOAuthSubmitting(false);
     } catch (err) {
-      setFormError(parseError(err).description);
-    } finally {
-      setIsSubmitting(false);
+      setOauthError(parseError(err).description);
+      setIsOAuthSubmitting(false);
     }
-  }, [storeId, fetchStatus]);
+  }, [storeId]);
 
   const handleDisconnect = useCallback(
     async (provider: DeliveryProvider) => {
@@ -233,29 +234,29 @@ export function DeliveryMarketplaceSection() {
         </Banner>
       )}
 
-      {/* ═══════════ INSTALLATION / LOGIN MODAL (UBER EATS) ═══════════ */}
+      {/* ═══════════ ADVANCED OAUTH MODAL (UBER EATS) ═══════════ */}
       {connectingProvider && (
         <Modal
           open={Boolean(connectingProvider)}
-          onClose={() => !isSubmitting && setConnectingProvider(null)}
-          title={installStep === 'installing' ? 'Instalando Uber Eats...' : 'Iniciar sesión en Uber Eats'}
+          onClose={() => !isOAuthSubmitting && setConnectingProvider(null)}
+          title={oauthStep === 'installing' ? 'Instalando Uber Eats...' : 'Conectar con Uber Eats'}
           primaryAction={
-            installStep === 'login'
+            oauthStep === 'oauth'
               ? {
                   content: 'Iniciar sesión con Uber Eats',
-                  onAction: handleCompleteUberLogin,
-                  loading: isSubmitting,
+                  onAction: handleOpenUberOAuth,
+                  loading: isOAuthSubmitting,
                   icon: ConnectIcon,
                 }
               : undefined
           }
           secondaryActions={
-            installStep === 'login'
+            oauthStep === 'oauth'
               ? [
                   {
                     content: 'Cancelar',
                     onAction: () => setConnectingProvider(null),
-                    disabled: isSubmitting,
+                    disabled: isOAuthSubmitting,
                   },
                 ]
               : []
@@ -263,30 +264,32 @@ export function DeliveryMarketplaceSection() {
         >
           <Modal.Section>
             <BlockStack gap="400" align="center">
-              {formError && (
-                <Banner tone="critical" onDismiss={() => setFormError(null)}>
-                  {formError}
+              {oauthError && (
+                <Banner tone="critical" onDismiss={() => setOauthError(null)}>
+                  {oauthError}
                 </Banner>
               )}
 
-              {installStep === 'installing' ? (
+              {oauthStep === 'installing' && (
                 <BlockStack gap="400" align="center">
                   <Box padding="600">
                     <BlockStack gap="400" align="center">
                       <Spinner size="large" accessibilityLabel="Instalando app" />
                       <Text variant="bodyMd" fontWeight="semibold" as="span">
-                        Configurando extensión de Uber Eats en Kiosko...
+                        Preparando la integración de Uber Eats en Kiosko...
                       </Text>
                     </BlockStack>
                   </Box>
                   <Box width="100%">
-                    <ProgressBar progress={installProgress} size="small" tone="primary" />
+                    <ProgressBar progress={75} size="small" tone="primary" />
                   </Box>
                 </BlockStack>
-              ) : (
+              )}
+
+              {oauthStep === 'oauth' && (
                 <BlockStack gap="400">
                   <Banner tone="info">
-                    Para comenzar a recibir pedidos, inicia sesión con las credenciales de administrador de tu restaurante en **Uber Eats for Merchants**.
+                    Para comenzar a recibir pedidos, inicia sesión con tu cuenta de administrador de negocio en Uber Eats. No se requieren claves API manuales.
                   </Banner>
 
                   <Box padding="400" background="bg-surface-secondary" borderRadius="200">
@@ -296,7 +299,7 @@ export function DeliveryMarketplaceSection() {
                         Uber Eats for Merchants
                       </Text>
                       <Text variant="bodySm" tone="subdued" as="p">
-                        Tus pedidos de delivery llegarán instantáneamente al sistema de Kiosko sin necesidad de configurar claves API manuales.
+                        Tus pedidos de delivery llegarán instantáneamente al sistema de Kiosko.
                       </Text>
                     </BlockStack>
                   </Box>
@@ -311,6 +314,41 @@ export function DeliveryMarketplaceSection() {
                       ¿Aún no tienes cuenta de negocio? Regístrate aquí
                     </Button>
                   </InlineStack>
+                </BlockStack>
+              )}
+
+              {oauthStep === 'success' && (
+                <BlockStack gap="400" align="center">
+                  <Box padding="600">
+                    <BlockStack gap="400" align="center">
+                      <Icon source={CheckCircleIcon} tone="success" />
+                      <Text variant="bodyMd" fontWeight="semibold" as="span">
+                        ¡Cuenta de Uber Eats conectada exitosamente!
+                      </Text>
+                      <Text variant="bodySm" tone="subdued" as="p">
+                        Tu tienda ya está vinculada. Los pedidos aparecerán automáticamente en Kiosko.
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                </BlockStack>
+              )}
+
+              {oauthStep === 'error' && (
+                <BlockStack gap="400" align="center">
+                  <Box padding="600">
+                    <BlockStack gap="400" align="center">
+                      <Icon source={AlertCircleIcon} tone="critical" />
+                      <Text variant="bodyMd" fontWeight="semibold" as="span">
+                        Error al conectar con Uber Eats
+                      </Text>
+                      <Text variant="bodySm" tone="subdued" as="p">
+                        {oauthError ?? 'Ocurrió un error inesperado. Intenta de nuevo.'}
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                  <Button variant="primary" onClick={() => { setOauthStep('oauth'); setOauthError(null); }}>
+                    Reintentar
+                  </Button>
                 </BlockStack>
               )}
             </BlockStack>

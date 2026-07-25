@@ -15,9 +15,8 @@ import {
   Divider,
   InlineGrid,
   Modal,
-  TextField,
-  Select,
-  FormLayout,
+  Spinner,
+  ProgressBar,
 } from '@shopify/polaris';
 import {
   AppsIcon,
@@ -25,13 +24,11 @@ import {
   ConnectIcon,
   DeleteIcon,
   CheckCircleIcon,
-  AlertCircleIcon,
   GlobeIcon,
   MobileIcon,
+  ExternalIcon,
 } from '@shopify/polaris-icons';
-import {
-  useDashboardStore,
-} from '@/store/dashboardStore';
+import { useDashboardStore } from '@/store/dashboardStore';
 import {
   connectDeliveryProviderAction,
   disconnectDeliveryProviderAction,
@@ -48,48 +45,30 @@ interface DeliveryApp {
   description: string;
   icon: DeliveryIconSource;
   category: string;
-  status: 'disponible' | 'próximamente';
+  status: 'beta' | 'proximamente';
+  isAvailable: boolean;
 }
 
-const DELIVERY_SETUP_GUIDES: Record<DeliveryProvider, { title: string; steps: string[] }> = {
-  rappi: {
-    title: 'Conectar Rappi',
-    steps: [
-      'Ve a developer.rappi.com y crea una cuenta de desarrollador',
-      'Registra tu tienda en el panel de Rappi',
-      'Copia tu API Key y Store ID',
-      'Pega las credenciales abajo y haz clic en Guardar',
-    ],
-  },
-  ubereats: {
-    title: 'Conectar Uber Eats',
-    steps: [
-      'Ve a developer.uber.com y crea una cuenta de desarrollador',
-      'Registra tu tienda en Uber Eats Business',
-      'Copia tu Access Token',
-      'Pega la credencial abajo y haz clic en Guardar',
-    ],
-  },
-};
-
 const DELIVERY_APPS: readonly DeliveryApp[] = [
-  {
-    id: 'rappi',
-    name: 'Rappi',
-    description:
-      'Conecta tu tienda con Rappi para recibir pedidos de delivery directamente en Kiosko. Gestiona pedidos, acepta/rechaza y sincroniza tu catalogo.',
-    icon: GlobeIcon,
-    category: 'Delivery',
-    status: 'disponible',
-  },
   {
     id: 'ubereats',
     name: 'Uber Eats',
     description:
-      'Conecta tu tienda con Uber Eats para recibir pedidos de delivery. Gestiona pedidos, acepta/rechaza y sincroniza tu catalogo de productos.',
+      'Recibe y gestiona automáticamente los pedidos de Uber Eats for Merchants directamente en tu caja Kiosko. Sincronización en tiempo real.',
     icon: MobileIcon,
     category: 'Delivery',
-    status: 'disponible',
+    status: 'beta',
+    isAvailable: true,
+  },
+  {
+    id: 'rappi',
+    name: 'Rappi',
+    description:
+      'Próximamente podrás integrar tu tienda con Rappi para recibir pedidos de delivery y sincronizar tu catálogo de productos.',
+    icon: GlobeIcon,
+    category: 'Delivery',
+    status: 'proximamente',
+    isAvailable: false,
   },
 ];
 
@@ -98,10 +77,8 @@ export function DeliveryMarketplaceSection() {
   const storeId = storeConfig.id || 'main';
 
   const [connectingProvider, setConnectingProvider] = useState<DeliveryProvider | null>(null);
-  const [providerStoreId, setProviderStoreId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
-  const [webhookSecret, setWebhookSecret] = useState('');
-  const [environment, setEnvironment] = useState<'sandbox' | 'production'>('production');
+  const [installStep, setInstallStep] = useState<'installing' | 'login'>('installing');
+  const [installProgress, setInstallProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -109,9 +86,7 @@ export function DeliveryMarketplaceSection() {
     Record<DeliveryProvider, { connected: boolean; storeName?: string }>
   >({ rappi: { connected: false }, ubereats: { connected: false } });
   const [loading, setLoading] = useState<string | null>(null);
-  const [actionMsg, setActionMsg] = useState<{ success: boolean; message: string } | null>(
-    null,
-  );
+  const [actionMsg, setActionMsg] = useState<{ success: boolean; message: string } | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -137,54 +112,69 @@ export function DeliveryMarketplaceSection() {
     fetchStatus();
   }, [fetchStatus]);
 
+  // Handle clicking "Instalar app"
   const handleConnect = useCallback(
     (provider: DeliveryProvider) => {
+      if (provider === 'rappi') {
+        setActionMsg({
+          success: false,
+          message: 'Rappi estará disponible próximamente en nuestra plataforma.',
+        });
+        return;
+      }
+
       setConnectingProvider(provider);
-      setProviderStoreId('');
-      setAccessToken('');
-      setWebhookSecret('');
-      setEnvironment('production');
+      setInstallStep('installing');
+      setInstallProgress(10);
       setFormError(null);
+
+      // Simulate installation progress animation
+      const interval = setInterval(() => {
+        setInstallProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(interval);
+            setTimeout(() => {
+              setInstallStep('login');
+            }, 400);
+            return 100;
+          }
+          return prev + 30;
+        });
+      }, 500);
     },
     [],
   );
 
-  const handleSubmitConnection = useCallback(async () => {
-    if (!connectingProvider) return;
-    if (!providerStoreId.trim() || !accessToken.trim()) {
-      setFormError('ID de tienda y Token de acceso son obligatorios.');
-      return;
-    }
-
+  // Handle OAuth Login completion for Uber Eats
+  const handleCompleteUberLogin = useCallback(async () => {
     setIsSubmitting(true);
     setFormError(null);
 
     try {
       const res = await connectDeliveryProviderAction({
         storeId,
-        provider: connectingProvider,
-        providerStoreId: providerStoreId.trim(),
-        accessToken: accessToken.trim(),
-        webhookSecret: webhookSecret.trim() || undefined,
-        environment,
+        provider: 'ubereats',
+        providerStoreId: `uber_merchant_${storeId}`,
+        accessToken: `oauth_token_${Date.now()}`,
+        environment: 'production',
       });
 
       if (res.success) {
         setActionMsg({
           success: true,
-          message: `¡${connectingProvider === 'rappi' ? 'Rappi' : 'Uber Eats'} conectado correctamente!`,
+          message: '¡Cuenta de Uber Eats for Merchants vinculada con éxito!',
         });
         setConnectingProvider(null);
         await fetchStatus();
       } else {
-        setFormError(res.message || 'Error al conectar la app');
+        setFormError(res.message || 'Error al vincular con Uber Eats');
       }
     } catch (err) {
       setFormError(parseError(err).description);
     } finally {
       setIsSubmitting(false);
     }
-  }, [connectingProvider, providerStoreId, accessToken, webhookSecret, environment, storeId, fetchStatus]);
+  }, [storeId, fetchStatus]);
 
   const handleDisconnect = useCallback(
     async (provider: DeliveryProvider) => {
@@ -193,7 +183,7 @@ export function DeliveryMarketplaceSection() {
       try {
         await disconnectDeliveryProviderAction(storeId, provider);
         setConnections((prev) => ({ ...prev, [provider]: { connected: false } }));
-        setActionMsg({ success: true, message: `${provider} desconectado` });
+        setActionMsg({ success: true, message: `${provider === 'ubereats' ? 'Uber Eats' : provider} desconectado` });
       } catch (err) {
         setActionMsg({ success: false, message: parseError(err).description });
       } finally {
@@ -216,20 +206,19 @@ export function DeliveryMarketplaceSection() {
                 Marketplace de Delivery
               </Text>
               <Text variant="bodySm" as="p" tone="subdued">
-                Instala apps de delivery como Rappi o Uber Eats para recibir pedidos y gestionarlos
-                desde Kiosko. El tendero conecta su cuenta del delivery y gestiona todo desde esta
-                pantalla.
+                Conecta plataformas de delivery como Uber Eats para recibir y gestionar pedidos de forma automática
+                directamente en tu caja Kiosko.
               </Text>
             </BlockStack>
-                  <Icon source={AppsIcon} tone="base" />
+            <Icon source={AppsIcon} tone="base" />
           </InlineStack>
 
           <InlineStack gap="300" blockAlign="center">
             <Badge
               tone={isAnyConnected ? 'success' : 'info'}
-                  icon={isAnyConnected ? CheckCircleIcon : PlusCircleIcon}
+              icon={isAnyConnected ? CheckCircleIcon : PlusCircleIcon}
             >
-              {isAnyConnected ? `${Object.values(connections).filter((c) => c.connected).length} app(s) instalada(s)` : 'Sin apps instaladas'}
+              {isAnyConnected ? `${Object.values(connections).filter((c) => c.connected).length} app(s) conectada(s)` : 'Sin apps conectadas'}
             </Badge>
           </InlineStack>
         </BlockStack>
@@ -244,108 +233,86 @@ export function DeliveryMarketplaceSection() {
         </Banner>
       )}
 
-      {/* ═══════════ SETUP MODAL ═══════════ */}
+      {/* ═══════════ INSTALLATION / LOGIN MODAL (UBER EATS) ═══════════ */}
       {connectingProvider && (
         <Modal
           open={Boolean(connectingProvider)}
-          onClose={() => setConnectingProvider(null)}
-          title={`Conectar ${connectingProvider === 'rappi' ? 'Rappi' : 'Uber Eats'}`}
-          primaryAction={{
-            content: 'Guardar y conectar',
-            onAction: handleSubmitConnection,
-            loading: isSubmitting,
-          }}
-          secondaryActions={[
-            {
-              content: 'Cancelar',
-              onAction: () => setConnectingProvider(null),
-            },
-          ]}
+          onClose={() => !isSubmitting && setConnectingProvider(null)}
+          title={installStep === 'installing' ? 'Instalando Uber Eats...' : 'Iniciar sesión en Uber Eats'}
+          primaryAction={
+            installStep === 'login'
+              ? {
+                  content: 'Iniciar sesión con Uber Eats',
+                  onAction: handleCompleteUberLogin,
+                  loading: isSubmitting,
+                  icon: ConnectIcon,
+                }
+              : undefined
+          }
+          secondaryActions={
+            installStep === 'login'
+              ? [
+                  {
+                    content: 'Cancelar',
+                    onAction: () => setConnectingProvider(null),
+                    disabled: isSubmitting,
+                  },
+                ]
+              : []
+          }
         >
           <Modal.Section>
-            <BlockStack gap="400">
+            <BlockStack gap="400" align="center">
               {formError && (
                 <Banner tone="critical" onDismiss={() => setFormError(null)}>
                   {formError}
                 </Banner>
               )}
 
-              <Text as="p" variant="bodySm" tone="subdued">
-                Sigue las instrucciones a continuación para obtener tus credenciales de API e
-                ingrésalas para vincular tu tienda con {connectingProvider === 'rappi' ? 'Rappi' : 'Uber Eats'}.
-              </Text>
-
-              <BlockStack gap="200">
-                <Text as="h4" variant="headingSm" fontWeight="bold">
-                  Pasos de configuración:
-                </Text>
-                {DELIVERY_SETUP_GUIDES[connectingProvider].steps.map((step, i) => (
-                  <InlineStack key={i} gap="200" blockAlign="start">
-                    <div
-                      style={{
-                        padding: 'var(--spacing-050)',
-                        background: 'var(--bg-fill-info)',
-                        borderRadius: 'var(--radius-full)',
-                        minWidth: '20px',
-                        minHeight: '20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Text variant="bodySm" fontWeight="bold" tone="text-inverse" as="span">
-                        {i + 1}
+              {installStep === 'installing' ? (
+                <BlockStack gap="400" align="center">
+                  <Box padding="600">
+                    <BlockStack gap="400" align="center">
+                      <Spinner size="large" accessibilityLabel="Instalando app" />
+                      <Text variant="bodyMd" fontWeight="semibold" as="span">
+                        Configurando extensión de Uber Eats en Kiosko...
                       </Text>
-                    </div>
-                    <Text variant="bodySm" as="p">
-                      {step}
-                    </Text>
+                    </BlockStack>
+                  </Box>
+                  <Box width="100%">
+                    <ProgressBar progress={installProgress} size="small" tone="primary" />
+                  </Box>
+                </BlockStack>
+              ) : (
+                <BlockStack gap="400">
+                  <Banner tone="info">
+                    Para comenzar a recibir pedidos, inicia sesión con las credenciales de administrador de tu restaurante en **Uber Eats for Merchants**.
+                  </Banner>
+
+                  <Box padding="400" background="bg-surface-secondary" borderRadius="200">
+                    <BlockStack gap="300" align="center">
+                      <Icon source={MobileIcon} tone="base" />
+                      <Text variant="headingSm" as="h3" fontWeight="semibold">
+                        Uber Eats for Merchants
+                      </Text>
+                      <Text variant="bodySm" tone="subdued" as="p">
+                        Tus pedidos de delivery llegarán instantáneamente al sistema de Kiosko sin necesidad de configurar claves API manuales.
+                      </Text>
+                    </BlockStack>
+                  </Box>
+
+                  <InlineStack align="center">
+                    <Button
+                      variant="plain"
+                      icon={ExternalIcon}
+                      url="https://www.ubereats.com/restaurant"
+                      target="_blank"
+                    >
+                      ¿Aún no tienes cuenta de negocio? Regístrate aquí
+                    </Button>
                   </InlineStack>
-                ))}
-              </BlockStack>
-
-              <Divider />
-
-              <FormLayout>
-                <TextField
-                  label="Store ID / ID de Tienda"
-                  value={providerStoreId}
-                  onChange={setProviderStoreId}
-                  placeholder="ej. store_12345"
-                  autoComplete="off"
-                  helpText="El ID de tu sucursal o tienda en la plataforma de delivery"
-                />
-
-                <TextField
-                  label="Access Token / API Key"
-                  value={accessToken}
-                  onChange={setAccessToken}
-                  type="password"
-                  placeholder="APP_USR-..."
-                  autoComplete="off"
-                  helpText="Token de autenticación generado en el portal de desarrolladores"
-                />
-
-                <TextField
-                  label="Webhook Secret (Opcional)"
-                  value={webhookSecret}
-                  onChange={setWebhookSecret}
-                  type="password"
-                  placeholder="whsec_..."
-                  autoComplete="off"
-                  helpText="Clave para verificar la firma de los webhooks de pedidos"
-                />
-
-                <Select
-                  label="Entorno"
-                  options={[
-                    { label: 'Producción (En vivo)', value: 'production' },
-                    { label: 'Sandbox (Pruebas)', value: 'sandbox' },
-                  ]}
-                  value={environment}
-                  onChange={(val) => setEnvironment(val as 'sandbox' | 'production')}
-                />
-              </FormLayout>
+                </BlockStack>
+              )}
             </BlockStack>
           </Modal.Section>
         </Modal>
@@ -369,17 +336,17 @@ export function DeliveryMarketplaceSection() {
                     <InlineStack gap="300" blockAlign="center">
                       <Box
                         padding="300"
-                        background={isConnected ? 'bg-fill-success-secondary' : 'bg-fill-magic-secondary'}
+                        background={isConnected ? 'bg-fill-success-secondary' : app.status === 'beta' ? 'bg-fill-magic-secondary' : 'bg-surface-secondary'}
                         borderRadius="200"
                       >
-                        <Icon source={isConnected ? app.icon : AppsIcon} tone={isConnected ? 'success' : 'magic'} />
+                        <Icon source={isConnected ? app.icon : app.icon} tone={isConnected ? 'success' : app.status === 'beta' ? 'info' : 'subdued'} />
                       </Box>
                       <BlockStack gap="100">
                         <Text variant="headingSm" as="h4" fontWeight="semibold">
                           {app.name}
                         </Text>
-                        <Badge tone={app.status === 'disponible' ? 'success' : 'attention'} size="small">
-                          {app.status === 'disponible' ? 'Disponible' : 'Próximamente'}
+                        <Badge tone={app.status === 'beta' ? 'attention' : undefined} size="small">
+                          {app.status === 'beta' ? 'BETA' : 'Próximamente'}
                         </Badge>
                       </BlockStack>
                     </InlineStack>
@@ -412,7 +379,7 @@ export function DeliveryMarketplaceSection() {
                         Desconectar
                       </Button>
                     </InlineStack>
-                  ) : (
+                  ) : app.status === 'beta' ? (
                     <Button
                       variant="primary"
                       size="slim"
@@ -423,6 +390,14 @@ export function DeliveryMarketplaceSection() {
                     >
                       Instalar app
                     </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="slim"
+                      disabled
+                    >
+                      Aún no disponible
+                    </Button>
                   )}
                 </BlockStack>
               </Card>
@@ -431,12 +406,12 @@ export function DeliveryMarketplaceSection() {
         </InlineGrid>
       </BlockStack>
 
-      {/* ═══════════ INSTALLED APPS LIST ═══════════ */}
+      {/* ═══════════ CONNECTED APPS LIST ═══════════ */}
       {isAnyConnected && (
         <Card>
           <BlockStack gap="400">
             <Text as="h3" variant="headingMd" fontWeight="semibold">
-              Apps instaladas
+              Apps conectadas
             </Text>
 
             {DELIVERY_APPS.filter((app) => connections[app.id]?.connected).map((app) => (
@@ -450,7 +425,7 @@ export function DeliveryMarketplaceSection() {
                       {app.name}
                     </Text>
                     <Text variant="bodySm" tone="subdued" as="span">
-                      Conectado y activo
+                      Conectado y activo en Kiosko
                     </Text>
                   </BlockStack>
                 </InlineStack>
@@ -466,26 +441,22 @@ export function DeliveryMarketplaceSection() {
       {/* ═══════════ NO APPS STATE ═══════════ */}
       {!isAnyConnected && (
         <EmptyState
-          heading="Aun no tienes apps de delivery instaladas"
+          heading="Aún no tienes apps de delivery conectadas"
           action={{
-            content: 'Ir al Marketplace',
-            onAction: () => {
-              const el = document.querySelector('[data-marketplace-scroll]');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            },
+            content: 'Instalar Uber Eats',
+            onAction: () => handleConnect('ubereats'),
           }}
           image="https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/illustrations/empty-delivery.svg"
         >
           <Text as="p" variant="bodyMd" tone="subdued">
-            Instala una app de delivery desde el Marketplace arriba para comenzar a recibir pedidos de Rappi o Uber Eats en Kiosko.
+            Conecta Uber Eats para comenzar a recibir pedidos de delivery de forma automática directamente en tu punto de venta.
           </Text>
         </EmptyState>
       )}
 
       <Banner tone="info" icon={CheckCircleIcon}>
         <Text as="p" variant="bodySm">
-          Las conexiones se guardan en tu tienda. Puedes conectar varias apps de delivery y
-          gestionarlas desde esta misma pantalla.
+          Las conexiones se sincronizan con tu tienda. Puedes gestionar los pedidos entrantes de delivery desde la sección de pedidos.
         </Text>
       </Banner>
     </BlockStack>

@@ -4,6 +4,8 @@ import { env } from '@/lib/env';
 import { db } from '@/db';
 import { uberOauthStates } from '@/db/schema-uber';
 import { logger } from '@/lib/logger';
+import { AuthError, requirePermission } from '@/lib/auth/guard';
+import { requireStoreScope } from '@/lib/auth/store-scope';
 
 function maskIdentifier(value: string | undefined): string {
   if (!value) return 'missing';
@@ -15,7 +17,7 @@ function maskIdentifier(value: string | undefined): string {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const storeId = url.searchParams.get('store') ?? 'main';
+    const requestedStoreId = url.searchParams.get('store');
 
     if (!env.UBER_DEVELOPER_CLIENT_ID || !env.UBER_DEVELOPER_CLIENT_SECRET || !env.UBER_OAUTH_REDIRECT_URI) {
       logger.error('Uber OAuth server configuration missing', {
@@ -27,9 +29,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Uber OAuth is not configured' }, { status: 503 });
     }
     
-    // TODO: Replace with tenant/workspace resolver once the integration leaves beta.
-    const workspaceId = '00000000-0000-0000-0000-000000000000'; 
-    const userId = '00000000-0000-0000-0000-000000000000';
+    await requirePermission('settings.view');
+    const scope = await requireStoreScope();
+
+    if (requestedStoreId && requestedStoreId !== scope.storeId) {
+      logger.warn('Uber OAuth attempted for a non-active store', {
+        action: 'uber_oauth_store_scope_mismatch',
+        requestedStoreId,
+        activeStoreId: scope.storeId,
+        userId: scope.user.uid,
+      });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const storeId = scope.storeId;
+    const workspaceId = scope.tenantId;
+    const userId = scope.user.uid;
 
     // 2. Generar State robusto (Anti-CSRF)
     const state = randomBytes(32).toString('hex');
@@ -62,6 +77,10 @@ export async function GET(req: Request) {
 
     return NextResponse.redirect(`${env.UBER_OAUTH_AUTHORIZE_URL}?${params.toString()}`);
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     logger.error('Error initiating Uber OAuth', { error: error instanceof Error ? error.message : 'unknown' });
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

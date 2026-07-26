@@ -12,6 +12,11 @@ export const runtime = 'nodejs';
 // Remote JWKS para validar tokens de Cognito M2M
 const JWKS = env.COGNITO_JWKS_URL ? createRemoteJWKSet(new URL(env.COGNITO_JWKS_URL)) : null;
 
+function hasRequiredScope(scope: unknown): boolean {
+  if (typeof scope !== 'string') return false;
+  return scope.split(/\s+/).includes(env.COGNITO_UBER_WEBHOOK_REQUIRED_SCOPE);
+}
+
 export async function POST(req: Request) {
   const requestId = randomUUID();
   const rawBody = await req.text();
@@ -19,8 +24,25 @@ export async function POST(req: Request) {
   const authHeader = req.headers.get('Authorization');
 
   try {
+    if (
+      !JWKS ||
+      !env.COGNITO_ISSUER ||
+      !env.COGNITO_UBER_WEBHOOK_ALLOWED_CLIENT_ID ||
+      !env.UBER_DEVELOPER_CLIENT_SECRET
+    ) {
+      logger.error('Uber webhook server configuration missing', {
+        requestId,
+        action: 'uber_webhook_config_missing',
+        hasJwks: Boolean(JWKS),
+        hasIssuer: Boolean(env.COGNITO_ISSUER),
+        hasAllowedClientId: Boolean(env.COGNITO_UBER_WEBHOOK_ALLOWED_CLIENT_ID),
+        hasUberClientSecret: Boolean(env.UBER_DEVELOPER_CLIENT_SECRET),
+      });
+      return new NextResponse(null, { status: 503 });
+    }
+
     // 1. Validar Bearer Token de Cognito (Flujo M2M)
-    if (!JWKS || !authHeader?.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return new NextResponse(null, { status: 401 });
     }
 
@@ -30,15 +52,20 @@ export async function POST(req: Request) {
     });
 
     // Validar Client ID y Scope de Cognito
-    if (payload.client_id !== env.COGNITO_UBER_WEBHOOK_ALLOWED_CLIENT_ID) {
+    if (payload.client_id !== env.COGNITO_UBER_WEBHOOK_ALLOWED_CLIENT_ID || !hasRequiredScope(payload.scope)) {
       return new NextResponse(null, { status: 403 });
     }
 
     // 2. Validar Firma HMAC de Uber
     if (!signature) return new NextResponse(null, { status: 401 });
     
-    const hmac = createHmac('sha256', env.UBER_DEVELOPER_CLIENT_SECRET || '');
+    const hmac = createHmac('sha256', env.UBER_DEVELOPER_CLIENT_SECRET);
     const digest = hmac.update(rawBody).digest('hex');
+
+    if (signature.length !== digest.length) {
+      logger.warn('Invalid Uber Webhook Signature length', { requestId });
+      return new NextResponse(null, { status: 401 });
+    }
 
     if (!timingSafeEqual(Buffer.from(signature), Buffer.from(digest))) {
       logger.warn('Invalid Uber Webhook Signature', { requestId });

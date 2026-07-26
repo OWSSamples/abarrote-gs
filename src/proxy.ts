@@ -130,27 +130,30 @@ const cognitoOrigins = [
   .filter(Boolean)
   .join(' ');
 
-const scriptSrc = isDev
-  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://sdk.mercadopago.com"
-  : "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://sdk.mercadopago.com";
+function buildCsp(nonce: string): string {
+  const scriptSrc = isDev
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval' https://www.gstatic.com https://sdk.mercadopago.com`
+    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.gstatic.com https://sdk.mercadopago.com`;
 
-const CSP = [
-  "default-src 'self'",
-  scriptSrc,
-  "worker-src 'self' blob:",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.shopify.com",
-  "font-src 'self' data: https://fonts.gstatic.com https://cdn.shopify.com",
-  "img-src 'self' data: blob: https://*.amazonaws.com https://*.mlstatic.com",
-  `connect-src 'self' https://*.neon.tech wss://*.neon.tech https://*.upstash.io https://api.mercadopago.com https://api.stripe.com https://api.conekta.io https://api.telegram.org https://*.amazonaws.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io ${cognitoOrigins}`,
-  "frame-src 'self' blob:",
-  "frame-ancestors 'none'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  'upgrade-insecure-requests',
-].join('; ');
+  return [
+    "default-src 'self'",
+    scriptSrc,
+    "worker-src 'self' blob:",
+    `style-src-elem 'self' 'nonce-${nonce}' https://fonts.googleapis.com https://cdn.shopify.com`,
+    "style-src-attr 'unsafe-inline'",
+    "font-src 'self' data: https://fonts.gstatic.com https://cdn.shopify.com",
+    "img-src 'self' data: blob: https://*.amazonaws.com https://*.mlstatic.com",
+    `connect-src 'self' https://*.neon.tech wss://*.neon.tech https://*.upstash.io https://api.mercadopago.com https://api.stripe.com https://api.conekta.io https://api.telegram.org https://*.amazonaws.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io ${cognitoOrigins}`,
+    "frame-src 'self' blob:",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    'upgrade-insecure-requests',
+  ].join('; ');
+}
 
-function applySecurityHeaders(response: NextResponse): NextResponse {
+function applySecurityHeaders(response: NextResponse, nonce: string): NextResponse {
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -176,7 +179,7 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
     response.headers.set('Expires', '0');
   }
 
-  response.headers.set('Content-Security-Policy', CSP);
+  response.headers.set('Content-Security-Policy', buildCsp(nonce));
 
   response.headers.set('X-Robots-Tag', 'noindex, nofollow');
 
@@ -211,15 +214,19 @@ const ASSET_FETCH_DESTS = new Set([
 
 export async function proxy(request: Parameters<typeof authHandler>[0]) {
   const req = request as NextRequest;
+  const nonce = btoa(crypto.randomUUID());
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', buildCsp(nonce));
 
   // 1. Block bots and scanners at the edge
   if (isBlockedBot(req)) {
-    return new NextResponse('Forbidden', { status: 403 });
+    return applySecurityHeaders(new NextResponse('Forbidden', { status: 403 }), nonce);
   }
 
   // 2. Block suspicious scanner probe paths
   if (isSuspiciousPath(req)) {
-    return new NextResponse('Not Found', { status: 404 });
+    return applySecurityHeaders(new NextResponse('Not Found', { status: 404 }), nonce);
   }
 
   // 2b. Let browser asset requests through untouched so we never
@@ -227,13 +234,13 @@ export async function proxy(request: Parameters<typeof authHandler>[0]) {
   // BotID's UUID-based script paths.
   const secFetchDest = req.headers.get('sec-fetch-dest');
   if (secFetchDest && ASSET_FETCH_DESTS.has(secFetchDest)) {
-    return applySecurityHeaders(NextResponse.next());
+    return applySecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
   }
 
   // 3. CSRF check for all state-mutating requests
   const csrfResponse = csrfCheck(req);
   if (csrfResponse) {
-    return applySecurityHeaders(csrfResponse);
+    return applySecurityHeaders(csrfResponse, nonce);
   }
 
   // 4. Request-ID for tracing / observability
@@ -250,11 +257,14 @@ export async function proxy(request: Parameters<typeof authHandler>[0]) {
   });
 
   // 6. Auth check + session handling (via auth.middleware)
-  const response = await authHandler(request);
+  const authResponse = await authHandler(request);
+  const response = authResponse.headers.get('location')
+    ? authResponse
+    : NextResponse.next({ request: { headers: requestHeaders } });
 
   // Apply security headers + request-ID to all responses
   if (response) {
-    applySecurityHeaders(response);
+    applySecurityHeaders(response, nonce);
     response.headers.set('x-request-id', requestId);
 
     // Structured response logging

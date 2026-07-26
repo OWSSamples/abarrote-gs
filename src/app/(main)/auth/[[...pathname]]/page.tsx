@@ -1,26 +1,18 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
-import { AuthLayout } from '@/components/auth/AuthLayout';
+import {
+  AuthLayout,
+  LoginForm,
+  RegisterForm,
+  ForgotPasswordForm,
+  ResetPasswordForm,
+  MfaRecoveryForm,
+  AcceptInvitationForm,
+} from '@/components/auth';
+import { AuthCallbackHandler } from '@/components/auth/AuthCallbackHandler';
 import { Toaster } from 'sileo';
 import 'sileo/styles.css';
-
-const LoginForm = dynamic(() => import('@/components/auth/LoginForm').then((mod) => mod.LoginForm));
-const RegisterForm = dynamic(() => import('@/components/auth/RegisterForm').then((mod) => mod.RegisterForm));
-const ForgotPasswordForm = dynamic(() =>
-  import('@/components/auth/ForgotPasswordForm').then((mod) => mod.ForgotPasswordForm),
-);
-const ResetPasswordForm = dynamic(() =>
-  import('@/components/auth/ResetPasswordForm').then((mod) => mod.ResetPasswordForm),
-);
-const MfaRecoveryForm = dynamic(() => import('@/components/auth/MfaRecoveryForm').then((mod) => mod.MfaRecoveryForm));
-const AcceptInvitationForm = dynamic(() =>
-  import('@/components/auth/AcceptInvitationForm').then((mod) => mod.AcceptInvitationForm),
-);
-const AuthCallbackHandler = dynamic(() =>
-  import('@/components/auth/AuthCallbackHandler').then((mod) => mod.AuthCallbackHandler),
-);
 
 export default function AuthPage() {
   const params = useParams();

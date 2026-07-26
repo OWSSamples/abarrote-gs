@@ -15,7 +15,6 @@ import {
 import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
 import { Button } from '@cloudflare/kumo/components/button';
 import { Input } from '@cloudflare/kumo/components/input';
-import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { SensitiveInput } from '@cloudflare/kumo/components/sensitive-input';
 import { Text } from '@cloudflare/kumo/components/text';
 import { Link } from '@cloudflare/kumo/components/link';
@@ -386,7 +385,7 @@ export function LoginForm() {
       {requiresMfa ? (
         <>
           {totpSetup ? (
-            <LayerCard.Secondary>
+            <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
               <div className="space-y-1">
                 <Text variant="heading2" as="h1">
                   Configuración de Seguridad
@@ -395,9 +394,9 @@ export function LoginForm() {
                   Escanea el código QR con tu app autenticadora.
                 </Text>
               </div>
-            </LayerCard.Secondary>
+            </div>
           ) : (
-            <LayerCard.Secondary>
+            <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
               <div className="flex flex-col items-center gap-3 text-center">
                 <div className="flex size-18 shrink-0 items-center justify-center rounded-full bg-kumo-recessed">
                   <ShieldKeyhole24Filled className="text-kumo-secondary" />
@@ -417,10 +416,10 @@ export function LoginForm() {
                       : `Ingresa el código que enviamos a ${email || 'tu correo electrónico'}.`}
                 </Text>
               </div>
-            </LayerCard.Secondary>
+            </div>
           )}
 
-          <LayerCard.Primary className="gap-4">
+          <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
             <form onSubmit={handleMfaCode} className="space-y-4">
               {totpSetup && (
                 <div className="flex flex-col items-center gap-4 rounded-lg bg-kumo-recessed p-3">
@@ -476,11 +475,11 @@ export function LoginForm() {
                 </div>
               </>
             )}
-          </LayerCard.Primary>
+          </div>
         </>
       ) : requiresNewPassword ? (
         <>
-          <LayerCard.Secondary>
+          <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
             <div className="space-y-1">
               <Text variant="heading2" as="h1">
                 Establece tu contraseña
@@ -489,9 +488,9 @@ export function LoginForm() {
                 Crea una contraseña segura para tu cuenta.
               </Text>
             </div>
-          </LayerCard.Secondary>
+          </div>
 
-          <LayerCard.Primary className="gap-4">
+          <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
             <form onSubmit={handleNewPassword} className="space-y-4">
               <SensitiveInput
                 label="Nueva contraseña"
@@ -512,11 +511,11 @@ export function LoginForm() {
                 Guardar contraseña
               </Button>
             </form>
-          </LayerCard.Primary>
+          </div>
         </>
       ) : (
         <>
-          <LayerCard.Secondary>
+          <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
             <div className="space-y-0.5">
               <Text variant="heading2" as="h1">
                 Iniciar sesión
@@ -525,9 +524,9 @@ export function LoginForm() {
                 Ingresa tus credenciales para acceder a OKW.
               </Text>
             </div>
-          </LayerCard.Secondary>
+          </div>
 
-          <LayerCard.Primary className="gap-4">
+          <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
             <div className="space-y-2">
               <Button variant="secondary" className="w-full justify-center" disabled onClick={handleMicrosoftLogin} icon={<BrandLogo name="Microsoft" size={16} />}>
                 Microsoft
@@ -577,7 +576,7 @@ export function LoginForm() {
                 Crear cuenta
               </Link>
             </Text>
-          </LayerCard.Primary>
+          </div>
         </>
       )}
     </>

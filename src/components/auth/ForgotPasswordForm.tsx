@@ -14,7 +14,6 @@ import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/security/redac
 import { Banner } from '@cloudflare/kumo/components/banner';
 import { Button, buttonVariants } from '@cloudflare/kumo/components/button';
 import { Input } from '@cloudflare/kumo/components/input';
-import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { Link } from '@cloudflare/kumo/components/link';
 import { SensitiveInput } from '@cloudflare/kumo/components/sensitive-input';
 import { Text } from '@cloudflare/kumo/components/text';
@@ -285,7 +284,7 @@ export function ForgotPasswordForm() {
   if (step === 'success') {
     return (
       <>
-        <LayerCard.Secondary data-auth-layout="compact">
+        <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle" data-auth-layout="compact">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex size-12 items-center justify-center rounded-full bg-kumo-success-tint/70">
               <CheckmarkCircle24Filled className="text-kumo-success" />
@@ -299,16 +298,16 @@ export function ForgotPasswordForm() {
               </Text>
             </div>
           </div>
-        </LayerCard.Secondary>
+        </div>
 
-        <LayerCard.Primary>
+        <div className="relative flex flex-col gap-2 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
           <NextLink
             href="/auth/login"
             className={`${buttonVariants({ variant: 'primary', size: 'lg' })} w-full justify-center`}
           >
             Ir al inicio de sesión
           </NextLink>
-        </LayerCard.Primary>
+        </div>
       </>
     );
   }
@@ -316,7 +315,7 @@ export function ForgotPasswordForm() {
   if (step === 'confirm') {
     return (
       <>
-        <LayerCard.Secondary data-auth-layout="compact">
+        <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle" data-auth-layout="compact">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex size-12 items-center justify-center rounded-full bg-kumo-recessed">
               <LockClosedKey24Filled className="text-kumo-secondary" />
@@ -330,9 +329,9 @@ export function ForgotPasswordForm() {
               </Text>
             </div>
           </div>
-        </LayerCard.Secondary>
+        </div>
 
-        <LayerCard.Primary className="gap-4">
+        <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
           <div aria-live="polite" className="sr-only">
             {isLoading ? 'Procesando solicitud de recuperación' : deliveryMessage}
           </div>
@@ -408,14 +407,14 @@ export function ForgotPasswordForm() {
               Usar otro correo
             </Button>
           </div>
-        </LayerCard.Primary>
+        </div>
       </>
     );
   }
 
   return (
     <>
-      <LayerCard.Secondary data-auth-layout="compact">
+      <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle" data-auth-layout="compact">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex size-12 items-center justify-center rounded-full bg-kumo-recessed">
             <LockClosedKey24Filled className="text-kumo-secondary" />
@@ -429,9 +428,9 @@ export function ForgotPasswordForm() {
             </Text>
           </div>
         </div>
-      </LayerCard.Secondary>
+      </div>
 
-      <LayerCard.Primary className="gap-4">
+      <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
         {formError && <Banner variant="error" description={formError} />}
 
         <Banner
@@ -472,7 +471,7 @@ export function ForgotPasswordForm() {
             </span>
           </Link>
         </div>
-      </LayerCard.Primary>
+      </div>
     </>
   );
 }

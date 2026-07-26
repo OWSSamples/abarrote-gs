@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import NextLink from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@cloudflare/kumo/components/button';
-import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { Link } from '@cloudflare/kumo/components/link';
 import { Text } from '@cloudflare/kumo/components/text';
 import {
@@ -75,16 +74,16 @@ export function AcceptInvitationForm() {
 
   if (preview === null) {
     return (
-      <LayerCard.Primary className="flex min-h-48 items-center justify-center">
+      <div className="relative flex flex-col gap-2 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill flex min-h-48 items-center justify-center">
         <Text variant="secondary" size="sm">Revisando invitación...</Text>
-      </LayerCard.Primary>
+      </div>
     );
   }
 
   if (!preview.valid) {
     return (
       <>
-        <LayerCard.Secondary>
+        <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex size-14 items-center justify-center rounded-full bg-kumo-danger-tint/70">
               <DismissCircle24Filled className="text-kumo-danger" />
@@ -94,12 +93,12 @@ export function AcceptInvitationForm() {
               El enlace venció, fue utilizado o ya fue revocado.
             </Text>
           </div>
-        </LayerCard.Secondary>
-        <LayerCard.Primary>
+        </div>
+        <div className="relative flex flex-col gap-2 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
           <Link href="/auth/login" variant="plain" render={<NextLink href="/auth/login" />}>
             <Text as="span" size="sm" bold>Volver al inicio de sesión</Text>
           </Link>
-        </LayerCard.Primary>
+        </div>
       </>
     );
   }
@@ -107,7 +106,7 @@ export function AcceptInvitationForm() {
   if (accepted) {
     return (
       <>
-        <LayerCard.Secondary>
+        <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex size-14 items-center justify-center rounded-full bg-kumo-success-tint/70">
               <CheckmarkCircle24Filled className="text-kumo-success" />
@@ -117,19 +116,19 @@ export function AcceptInvitationForm() {
               Ya puedes trabajar en {preview.tenantName}.
             </Text>
           </div>
-        </LayerCard.Secondary>
-        <LayerCard.Primary>
+        </div>
+        <div className="relative flex flex-col gap-2 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
           <Button variant="primary" className="w-full justify-center" onClick={() => router.push('/')}>
             Entrar al negocio
           </Button>
-        </LayerCard.Primary>
+        </div>
       </>
     );
   }
 
   return (
     <>
-      <LayerCard.Secondary>
+      <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex size-14 items-center justify-center rounded-full bg-kumo-recessed">
             <PeopleTeam24Filled className="text-kumo-secondary" />
@@ -139,8 +138,8 @@ export function AcceptInvitationForm() {
             Revisa el acceso antes de incorporarlo a tu cuenta.
           </Text>
         </div>
-      </LayerCard.Secondary>
-      <LayerCard.Primary className="gap-4">
+      </div>
+      <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
         <dl className="grid gap-3 rounded-lg border border-kumo-line bg-kumo-recessed p-4 text-sm">
           <div className="flex items-center justify-between gap-4">
             <dt className="text-kumo-subtle">Negocio</dt>
@@ -167,7 +166,7 @@ export function AcceptInvitationForm() {
         <Text variant="secondary" size="xs" as="p" DANGEROUS_className="text-center">
           Debes iniciar sesión con el mismo correo que recibió la invitación.
         </Text>
-      </LayerCard.Primary>
+      </div>
     </>
   );
 }

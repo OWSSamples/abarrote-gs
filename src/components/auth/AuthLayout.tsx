@@ -1,7 +1,6 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { SiteFooter } from '@/components/SiteFooter';
 import styles from './AuthLayout.module.css';
 
@@ -23,9 +22,9 @@ export function AuthLayout({ children, layered = false, wide = false }: AuthLayo
           </div>
 
           {/* ── Card ── */}
-          <LayerCard className={`rounded-xl shadow-[0_0_1px_0.5px_var(--color-kumo-shadow-edge),0_1px_2px_var(--color-kumo-shadow-drop)] ${layered ? '' : 'p-6'}`}>
+          <div className={`${styles.card} ${layered ? styles.layered : styles.padded}`}>
             {children}
-          </LayerCard>
+          </div>
         </div>
       </main>
 

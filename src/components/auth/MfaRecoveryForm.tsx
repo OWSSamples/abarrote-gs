@@ -7,7 +7,6 @@ import { logAuthEvent } from '@/lib/auth/auth-logger';
 import { verifyRecoveryCodeAction } from '@/app/actions/mfa-recovery-actions';
 import { Button } from '@cloudflare/kumo/components/button';
 import { Input } from '@cloudflare/kumo/components/input';
-import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { Text } from '@cloudflare/kumo/components/text';
 import { Link } from '@cloudflare/kumo/components/link';
 import { useToast } from '@/components/notifications/ToastProvider';
@@ -76,7 +75,7 @@ export function MfaRecoveryForm() {
   if (success) {
     return (
       <>
-        <LayerCard.Secondary>
+        <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex size-16 items-center justify-center rounded-full bg-kumo-success-tint/70">
               <CheckmarkCircle24Filled className="text-kumo-success" />
@@ -93,8 +92,8 @@ export function MfaRecoveryForm() {
               Te redirigiremos al inicio de sesión en unos segundos…
             </Text>
           </div>
-        </LayerCard.Secondary>
-        <LayerCard.Primary>
+        </div>
+        <div className="relative flex flex-col gap-2 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
           <Button
             variant="primary"
             className="w-full justify-center"
@@ -103,14 +102,14 @@ export function MfaRecoveryForm() {
           >
             Ir a iniciar sesión
           </Button>
-        </LayerCard.Primary>
+        </div>
       </>
     );
   }
 
   return (
     <>
-      <LayerCard.Secondary>
+      <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex size-16 items-center justify-center rounded-full bg-kumo-recessed">
             <ShieldKeyhole24Filled className="text-kumo-secondary" />
@@ -124,9 +123,9 @@ export function MfaRecoveryForm() {
             a tu cuenta.
           </Text>
         </div>
-      </LayerCard.Secondary>
+      </div>
 
-      <LayerCard.Primary className="gap-4">
+      <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             label="Correo electrónico"
@@ -181,7 +180,7 @@ export function MfaRecoveryForm() {
             <Text as="span" size="sm" bold>Iniciar recuperación de cuenta</Text>
           </Link>
         </div>
-      </LayerCard.Primary>
+      </div>
     </>
   );
 }

@@ -25,7 +25,6 @@ import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
 import { Button } from '@cloudflare/kumo/components/button';
 import { Banner } from '@cloudflare/kumo/components/banner';
 import { Input } from '@cloudflare/kumo/components/input';
-import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { SensitiveInput } from '@cloudflare/kumo/components/sensitive-input';
 import { Text } from '@cloudflare/kumo/components/text';
 import { Link } from '@cloudflare/kumo/components/link';
@@ -924,7 +923,7 @@ export function RegisterForm() {
     <>
       {step === 'details' ? (
         <>
-          <LayerCard.Secondary>
+          <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle">
             <div className="min-w-0">
               <Text variant="heading2" as="h1">
                 {isAdditionalTenant ? 'Crear otro negocio' : 'Crear cuenta'}
@@ -935,9 +934,9 @@ export function RegisterForm() {
                   : 'Registra tu negocio y crea tu espacio de trabajo.'}
               </Text>
             </div>
-          </LayerCard.Secondary>
+          </div>
 
-          <LayerCard.Primary className="gap-5">
+          <div className="relative flex flex-col gap-5 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
             {formError && (
               <div className="rounded-lg border border-kumo-danger/40 bg-kumo-danger-tint/50 px-3 py-2">
                 <Text variant="secondary" size="sm" as="p" DANGEROUS_className="text-kumo-danger">
@@ -1223,11 +1222,11 @@ export function RegisterForm() {
                 {isAdditionalTenant ? 'Volver al panel' : 'Inicia sesión'}
               </Link>
             </Text>
-          </LayerCard.Primary>
+          </div>
         </>
       ) : (
         <>
-          <LayerCard.Secondary data-auth-layout="compact">
+          <div className="-my-2 flex items-center gap-2 bg-kumo-elevated p-4 text-base font-medium text-kumo-subtle" data-auth-layout="compact">
             <div className="flex flex-col items-center gap-3 text-center">
               <div
                 className={`flex size-12 items-center justify-center rounded-full ${
@@ -1251,9 +1250,9 @@ export function RegisterForm() {
                 </Text>
               </div>
             </div>
-          </LayerCard.Secondary>
+          </div>
 
-          <LayerCard.Primary className="gap-4">
+          <div className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-kumo-base p-4 pr-3 text-inherit no-underline ring ring-kumo-fill">
             {formError && (
               <Banner variant="error" description={formError} />
             )}
@@ -1381,7 +1380,7 @@ export function RegisterForm() {
                 </span>
               </Link>
             </div>
-          </LayerCard.Primary>
+          </div>
         </>
       )}
     </>

@@ -31,10 +31,8 @@ import {
 } from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import {
-  connectDeliveryProviderAction,
   disconnectDeliveryProviderAction,
   getDeliveryConnectionStatusAction,
-  initiateUberOAuthAction,
 } from '@/app/actions/delivery-actions';
 import type { DeliveryProvider } from '@/infrastructure/delivery/delivery-types';
 import { parseError } from '@/lib/errors';
@@ -116,7 +114,7 @@ export function DeliveryMarketplaceSection() {
     fetchStatus();
   }, [fetchStatus]);
 
-  // Detect OAuth success from query params (set by /api/uber/callback)
+  // Detect OAuth success from query params (set by /api/integrations/uber/callback)
   const searchParams = useSearchParams();
   const oauthProvider = searchParams.get('oauth');
   const oauthDeliveredProvider = searchParams.get('provider');
@@ -163,13 +161,12 @@ export function DeliveryMarketplaceSection() {
     setIsOAuthSubmitting(true);
     setOauthError(null);
     try {
-      const result = await initiateUberOAuthAction(storeId);
-      if (!result.success || !result.authUrl) {
-        setOauthError(result.error ?? 'No se pudo iniciar la conexión con Uber Eats');
-        setIsOAuthSubmitting(false);
-        return;
-      }
-      window.open(result.authUrl, 'uber_oauth', 'width=650,height=750,resizable=yes,scrollbars=yes');
+      const params = new URLSearchParams({ store: storeId });
+      window.open(
+        `/api/integrations/uber/authorize?${params.toString()}`,
+        'uber_oauth',
+        'width=650,height=750,resizable=yes,scrollbars=yes',
+      );
       setIsOAuthSubmitting(false);
     } catch (err) {
       setOauthError(parseError(err).description);

@@ -10,6 +10,24 @@ import { withWorkflow } from 'workflow/next';
  */
 const SECURITY_HEADERS = [
   {
+    key: 'Content-Security-Policy',
+    value: [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://sdk.mercadopago.com",
+      "worker-src 'self' blob:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.shopify.com",
+      "font-src 'self' data: https://fonts.gstatic.com https://cdn.shopify.com",
+      "img-src 'self' data: blob: https://*.amazonaws.com https://*.mlstatic.com",
+      "connect-src 'self' https://*.neon.tech wss://*.neon.tech https://*.upstash.io https://api.mercadopago.com https://api.stripe.com https://api.conekta.io https://api.telegram.org https://*.amazonaws.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://cognito-idp.*.amazonaws.com https://cognito-identity.*.amazonaws.com",
+      "frame-src 'self' blob:",
+      "frame-ancestors 'none'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      'upgrade-insecure-requests',
+    ].join('; '),
+  },
+  {
     key: 'Strict-Transport-Security',
     value: 'max-age=63072000; includeSubDomains; preload',
   },

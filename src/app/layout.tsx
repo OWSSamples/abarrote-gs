@@ -4,11 +4,9 @@ import '@shopify/polaris/build/esm/styles.css';
 import './globals.css';
 import { PolarisProvider } from './PolarisProvider';
 import { CookieConsentProvider } from '@/components/cookies/CookieConsentProvider';
-import {
-  CookieBanner,
-  CookiePreferencesModal,
-} from '@/components/cookies/CookieBanner';
+import { CookieBanner, CookiePreferencesModal } from '@/components/cookies/CookieBanner';
 import { ConditionalAnalytics } from '@/components/cookies/ConditionalAnalytics';
+import { SentryCdnLoader } from '@/components/observability/SentryCdnLoader';
 
 // Self-hosted, subset, swap'd Inter — eliminates render-blocking external
 // CSS request to cdn.shopify.com and avoids extra DNS/TLS handshake.
@@ -47,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <CookieBanner />
           <CookiePreferencesModal />
           <ConditionalAnalytics />
+          <SentryCdnLoader />
         </CookieConsentProvider>
       </body>
     </html>

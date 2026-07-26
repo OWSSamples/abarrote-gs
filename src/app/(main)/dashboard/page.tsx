@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useCallback, useMemo } from 'react';
 import {
   Page,
   Layout,
@@ -16,40 +17,55 @@ import {
 } from '@shopify/polaris';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { KPICard } from '@/components/kpi/KPICard';
-import { InventoryTable } from '@/components/inventory/InventoryTable';
 import { QuickActions } from '@/components/actions/QuickActions';
-import { TopProducts } from '@/components/metrics/TopProducts';
 import { Product } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthContext';
+
+const InventoryTable = dynamic(
+  () => import('@/components/inventory/InventoryTable').then((mod) => mod.InventoryTable),
+  {
+    loading: () => null,
+  },
+);
+const TopProducts = dynamic(() => import('@/components/metrics/TopProducts').then((mod) => mod.TopProducts), {
+  loading: () => null,
+});
+
+const MEXICO_CITY_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Mexico_City',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+const MEXICO_CITY_TIME_FORMATTER = new Intl.DateTimeFormat('es-MX', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
+const DASHBOARD_DATE_FORMATTER = new Intl.DateTimeFormat('es-MX', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+const USER_FIRST_NAME_PATTERN = /^[a-záéíóúüñA-ZÁÉÍÓÚÜÑ]{2,}/i;
 
 export default function DashboardOverviewPage() {
   const { user } = useAuth();
   const kpiData = useDashboardStore((s) => s.kpiData);
   const _currentUserRole = useDashboardStore((s) => s.currentUserRole);
   const inventoryAlerts = useDashboardStore((s) => s.inventoryAlerts);
-  const salesData = useDashboardStore((s) => s.salesData);
   const saleRecords = useDashboardStore((s) => s.saleRecords);
   const clientes = useDashboardStore((s) => s.clientes);
   const mermaRecords = useDashboardStore((s) => s.mermaRecords);
 
   const todayStr = useMemo(() => {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Mexico_City',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
+    return MEXICO_CITY_DATE_FORMATTER.format(new Date());
   }, []);
 
   const todaySales = useMemo(() => {
     return saleRecords.filter((r) => {
-      const saleLocalDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Mexico_City',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(new Date(r.date));
+      const saleLocalDate = MEXICO_CITY_DATE_FORMATTER.format(new Date(r.date));
       return saleLocalDate === todayStr;
     });
   }, [saleRecords, todayStr]);
@@ -110,10 +126,12 @@ export default function DashboardOverviewPage() {
     const avgTicket = todaySales.length > 0 ? totalRevenue / todaySales.length : 0;
     const totalDebt = clientes.reduce((s, c) => s + c.balance, 0);
     const debtors = clientes.filter((c) => c.balance > 0).length;
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
     const monthMerma = mermaRecords.filter((m) => {
       const d = new Date(m.date);
-      const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
     const mermaValue = monthMerma.reduce((s, m) => s + m.value, 0);
     const peakHour = hourlySalesData?.reduce((max, h) => (h.sales > max.sales ? h : max), { hour: '—', sales: 0 });
@@ -133,23 +151,34 @@ export default function DashboardOverviewPage() {
 
   const userName = useMemo(() => {
     const name = user?.displayName?.split(' ')[0];
-    if (name && /^[a-záéíóúüñA-ZÁÉÍÓÚÜÑ]{2,}/i.test(name)) return name;
+    if (name && USER_FIRST_NAME_PATTERN.test(name)) return name;
     const emailName = user?.email?.split('@')[0];
     if (emailName) return emailName.charAt(0).toUpperCase() + emailName.slice(1);
     return 'Administrador';
   }, [user?.displayName, user?.email]);
 
+  const dashboardDate = useMemo(() => DASHBOARD_DATE_FORMATTER.format(new Date()), []);
+  const todaySalesRows = useMemo(
+    () =>
+      todaySales.slice(0, 10).map((sale) => ({
+        sale,
+        itemCount: sale.items.reduce((s, it) => s + it.quantity, 0),
+        time: MEXICO_CITY_TIME_FORMATTER.format(new Date(sale.date)),
+      })),
+    [todaySales],
+  );
+  const hourlyMaxSales = useMemo(() => {
+    if (!hourlySalesData?.length) return 0;
+    let max = 0;
+    for (const hour of hourlySalesData) {
+      if (hour.sales > max) max = hour.sales;
+    }
+    return max;
+  }, [hourlySalesData]);
+
   return (
     <>
-      <Page
-        title={`${greeting}, ${userName}`}
-        subtitle={new Date().toLocaleDateString('es-MX', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-        })}
-      >
+      <Page title={`${greeting}, ${userName}`} subtitle={dashboardDate}>
         <BlockStack gap="500">
           {/* ═══ ROW 1: PRIMARY KPIs WITH SPARKLINES ═══ */}
           <InlineGrid columns={{ xs: 2, md: 4 }} gap="300">
@@ -168,21 +197,11 @@ export default function DashboardOverviewPage() {
               value={todaySales.length}
               type="number"
               data={
-                hourlySalesData && hourlySalesData.length > 1
-                  ? hourlySalesData.map((h) => h.transactions)
-                  : undefined
+                hourlySalesData && hourlySalesData.length > 1 ? hourlySalesData.map((h) => h.transactions) : undefined
               }
             />
-            <KPICard
-              title="Ticket Promedio"
-              value={derived.avgTicket}
-              type="currency"
-            />
-            <KPICard
-              title="Unidades Vendidas"
-              value={derived.totalUnits}
-              type="number"
-            />
+            <KPICard title="Ticket Promedio" value={derived.avgTicket} type="currency" />
+            <KPICard title="Unidades Vendidas" value={derived.totalUnits} type="number" />
           </InlineGrid>
 
           {/* ═══ ROW 2: SECONDARY KPIs (compact cards) ═══ */}
@@ -196,9 +215,7 @@ export default function DashboardOverviewPage() {
                   <Text as="p" variant="headingMd" fontWeight="bold">
                     {kpiData?.lowStockProducts || 0}
                   </Text>
-                  {(kpiData?.lowStockProducts || 0) > 0 && (
-                    <Badge tone="warning">Atención</Badge>
-                  )}
+                  {(kpiData?.lowStockProducts || 0) > 0 && <Badge tone="warning">Atención</Badge>}
                 </InlineStack>
                 <Text as="p" variant="bodyXs" tone="subdued">
                   productos por debajo del mínimo
@@ -214,9 +231,7 @@ export default function DashboardOverviewPage() {
                   <Text as="p" variant="headingMd" fontWeight="bold">
                     {kpiData?.expiringProducts || 0}
                   </Text>
-                  {(kpiData?.expiringProducts || 0) > 0 && (
-                    <Badge tone="critical">Urgente</Badge>
-                  )}
+                  {(kpiData?.expiringProducts || 0) > 0 && <Badge tone="critical">Urgente</Badge>}
                 </InlineStack>
                 <Text as="p" variant="bodyXs" tone="subdued">
                   productos próximos a vencer
@@ -278,7 +293,9 @@ export default function DashboardOverviewPage() {
                         Ventas de Hoy
                       </Text>
                       <Text as="p" variant="bodyXs" tone="subdued">
-                        {todaySales.length > 10 ? `Mostrando 10 de ${todaySales.length}` : `${todaySales.length} registradas`}
+                        {todaySales.length > 10
+                          ? `Mostrando 10 de ${todaySales.length}`
+                          : `${todaySales.length} registradas`}
                       </Text>
                     </BlockStack>
                     <InlineStack gap="200" blockAlign="center">
@@ -313,8 +330,7 @@ export default function DashboardOverviewPage() {
                     ]}
                     selectable={false}
                   >
-                    {todaySales.slice(0, 10).map((sale, index) => {
-                      const itemCount = sale.items.reduce((s, it) => s + it.quantity, 0);
+                    {todaySalesRows.map(({ sale, itemCount, time }, index) => {
                       return (
                         <IndexTable.Row id={sale.id} key={sale.id} position={index}>
                           <IndexTable.Cell>
@@ -324,10 +340,7 @@ export default function DashboardOverviewPage() {
                           </IndexTable.Cell>
                           <IndexTable.Cell>
                             <Text as="span" variant="bodySm" tone="subdued">
-                              {new Date(sale.date).toLocaleTimeString('es-MX', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
+                              {time}
                             </Text>
                           </IndexTable.Cell>
                           <IndexTable.Cell>
@@ -356,10 +369,7 @@ export default function DashboardOverviewPage() {
             </Layout.Section>
             <Layout.Section variant="oneThird">
               <BlockStack gap="400">
-                <TopProducts
-                  products={topProductsData}
-                  period={todaySales.length > 0 ? 'Hoy' : 'General'}
-                />
+                <TopProducts products={topProductsData} period={todaySales.length > 0 ? 'Hoy' : 'General'} />
 
                 {/* Hourly breakdown mini-card */}
                 {hourlySalesData && hourlySalesData.length > 0 && (
@@ -370,8 +380,7 @@ export default function DashboardOverviewPage() {
                       </Text>
                       <BlockStack gap="200">
                         {hourlySalesData.map((h) => {
-                          const maxSales = Math.max(...hourlySalesData.map((x) => x.sales));
-                          const pct = maxSales > 0 ? (h.sales / maxSales) * 100 : 0;
+                          const pct = hourlyMaxSales > 0 ? (h.sales / hourlyMaxSales) * 100 : 0;
                           return (
                             <div key={h.hour}>
                               <InlineStack align="space-between" blockAlign="center">
@@ -383,11 +392,7 @@ export default function DashboardOverviewPage() {
                                 </Text>
                               </InlineStack>
                               <Box paddingBlockStart="050">
-                                <ProgressBar
-                                  progress={pct}
-                                  size="small"
-                                  tone={h.isPeak ? 'highlight' : 'primary'}
-                                />
+                                <ProgressBar progress={pct} size="small" tone={h.isPeak ? 'highlight' : 'primary'} />
                               </Box>
                             </div>
                           );

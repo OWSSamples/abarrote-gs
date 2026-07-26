@@ -13,7 +13,7 @@ const SECURITY_HEADERS = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' https://www.gstatic.com https://sdk.mercadopago.com",
+      "script-src 'self' https://www.gstatic.com https://sdk.mercadopago.com https://js.sentry-cdn.com",
       "worker-src 'self' blob:",
       "style-src-elem 'self' https://fonts.googleapis.com https://cdn.shopify.com",
       "style-src-attr 'unsafe-inline'",
@@ -71,7 +71,8 @@ const nextConfig: NextConfig = {
     COGNITO_REGION: process.env.COGNITO_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION,
     COGNITO_DOMAIN: process.env.COGNITO_DOMAIN || process.env.NEXT_PUBLIC_COGNITO_DOMAIN,
     COGNITO_REDIRECT_SIGN_IN: process.env.COGNITO_REDIRECT_SIGN_IN || process.env.NEXT_PUBLIC_COGNITO_REDIRECT_SIGN_IN,
-    COGNITO_REDIRECT_SIGN_OUT: process.env.COGNITO_REDIRECT_SIGN_OUT || process.env.NEXT_PUBLIC_COGNITO_REDIRECT_SIGN_OUT,
+    COGNITO_REDIRECT_SIGN_OUT:
+      process.env.COGNITO_REDIRECT_SIGN_OUT || process.env.NEXT_PUBLIC_COGNITO_REDIRECT_SIGN_OUT,
     COGNITO_OAUTH_PROVIDERS: process.env.COGNITO_OAUTH_PROVIDERS || process.env.NEXT_PUBLIC_COGNITO_OAUTH_PROVIDERS,
     COGNITO_OAUTH_SCOPES: process.env.COGNITO_OAUTH_SCOPES || process.env.NEXT_PUBLIC_COGNITO_OAUTH_SCOPES,
   },
@@ -202,9 +203,7 @@ const nextConfig: NextConfig = {
             {
               // Public icons / illustrations served from /public
               source: '/(icon|illustrations)/(.*)',
-              headers: [
-                { key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' },
-              ],
+              headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }],
             },
           ]
         : []),

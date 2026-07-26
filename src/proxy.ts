@@ -132,8 +132,8 @@ const cognitoOrigins = [
 
 function buildCsp(nonce: string): string {
   const scriptSrc = isDev
-    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval' https://www.gstatic.com https://sdk.mercadopago.com`
-    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.gstatic.com https://sdk.mercadopago.com`;
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval' https://www.gstatic.com https://sdk.mercadopago.com https://js.sentry-cdn.com`
+    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.gstatic.com https://sdk.mercadopago.com https://js.sentry-cdn.com`;
 
   return [
     "default-src 'self'",

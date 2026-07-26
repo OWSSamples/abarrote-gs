@@ -2,7 +2,7 @@
 
 import { db } from '@/db';
 import { deliveryOrders, deliveryProviderConnections } from '@/db/schema-delivery';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import {
   connectDeliveryProvider,
   disconnectDeliveryProvider,
@@ -42,18 +42,52 @@ export async function disconnectDeliveryProviderAction(storeId: string, provider
 }
 
 export async function getDeliveryConnectionStatusAction(storeId: string) {
-  const rows = await db
-    .select({
-      provider: deliveryProviderConnections.provider,
-      status: deliveryProviderConnections.status,
-      providerStoreId: deliveryProviderConnections.providerStoreId,
-      environment: deliveryProviderConnections.environment,
-      connectedAt: deliveryProviderConnections.connectedAt,
-    })
-    .from(deliveryProviderConnections)
-    .where(eq(deliveryProviderConnections.storeId, storeId));
+  const [rows, orderStats] = await Promise.all([
+    db
+      .select({
+        provider: deliveryProviderConnections.provider,
+        status: deliveryProviderConnections.status,
+        providerStoreId: deliveryProviderConnections.providerStoreId,
+        environment: deliveryProviderConnections.environment,
+        connectedAt: deliveryProviderConnections.connectedAt,
+        updatedAt: deliveryProviderConnections.updatedAt,
+      })
+      .from(deliveryProviderConnections)
+      .where(eq(deliveryProviderConnections.storeId, storeId)),
+    db
+      .select({
+        provider: deliveryOrders.provider,
+        totalOrders: sql<number>`count(*)`,
+        pendingOrders: sql<number>`count(*) filter (where ${deliveryOrders.status} = 'pending')`,
+        activeOrders: sql<number>`count(*) filter (where ${deliveryOrders.status} in ('pending', 'accepted', 'preparing', 'ready'))`,
+        latestOrderAt: sql<Date | null>`max(${deliveryOrders.receivedAt})`,
+      })
+      .from(deliveryOrders)
+      .where(eq(deliveryOrders.storeId, storeId))
+      .groupBy(deliveryOrders.provider),
+  ]);
 
-  return rows;
+  const statsByProvider = new Map(
+    orderStats.map((stat) => [
+      stat.provider,
+      {
+        totalOrders: Number(stat.totalOrders) || 0,
+        pendingOrders: Number(stat.pendingOrders) || 0,
+        activeOrders: Number(stat.activeOrders) || 0,
+        latestOrderAt: stat.latestOrderAt,
+      },
+    ]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    ...(statsByProvider.get(row.provider) ?? {
+      totalOrders: 0,
+      pendingOrders: 0,
+      activeOrders: 0,
+      latestOrderAt: null,
+    }),
+  }));
 }
 
 // ── Pedidos ───────────────────────────────────────────────────
@@ -98,11 +132,7 @@ export async function rejectDeliveryOrderAction(
   }
 }
 
-export async function markDeliveryOrderReadyAction(
-  orderId: string,
-  storeId: string,
-  provider: DeliveryProvider,
-) {
+export async function markDeliveryOrderReadyAction(orderId: string, storeId: string, provider: DeliveryProvider) {
   try {
     await markDeliveryOrderReady(orderId, storeId, provider);
     return { success: true };

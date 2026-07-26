@@ -288,6 +288,13 @@
       "when": 1785010815849,
       "tag": "0040_long_vivisector",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785014400000,
+      "tag": "0041_uber_oauth_store_scope",
+      "breakpoints": true
     }
   ]
 }

@@ -28,7 +28,7 @@ export async function GET(req: Request) {
       });
       return NextResponse.json({ error: 'Uber OAuth is not configured' }, { status: 503 });
     }
-    
+
     await requirePermission('settings.view');
     const scope = await requireStoreScope();
 
@@ -54,6 +54,7 @@ export async function GET(req: Request) {
     await db.insert(uberOauthStates).values({
       stateHash,
       workspaceId,
+      storeId,
       userId,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 min
     });

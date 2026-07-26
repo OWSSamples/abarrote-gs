@@ -1,6 +1,20 @@
 'use client';
 
-import { Navigation } from '@shopify/polaris';
+import { useState } from 'react';
+import {
+  Badge,
+  BlockStack,
+  Box,
+  Button,
+  Card,
+  Divider,
+  Icon,
+  InlineGrid,
+  InlineStack,
+  Modal,
+  Navigation,
+  Text,
+} from '@shopify/polaris';
 import { usePathname } from 'next/navigation';
 import {
   HomeIcon,
@@ -21,9 +35,104 @@ import {
   PersonLockFilledIcon,
   AppsIcon,
   AppsFilledIcon,
+  ArrowDownIcon,
+  EmailIcon,
+  ImportIcon,
+  LogoGoogleIcon,
+  LogoInstagramIcon,
+  LogoPinterestIcon,
+  MarketsIcon,
+  MegaphoneIcon,
+  PlusCircleIcon,
+  PointOfSaleIcon,
+  SearchIcon,
+  StarFilledIcon,
+  StoreIcon,
+  StoreOnlineIcon,
 } from '@shopify/polaris-icons';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useDashboardStore } from '@/store/dashboardStore';
+
+type AppStoreIcon = typeof AppsIcon;
+
+interface AppStoreSuggestion {
+  title: string;
+  description: string;
+  icon: AppStoreIcon;
+  rating: string;
+  builtBy?: string;
+  group: 'recommended' | 'needed' | 'shopify';
+}
+
+const APP_STORE_SUGGESTIONS: AppStoreSuggestion[] = [
+  {
+    title: 'Abastecimiento inteligente',
+    description: 'Busca productos nuevos, sugerencias de compra y reposición automática para tu tienda.',
+    icon: ImportIcon,
+    rating: '4.6',
+    builtBy: 'Built for Kiosko',
+    group: 'recommended',
+  },
+  {
+    title: 'Instagram Feed',
+    description: 'Personaliza tu tienda, muestra contenido social y destaca promociones visuales.',
+    icon: LogoInstagramIcon,
+    rating: '4.9',
+    builtBy: 'Built for Kiosko',
+    group: 'recommended',
+  },
+  {
+    title: 'Marketing email y SMS',
+    description: 'Encuentra clientes nuevos y haz que vuelvan con campañas automáticas.',
+    icon: EmailIcon,
+    rating: '4.7',
+    builtBy: 'Built for Kiosko',
+    group: 'recommended',
+  },
+  {
+    title: 'Mercado Libre',
+    description: 'Publica productos, sincroniza inventario y centraliza pedidos desde Mercado Libre.',
+    icon: MarketsIcon,
+    rating: 'Nuevo',
+    group: 'needed',
+  },
+  {
+    title: 'Google & YouTube',
+    description: 'Conecta tu tienda con Google Shopping, YouTube y campañas de descubrimiento.',
+    icon: LogoGoogleIcon,
+    rating: '4.5',
+    group: 'needed',
+  },
+  {
+    title: 'Pinterest',
+    description: 'Permite que compradores descubran tus productos en Pinterest.',
+    icon: LogoPinterestIcon,
+    rating: '4.2',
+    group: 'needed',
+  },
+  {
+    title: 'Reseñas de productos',
+    description: 'Aumenta las ventas con reseñas, fotos y confianza social.',
+    icon: StarFilledIcon,
+    rating: '5.0',
+    builtBy: 'Built for Kiosko',
+    group: 'needed',
+  },
+  {
+    title: 'Búsqueda y recomendaciones',
+    description: 'Personaliza búsqueda, filtros y recomendaciones de productos.',
+    icon: SearchIcon,
+    rating: '2.8',
+    group: 'shopify',
+  },
+  {
+    title: 'Mensajería para clientes',
+    description: 'Herramientas de mensajes diseñadas para crecer sin programar.',
+    icon: MegaphoneIcon,
+    rating: '4.7',
+    group: 'shopify',
+  },
+];
 
 interface SidebarNavProps {
   onSelect: (section: string) => void;
@@ -51,6 +160,7 @@ export function SidebarNav({ onSelect, badges }: SidebarNavProps) {
   const { hasAnyPermission, isLoaded } = usePermissions();
   const pathname = usePathname();
   const mpEnabled = useDashboardStore((s) => s.storeConfig.mpEnabled);
+  const [appStoreOpen, setAppStoreOpen] = useState(false);
 
   const isPath = (path: string) => pathname === path;
   const isAnyPath = (paths: string[]) => paths.some((p) => pathname === p);
@@ -246,6 +356,48 @@ export function SidebarNav({ onSelect, badges }: SidebarNavProps) {
   // System section items
   const systemItems = [];
 
+  const salesChannelItems = [
+    {
+      url: '#',
+      label: 'Tienda online',
+      icon: StoreOnlineIcon,
+      onClick: () => onSelect('settings'),
+    },
+    {
+      url: '#',
+      label: 'Agéntico',
+      icon: StoreIcon,
+      onClick: () => onSelect('analytics'),
+    },
+    {
+      url: '#',
+      label: 'Point of Sale',
+      icon: PointOfSaleIcon,
+      selected: isAnyPath(SALES_PATHS),
+      onClick: () => onSelect('sales-history'),
+    },
+    {
+      url: '#',
+      label: 'Mercado Libre',
+      icon: MarketsIcon,
+      onClick: () => setAppStoreOpen(true),
+    },
+  ];
+
+  const appItems = [
+    {
+      url: '#',
+      label: 'Agregar',
+      icon: PlusCircleIcon,
+      onClick: () => setAppStoreOpen(true),
+    },
+  ];
+
+  const openFullMarketplace = () => {
+    setAppStoreOpen(false);
+    onSelect('settings');
+  };
+
   if (can('roles.manage')) {
     const isSel = isPath('/dashboard/settings/roles');
     systemItems.push({
@@ -269,10 +421,154 @@ export function SidebarNav({ onSelect, badges }: SidebarNavProps) {
   }
 
   return (
-    <Navigation location={pathname}>
-      {mainItems.length > 0 && <Navigation.Section items={mainItems} fill />}
-      {adminItems.length > 0 && <Navigation.Section title="Administración Financiera" separator items={adminItems} />}
-      {systemItems.length > 0 && <Navigation.Section title="Sistema" separator items={systemItems} />}
-    </Navigation>
+    <>
+      <Navigation location={pathname}>
+        {mainItems.length > 0 && <Navigation.Section items={mainItems} />}
+        {adminItems.length > 0 && <Navigation.Section title="Administración Financiera" separator items={adminItems} />}
+        <Navigation.Section title="Canales de ventas" separator items={salesChannelItems} />
+        <Navigation.Section title="Apps" items={appItems} fill />
+        {systemItems.length > 0 && <Navigation.Section title="Sistema" separator items={systemItems} />}
+      </Navigation>
+      <AppStoreModal
+        open={appStoreOpen}
+        onClose={() => setAppStoreOpen(false)}
+        onOpenMarketplace={openFullMarketplace}
+      />
+    </>
+  );
+}
+
+function AppStoreModal({
+  open,
+  onClose,
+  onOpenMarketplace,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onOpenMarketplace: () => void;
+}) {
+  const recommended = APP_STORE_SUGGESTIONS.filter((app) => app.group === 'recommended');
+  const needed = APP_STORE_SUGGESTIONS.filter((app) => app.group === 'needed');
+  const shopify = APP_STORE_SUGGESTIONS.filter((app) => app.group === 'shopify');
+
+  return (
+    <Modal open={open} onClose={onClose} title="Seleccionado para ti" size="large">
+      <Modal.Section>
+        <BlockStack gap="500">
+          <InlineGrid columns={{ xs: 1, md: 3 }} gap="400">
+            {recommended.map((app) => (
+              <FeaturedAppCard key={app.title} app={app} onInstall={onOpenMarketplace} />
+            ))}
+          </InlineGrid>
+
+          <BlockStack gap="300">
+            <Text as="h3" variant="headingSm" fontWeight="semibold">
+              Más apps que tu negocio podría necesitar
+            </Text>
+            <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+              {needed.map((app) => (
+                <CompactAppCard key={app.title} app={app} onInstall={onOpenMarketplace} />
+              ))}
+            </InlineGrid>
+          </BlockStack>
+
+          <BlockStack gap="300">
+            <Text as="h3" variant="headingSm" fontWeight="semibold">
+              Hecha para Kiosko
+            </Text>
+            <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+              {shopify.map((app) => (
+                <CompactAppCard key={app.title} app={app} onInstall={onOpenMarketplace} />
+              ))}
+            </InlineGrid>
+          </BlockStack>
+
+          <Divider />
+          <InlineStack align="space-between" blockAlign="center" gap="300">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Descubre más integraciones, permisos y estados de instalación en el Marketplace de Kiosko.
+            </Text>
+            <Button variant="plain" onClick={onOpenMarketplace}>
+              Abrir Marketplace
+            </Button>
+          </InlineStack>
+        </BlockStack>
+      </Modal.Section>
+    </Modal>
+  );
+}
+
+function FeaturedAppCard({ app, onInstall }: { app: AppStoreSuggestion; onInstall: () => void }) {
+  return (
+    <Card padding="0">
+      <BlockStack gap="0">
+        <Box padding="400">
+          <BlockStack gap="200">
+            <Text as="h4" variant="headingSm" fontWeight="semibold">
+              {app.title}
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              {app.description}
+            </Text>
+          </BlockStack>
+        </Box>
+        <Box padding="400" background="bg-surface-secondary">
+          <InlineStack align="space-between" blockAlign="center" gap="300">
+            <InlineStack gap="300" blockAlign="center" wrap={false}>
+              <AppIcon icon={app.icon} />
+              <BlockStack gap="050">
+                <Text as="p" variant="bodySm" fontWeight="medium">
+                  {app.title}
+                </Text>
+                <RatingLine app={app} />
+              </BlockStack>
+            </InlineStack>
+            <Button accessibilityLabel={`Instalar ${app.title}`} icon={ArrowDownIcon} onClick={onInstall} />
+          </InlineStack>
+        </Box>
+      </BlockStack>
+    </Card>
+  );
+}
+
+function CompactAppCard({ app, onInstall }: { app: AppStoreSuggestion; onInstall: () => void }) {
+  return (
+    <Card>
+      <InlineStack align="space-between" blockAlign="center" gap="400" wrap={false}>
+        <InlineStack gap="300" blockAlign="center" wrap={false}>
+          <AppIcon icon={app.icon} />
+          <BlockStack gap="050">
+            <Text as="p" variant="bodyMd" fontWeight="medium">
+              {app.title}
+            </Text>
+            <RatingLine app={app} />
+            <Text as="p" variant="bodySm" tone="subdued">
+              {app.description}
+            </Text>
+          </BlockStack>
+        </InlineStack>
+        <Button accessibilityLabel={`Instalar ${app.title}`} icon={ArrowDownIcon} onClick={onInstall} />
+      </InlineStack>
+    </Card>
+  );
+}
+
+function AppIcon({ icon }: { icon: AppStoreIcon }) {
+  return (
+    <Box padding="200" background="bg-surface-secondary" borderRadius="200">
+      <Icon source={icon} tone="base" />
+    </Box>
+  );
+}
+
+function RatingLine({ app }: { app: AppStoreSuggestion }) {
+  return (
+    <InlineStack gap="100" blockAlign="center">
+      <Text as="span" variant="bodySm" tone="subdued">
+        {app.rating}
+      </Text>
+      <Icon source={StarFilledIcon} tone="subdued" />
+      {app.builtBy ? <Badge>{app.builtBy}</Badge> : null}
+    </InlineStack>
   );
 }

@@ -7,7 +7,6 @@
       "dependencies": {
         "@ai-sdk/openai": "^3.0.62",
         "@ai-sdk/openai-compatible": "^2.0.46",
-        "@aws-amplify/adapter-nextjs": "^1.7.3",
         "@aws-sdk/client-cognito-identity-provider": "^3.1045.0",
         "@aws-sdk/client-s3": "^3.1045.0",
         "@aws-sdk/client-sesv2": "^3.1045.0",
@@ -71,7 +70,7 @@
         "sileo": "^0.1.5",
         "stripe": "^22.1.1",
         "tailwind-merge": "^3.5.0",
-        "thesvg": "^3.2.6",
+        "thesvg": "^3.2.14",
         "three": "^0.184.0",
         "tiny-invariant": "^1.3.3",
         "tsx": "^4.21.0",
@@ -148,8 +147,6 @@
     "@apm-js-collab/code-transformer-bundler-plugins": ["@apm-js-collab/code-transformer-bundler-plugins@0.5.0", "", { "dependencies": { "@apm-js-collab/code-transformer": "^0.15.0", "es-module-lexer": "^2.1.0", "magic-string": "^0.30.21", "module-details-from-path": "^1.0.4" } }, "sha512-YxLBY5nGlurL7QeJLq6e5g0ouBpAp0pwgyA/5rHXEXwhiPLn9ZHbT+Y2LlP90GT872cSocfjWRYu/fnpuBudNQ=="],
 
     "@apm-js-collab/tracing-hooks": ["@apm-js-collab/tracing-hooks@0.10.1", "", { "dependencies": { "@apm-js-collab/code-transformer": "^0.15.0", "debug": "^4.4.1", "module-details-from-path": "^1.0.4" } }, "sha512-w2OWXR7FWrKqSziuE9+QclaZrStxO/8+OwbXM635s/zs0Eez1Qo3ivSPdB2WsaPY/iznKTytONPx/PitD7IXcA=="],
-
-    "@aws-amplify/adapter-nextjs": ["@aws-amplify/adapter-nextjs@1.7.3", "", { "dependencies": { "aws-jwt-verify": "^4.0.1" }, "peerDependencies": { "aws-amplify": "^6.16.4", "next": ">=13.5.0 <17.0.0" } }, "sha512-MUPCj3xawjIsEem0ppvRxtAzIsUK5UWB4zNCw0+6g21Rn8ZpIMTJ8JWQViHAnNGqmJXaGOsYxaIn7JDIc+/5kA=="],
 
     "@aws-amplify/analytics": ["@aws-amplify/analytics@7.0.94", "", { "dependencies": { "@aws-sdk/client-firehose": "^3.1012.0", "@aws-sdk/client-kinesis": "^3.1012.0", "@aws-sdk/client-personalize-events": "^3.1012.0", "@smithy/util-utf8": "2.0.0", "tslib": "^2.5.0" }, "peerDependencies": { "@aws-amplify/core": "^6.16.2" } }, "sha512-HNBq12e+ZFY7EqqlK2sAX165Vp5M4bx40a26f8ej6bDolZG5kkn4cYmERQX8LaWp0iVpfNUWAWPEppwZiLMMcw=="],
 
@@ -1151,7 +1148,7 @@
 
     "@tailwindcss/postcss": ["@tailwindcss/postcss@4.2.4", "", { "dependencies": { "@alloc/quick-lru": "^5.2.0", "@tailwindcss/node": "4.2.4", "@tailwindcss/oxide": "4.2.4", "postcss": "^8.5.6", "tailwindcss": "4.2.4" } }, "sha512-wgAVj6nUWAolAu8YFvzT2cTBIElWHkjZwFYovF+xsqKsW2ADxM/X2opxj5NsF/qVccAOjRNe8X2IdPzMsWyHTg=="],
 
-    "@thesvg/icons": ["@thesvg/icons@3.2.6", "", {}, "sha512-YNfVycAY6lovg5IXIFdY2tSrKgBnmJWUqvG7gbaOsPb1o4csCd3/pa+plWN5xB4YEUxxBjfO8HrJuT8KK3LbTQ=="],
+    "@thesvg/icons": ["@thesvg/icons@3.2.14", "", {}, "sha512-L1o0P1irNYYFvRB/OP+ZMPi+3PEq64JKDliSb7T33tbD7LzatqQIuL/XiWkoLjxVetst0Sx5ubfZK9nZAbA3MA=="],
 
     "@tokenizer/inflate": ["@tokenizer/inflate@0.4.1", "", { "dependencies": { "debug": "^4.4.3", "token-types": "^6.1.1" } }, "sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA=="],
 
@@ -2965,7 +2962,7 @@
 
     "text-segmentation": ["text-segmentation@1.0.3", "", { "dependencies": { "utrie": "1.0.2" } }, "sha512-iOiPUo/BGnZ6+54OsWxZidGCsdU8YbE4PSpdPinp7DeMtUJNJBoJ/ouUSTJjHkh1KntHaltHl/gDs2FC4i5+Nw=="],
 
-    "thesvg": ["thesvg@3.2.6", "", { "dependencies": { "@thesvg/icons": "3.2.6" } }, "sha512-QLj1D7tfMe94vLHfwna/QnJHbGrh7IGDW8tyG8TTEBtGSAuNGGmv1mvsuSao6m6dmIEer5JqNPi397I3osAMlQ=="],
+    "thesvg": ["thesvg@3.2.14", "", { "dependencies": { "@thesvg/icons": "3.2.14" } }, "sha512-ASgVabbpPYySVUF4/SrMtJTVQHlxp09YxwLAnLUskrMkhOlswMqzf3w0TpB52NqA99hDqWEMvAWzOaGlMyxZGw=="],
 
     "three": ["three@0.184.0", "", {}, "sha512-wtTRjG92pM5eUg/KuUnHsqSAlPM296brTOcLgMRqEeylYTh/CdtvKUvCyyCQTzFuStieWxvZb8mVTMvdPyUpxg=="],
 
@@ -3206,8 +3203,6 @@
     "@apm-js-collab/code-transformer/source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 
     "@apm-js-collab/code-transformer-bundler-plugins/es-module-lexer": ["es-module-lexer@2.3.1", "", {}, "sha512-shc1dbU90Yl/xq1QrC7QRtfcwURZuVRfPhZbDoldJ1cn1gzDvBaBWlv0eFolj5+0znnPJz5TXLxsN77X/12KTA=="],
-
-    "@aws-amplify/adapter-nextjs/aws-jwt-verify": ["aws-jwt-verify@4.0.1", "", {}, "sha512-kzvi71eD3w/mCpYRUY7cz6DX4bfYihGdI2yV3FYQ2JuZZenqAqDPz0gWj0ew6vlAtdEVBNb7p+Dm2TAIxpVYMA=="],
 
     "@aws-amplify/api-graphql/graphql": ["graphql@15.8.0", "", {}, "sha512-5gghUc24tP9HRznNpV2+FIoq3xKkj5dTQqf4v0CpdPbFVwFkWoxOM+o+2OC9ZSvjEMTjfmG9QT+gcvggTwW1zw=="],
 

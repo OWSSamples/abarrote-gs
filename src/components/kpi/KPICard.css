@@ -1,0 +1,102 @@
+.kumo-kpi-card {
+  height: 100%;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.kumo-kpi-card__body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kumo-kpi-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kumo-kpi-card__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #71717a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kumo-kpi-card__value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kumo-kpi-card__value {
+  font-size: 22px;
+  font-weight: 600;
+  color: #18181b;
+  line-height: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kumo-kpi-card__trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.kumo-kpi-card__trend--success {
+  color: #16a34a;
+}
+
+.kumo-kpi-card__trend--error {
+  color: #dc2626;
+}
+
+.kumo-kpi-card__trend--secondary {
+  color: #71717a;
+}
+
+.kumo-kpi-card__progress-wrap {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kumo-kpi-card__track {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: #f4f4f5;
+  overflow: hidden;
+}
+
+.kumo-kpi-card__bar {
+  height: 100%;
+  border-radius: 2px;
+}
+
+.kumo-kpi-card__bar--success {
+  background: #16a34a;
+}
+
+.kumo-kpi-card__bar--error {
+  background: #dc2626;
+}
+
+.kumo-kpi-card__bar--secondary {
+  background: #71717a;
+}
+
+.kumo-kpi-card__subtext {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a1a1aa;
+}

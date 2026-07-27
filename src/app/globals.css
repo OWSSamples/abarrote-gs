@@ -207,10 +207,6 @@ body,
 
 /* Padding for mobile bottom nav */
 @media screen and (max-width: 768px) {
-  .Polaris-Frame__Main {
-    padding-bottom: 68px !important;
-  }
-
   /* Reduce page horizontal padding on mobile */
   .Polaris-Page {
     padding-left: 12px !important;

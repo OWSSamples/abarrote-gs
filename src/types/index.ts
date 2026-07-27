@@ -378,6 +378,7 @@ export interface StoreConfig {
   ticketDesignCorte: TicketDesignConfig;
   ticketDesignProveedor: TicketDesignConfig;
   // Métodos de pago adicionales
+  paymentCaptureMethod?: 'payment_screen' | 'order_prepared' | 'manual';
   clabeNumber?: string;
   paypalUsername?: string;
   paypalQrUrl?: string;
@@ -502,6 +503,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   conektaEnabled: false,
   stripeEnabled: false,
   clipEnabled: false,
+  paymentCaptureMethod: 'payment_screen',
   customerDisplayEnabled: false,
   customerDisplayWelcome: '',
   customerDisplayFarewell: '',

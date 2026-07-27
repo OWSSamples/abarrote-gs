@@ -1,16 +1,32 @@
 'use client';
 
-import { Page } from '@shopify/polaris';
+import { Breadcrumbs, Box } from '@shopify/polaris';
+import { useRouter } from 'next/navigation';
+import { PersonLockFilledIcon } from '@shopify/polaris-icons';
 import { RolesManager } from '@/components/roles/RolesManager';
+import { SettingsSectionHeader } from '@/components/settings/SettingsSectionHeader';
+import './roles-page.css';
 
 export function RolesPageClient() {
+  const router = useRouter();
+
   return (
-    <Page
-      fullWidth
-      title="Usuarios y Accesos"
-      subtitle="Administra usuarios, roles y permisos de acceso del negocio"
-    >
-      <RolesManager />
-    </Page>
+    <main className="settings-secondary-page">
+      <nav className="settings-secondary-breadcrumb" aria-label="Breadcrumb">
+        <Breadcrumbs
+          backAction={{
+            content: 'Ajustes',
+            onAction: () => router.push('/dashboard/settings'),
+          }}
+        />
+        <span aria-current="page">Usuarios y Accesos</span>
+      </nav>
+      <header className="settings-secondary-header">
+        <SettingsSectionHeader icon={PersonLockFilledIcon} label="Usuarios y Accesos" />
+      </header>
+      <Box padding="400">
+        <RolesManager />
+      </Box>
+    </main>
   );
 }

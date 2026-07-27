@@ -5,6 +5,7 @@ import { deliveryProviderConnections, deliveryOrders } from '@/db/schema-deliver
 import { eq, and } from 'drizzle-orm';
 import { decrypt, encrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { assertActiveDeliveryPlugin } from '@/lib/plugins/delivery-plugins';
 import { getDeliveryProvider, getDeliveryBreaker } from './delivery-registry';
 import type { DeliveryOrder, DeliveryProvider, DeliveryProviderConnection } from './delivery-types';
 
@@ -100,6 +101,8 @@ export async function disconnectDeliveryProvider(storeId: string, provider: Deli
 // ── Order persistence ─────────────────────────────────────────
 
 export async function persistDeliveryOrder(order: DeliveryOrder): Promise<void> {
+  await assertActiveDeliveryPlugin(order.storeId, order.provider);
+
   await db.insert(deliveryOrders).values({
     id: order.id,
     externalId: order.externalId,

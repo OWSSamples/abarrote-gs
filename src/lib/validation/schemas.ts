@@ -447,6 +447,7 @@ export const saveStoreConfigSchema = z
     pointsValue: z.number().int().min(0).max(10000).optional(),
     logoUrl: z.string().max(2000).optional(),
     slogan: z.string().max(300).optional(),
+    paymentCaptureMethod: z.enum(['payment_screen', 'order_prepared', 'manual']).optional(),
     mpEnabled: z.boolean().optional(),
     mpPublicKey: z.string().max(500).optional(),
     mpDeviceId: z.string().max(200).optional(),

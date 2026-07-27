@@ -1,0 +1,665 @@
+.payments-reference-layout {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.payments-reference-layout .Polaris-Card {
+  border: 1px solid #dfe1e5;
+  border-radius: 9px;
+  box-shadow: 0 1px 0 rgba(31, 33, 36, 0.04);
+}
+
+.payments-kumo-card {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #dfe1e5;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(31, 33, 36, 0.04);
+  padding: 18px;
+}
+
+.payments-primary-benefits {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 9px;
+  background: #f6f6f7;
+}
+
+.payments-primary-benefits ul {
+  display: grid;
+  gap: 5px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #42474c;
+  font-size: 14px;
+}
+
+.payments-primary-benefits li::before {
+  content: '✓';
+  margin-right: 8px;
+  color: #3f4a4f;
+}
+
+.payments-provider-footer {
+  margin: 18px -18px -18px;
+  padding: 10px 18px;
+  border-top: 1px solid #e1e3e5;
+  background: #f6f6f7;
+}
+
+.payments-kumo-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eaf4ff;
+}
+
+.payments-settings-card {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #dfe1e5;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(31, 33, 36, 0.04);
+}
+
+.payments-settings-card > * {
+  padding-inline: 18px;
+}
+
+.payments-settings-list {
+  overflow: hidden;
+  border: 1px solid #dfe1e5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.payments-settings-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 54px;
+  padding: 10px 14px;
+  border-radius: 0;
+  border-bottom: 1px solid #e1e3e5;
+  color: #202223;
+  text-align: left;
+  box-shadow: none;
+}
+
+.payments-settings-row:last-child {
+  border-bottom: 0;
+}
+
+.payments-settings-row:hover {
+  background: #f6f6f7;
+}
+
+.payments-settings-row:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #005bd3;
+  outline-offset: -2px;
+}
+
+.payments-settings-row--disabled {
+  color: #6d7175;
+  cursor: default;
+}
+
+.payments-settings-row--disabled:hover {
+  background: transparent;
+}
+
+.payments-settings-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.payments-settings-row-icon .Polaris-Icon {
+  width: 18px;
+  height: 18px;
+}
+
+.payments-settings-row-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.payments-settings-row-copy strong {
+  overflow: hidden;
+  color: #202223;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payments-settings-row-copy small {
+  overflow: hidden;
+  color: #6d7175;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payments-settings-row-action {
+  color: #8a8a8a;
+  font-size: 20px;
+  line-height: 20px;
+}
+
+.payments-capture-dialog {
+  width: min(620px, calc(100vw - 32px));
+  padding: 0;
+  overflow: hidden;
+}
+
+.payments-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e1e3e5;
+  background: #f6f6f7;
+}
+
+.payments-dialog-description {
+  display: block;
+  padding: 16px 18px 0;
+  color: #42474c;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.payments-capture-options {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.payments-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 18px 16px;
+  border-top: 1px solid #e1e3e5;
+}
+
+.payments-manual-view {
+  width: 100%;
+}
+
+.payments-manual-card {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #dfe1e5;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.payments-manual-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.payments-manual-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.payments-manual-error {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #fed3d1;
+  border-radius: 8px;
+  background: #fff1f1;
+  color: #c5000c;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.payments-manual-nav {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid #dfe1e5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.payments-manual-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-height: 70px;
+  padding: 12px;
+  border-radius: 0;
+  border-bottom: 1px solid #e1e3e5;
+  text-align: left;
+  box-shadow: none;
+}
+
+.payments-manual-option:last-child {
+  border-bottom: 0;
+}
+
+.payments-manual-option:hover,
+.payments-manual-option--active {
+  background: #f6f6f7;
+}
+
+.payments-manual-option--active strong {
+  color: #202223;
+}
+
+.payments-manual-option span:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.payments-manual-option strong {
+  color: #303030;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.payments-manual-option small {
+  color: #6d7175;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.payments-manual-panel {
+  min-width: 0;
+  border: 1px solid #dfe1e5;
+  border-radius: 8px;
+  background: #fff;
+  padding: 16px;
+}
+
+.payments-manual-panel-content {
+  display: grid;
+  gap: 16px;
+}
+
+.payments-manual-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.payments-manual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.payments-hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.payments-qr-box {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  border: 1px dashed #c9cccf;
+  border-radius: 8px;
+  background: #f6f6f7;
+}
+
+.payments-qr-box img {
+  max-width: 180px;
+  max-height: 180px;
+  object-fit: contain;
+}
+
+.payments-method-note {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #dfe1e5;
+  border-radius: 8px;
+  background: #f6f6f7;
+}
+
+.payments-external-providers {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.payments-external-providers--detail {
+  gap: 12px;
+}
+
+.payments-provider-detail-card {
+  width: 100%;
+}
+
+.payments-provider-detail-view {
+  display: grid;
+  gap: 12px;
+}
+
+.payments-provider-detail-header {
+  display: grid;
+  gap: 2px;
+  padding: 0 4px;
+}
+
+.payments-provider-detail-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.payments-provider-breadcrumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: #303030;
+}
+
+.payments-provider-breadcrumb .Polaris-Icon {
+  width: 18px;
+  height: 18px;
+}
+
+.payments-provider-breadcrumb-separator {
+  color: #8a8a8a;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.payments-provider-breadcrumb-link {
+  max-width: 150px;
+  overflow: hidden;
+  color: #8a8a8a;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payments-provider-breadcrumb-link:hover {
+  color: #303030;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.payments-provider-breadcrumb-link:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.payments-provider-detail-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.payments-provider-about-card {
+  padding: 18px 20px;
+}
+
+.payments-provider-about-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.payments-provider-about-card p {
+  color: #303030;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.payments-external-list-card {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #d8dadd;
+  background: #fff;
+  padding: 0;
+}
+
+.payments-external-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border-bottom: 1px solid #e4e5e7;
+  background: #fff;
+}
+
+.payments-external-input {
+  min-width: 0;
+}
+
+.payments-external-filter {
+  min-width: 72px;
+  justify-content: center;
+}
+
+.payments-external-list {
+  display: grid;
+  overflow: hidden;
+  background: #fff;
+}
+
+.payments-external-list-item {
+  border-bottom: 1px solid #e4e5e7;
+}
+
+.payments-external-list-item:last-child {
+  border-bottom: 0;
+}
+
+.payments-external-row {
+  display: flex;
+  width: 100%;
+  min-height: 72px;
+  justify-content: stretch;
+  padding: 0;
+  border-radius: 0;
+  color: #202223;
+  text-align: left;
+  box-shadow: none;
+}
+
+.payments-external-row:hover {
+  background: #f7f7f8;
+}
+
+.payments-external-row:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #005bd3;
+  outline-offset: -2px;
+}
+
+.payments-external-row-content {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 14px;
+}
+
+.payments-external-row-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: min(42%, 360px);
+}
+
+.payments-external-row-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.payments-external-row-copy strong {
+  overflow: hidden;
+  color: #202223;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payments-external-row-copy small {
+  overflow: hidden;
+  color: #6d7175;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payments-network-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.payments-external-row-chevron {
+  color: #8a8a8a;
+  font-size: 20px;
+  line-height: 20px;
+}
+
+.payments-external-empty {
+  padding: 24px 12px;
+  text-align: center;
+}
+
+@media (max-width: 680px) {
+  .payments-external-row-content,
+  .payments-external-row-footer {
+    align-items: flex-start;
+  }
+
+  .payments-external-row-content {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .payments-external-row-footer {
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .payments-external-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .payments-external-filter {
+    width: 100%;
+  }
+
+  .payments-provider-detail-titlebar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .payments-provider-detail-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+.payments-reference-layout .Polaris-Banner {
+  margin-top: 12px;
+}
+
+.payments-command-card {
+  display: none;
+}
+
+.payments-advanced-details {
+  /* Legacy provider forms remain mounted for their handlers, but are not part
+     of the new payments surface. They will be exposed by the replacement UI. */
+  display: none;
+}
+
+#payments-manual-methods {
+  scroll-margin-top: 24px;
+}
+
+@media (max-width: 760px) {
+  .payments-manual-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payments-manual-card-header,
+  .payments-manual-panel-header {
+    flex-direction: column;
+  }
+
+  .payments-settings-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .payments-settings-row-action,
+  .payments-settings-row > .kumo-badge,
+  .payments-settings-row > [class*="Badge"] {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .payments-reference-layout .Polaris-InlineStack {
+    flex-wrap: wrap;
+  }
+
+  .payments-reference-layout .Polaris-Button {
+    white-space: normal;
+  }
+}

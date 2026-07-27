@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Card,
   Text,
@@ -19,6 +19,7 @@ import {
   Collapsible,
   Icon,
   DropZone,
+  UnstyledButton,
 } from '@shopify/polaris';
 import {
   CheckCircleIcon,
@@ -27,6 +28,9 @@ import {
   ChevronUpIcon,
   LockIcon,
   CreditCardIcon,
+  GiftCardIcon,
+  SettingsIcon,
+  WalletIcon,
 } from '@shopify/polaris-icons';
 import type { StoreConfig } from '@/types';
 import type { Field } from '@shopify/react-form';
@@ -39,6 +43,14 @@ import {
   getClipStatusAction,
 } from '@/app/actions/payment-provider-actions';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import { Badge as KumoBadge } from '@cloudflare/kumo/components/badge';
+import { Button as KumoButton } from '@cloudflare/kumo/components/button';
+import { Dialog } from '@cloudflare/kumo/components/dialog';
+import { Input as KumoInput } from '@cloudflare/kumo/components/input';
+import { LayerCard } from '@cloudflare/kumo/components/layer-card';
+import { Radio } from '@cloudflare/kumo/components/radio';
+import { Text as KumoText } from '@cloudflare/kumo/components/text';
+import './PaymentsSection.css';
 
 interface MPConnectionStatus {
   connected: boolean;
@@ -55,6 +67,93 @@ interface ClipStatus {
   serialNumber: string | null;
 }
 
+const EXTERNAL_PAYMENT_PROVIDERS = [
+  // Norteamérica
+  { name: 'Stripe', description: 'Estados Unidos y Canadá · Tarjetas, wallets y suscripciones', networks: ['Visa', 'Mastercard', 'American Express', 'Discover', 'Apple Pay', 'Google Pay'] },
+  { name: 'PayPal', description: 'Norteamérica y Latinoamérica · PayPal y tarjetas', networks: ['Visa', 'Mastercard', 'American Express', 'PayPal'] },
+  { name: 'Braintree', description: 'Estados Unidos y Canadá · Tarjetas, PayPal y wallets', networks: ['Visa', 'Mastercard', 'American Express', 'Discover', 'PayPal'] },
+  { name: 'Authorize.net', description: 'Estados Unidos y Canadá · Gateway para tarjetas y eChecks', networks: ['Visa', 'Mastercard', 'American Express', 'Discover', 'JCB', 'Apple Pay'] },
+  { name: 'Square', description: 'Estados Unidos y Canadá · Cobros presenciales y online', networks: ['Visa', 'Mastercard', 'American Express', 'Discover', 'Apple Pay', 'Google Pay'] },
+  { name: 'Moneris', description: 'Canadá · Pagos presenciales y comercio electrónico', networks: ['Visa', 'Mastercard', 'American Express', 'Discover'] },
+
+  // México
+  { name: 'Mercado Pago', description: 'México y Latinoamérica · Tarjetas, SPEI, OXXO y wallet', networks: ['Visa', 'Mastercard', 'American Express', 'OXXO', 'Mercado Pago'] },
+  { name: 'Conekta', description: 'México · Tarjetas, SPEI y efectivo', networks: ['Visa', 'Mastercard', 'American Express', 'OXXO'] },
+  { name: 'Clip', description: 'México · Terminales, links de pago y tarjetas', networks: ['Visa', 'Mastercard', 'American Express', 'Clip'] },
+  { name: 'Openpay', description: 'México y Latinoamérica · Tarjetas, transferencias y efectivo', networks: ['Visa', 'Mastercard', 'American Express', 'OXXO'] },
+
+  // Latinoamérica regional
+  { name: 'Kushki', description: 'Chile, Colombia, Ecuador, México y Perú · Adquirencia local', networks: ['Visa', 'Mastercard', 'American Express', 'Discover'] },
+  { name: 'dLocal', description: 'Uruguay y mercados emergentes de Latinoamérica · Métodos locales', networks: ['Visa', 'Mastercard', 'American Express', 'Mercado Pago'] },
+  { name: 'PayU Latam', description: 'Argentina, Brasil, Chile, Colombia, México, Panamá y Perú', networks: ['Visa', 'Mastercard', 'American Express', 'Efectivo'] },
+  { name: 'EBANX', description: 'Brasil, México, Chile, Colombia, Perú y Argentina · Métodos locales', networks: ['Visa', 'Mastercard', 'American Express', 'Efectivo'] },
+  { name: 'PagSeguro', description: 'Brasil · Tarjetas, Pix, boleto y wallets', networks: ['Visa', 'Mastercard', 'American Express', 'Elo'] },
+  { name: 'PagBrasil', description: 'Brasil · Tarjetas, Pix y métodos locales', networks: ['Visa', 'Mastercard', 'American Express', 'Elo'] },
+  { name: 'Transbank Webpay', description: 'Chile · Tarjetas y transferencias locales', networks: ['Visa', 'Mastercard', 'American Express'] },
+  { name: 'PagoEfectivo', description: 'Perú · Efectivo, transferencias y tarjetas', networks: ['Visa', 'Mastercard', 'Efectivo'] },
+  { name: 'Paymentez', description: 'Ecuador y Latinoamérica · Tarjetas y pagos locales', networks: ['Visa', 'Mastercard', 'American Express'] },
+  { name: 'Tilopay', description: 'Centroamérica y Caribe · Tarjetas y pagos online', networks: ['Visa', 'Mastercard', 'American Express'] },
+  { name: 'BAC Credomatic', description: 'Centroamérica · Tarjetas, links y cobros online', networks: ['Visa', 'Mastercard', 'American Express'] },
+  { name: 'Klarna', description: 'Estados Unidos y Latinoamérica seleccionada · Compra ahora y paga después', networks: ['Visa', 'Mastercard'] },
+] as const;
+
+type PaymentCaptureMethod = NonNullable<StoreConfig['paymentCaptureMethod']>;
+type ManualPaymentMethodId = 'spei' | 'codi' | 'terminal' | 'paypal';
+
+const PAYMENT_CAPTURE_OPTIONS: Array<{
+  value: PaymentCaptureMethod;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'payment_screen',
+    label: 'Automáticamente en la pantalla de pago',
+    description: 'Autoriza y captura el pago cuando el cajero confirma el cobro.',
+  },
+  {
+    value: 'order_prepared',
+    label: 'Automáticamente cuando se prepara el pedido',
+    description: 'Autoriza primero y captura cuando todo el pedido queda preparado.',
+  },
+  {
+    value: 'manual',
+    label: 'Manualmente',
+    description: 'El cajero autoriza y captura manualmente desde el flujo de venta.',
+  },
+];
+
+const MANUAL_PAYMENT_METHODS: Array<{
+  id: ManualPaymentMethodId;
+  title: string;
+  description: string;
+  status: 'configured' | 'available';
+}> = [
+  {
+    id: 'spei',
+    title: 'SPEI',
+    description: 'CLABE bancaria para transferencias verificadas manualmente.',
+    status: 'available',
+  },
+  {
+    id: 'codi',
+    title: 'CoDi',
+    description: 'QR bancario para cobros móviles con confirmación del cajero.',
+    status: 'available',
+  },
+  {
+    id: 'terminal',
+    title: 'Terminal manual',
+    description: 'Registra cobros hechos en una terminal externa sin proveedor integrado.',
+    status: 'available',
+  },
+  {
+    id: 'paypal',
+    title: 'PayPal',
+    description: 'QR o usuario PayPal para cobrar fuera del proveedor principal.',
+    status: 'available',
+  },
+];
+
 interface PaymentsSectionProps {
   config: StoreConfig;
   updateField: <K extends keyof StoreConfig>(field: K, value: StoreConfig[K]) => void;
@@ -63,21 +162,19 @@ interface PaymentsSectionProps {
   mpDevices: { id: string; operating_mode: string }[];
   handleMPTest: () => void;
   clabeNumberField: Field<string>;
+  paymentCaptureMethodField: Field<string>;
   paypalUsernameField: Field<string>;
   paypalQrUrlField: Field<string>;
   cobrarQrUrlField: Field<string>;
+  savePatch: (patch: Partial<StoreConfig>) => Promise<void>;
+  saving: boolean;
+  showExternalProviders: boolean;
+  showManualPaymentMethods: boolean;
+  onExternalProvidersChange: (open: boolean) => void;
+  onManualPaymentMethodsChange: (open: boolean) => void;
+  onExternalProviderNameChange: (name: string | null) => void;
+  onSubsectionTitleChange: (title: string | null) => void;
 }
-
-/** S3-hosted brand logos for each payment provider */
-const S3_BASE = 'https://kiosko-blob.s3.us-east-2.amazonaws.com/logos/payments';
-const PROVIDER_LOGOS: Record<string, string> = {
-  mercadopago: `${S3_BASE}/mercadopago.png`,
-  stripe: `${S3_BASE}/stripe.png`,
-  conekta: `${S3_BASE}/conekta.png`,
-  clip: `${S3_BASE}/clip.png`,
-  paypal: `${S3_BASE}/paypal.png`,
-  codi: `${S3_BASE}/codi.png`,
-};
 
 // ── CLABE Bank Code Lookup (Mexican interbank system) ──
 const CLABE_BANKS: Record<string, { name: string; domain?: string }> = {
@@ -138,9 +235,18 @@ export function PaymentsSection({
   mpDevices,
   handleMPTest,
   clabeNumberField,
+  paymentCaptureMethodField,
   paypalUsernameField,
   paypalQrUrlField,
   cobrarQrUrlField,
+  savePatch,
+  saving,
+  showExternalProviders,
+  showManualPaymentMethods,
+  onExternalProvidersChange,
+  onManualPaymentMethodsChange,
+  onExternalProviderNameChange,
+  onSubsectionTitleChange,
 }: PaymentsSectionProps) {
   const [mpConnection, setMpConnection] = useState<MPConnectionStatus | null>(null);
   const [mpConnecting, setMpConnecting] = useState(false);
@@ -178,6 +284,13 @@ export function PaymentsSection({
   useEffect(() => {
     loadConnectionStatus();
   }, [loadConnectionStatus]);
+
+  useEffect(() => {
+    if (!showExternalProviders) {
+      setSelectedExternalProvider(null);
+      onExternalProviderNameChange(null);
+    }
+  }, [showExternalProviders, onExternalProviderNameChange]);
 
   // Check URL params for OAuth callback result
   useEffect(() => {
@@ -243,14 +356,12 @@ export function PaymentsSection({
       connected: isConnected,
       methods: 'Terminal Point · Tarjeta web',
       type: 'OAuth' as const,
-      logo: PROVIDER_LOGOS.mercadopago,
     },
     {
       name: 'Clip',
       connected: clipStatus?.connected ?? false,
       methods: 'Checkout link · Terminal PinPad',
       type: 'API Keys' as const,
-      logo: PROVIDER_LOGOS.clip,
     },
   ];
 
@@ -319,10 +430,23 @@ export function PaymentsSection({
 
   // ── Expanded sections state ──
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [providerSearch, setProviderSearch] = useState('');
+  const [activeManualMethod, setActiveManualMethod] = useState<ManualPaymentMethodId>('spei');
+  const [manualPaymentError, setManualPaymentError] = useState<string | null>(null);
+  const currentCaptureMethod = (paymentCaptureMethodField.value || 'payment_screen') as PaymentCaptureMethod;
+  const [captureDialogOpen, setCaptureDialogOpen] = useState(false);
+  const [draftCaptureMethod, setDraftCaptureMethod] = useState<PaymentCaptureMethod>(currentCaptureMethod);
+  const [selectedExternalProvider, setSelectedExternalProvider] = useState<(typeof EXTERNAL_PAYMENT_PROVIDERS)[number] | null>(null);
+  const paypalQrInputRef = useRef<HTMLInputElement | null>(null);
+  const cobrarQrInputRef = useRef<HTMLInputElement | null>(null);
   const toggleSection = useCallback(
     (id: string) => setExpandedSection((prev) => (prev === id ? null : id)),
     [],
   );
+
+  useEffect(() => {
+    setDraftCaptureMethod(currentCaptureMethod);
+  }, [currentCaptureMethod]);
 
   // ── Health score ──
   const healthScore = useMemo(() => {
@@ -331,13 +455,672 @@ export function PaymentsSection({
     return { current: currentScore, max: maxScore, percent: Math.round((currentScore / maxScore) * 100) };
   }, [providers.length, manualMethods.length, connectedCount, configuredManualCount]);
 
+  const revealAdvancedDetails = useCallback((section: string, targetId?: string) => {
+    setExpandedSection(section);
+    if (targetId) {
+      window.setTimeout(() => {
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+    }
+  }, []);
+
+  const openManualMethods = useCallback(() => {
+    onManualPaymentMethodsChange(true);
+    onSubsectionTitleChange('Formas de pago manuales');
+    onExternalProvidersChange(false);
+  }, [onExternalProvidersChange, onManualPaymentMethodsChange, onSubsectionTitleChange]);
+
+  const closeManualMethods = useCallback(() => {
+    onManualPaymentMethodsChange(false);
+    onSubsectionTitleChange(null);
+  }, [onManualPaymentMethodsChange, onSubsectionTitleChange]);
+
+  const saveCaptureMethod = useCallback(async () => {
+    paymentCaptureMethodField.onChange(draftCaptureMethod);
+    updateField('paymentCaptureMethod', draftCaptureMethod);
+    await savePatch({ paymentCaptureMethod: draftCaptureMethod });
+    setCaptureDialogOpen(false);
+  }, [draftCaptureMethod, paymentCaptureMethodField, savePatch, updateField]);
+
+  const saveManualPaymentMethods = useCallback(async () => {
+    setManualPaymentError(null);
+    try {
+      await savePatch({
+        clabeNumber: clabeNumberField.value,
+        paypalUsername: paypalUsernameField.value,
+        paypalQrUrl: paypalQrUrlField.value,
+        cobrarQrUrl: cobrarQrUrlField.value,
+      });
+    } catch {
+      setManualPaymentError('No fue posible guardar la configuración de pagos manuales.');
+    }
+  }, [
+    clabeNumberField.value,
+    cobrarQrUrlField.value,
+    paypalQrUrlField.value,
+    paypalUsernameField.value,
+    savePatch,
+  ]);
+
+  const uploadPaymentQr = useCallback(async (target: 'paypal' | 'codi', file: File | null) => {
+    if (!file) return;
+    setManualPaymentError(null);
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const path = `logos/payments/${target}-qr-${Date.now()}.${extension}`;
+      const url = await uploadFile(file, path);
+      if (target === 'paypal') {
+        paypalQrUrlField.onChange(url);
+        await savePatch({ paypalQrUrl: url });
+        return;
+      }
+      cobrarQrUrlField.onChange(url);
+      await savePatch({ cobrarQrUrl: url });
+    } catch {
+      setManualPaymentError('No fue posible subir el QR. Intenta de nuevo.');
+    }
+  }, [cobrarQrUrlField, paypalQrUrlField, savePatch]);
+
+  const removePaymentQr = useCallback(async (target: 'paypal' | 'codi') => {
+    setManualPaymentError(null);
+    try {
+      if (target === 'paypal') {
+        if (paypalQrUrlField.value) await deleteFileFromUrl(paypalQrUrlField.value);
+        paypalQrUrlField.onChange('');
+        await savePatch({ paypalQrUrl: '' });
+        return;
+      }
+      if (cobrarQrUrlField.value) await deleteFileFromUrl(cobrarQrUrlField.value);
+      cobrarQrUrlField.onChange('');
+      await savePatch({ cobrarQrUrl: '' });
+    } catch {
+      setManualPaymentError('No fue posible quitar el QR. Intenta de nuevo.');
+    }
+  }, [cobrarQrUrlField, paypalQrUrlField, savePatch]);
+
+  const visibleExternalProviders = useMemo(() => {
+    const query = providerSearch.trim().toLocaleLowerCase('es-MX');
+    if (!query) return EXTERNAL_PAYMENT_PROVIDERS;
+    return EXTERNAL_PAYMENT_PROVIDERS.filter((provider) =>
+      `${provider.name} ${provider.description}`.toLocaleLowerCase('es-MX').includes(query),
+    );
+  }, [providerSearch]);
+
+  const providerDetail = selectedExternalProvider
+    ? {
+        coverage: selectedExternalProvider.description.split(' · ')[0] || 'América y Latinoamérica',
+        summary: selectedExternalProvider.description.split(' · ').slice(1).join(' · ') || 'Procesamiento de pagos para comercios.',
+        methods: selectedExternalProvider.networks.length > 0
+          ? selectedExternalProvider.networks.join(', ')
+          : 'Configuración del proveedor pendiente',
+      }
+    : null;
+
+  if (showManualPaymentMethods) {
+    const bank = getBankFromClabe(clabeNumberField.value || '');
+    const isPaypalConfigured = Boolean(paypalUsernameField.value || paypalQrUrlField.value);
+    const isCodiConfigured = Boolean(cobrarQrUrlField.value);
+    const isSpeiConfigured = Boolean(clabeNumberField.value && clabeNumberField.value.length === 18);
+
+    const manualMethodStatus: Record<ManualPaymentMethodId, boolean> = {
+      spei: isSpeiConfigured,
+      codi: isCodiConfigured,
+      terminal: true,
+      paypal: isPaypalConfigured,
+    };
+
+    const manualPanel = (() => {
+      switch (activeManualMethod) {
+        case 'spei':
+          return (
+            <div className="payments-manual-panel-content">
+              <div className="payments-manual-panel-header">
+                <div>
+                  <KumoText bold as="h3">Transferencia SPEI</KumoText>
+                  <KumoText variant="secondary" size="sm" as="p">
+                    Guarda la CLABE de recepción para mostrarla al confirmar ventas por transferencia.
+                  </KumoText>
+                </div>
+                <KumoBadge variant={isSpeiConfigured ? 'success' : 'warning'}>
+                  {isSpeiConfigured ? 'Configurado' : 'Pendiente'}
+                </KumoBadge>
+              </div>
+              <KumoInput
+                label="CLABE interbancaria"
+                value={clabeNumberField.value}
+                onChange={(event) => clabeNumberField.onChange(event.currentTarget.value.replace(/\D/g, '').slice(0, 18))}
+                inputMode="numeric"
+                maxLength={18}
+                placeholder="18 dígitos"
+                description={bank ? `Banco detectado: ${bank.name}` : 'Se valida el banco cuando captures los primeros 3 dígitos.'}
+              />
+              <div className="payments-manual-actions">
+                <KumoButton variant="primary" size="sm" onClick={saveManualPaymentMethods} loading={saving}>
+                  Guardar SPEI
+                </KumoButton>
+              </div>
+            </div>
+          );
+        case 'codi':
+          return (
+            <div className="payments-manual-panel-content">
+              <div className="payments-manual-panel-header">
+                <div>
+                  <KumoText bold as="h3">CoDi</KumoText>
+                  <KumoText variant="secondary" size="sm" as="p">
+                    Sube el QR bancario que usará el cajero para cobrar con confirmación manual.
+                  </KumoText>
+                </div>
+                <KumoBadge variant={isCodiConfigured ? 'success' : 'warning'}>
+                  {isCodiConfigured ? 'Configurado' : 'Pendiente'}
+                </KumoBadge>
+              </div>
+              <input
+                ref={cobrarQrInputRef}
+                className="payments-hidden-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={(event) => void uploadPaymentQr('codi', event.currentTarget.files?.[0] ?? null)}
+              />
+              <div className="payments-qr-box">
+                {cobrarQrUrlField.value ? (
+                  <img src={cobrarQrUrlField.value} alt="QR CoDi configurado" />
+                ) : (
+                  <KumoText variant="secondary" size="sm" as="p">Sin QR configurado</KumoText>
+                )}
+              </div>
+              <div className="payments-manual-actions">
+                <KumoButton variant="secondary" size="sm" onClick={() => cobrarQrInputRef.current?.click()}>
+                  Subir QR CoDi
+                </KumoButton>
+                {cobrarQrUrlField.value && (
+                  <KumoButton variant="secondary-destructive" size="sm" onClick={() => void removePaymentQr('codi')} loading={saving}>
+                    Quitar QR
+                  </KumoButton>
+                )}
+              </div>
+            </div>
+          );
+        case 'terminal':
+          return (
+            <div className="payments-manual-panel-content">
+              <div className="payments-manual-panel-header">
+                <div>
+                  <KumoText bold as="h3">Terminal manual</KumoText>
+                  <KumoText variant="secondary" size="sm" as="p">
+                    Permite registrar pagos hechos en una terminal externa y conciliarlos dentro de la venta.
+                  </KumoText>
+                </div>
+                <KumoBadge variant="success">Disponible</KumoBadge>
+              </div>
+              <div className="payments-method-note">
+                <KumoText bold as="p">Operación controlada desde caja</KumoText>
+                <KumoText variant="secondary" size="sm" as="p">
+                  El cajero selecciona tarjeta manual, captura referencia o últimos dígitos y el pago queda auditado en el ticket.
+                </KumoText>
+              </div>
+            </div>
+          );
+        case 'paypal':
+          return (
+            <div className="payments-manual-panel-content">
+              <div className="payments-manual-panel-header">
+                <div>
+                  <KumoText bold as="h3">PayPal QR</KumoText>
+                  <KumoText variant="secondary" size="sm" as="p">
+                    Configura el usuario o QR de PayPal para cobros manuales fuera del proveedor principal.
+                  </KumoText>
+                </div>
+                <KumoBadge variant={isPaypalConfigured ? 'success' : 'warning'}>
+                  {isPaypalConfigured ? 'Configurado' : 'Pendiente'}
+                </KumoBadge>
+              </div>
+              <KumoInput
+                label="Usuario o correo de PayPal"
+                value={paypalUsernameField.value}
+                onChange={(event) => paypalUsernameField.onChange(event.currentTarget.value.trim())}
+                placeholder="pagos@negocio.com"
+              />
+              <input
+                ref={paypalQrInputRef}
+                className="payments-hidden-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={(event) => void uploadPaymentQr('paypal', event.currentTarget.files?.[0] ?? null)}
+              />
+              <div className="payments-qr-box">
+                {paypalQrUrlField.value ? (
+                  <img src={paypalQrUrlField.value} alt="QR PayPal configurado" />
+                ) : (
+                  <KumoText variant="secondary" size="sm" as="p">Sin QR configurado</KumoText>
+                )}
+              </div>
+              <div className="payments-manual-actions">
+                <KumoButton variant="primary" size="sm" onClick={saveManualPaymentMethods} loading={saving}>
+                  Guardar PayPal
+                </KumoButton>
+                <KumoButton variant="secondary" size="sm" onClick={() => paypalQrInputRef.current?.click()}>
+                  Subir QR PayPal
+                </KumoButton>
+                {paypalQrUrlField.value && (
+                  <KumoButton variant="secondary-destructive" size="sm" onClick={() => void removePaymentQr('paypal')} loading={saving}>
+                    Quitar QR
+                  </KumoButton>
+                )}
+              </div>
+            </div>
+          );
+      }
+    })();
+
+    return (
+      <div className="payments-manual-view">
+        <LayerCard className="payments-manual-card">
+          <LayerCard.Secondary className="payments-manual-card-header">
+            <div>
+              <KumoText bold as="h2">Formas de pago manuales</KumoText>
+              <KumoText variant="secondary" size="sm" as="p">
+                Configura métodos que se cobran fuera de un proveedor integrado y se verifican dentro de caja.
+              </KumoText>
+            </div>
+            <KumoButton variant="ghost" size="sm" onClick={closeManualMethods}>
+              Volver
+            </KumoButton>
+          </LayerCard.Secondary>
+          <LayerCard.Primary>
+            {manualPaymentError && (
+              <div className="payments-manual-error" role="alert">
+                <KumoText as="p">{manualPaymentError}</KumoText>
+              </div>
+            )}
+            <div className="payments-manual-grid">
+              <div className="payments-manual-nav" role="list" aria-label="Métodos manuales disponibles">
+                {MANUAL_PAYMENT_METHODS.map((method) => (
+                  <KumoButton
+                    key={method.id}
+                    variant="ghost"
+                    className={`payments-manual-option${activeManualMethod === method.id ? ' payments-manual-option--active' : ''}`}
+                    onClick={() => setActiveManualMethod(method.id)}
+                    aria-current={activeManualMethod === method.id ? 'page' : undefined}
+                  >
+                    <span>
+                      <strong>{method.title}</strong>
+                      <small>{method.description}</small>
+                    </span>
+                    <KumoBadge variant={manualMethodStatus[method.id] ? 'success' : 'secondary'}>
+                      {manualMethodStatus[method.id] ? 'Listo' : 'Configurar'}
+                    </KumoBadge>
+                  </KumoButton>
+                ))}
+              </div>
+              <div className="payments-manual-panel">{manualPanel}</div>
+            </div>
+          </LayerCard.Primary>
+        </LayerCard>
+      </div>
+    );
+  }
+
+  if (showExternalProviders) {
+    if (selectedExternalProvider && providerDetail) {
+      return (
+        <div className="payments-external-providers payments-external-providers--detail">
+          <div className="payments-provider-detail-view">
+            <div className="payments-provider-detail-header">
+              <div className="payments-provider-detail-titlebar">
+                <nav className="payments-provider-breadcrumb" aria-label="Ruta del proveedor de pago">
+                  <Icon source={CreditCardIcon} tone="subdued" />
+                  <span className="payments-provider-breadcrumb-separator" aria-hidden="true">›</span>
+                  <UnstyledButton
+                    className="payments-provider-breadcrumb-link"
+                    onClick={() => {
+                      setSelectedExternalProvider(null);
+                      onExternalProviderNameChange(null);
+                    }}
+                  >
+                    Proveedores
+                  </UnstyledButton>
+                  <span className="payments-provider-breadcrumb-separator" aria-hidden="true">›</span>
+                  <Text as="h2" variant="headingMd" fontWeight="semibold">
+                    {selectedExternalProvider.name}
+                  </Text>
+                </nav>
+
+                <div className="payments-provider-detail-actions">
+                  <KumoButton variant="outline" size="sm" disabled>
+                    Contactar al proveedor
+                  </KumoButton>
+                  <KumoButton variant="primary" size="sm" disabled>
+                    Instalar
+                  </KumoButton>
+                </div>
+              </div>
+              <KumoText variant="secondary" size="sm" as="p">Compatible con 3DS</KumoText>
+            </div>
+
+            <LayerCard className="payments-provider-detail-card payments-provider-about-card">
+              <div className="payments-provider-about-header">
+                <KumoText bold as="h2">Acerca de {selectedExternalProvider.name}</KumoText>
+                <Icon source={ChevronUpIcon} tone="subdued" />
+              </div>
+              <KumoText as="p">
+                {selectedExternalProvider.name} permite aceptar pagos para comercios de {providerDetail.coverage.toLowerCase()}.
+                Procesa {providerDetail.methods} y mantiene el control del flujo de pago dentro de la operación del negocio.
+                La disponibilidad final depende del país, cuenta y validación del proveedor.
+              </KumoText>
+            </LayerCard>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="payments-external-providers">
+        <LayerCard className="payments-external-list-card">
+          <div className="payments-external-toolbar">
+            <KumoInput
+              size="sm"
+              value={providerSearch}
+              onChange={(event) => setProviderSearch(event.currentTarget.value)}
+              placeholder="Filtrar proveedores de pagos externos"
+              aria-label="Filtrar proveedores de pagos externos"
+              className="payments-external-input"
+            />
+            <KumoButton
+              variant="outline"
+              size="sm"
+              className="payments-external-filter"
+              aria-label="Filtrar proveedores"
+              title="Filtrar proveedores"
+            >
+              Filtros
+            </KumoButton>
+          </div>
+
+          <div className="payments-external-list" role="list">
+            {visibleExternalProviders.map((provider) => (
+              <div key={provider.name} role="listitem" className="payments-external-list-item">
+                <KumoButton
+                  variant="ghost"
+                  className="payments-external-row"
+                  aria-label={`Ver detalles de ${provider.name}`}
+                  onClick={() => {
+                    setSelectedExternalProvider(provider);
+                    onExternalProviderNameChange(provider.name);
+                  }}
+                >
+                  <span className="payments-external-row-content">
+                    <span className="payments-external-row-copy">
+                      <strong>{provider.name}</strong>
+                      {provider.description && <small>{provider.description}</small>}
+                    </span>
+                    <span className="payments-external-row-footer">
+                      <span className="payments-network-list" aria-hidden="true">
+                        {provider.networks.map((network) => <BrandLogo key={network} name={network} size={24} />)}
+                      </span>
+                      <span className="payments-external-row-chevron" aria-hidden="true">
+                        ›
+                      </span>
+                    </span>
+                  </span>
+                </KumoButton>
+              </div>
+            ))}
+            {visibleExternalProviders.length === 0 && (
+              <div className="payments-external-empty">
+                <KumoText variant="secondary" size="sm" as="p">
+                  No se encontraron proveedores.
+                </KumoText>
+              </div>
+            )}
+          </div>
+        </LayerCard>
+      </div>
+    );
+  }
+
   return (
     <BlockStack gap="600">
+      <div className="payments-reference-layout">
+        <LayerCard className="payments-kumo-card payments-primary-provider-card">
+          <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center" wrap={false}>
+              <BlockStack gap="050">
+                <KumoText bold as="h2">Procesamiento integrado</KumoText>
+                <KumoText variant="secondary" size="sm" as="p">Sin cargos adicionales por transacción</KumoText>
+                <KumoText variant="secondary" size="sm" as="p">Tarifas del proveedor según el método de pago</KumoText>
+              </BlockStack>
+              <InlineStack gap="200" blockAlign="center" wrap={false}>
+                <KumoButton variant="outline" size="sm" onClick={() => revealAdvancedDetails('mp', 'payments-mercado-pago')}>
+                  Más información
+                </KumoButton>
+                <KumoButton variant="primary" size="sm" onClick={() => revealAdvancedDetails('mp', 'payments-mercado-pago')}>
+                  Completar configuración
+                </KumoButton>
+              </InlineStack>
+            </InlineStack>
+
+            <div className="payments-primary-benefits">
+              <KumoText bold as="p">Configura tu proveedor de pagos para empezar a cobrar</KumoText>
+              <KumoText variant="secondary" size="sm" as="p">Acepta tarjetas, transferencias y pagos con terminal desde el mismo flujo de venta.</KumoText>
+              <ul>
+                <li>Conecta una cuenta autorizada</li>
+                <li>Consulta el estado de tus terminales</li>
+                <li>Gestiona reembolsos desde la operación</li>
+              </ul>
+            </div>
+
+            <InlineStack align="space-between" blockAlign="center" wrap>
+              <InlineStack gap="200" blockAlign="center">
+                <Icon source={CreditCardIcon} tone="subdued" />
+                <KumoText bold as="span">Formas de pago disponibles</KumoText>
+              </InlineStack>
+              <InlineStack gap="200" blockAlign="center" wrap={false}>
+                <BrandLogo name="Visa" size={30} />
+                <BrandLogo name="Mastercard" size={30} />
+                <BrandLogo name="Apple Pay" size={30} />
+                <BrandLogo name="Google Pay" size={30} />
+                <BrandLogo name="PayPal" size={30} />
+              </InlineStack>
+            </InlineStack>
+          </BlockStack>
+          <div className="payments-provider-footer">
+            <KumoButton variant="ghost" size="sm" onClick={() => onExternalProvidersChange(true)}>
+              Ver todos los demás proveedores
+            </KumoButton>
+          </div>
+        </LayerCard>
+
+        <LayerCard className="payments-kumo-card">
+          <BlockStack gap="300">
+            <BlockStack gap="100">
+              <KumoText variant="heading3" as="h2">Proveedores de pago</KumoText>
+              <KumoText variant="secondary" size="sm" as="p">
+                Conecta y administra los servicios que usarás para recibir pagos.
+              </KumoText>
+            </BlockStack>
+
+            <Box padding="300" borderWidth="025" borderColor="border" borderRadius="200">
+              <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                <InlineStack gap="200" blockAlign="center" wrap={false}>
+                  <BrandLogo name="Mercado Pago" size={30} />
+                  <BlockStack gap="050">
+                    <KumoText bold as="p">Mercado Pago</KumoText>
+                    <KumoText variant="secondary" size="sm" as="p">Terminal Point, tarjeta web y QR.</KumoText>
+                  </BlockStack>
+                </InlineStack>
+                <InlineStack gap="200" blockAlign="center" wrap={false}>
+                  <KumoBadge variant={isConnected ? 'success' : 'warning'}>{isConnected ? 'Conectado' : 'Sin configurar'}</KumoBadge>
+                  <KumoButton variant="ghost" size="sm" onClick={() => revealAdvancedDetails('mp', 'payments-mercado-pago')}>
+                    Configurar
+                  </KumoButton>
+                </InlineStack>
+              </InlineStack>
+            </Box>
+
+            <Box padding="300" borderWidth="025" borderColor="border" borderRadius="200">
+              <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                <InlineStack gap="200" blockAlign="center" wrap={false}>
+                  <BrandLogo name="PayPal" size={30} />
+                  <BlockStack gap="050">
+                    <KumoText bold as="p">PayPal</KumoText>
+                    <KumoText variant="secondary" size="sm" as="p">Cobros mediante enlace y QR configurado por negocio.</KumoText>
+                  </BlockStack>
+                </InlineStack>
+                <InlineStack gap="200" blockAlign="center" wrap={false}>
+                  <KumoBadge variant={paypalQrUrlField.value || paypalUsernameField.value ? 'success' : 'info'}>
+                    {paypalQrUrlField.value || paypalUsernameField.value ? 'Configurado' : 'Configuración incompleta'}
+                  </KumoBadge>
+                  <KumoButton variant="ghost" size="sm" onClick={openManualMethods} aria-label="Configurar PayPal">
+                    Ver
+                  </KumoButton>
+                </InlineStack>
+              </InlineStack>
+              {!paypalQrUrlField.value && !paypalUsernameField.value && (
+                <div className="payments-kumo-info" role="status">
+                  <Icon source={CreditCardIcon} tone="subdued" />
+                  <KumoText variant="secondary" size="sm" as="p">Completa los datos de PayPal para empezar a recibir pagos.</KumoText>
+                </div>
+              )}
+            </Box>
+
+            <KumoButton variant="ghost" size="sm" onClick={() => revealAdvancedDetails('clip', 'payments-clip')}>
+              + Agregar proveedor de pagos
+            </KumoButton>
+          </BlockStack>
+        </LayerCard>
+
+        <LayerCard className="payments-settings-card">
+          <LayerCard.Secondary>Configuración de pagos</LayerCard.Secondary>
+          <LayerCard.Primary>
+            <div className="payments-settings-list">
+              <KumoButton
+                variant="ghost"
+                className="payments-settings-row"
+                onClick={() => setCaptureDialogOpen(true)}
+              >
+                <span className="payments-settings-row-icon" aria-hidden="true">
+                  <Icon source={CreditCardIcon} tone="subdued" />
+                </span>
+                <span className="payments-settings-row-copy">
+                  <strong>Método de captura de pago</strong>
+                  <small>{PAYMENT_CAPTURE_OPTIONS.find((option) => option.value === currentCaptureMethod)?.label}</small>
+                </span>
+                <span className="payments-settings-row-action" aria-hidden="true">›</span>
+              </KumoButton>
+
+              <KumoButton
+                variant="ghost"
+                className="payments-settings-row"
+                onClick={openManualMethods}
+              >
+                <span className="payments-settings-row-icon" aria-hidden="true">
+                  <Icon source={CreditCardIcon} tone="subdued" />
+                </span>
+                <span className="payments-settings-row-copy">
+                  <strong>Formas de pago manuales</strong>
+                  <small>SPEI, CoDi, terminal externa y PayPal QR</small>
+                </span>
+                <span className="payments-settings-row-action" aria-hidden="true">›</span>
+              </KumoButton>
+
+              <KumoButton
+                variant="ghost"
+                className="payments-settings-row"
+                onClick={openManualMethods}
+              >
+                <span className="payments-settings-row-icon" aria-hidden="true">
+                  <Icon source={SettingsIcon} tone="subdued" />
+                </span>
+                <span className="payments-settings-row-copy">
+                  <strong>Personalizaciones de las formas de pago</strong>
+                  <small>Define cómo se muestran los métodos en caja</small>
+                </span>
+                <span className="payments-settings-row-action" aria-hidden="true">›</span>
+              </KumoButton>
+
+              <div className="payments-settings-row payments-settings-row--disabled" aria-disabled="true">
+                <span className="payments-settings-row-icon" aria-hidden="true">
+                  <Icon source={GiftCardIcon} tone="subdued" />
+                </span>
+                <span className="payments-settings-row-copy">
+                  <strong>Vencimiento de la tarjeta de regalo</strong>
+                  <small>Disponible en una fase posterior</small>
+                </span>
+                <KumoBadge variant="secondary">Próximamente</KumoBadge>
+              </div>
+
+              <div className="payments-settings-row payments-settings-row--disabled" aria-disabled="true">
+                <span className="payments-settings-row-icon" aria-hidden="true">
+                  <Icon source={WalletIcon} tone="subdued" />
+                </span>
+                <span className="payments-settings-row-copy">
+                  <strong>Pases de Apple Wallet</strong>
+                  <small>Disponible en una fase posterior</small>
+                </span>
+                <KumoBadge variant="secondary">Próximamente</KumoBadge>
+              </div>
+            </div>
+          </LayerCard.Primary>
+        </LayerCard>
+      </div>
+
+      <Dialog.Root open={captureDialogOpen} onOpenChange={setCaptureDialogOpen}>
+        <Dialog size="lg" className="payments-capture-dialog">
+          <div className="payments-dialog-header">
+            <Dialog.Title>Método de captura de pago</Dialog.Title>
+            <KumoButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setCaptureDialogOpen(false)}
+              aria-label="Cerrar método de captura de pago"
+            >
+              Cerrar
+            </KumoButton>
+          </div>
+          <Dialog.Description className="payments-dialog-description">
+            Los pagos se autorizan cuando se realiza una venta. Selecciona cuándo se capturan para mantener el flujo de caja controlado.
+          </Dialog.Description>
+          <Radio.Group<PaymentCaptureMethod>
+            legend="Opciones de captura"
+            appearance="card"
+            value={draftCaptureMethod}
+            onValueChange={(value) => setDraftCaptureMethod(value)}
+            className="payments-capture-options"
+          >
+            {PAYMENT_CAPTURE_OPTIONS.map((option) => (
+              <Radio.Item<PaymentCaptureMethod>
+                key={option.value}
+                value={option.value}
+                label={option.label}
+                description={option.description}
+              />
+            ))}
+          </Radio.Group>
+          <div className="payments-dialog-actions">
+            <KumoButton variant="secondary" size="sm" onClick={() => setCaptureDialogOpen(false)}>
+              Cancelar
+            </KumoButton>
+            <KumoButton
+              variant="primary"
+              size="sm"
+              onClick={() => void saveCaptureMethod()}
+              loading={saving}
+              disabled={saving || draftCaptureMethod === currentCaptureMethod}
+            >
+              Guardar
+            </KumoButton>
+          </div>
+        </Dialog>
+      </Dialog.Root>
+
+      {expandedSection && (
+        <div className="payments-advanced-details">
       {/* ═══════════════════════════════════════════════════════
           SECTION A — Payment Operations Command Center
           Top-level KPI bar + health indicator
           ═══════════════════════════════════════════════════════ */}
-      <Card>
+      <Card className="payments-command-card">
         <BlockStack gap="500">
           {/* Hero KPI Row */}
           <InlineStack align="space-between" blockAlign="center" wrap={false}>
@@ -441,7 +1224,7 @@ export function PaymentsSection({
           ═══════════════════════════════════════════════════════ */}
 
       {/* ── B1: MercadoPago ── */}
-      <Card>
+      <Card id="payments-mercado-pago">
         <BlockStack gap="400">
           <div
             onClick={() => toggleSection('mp')}
@@ -607,7 +1390,7 @@ export function PaymentsSection({
       </Card>
 
       {/* ── B2: Clip ── */}
-      <Card>
+      <Card id="payments-clip">
         <BlockStack gap="400">
           <div
             onClick={() => toggleSection('clip')}
@@ -771,7 +1554,7 @@ export function PaymentsSection({
           SECTION C — Manual Payment Methods
           Compact annotated forms
           ═══════════════════════════════════════════════════════ */}
-      <Card>
+      <Card id="payments-manual-methods">
         <BlockStack gap="400">
           <Text variant="headingMd" as="h2">
             Métodos Manuales
@@ -963,6 +1746,9 @@ export function PaymentsSection({
       {/* ═══════════════════════════════════════════════════════
           SECTION D — Disconnect Confirmation Modals
           ═══════════════════════════════════════════════════════ */}
+
+        </div>
+      )}
 
       {/* MercadoPago Disconnect */}
       <Modal

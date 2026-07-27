@@ -20,6 +20,7 @@ import {
   validateReferenceNumber,
   type ServiciosProviderConfig,
 } from '@/infrastructure/servicios';
+import { assertActiveServiciosPlugin } from '@/lib/plugins/system-service-plugins';
 
 // ==================== HELPERS ====================
 
@@ -42,6 +43,12 @@ async function loadProviderConfig(storeId: string): Promise<ServiciosProviderCon
     apiSecret: row?.apiSecret ?? undefined,
     sandbox: row?.sandbox ?? true,
   };
+}
+
+async function requireServiciosPluginForStore(storeId: string): Promise<ServiciosProviderConfig> {
+  const providerConfig = await loadProviderConfig(storeId);
+  await assertActiveServiciosPlugin(storeId, providerConfig);
+  return providerConfig;
 }
 
 function mapRow(r: typeof servicios.$inferSelect): Servicio {
@@ -80,6 +87,7 @@ async function _fetchServicios(filtro?: {
 }): Promise<Servicio[]> {
   await requirePermission('servicios.view');
   const { storeId } = await requireStoreScope();
+  await requireServiciosPluginForStore(storeId);
 
   const conditions = [eq(servicios.storeId, storeId)];
   if (filtro?.tipo) {
@@ -116,6 +124,7 @@ async function _fetchServiciosResumen(): Promise<{
 }> {
   await requirePermission('servicios.view');
   const { storeId } = await requireStoreScope();
+  await requireServiciosPluginForStore(storeId);
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -182,7 +191,7 @@ async function _createRecarga(data: {
   const folio = await generateFolio(storeId);
 
   // ── Process through provider ──
-  const providerConfig = await loadProviderConfig(storeId);
+  const providerConfig = await requireServiciosPluginForStore(storeId);
   const provider = getActiveProvider(providerConfig);
 
   const providerResult = await provider.processTopup({
@@ -282,7 +291,7 @@ async function _createPagoServicio(data: {
   const folio = await generateFolio(storeId);
 
   // ── Process through provider ──
-  const providerConfig = await loadProviderConfig(storeId);
+  const providerConfig = await requireServiciosPluginForStore(storeId);
   const provider = getActiveProvider(providerConfig);
 
   const providerResult = await provider.processBillPayment({
@@ -369,7 +378,7 @@ async function _cancelarServicio(id: string): Promise<void> {
     throw new Error('Este servicio está siendo procesado por el proveedor. Espera la confirmación.');
 
   // Attempt provider cancel if live
-  const providerConfig = await loadProviderConfig(storeId);
+  const providerConfig = await requireServiciosPluginForStore(storeId);
   const provider = getActiveProvider(providerConfig);
 
   if (provider.isLive && srv.providerTransactionId && provider.cancelTransaction) {

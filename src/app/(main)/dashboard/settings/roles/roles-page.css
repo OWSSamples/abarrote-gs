@@ -1,0 +1,40 @@
+.settings-secondary-page {
+  min-height: calc(100vh - 52px);
+  background: #f6f6f7;
+}
+
+.settings-secondary-breadcrumb {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px;
+  color: #303030;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-secondary-breadcrumb .Polaris-Breadcrumbs {
+  flex: 0 0 auto;
+}
+
+.settings-secondary-header {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  padding: 0 24px;
+  border-bottom: 1px solid #e1e3e5;
+  background: #f1f1f1;
+}
+
+@media (max-width: 720px) {
+  .settings-secondary-breadcrumb,
+  .settings-secondary-header {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .settings-secondary-header {
+    min-height: 58px;
+  }
+}

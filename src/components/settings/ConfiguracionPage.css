@@ -1,0 +1,482 @@
+.settings-overlay {
+  position: fixed;
+  inset: 52px 0 0;
+  z-index: 900;
+  overflow: auto;
+  background: #f6f6f7;
+  border-top: 1px solid #dcdde0;
+  border-radius: 0;
+  animation: settings-overlay-enter 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-overlay--closing {
+  pointer-events: none;
+  animation: settings-overlay-exit 160ms ease-in forwards;
+}
+
+.settings-overlay-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+  width: min(1240px, calc(100% - 48px));
+  min-height: calc(100vh - 92px);
+  margin: 0 auto;
+  padding: 16px 0 32px;
+}
+
+.settings-overlay-close {
+  position: fixed;
+  top: 62px;
+  right: 14px;
+  z-index: 901;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: #ebecee;
+  color: #5c5f62;
+  cursor: pointer;
+}
+
+.settings-overlay-close:hover {
+  background: #dedfe1;
+  color: #202223;
+}
+
+.settings-overlay-close:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 2px;
+}
+
+.settings-overlay-sidebar {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  max-height: calc(100vh - 100px);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #dcdde0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.settings-overlay-store-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  min-height: 68px;
+  padding: 14px 12px;
+  border-bottom: 1px solid #e1e3e5;
+}
+
+.settings-overlay-store-initials {
+  display: inline-flex !important;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: #2dd4bf;
+  color: #115e59;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.settings-overlay-search {
+  padding: 12px 12px 8px;
+}
+
+.settings-overlay-search .Polaris-TextField {
+  border-radius: 8px;
+}
+
+.settings-overlay-nav {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+
+.settings-overlay-nav-item {
+  display: grid !important;
+  grid-template-columns: 20px minmax(0, 1fr);
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  column-gap: 8px;
+  padding: 5px 7px;
+  color: #454749;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: left;
+}
+
+.settings-overlay-nav-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-overlay-nav-icon .Polaris-Icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.settings-overlay-nav-icon .Polaris-Icon svg {
+  color: #4a4a4a !important;
+}
+
+.settings-overlay-nav-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-overlay-nav-item:hover {
+  background: #f1f2f3;
+}
+
+.settings-overlay-nav-item--active {
+  background: #ebebeb;
+  color: #202223;
+  font-weight: 600;
+}
+
+.settings-overlay-nav-item:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+
+.settings-overlay-account {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  min-height: 63px;
+  padding: 12px;
+  border-top: 1px solid #e1e3e5;
+}
+
+.settings-overlay-account-mark {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: #111827;
+}
+
+.settings-overlay-main {
+  min-width: 0;
+  padding: 0 0 32px;
+}
+
+.settings-overlay-main-header {
+  display: none;
+  min-height: 0;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.settings-overlay-main-header > .Polaris-Button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: #202223;
+}
+
+.settings-mobile-nav-trigger {
+  display: none;
+}
+
+.settings-overlay-mobile-sidebar-header {
+  display: none;
+}
+
+.settings-route-header {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  border-bottom: 1px solid #e1e1e1;
+  background: #f1f1f1;
+  color: #303030;
+}
+
+.settings-route-list {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-route-item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: #616161;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.settings-route-root {
+  color: #303030;
+}
+
+.settings-route-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  color: #4a4a4a;
+}
+
+.settings-route-icon .Polaris-Icon {
+  width: 20px;
+  height: 20px;
+}
+
+.settings-route-icon .Polaris-Icon svg {
+  color: #4a4a4a !important;
+}
+
+.settings-route-link {
+  display: inline-flex;
+  min-width: 0;
+  max-width: min(42vw, 340px);
+  align-items: center;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #616161;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-route-link:hover {
+  color: #303030;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-route-link:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.settings-route-current {
+  display: inline-block;
+  min-width: 0;
+  max-width: min(46vw, 420px);
+  overflow: hidden;
+  color: #303030;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-route-separator {
+  color: #8a8a8a;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.settings-overlay-content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 0 24px 24px;
+}
+
+.settings-overlay-mobile-backdrop {
+  display: none;
+}
+
+.settings-overlay-content .Polaris-Layout__AnnotatedSection {
+  margin-top: 0;
+}
+
+.settings-overlay-content .Polaris-Layout__Annotation {
+  padding-top: 8px;
+}
+
+.settings-overlay-content .Polaris-Card {
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+
+.settings-overlay-save-actions {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid #dcdde0;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(31, 33, 36, 0.06);
+}
+
+@keyframes settings-overlay-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes settings-overlay-exit {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (max-width: 900px) {
+  .settings-overlay-shell {
+    grid-template-columns: 248px minmax(0, 1fr);
+    width: min(100% - 32px, 1120px);
+    gap: 18px;
+  }
+}
+
+@media (max-width: 720px) {
+  .settings-overlay {
+    border-radius: 0;
+  }
+
+  .settings-overlay-shell {
+    display: block;
+    width: 100%;
+    padding: 0;
+  }
+
+  .settings-overlay-sidebar {
+    position: fixed;
+    inset: 52px auto 0 0;
+    z-index: 903;
+    width: min(320px, calc(100vw - 40px));
+    max-height: none;
+    min-height: 0;
+    border-width: 0 1px 0 0;
+    border-radius: 0 8px 8px 0;
+    transform: translateX(-105%);
+    transition: transform 160ms ease-out;
+  }
+
+  .settings-overlay-sidebar--open {
+    transform: translateX(0);
+  }
+
+  .settings-overlay-mobile-sidebar-header {
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px 0 16px;
+    border-bottom: 1px solid #e1e3e5;
+  }
+
+  .settings-overlay-nav {
+    max-height: none;
+  }
+
+  .settings-overlay-main {
+    padding: 0 0 32px;
+  }
+
+  .settings-overlay-content {
+    padding: 0 16px 32px;
+  }
+
+  .settings-route-header {
+    min-height: 52px;
+    overflow: hidden;
+  }
+
+  .settings-route-list {
+    width: 100%;
+  }
+
+  .settings-route-item:not(.settings-route-root):not(.settings-route-item--current) {
+    display: none;
+  }
+
+  .settings-route-current,
+  .settings-route-link {
+    max-width: calc(100vw - 116px);
+  }
+
+  .settings-overlay-main-header {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .settings-overlay-main-header {
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #e1e3e5;
+    background: #f1f1f1;
+  }
+
+  .settings-mobile-nav-trigger {
+    display: inline-flex;
+  }
+
+  .settings-overlay-mobile-backdrop {
+    position: fixed;
+    inset: 52px 0 0;
+    z-index: 902;
+    display: block;
+    border: 0;
+    background: rgba(32, 34, 35, 0.28);
+    cursor: pointer;
+  }
+
+  .settings-overlay-close {
+    top: 61px;
+    right: 8px;
+  }
+}

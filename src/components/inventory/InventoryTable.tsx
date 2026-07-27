@@ -1,8 +1,13 @@
 'use client';
 
-import { Card, IndexTable, Text, Badge, ProgressBar, BlockStack, InlineStack, Box } from '@shopify/polaris';
+import { LayerCard } from '@cloudflare/kumo/components/layer-card';
+import { Badge } from '@cloudflare/kumo/components/badge';
+import type { ComponentProps } from 'react';
 import { InventoryAlert, Product } from '@/types';
 import { formatDate, getDaysUntil, getStockStatus } from '@/lib/utils';
+import './InventoryTable.css';
+
+type KumoBadgeVariant = NonNullable<ComponentProps<typeof Badge>['variant']>;
 
 interface InventoryTableProps {
   alerts: InventoryAlert[];
@@ -13,122 +18,129 @@ export function InventoryTable({ alerts, onProductClick }: InventoryTableProps) 
   const getAlertBadge = (alert: InventoryAlert) => {
     switch (alert.alertType) {
       case 'expiration':
-        return <Badge tone="critical">Vence pronto</Badge>;
+        return <Badge variant="error">Vence pronto</Badge>;
       case 'expired':
-        return <Badge tone="critical">Vencido</Badge>;
+        return <Badge variant="error">Vencido</Badge>;
       case 'low_stock':
-        return <Badge tone="warning">Stock bajo</Badge>;
+        return <Badge variant="warning">Stock bajo</Badge>;
       case 'merma':
-        return <Badge tone="info">Merma</Badge>;
+        return <Badge variant="info">Merma</Badge>;
       default:
-        return <Badge>{alert.alertType}</Badge>;
+        return <Badge variant="secondary">{alert.alertType}</Badge>;
     }
   };
 
-  const getSeverityBadge = (severity: string) => {
+  const getSeverityBadge = (severity: string): KumoBadgeVariant => {
     switch (severity) {
       case 'critical':
-        return <Badge tone="critical">Crítico</Badge>;
+        return 'error';
       case 'warning':
-        return <Badge tone="warning">Advertencia</Badge>;
+        return 'warning';
       case 'info':
-        return <Badge tone="info">Información</Badge>;
+        return 'info';
       default:
-        return <Badge>{severity}</Badge>;
+        return 'secondary';
     }
   };
 
-  const rowMarkup = alerts.map((alert, index) => {
-    const { product } = alert;
-    const stockStatus = getStockStatus(product.currentStock, product.minStock);
-    const daysUntil = product.expirationDate ? getDaysUntil(product.expirationDate) : null;
-
-    return (
-      <IndexTable.Row id={alert.id} key={alert.id} position={index} onClick={() => onProductClick?.(product)}>
-        <IndexTable.Cell>
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd" fontWeight="bold">
-              {product.name}
-            </Text>
-            <Text as="span" variant="bodySm" tone="subdued">
-              {product.sku}
-            </Text>
-          </BlockStack>
-        </IndexTable.Cell>
-
-        <IndexTable.Cell>
-          <Box maxWidth="140px">
-            <BlockStack gap="100">
-              <InlineStack align="space-between">
-                <Text as="span" variant="bodySm">
-                  {product.currentStock} / {product.minStock} uds
-                </Text>
-                <Text as="span" variant="bodySm" tone={stockStatus.status === 'critical' ? 'critical' : 'subdued'}>
-                  {Math.round(stockStatus.percentage)}%
-                </Text>
-              </InlineStack>
-              <ProgressBar
-                progress={stockStatus.percentage}
-                tone={stockStatus.status === 'critical' ? 'critical' : undefined}
-                size="small"
-              />
-            </BlockStack>
-          </Box>
-        </IndexTable.Cell>
-
-        <IndexTable.Cell>
-          {product.expirationDate ? (
-            <BlockStack gap="050">
-              <Text as="span" variant="bodyMd">
-                {formatDate(product.expirationDate)}
-              </Text>
-              {daysUntil !== null && (
-                <Text as="span" variant="bodySm" tone={daysUntil <= 2 ? 'critical' : 'subdued'}>
-                  {daysUntil <= 0 ? 'Vencido' : daysUntil === 1 ? 'Mañana' : `En ${daysUntil} días`}
-                </Text>
-              )}
-            </BlockStack>
-          ) : (
-            <Text as="span" variant="bodyMd" tone="subdued">
-              N/A
-            </Text>
-          )}
-        </IndexTable.Cell>
-
-        <IndexTable.Cell>{getAlertBadge(alert)}</IndexTable.Cell>
-
-        <IndexTable.Cell>{getSeverityBadge(alert.severity)}</IndexTable.Cell>
-      </IndexTable.Row>
-    );
-  });
-
   return (
-    <Card padding="0">
-      <Box padding="400" borderBlockEndWidth="025" borderColor="border">
-        <BlockStack gap="100">
-          <Text as="h3" variant="headingMd" fontWeight="semibold">
-            Inventario Prioritario
-          </Text>
-          <Text as="p" variant="bodySm" tone="subdued">
-            {alerts.length} productos requieren atención inmediata
-          </Text>
-        </BlockStack>
-      </Box>
+    <LayerCard className="kumo-inv-card">
+      <LayerCard.Secondary className="kumo-inv-card__header">
+        <div>
+          <h3 className="kumo-inv-card__title">Inventario prioritario</h3>
+          <p className="kumo-inv-card__subtitle">{alerts.length} productos requieren atención inmediata</p>
+        </div>
+      </LayerCard.Secondary>
 
-      <IndexTable
-        resourceName={{ singular: 'alerta', plural: 'alertas' }}
-        itemCount={alerts.length}
-        headings={[
-          { title: 'Producto' },
-          { title: 'Stock' },
-          { title: 'Vencimiento' },
-          { title: 'Alerta' },
-          { title: 'Severidad' },
-        ]}
-        selectable={false}
-      >
-        {rowMarkup}
-      </IndexTable>
-    </Card>
+      <LayerCard.Primary className="kumo-inv-card__body">
+        {alerts.length === 0 ? (
+          <div className="kumo-inv-card__empty">
+            <p>No hay alertas prioritarias registradas</p>
+          </div>
+        ) : (
+          <div className="kumo-inv-card__table-wrap">
+            <table className="kumo-inv-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Stock</th>
+                  <th>Vencimiento</th>
+                  <th>Alerta</th>
+                  <th>Severidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map((alert) => {
+                  const { product } = alert;
+                  const stockStatus = getStockStatus(product.currentStock, product.minStock);
+                  const daysUntil = product.expirationDate ? getDaysUntil(product.expirationDate) : null;
+
+                  return (
+                    <tr
+                      key={alert.id}
+                      className="kumo-inv-table__row"
+                      onClick={() => onProductClick?.(product)}
+                      tabIndex={0}
+                      role="button"
+                    >
+                      <td>
+                        <div className="kumo-inv-table__product-col">
+                          <span className="kumo-inv-table__product-name">{product.name}</span>
+                          <span className="kumo-inv-table__product-sku">{product.sku}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="kumo-inv-table__stock-col">
+                          <div className="kumo-inv-table__stock-meta">
+                            <span>
+                              {product.currentStock} / {product.minStock} uds
+                            </span>
+                            <span
+                              className={`kumo-inv-table__stock-pct ${
+                                stockStatus.status === 'critical' ? 'is-critical' : ''
+                              }`}
+                            >
+                              {Math.round(stockStatus.percentage)}%
+                            </span>
+                          </div>
+                          <div className="kumo-inv-table__track">
+                            <div
+                              className={`kumo-inv-table__bar ${
+                                stockStatus.status === 'critical' ? 'is-critical' : ''
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(2, stockStatus.percentage))}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        {product.expirationDate ? (
+                          <div className="kumo-inv-table__exp-col">
+                            <span>{formatDate(product.expirationDate)}</span>
+                            {daysUntil !== null && (
+                              <span className={`kumo-inv-table__days ${daysUntil <= 2 ? 'is-critical' : ''}`}>
+                                {daysUntil <= 0 ? 'Vencido' : daysUntil === 1 ? 'Mañana' : `En ${daysUntil} días`}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="kumo-inv-table__na">N/A</span>
+                        )}
+                      </td>
+                      <td>{getAlertBadge(alert)}</td>
+                      <td>
+                        <Badge variant={getSeverityBadge(alert.severity)} appearance="dot">
+                          {alert.severity}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </LayerCard.Primary>
+    </LayerCard>
   );
 }

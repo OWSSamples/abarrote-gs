@@ -2,32 +2,25 @@
 
 import './CustomTopBar.css';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { ActionList, Icon, Popover, Tooltip } from '@shopify/polaris';
+import { InputGroup, Text } from '@cloudflare/kumo';
+import { QuestionCircle24Regular, Search24Regular, Sparkle24Regular } from '@fluentui/react-icons';
+import { ActionList, Icon, Popover } from '@shopify/polaris';
 import { OptimizedImage } from '@/components/ui/OptimizedImage';
 import {
   MenuIcon,
-  SearchIcon,
   ProductIcon,
   OrderIcon,
   FinanceIcon,
   SettingsIcon,
   HomeIcon,
   InventoryIcon,
-  SidekickIcon,
-  PlusIcon,
-  GlobeIcon,
-  MobileIcon,
 } from '@shopify/polaris-icons';
 import Image from 'next/image';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { formatCurrency } from '@/lib/utils';
-import { HelpDrawer } from '@/components/support/HelpDrawer';
-import { getDeliveryConnectionStatusAction } from '@/app/actions/delivery-actions';
-import type { DeliveryProvider } from '@/infrastructure/delivery/delivery-types';
 
 interface CustomTopBarProps {
   userMenu: React.ReactNode;
-  storeSelector?: React.ReactNode;
   onNavigationToggle?: () => void;
   onSectionSelect?: (section: string) => void;
   onProductClick?: (product: { id: string; name: string; sku: string; barcode: string; category: string }) => void;
@@ -35,11 +28,11 @@ interface CustomTopBarProps {
 
 const QUICK_ACTIONS = [
   { label: 'Inicio', section: 'overview', icon: HomeIcon, keywords: 'inicio dashboard resumen principal' },
-  { label: 'Punto de Venta', section: 'sales', icon: OrderIcon, keywords: 'venta cobrar ticket pos punto' },
+  { label: 'Punto de venta', section: 'sales', icon: OrderIcon, keywords: 'venta cobrar ticket pos punto' },
   { label: 'Inventario', section: 'inventory', icon: InventoryIcon, keywords: 'inventario stock productos almacen' },
   { label: 'Productos', section: 'catalog', icon: ProductIcon, keywords: 'catalogo productos lista articulos' },
   {
-    label: 'Historial de Ventas',
+    label: 'Historial de ventas',
     section: 'sales-history',
     icon: OrderIcon,
     keywords: 'historial ventas registros transacciones',
@@ -58,12 +51,11 @@ const QUICK_ACTIONS = [
     icon: SettingsIcon,
     keywords: 'configuracion ajustes preferencias tienda',
   },
-  { label: 'Corte de Caja', section: 'sales-corte', icon: FinanceIcon, keywords: 'corte caja cierre turno' },
+  { label: 'Corte de caja', section: 'sales-corte', icon: FinanceIcon, keywords: 'corte caja cierre turno' },
 ];
 
 export function CustomTopBar({
   userMenu,
-  storeSelector,
   onNavigationToggle,
   onSectionSelect,
   onProductClick,
@@ -71,8 +63,6 @@ export function CustomTopBar({
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [deliveryConnections, setDeliveryConnections] = useState<DeliveryProvider[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const products = useDashboardStore((s) => s.products);
   const _shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
@@ -108,12 +98,6 @@ export function CustomTopBar({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    getDeliveryConnectionStatusAction('main').then((rows) => {
-      setDeliveryConnections(rows.map((r) => r.provider as DeliveryProvider));
-    }).catch(() => {});
-  }, []);
-
-  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -123,28 +107,10 @@ export function CustomTopBar({
         inputRef.current?.blur();
         setIsFocused(false);
       }
-      // Open help with ? key (only when not typing in an input)
-      if (e.key === '?' && !isFocused && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
-        setIsHelpOpen(true);
-      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [isFocused]);
-
-  // === SOPORTE Y ASISTENCIA ===
-  const openLiveChat = useCallback(() => {
-    setIsHelpOpen(true);
-  }, []);
-
-  useEffect(() => {
-    const win = window as Window & { shopify?: { support?: { registerHandler: (fn: () => void) => void } } };
-    if (typeof window !== 'undefined' && win.shopify?.support) {
-      win.shopify.support.registerHandler(() => {
-        openLiveChat();
-      });
-    }
-  }, [openLiveChat]);
 
   const handleSelect = useCallback(
     (type: 'product' | 'action', index: number) => {
@@ -218,30 +184,37 @@ export function CustomTopBar({
   );
 
   const searchActivator = (
-    <div
+    <InputGroup
+      size="base"
       className={`ctb-search-input-row${isFocused ? ' focused' : ''}`}
       onClick={() => inputRef.current?.focus()}
     >
-      <div className="ctb-search-icon">
-        <Icon source={SearchIcon} tone="inherit" />
-      </div>
-      <input
+      <InputGroup.Addon className="ctb-search-icon">
+        <Search24Regular aria-hidden="true" />
+      </InputGroup.Addon>
+      <InputGroup.Input
         ref={inputRef}
-        type="text"
+        id="global-search"
+        type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => setIsFocused(true)}
         onKeyDown={handleKeyDown}
         placeholder="Buscar"
         className="ctb-search-native"
+        autoComplete="off"
+        spellCheck={false}
+        aria-label="Buscar productos, clientes o secciones"
       />
       {!isFocused && (
-        <div className="ctb-kbd">
-          <span>CTRL</span>
-          <span>K</span>
-        </div>
+        <InputGroup.Addon align="end" className="ctb-kbd-addon">
+          <div className="ctb-kbd" aria-hidden="true">
+            <span>CTRL</span>
+            <span>K</span>
+          </div>
+        </InputGroup.Addon>
       )}
-    </div>
+    </InputGroup>
   );
 
   return (
@@ -254,13 +227,16 @@ export function CustomTopBar({
       )}
       <div className="ctb-logo">
         <Image
-          src="/logo.svg"
-          alt="Logo"
-          width={110}
-          height={28}
+          src="/icon/cloudflare.svg"
+          alt=""
+          width={34}
+          height={16}
           priority
-          style={{ display: 'block', filter: 'brightness(0) invert(1)', opacity: 0.9 }}
+          className="ctb-logo-mark"
         />
+        <Text as="span" truncate>
+          Opendex, Inc.
+        </Text>
       </div>
 
       {/* Center: Search */}
@@ -317,39 +293,16 @@ export function CustomTopBar({
 
       {/* Right */}
       <div className="ctb-actions">
-        {storeSelector}
-
-        {/* Delivery apps */}
-        {deliveryConnections.length > 0 && (
-          <div className="ctb-delivery-apps">
-            {deliveryConnections.map((provider) => (
-              <Tooltip key={provider} content={provider === 'rappi' ? 'Rappi' : provider === 'ubereats' ? 'Uber Eats' : provider}>
-                <button className="ctb-icon-btn" aria-label={`${provider} activo`}>
-                  <Icon source={provider === 'rappi' ? GlobeIcon : MobileIcon} tone="inherit" />
-                </button>
-              </Tooltip>
-            ))}
-          </div>
-        )}
-
-        <Tooltip content="Agregar app" dismissOnMouseOut>
-          <button className="ctb-icon-btn" aria-label="Agregar aplicación">
-            <Icon source={PlusIcon} tone="inherit" />
-          </button>
-        </Tooltip>
-
-        <Tooltip content="Soporte y Ayuda" dismissOnMouseOut>
-          <button className="ctb-icon-btn" onClick={openLiveChat} aria-label="Soporte">
-            <Icon source={SidekickIcon} tone="inherit" />
-          </button>
-        </Tooltip>
-
-        <div className="ctb-sep-v" />
-
+        <button className="ctb-header-action" type="button">
+          <Sparkle24Regular aria-hidden="true" />
+          <span>Ask AI</span>
+        </button>
+        <button className="ctb-header-action" type="button">
+          <QuestionCircle24Regular aria-hidden="true" />
+          <span>Asistencia</span>
+        </button>
         {userMenu}
       </div>
-
-      <HelpDrawer open={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );
 }

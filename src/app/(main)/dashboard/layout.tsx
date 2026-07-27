@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { Sidebar } from '@cloudflare/kumo';
 import { Frame, Loading, Page, Banner, Button, SkeletonPage, Layout, SkeletonBodyText } from '@shopify/polaris';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { SidebarNav } from '@/components/navigation/SidebarNav';
 import { CustomTopBar } from '@/components/navigation/CustomTopBar';
-import { StoreSelector } from '@/components/navigation/StoreSelector';
-import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
+
 import { UserMenu } from '@/components/auth/UserMenu';
 import { MfaEnforcementBanner } from '@/components/auth/MfaEnforcementBanner';
 import { useRequireAuth } from '@/lib/auth/useRequireAuth';
@@ -131,7 +131,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const topBarMarkup = (
     <CustomTopBar
       userMenu={<UserMenu />}
-      storeSelector={<StoreSelector />}
       onNavigationToggle={toggleMobileNav}
       onSectionSelect={handleSectionSelect}
       onProductClick={(product) => {
@@ -154,54 +153,65 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <>
-      <Frame
-        topBar={topBarMarkup}
-        navigation={navigationMarkup}
-        showMobileNavigation={mobileNavActive}
-        onNavigationDismiss={toggleMobileNav}
+      <Sidebar.Provider
+        animationDuration={180}
+        className="odx-sidebar-provider"
+        contained
+        defaultOpen
+        collapsible="none"
+        mobileBreakpoint={0}
+        style={{ '--sidebar-width': '260px' } as React.CSSProperties}
+        variant="sidebar"
       >
-        {/* Sync status indicators */}
-        {!syncStatus.isOnline && (
-          <Banner tone="warning">
-            Sin conexión. Las operaciones requieren acceso al servidor y no se guardarán localmente.
-          </Banner>
-        )}
-        {syncStatus.circuitOpen && syncStatus.isOnline && (
-          <Banner tone="critical">Problemas de sincronización detectados. Reintentando automáticamente…</Banner>
-        )}
-        <MfaEnforcementBanner />
-        {isLoading && <Loading />}
-        {error ? (
-          <Page title={storeConfig.storeName || 'Mi Tienda'} fullWidth>
-            <Banner tone="critical" title="Hubo un problema al cargar los datos">
-              <p>{error}</p>
-              <Button onClick={fetchDashboardData}>Reintentar</Button>
+        <Frame
+          topBar={topBarMarkup}
+          navigation={navigationMarkup}
+          showMobileNavigation={mobileNavActive}
+          onNavigationDismiss={toggleMobileNav}
+        >
+          {/* Sync status indicators */}
+          {!syncStatus.isOnline && (
+            <Banner tone="warning">
+              Sin conexión. Las operaciones requieren acceso al servidor y no se guardarán localmente.
             </Banner>
-          </Page>
-        ) : isLoading ? (
-          <SkeletonPage title="Dashboard" fullWidth>
-            <Layout>
-              <Layout.Section>
-                <SkeletonBodyText lines={10} />
-              </Layout.Section>
-            </Layout>
-          </SkeletonPage>
-        ) : (
-          children
-        )}
+          )}
+          {syncStatus.circuitOpen && syncStatus.isOnline && (
+            <Banner tone="critical">Problemas de sincronización detectados. Reintentando automáticamente…</Banner>
+          )}
+          <MfaEnforcementBanner />
+          {isLoading && <Loading />}
+          {error ? (
+            <Page title={storeConfig.storeName || 'Mi Tienda'} fullWidth>
+              <Banner tone="critical" title="Hubo un problema al cargar los datos">
+                <p>{error}</p>
+                <Button onClick={fetchDashboardData}>Reintentar</Button>
+              </Banner>
+            </Page>
+          ) : isLoading ? (
+            <SkeletonPage title="Dashboard" fullWidth>
+              <Layout>
+                <Layout.Section>
+                  <SkeletonBodyText lines={10} />
+                </Layout.Section>
+              </Layout>
+            </SkeletonPage>
+          ) : (
+            children
+          )}
 
-        {isProductDetailActive && layoutSelectedProduct && (
-          <ProductDetailModal
-            product={layoutSelectedProduct}
-            open={true}
-            isInline={false}
-            onClose={() => {
-              closeProductDetail();
-            }}
-          />
-        )}
-      </Frame>
-      <MobileBottomNav />
+          {isProductDetailActive && layoutSelectedProduct && (
+            <ProductDetailModal
+              product={layoutSelectedProduct}
+              open={true}
+              isInline={false}
+              onClose={() => {
+                closeProductDetail();
+              }}
+            />
+          )}
+        </Frame>
+      </Sidebar.Provider>
+
     </>
   );
 }

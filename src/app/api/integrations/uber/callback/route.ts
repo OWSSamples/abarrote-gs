@@ -7,6 +7,7 @@ import { eq, and, gt } from 'drizzle-orm';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { encrypt } from '@/lib/crypto';
+import { upsertStorePlugin } from '@/server/plugin-store-service';
 
 function getStringField(value: Record<string, unknown>, key: string): string | undefined {
   const field = value[key];
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
 
   if (!code || !state) {
     return NextResponse.redirect(
-      new URL('/dashboard/settings?oauth=error&provider=ubereats&msg=missing_params', req.url),
+      new URL('/dashboard?plugin=ubereats&oauth=error&msg=missing_params', req.url),
     );
   }
 
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
     if (!storedState || storedState.consumedAt) {
       logger.error('Invalid or expired Uber OAuth state', { stateHash });
       return NextResponse.redirect(
-        new URL('/dashboard/settings?oauth=error&provider=ubereats&msg=invalid_state', req.url),
+        new URL('/dashboard?plugin=ubereats&oauth=error&msg=invalid_state', req.url),
       );
     }
 
@@ -60,7 +61,7 @@ export async function GET(req: Request) {
       const errorData = await tokenResponse.text();
       logger.error('Uber token exchange failed', { status: tokenResponse.status, errorData });
       return NextResponse.redirect(
-        new URL('/dashboard/settings?oauth=error&provider=ubereats&msg=token_exchange_failed', req.url),
+        new URL('/dashboard?plugin=ubereats&oauth=error&msg=token_exchange_failed', req.url),
       );
     }
 
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
     if (!accessToken) {
       logger.error('Uber token exchange response missing access token', { stateHash });
       return NextResponse.redirect(
-        new URL('/dashboard/settings?oauth=error&provider=ubereats&msg=missing_access_token', req.url),
+        new URL('/dashboard?plugin=ubereats&oauth=error&msg=missing_access_token', req.url),
       );
     }
 
@@ -117,11 +118,21 @@ export async function GET(req: Request) {
       providerStoreId,
     });
 
-    return NextResponse.redirect(new URL('/dashboard/settings?oauth=success&provider=ubereats', req.url));
+    await upsertStorePlugin({
+      storeId: storedState.storeId,
+      pluginId: 'plugin.delivery.ubereats',
+      category: 'delivery',
+      providerId: 'ubereats',
+      installedBy: storedState.userId,
+      status: 'installed',
+      metadata: { providerStoreId, environment: 'production' },
+    });
+
+    return NextResponse.redirect(new URL('/dashboard?plugin=ubereats&oauth=success', req.url));
   } catch (error) {
     logger.error('Unexpected error in Uber callback', { error: (error as Error).message });
     return NextResponse.redirect(
-      new URL('/dashboard/settings?oauth=error&provider=ubereats&msg=internal_error', req.url),
+      new URL('/dashboard?plugin=ubereats&oauth=error&msg=internal_error', req.url),
     );
   }
 }

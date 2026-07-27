@@ -132,8 +132,8 @@ const cognitoOrigins = [
 
 function buildCsp(nonce: string): string {
   const scriptSrc = isDev
-    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval' https://www.gstatic.com https://sdk.mercadopago.com https://js.sentry-cdn.com`
-    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.gstatic.com https://sdk.mercadopago.com https://js.sentry-cdn.com`;
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval' https://www.gstatic.com https://sdk.mercadopago.com https://js.sentry-cdn.com https://cdn.shopify.com`
+    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.gstatic.com https://sdk.mercadopago.com https://js.sentry-cdn.com https://cdn.shopify.com`;
 
   return [
     "default-src 'self'",
@@ -142,7 +142,7 @@ function buildCsp(nonce: string): string {
     `style-src-elem 'self' 'nonce-${nonce}' https://fonts.googleapis.com https://cdn.shopify.com`,
     "style-src-attr 'unsafe-inline'",
     "font-src 'self' data: https://fonts.gstatic.com https://cdn.shopify.com",
-    "img-src 'self' data: blob: https://*.amazonaws.com https://*.mlstatic.com",
+    "img-src 'self' data: blob: https://*.amazonaws.com https://*.mlstatic.com https://cdn.shopify.com",
     `connect-src 'self' https://*.neon.tech wss://*.neon.tech https://*.upstash.io https://api.mercadopago.com https://api.stripe.com https://api.conekta.io https://api.telegram.org https://*.amazonaws.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io ${cognitoOrigins}`,
     "frame-src 'self' blob:",
     "frame-ancestors 'none'",
@@ -218,6 +218,8 @@ export async function proxy(request: Parameters<typeof authHandler>[0]) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', buildCsp(nonce));
+  const isPublicAuthRoute =
+    req.nextUrl.pathname === '/auth' || req.nextUrl.pathname.startsWith('/auth/');
 
   // 1. Block bots and scanners at the edge
   if (isBlockedBot(req)) {
@@ -256,8 +258,12 @@ export async function proxy(request: Parameters<typeof authHandler>[0]) {
     ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip') ?? undefined,
   });
 
-  // 6. Auth check + session handling (via auth.middleware)
-  const authResponse = await authHandler(request);
+  // 6. Auth check + session handling (via auth.middleware).
+  // Auth screens still pass through this proxy so Next.js receives the CSP
+  // nonce, but they must remain accessible without an existing session.
+  const authResponse = isPublicAuthRoute
+    ? NextResponse.next({ request: { headers: requestHeaders } })
+    : await authHandler(request);
   const response = authResponse.headers.get('location')
     ? authResponse
     : NextResponse.next({ request: { headers: requestHeaders } });
@@ -283,7 +289,10 @@ export async function proxy(request: Parameters<typeof authHandler>[0]) {
 
 export const config = {
   matcher: [
-    // Exclude: API, Workflow internals, static assets, auth and public pages.
+    // Auth pages need this proxy so their streamed inline scripts receive a
+    // per-request CSP nonce. They are explicitly exempted from the auth guard.
+    '/auth/:path*',
+    // Exclude: API, Workflow internals, static assets and other public pages.
     '/((?!api|_next/static|_next/image|\\.well-known/workflow/|favicon\\.ico|sitemap\\.xml|robots\\.txt|auth|display|terms|privacy|cookies|security|login-brand\\.svg|device-mfa\\.svg|pass_recovery\\.svg|backgrounds).*)',
   ],
 };

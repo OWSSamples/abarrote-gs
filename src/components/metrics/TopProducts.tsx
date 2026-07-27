@@ -1,7 +1,9 @@
 'use client';
 
-import { Card, Text, InlineStack } from '@shopify/polaris';
+import { LayerCard } from '@cloudflare/kumo/components/layer-card';
+import { Badge } from '@cloudflare/kumo/components/badge';
 import { formatCurrency } from '@/lib/utils';
+import './TopProducts.css';
 
 interface TopProduct {
   id: string;
@@ -28,14 +30,14 @@ const defaultTopProducts: TopProduct[] = [
 ];
 
 const trendConfig = {
-  up: { label: '↑', color: '#1a7f37' },
-  down: { label: '↓', color: '#cf222e' },
-  stable: { label: '–', color: '#656d76' },
+  up: { label: '↑', color: '#16a34a' },
+  down: { label: '↓', color: '#dc2626' },
+  stable: { label: '–', color: '#71717a' },
 } as const;
 
 export function TopProducts({
   products = defaultTopProducts,
-  title = 'Top Productos',
+  title = 'Top productos',
   period = 'Hoy',
 }: TopProductsProps) {
   const totalRevenue = products.reduce((s, p) => s + p.revenue, 0);
@@ -43,181 +45,57 @@ export function TopProducts({
   const maxRevenue = Math.max(...products.map((p) => p.revenue));
 
   return (
-    <Card padding="0">
-      {/* Header */}
-      <div style={{ padding: '16px 16px 14px' }}>
-        <InlineStack align="space-between" blockAlign="center">
-          <Text as="h3" variant="headingSm" fontWeight="semibold">
-            {title}
-          </Text>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 500,
-              color: 'var(--p-color-text-subdued)',
-              background: 'var(--p-color-bg-surface-secondary)',
-              padding: '2px 8px',
-              borderRadius: 4,
-            }}
-          >
-            {period}
-          </span>
-        </InlineStack>
-      </div>
+    <LayerCard className="kumo-top-products">
+      <LayerCard.Secondary className="kumo-top-products__header">
+        <h3 className="kumo-top-products__title">{title}</h3>
+        <Badge variant="secondary">{period}</Badge>
+      </LayerCard.Secondary>
 
-      {/* Product List */}
-      <div>
-        {products.map((product, i) => {
-          const trend = trendConfig[product.trend];
-          const barPct = maxRevenue > 0 ? (product.revenue / maxRevenue) * 100 : 0;
-          const share = totalRevenue > 0 ? ((product.revenue / totalRevenue) * 100).toFixed(0) : '0';
-          const isFirst = i === 0;
+      <LayerCard.Primary className="kumo-top-products__body">
+        <div className="kumo-top-products__list">
+          {products.map((product, i) => {
+            const trend = trendConfig[product.trend];
+            const barPct = maxRevenue > 0 ? (product.revenue / maxRevenue) * 100 : 0;
+            const share = totalRevenue > 0 ? ((product.revenue / totalRevenue) * 100).toFixed(0) : '0';
+            const isFirst = i === 0;
 
-          return (
-            <div
-              key={product.id}
-              style={{
-                borderTop: '1px solid var(--p-color-border-secondary)',
-                padding: '12px 16px',
-                position: 'relative',
-                overflow: 'hidden',
-                cursor: 'default',
-              }}
-            >
-              {/* Revenue proportion bar — very subtle */}
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: `${barPct}%`,
-                  background: isFirst
-                    ? 'linear-gradient(90deg, rgba(26, 127, 55, 0.06), rgba(26, 127, 55, 0.02))'
-                    : 'linear-gradient(90deg, rgba(0, 0, 0, 0.025), transparent)',
-                  pointerEvents: 'none',
-                }}
-              />
-
-              {/* Content */}
-              <div style={{ position: 'relative' }}>
-                {/* Row 1: Rank + Name ... Revenue */}
+            return (
+              <div key={product.id} className="kumo-top-products__item">
                 <div
+                  className="kumo-top-products__bar"
                   style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 10,
+                    width: `${barPct}%`,
+                    background: isFirst
+                      ? 'linear-gradient(90deg, rgba(22, 163, 74, 0.08), rgba(22, 163, 74, 0.02))'
+                      : 'linear-gradient(90deg, rgba(0, 0, 0, 0.03), transparent)',
                   }}
-                >
-                  {/* Rank */}
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: 22,
-                      height: 22,
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                      marginTop: 1,
-                      background: isFirst
-                        ? '#1a7f37'
-                        : 'var(--p-color-bg-surface-secondary)',
-                      color: isFirst ? '#fff' : 'var(--p-color-text-subdued)',
-                    }}
-                  >
-                    {i + 1}
-                  </span>
-
-                  {/* Name + meta */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: isFirst ? 600 : 500,
-                        color: 'var(--p-color-text)',
-                        lineHeight: 1.35,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      {product.name}
-                    </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        marginTop: 3,
-                        fontSize: 11,
-                        color: 'var(--p-color-text-subdued)',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
+                />
+                <div className="kumo-top-products__item-content">
+                  <span className={`kumo-top-products__rank ${isFirst ? 'is-first' : ''}`}>{i + 1}</span>
+                  <div className="kumo-top-products__details">
+                    <span className={`kumo-top-products__name ${isFirst ? 'is-first' : ''}`}>{product.name}</span>
+                    <div className="kumo-top-products__meta">
                       <span>{product.unitsSold} uds</span>
-                      <span style={{ opacity: 0.4 }}>·</span>
+                      <span className="dot">·</span>
                       <span>{share}% del total</span>
-                      <span style={{ opacity: 0.4 }}>·</span>
-                      <span style={{ color: trend.color, fontWeight: 600 }}>
+                      <span className="dot">·</span>
+                      <span style={{ color: trend.color }} className="trend">
                         {trend.label}
                       </span>
                     </div>
                   </div>
-
-                  {/* Revenue */}
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 650,
-                      color: 'var(--p-color-text)',
-                      fontVariantNumeric: 'tabular-nums',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                      marginTop: 1,
-                    }}
-                  >
-                    {formatCurrency(product.revenue)}
-                  </span>
+                  <span className="kumo-top-products__revenue">{formatCurrency(product.revenue)}</span>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      {/* Footer */}
-      <div
-        style={{
-          borderTop: '1px solid var(--p-color-border)',
-          padding: '12px 16px',
-          background: 'var(--p-color-bg-surface-secondary)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 500,
-            color: 'var(--p-color-text-subdued)',
-          }}
-        >
-          {totalUnits} unidades
-        </span>
-        <span
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: 'var(--p-color-text)',
-          }}
-        >
-          {formatCurrency(totalRevenue)}
-        </span>
-      </div>
-    </Card>
+        <div className="kumo-top-products__footer">
+          <span>{totalUnits} unidades</span>
+          <strong>{formatCurrency(totalRevenue)}</strong>
+        </div>
+      </LayerCard.Primary>
+    </LayerCard>
   );
 }

@@ -1,0 +1,284 @@
+/* ================================================================
+   QuickActions — Kumo UI design rules
+   - hover-color-transitions: NO transitions on hover
+   - font-weight: max 600 (semibold)
+   - font-tracking: no letter-spacing
+   - content-text-size: 14px
+   - concentric-border-radius: outer 12px / inner 8px
+   ================================================================ */
+
+.kumo-quick-actions {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.kumo-quick-actions__header {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.kumo-quick-actions__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #18181b;
+  margin: 0;
+}
+
+.kumo-quick-actions__subtitle {
+  font-size: 13px;
+  color: #71717a;
+  margin: 2px 0 0;
+}
+
+.kumo-quick-actions__body {
+  padding: 16px;
+}
+
+.kumo-quick-actions__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+/* Action button — instant hover (no transition) */
+.kumo-quick-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 14px 8px;
+  border-radius: 10px;
+  border: 1px solid #e4e4e7;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: center;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.kumo-quick-action-btn:hover {
+  background: #f4f4f5;
+  border-color: #d4d4d8;
+}
+
+.kumo-quick-action-btn:focus-visible {
+  outline: 2px solid #18181b;
+  outline-offset: -2px;
+}
+
+/* Icon wrapper */
+.kumo-quick-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.kumo-quick-action-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.kumo-quick-action-icon--info {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.kumo-quick-action-icon--success {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.kumo-quick-action-icon--warning {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.kumo-quick-action-icon--error {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.kumo-quick-action-icon--secondary {
+  background: #f4f4f5;
+  color: #71717a;
+}
+
+.kumo-quick-action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.kumo-quick-action-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #18181b;
+  line-height: 1.25;
+}
+
+.kumo-quick-action-desc {
+  font-size: 12px;
+  font-weight: 500;
+  color: #71717a;
+  line-height: 1.25;
+}
+
+/* ================================================================
+   Modal overlay — native Kumo-style (no Polaris)
+   ================================================================ */
+.kumo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.kumo-modal-container {
+  background: #ffffff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.14),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.kumo-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.kumo-modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #18181b;
+  margin: 0;
+}
+
+.kumo-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #71717a;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.kumo-modal-close:hover {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.kumo-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.kumo-modal-hint {
+  font-size: 14px;
+  color: #71717a;
+  margin: 0;
+  padding: 10px 12px;
+  background: #f4f4f5;
+  border-radius: 8px;
+}
+
+.kumo-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid #e4e4e7;
+  background: #fafafa;
+}
+
+/* Form helpers */
+.kumo-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kumo-form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #18181b;
+}
+
+.kumo-form-help {
+  font-size: 13px;
+  color: #71717a;
+}
+
+.kumo-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  color: #18181b;
+  background: #ffffff;
+  resize: vertical;
+  outline: none;
+}
+
+.kumo-textarea:focus {
+  border-color: #18181b;
+  box-shadow: inset 0 0 0 1px #18181b;
+}
+
+.kumo-pedido-preview {
+  font-size: 13px;
+  color: #3f3f46;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #f4f4f5;
+}
+
+.kumo-pedido-preview strong {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #18181b;
+}
+
+.kumo-pedido-preview ul {
+  margin: 0;
+  padding: 0 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kumo-pedido-preview li {
+  color: #52525b;
+}

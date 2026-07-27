@@ -1,0 +1,25 @@
+.settings-section-header {
+  display: inline-flex;
+  min-height: 62px;
+  align-items: center;
+  gap: 8px;
+  color: #303030;
+}
+
+.settings-section-header .Polaris-Icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.settings-section-header .Polaris-Text--headingLg {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+@media (max-width: 720px) {
+  .settings-section-header {
+    min-height: 58px;
+  }
+}

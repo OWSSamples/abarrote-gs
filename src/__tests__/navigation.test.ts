@@ -45,7 +45,6 @@ describe('Navigation helpers', () => {
     it('maps "others" section paths', () => {
       expect(SECTION_TO_PATH['promotions']).toBe('/dashboard/others/promotions');
       expect(SECTION_TO_PATH['categories']).toBe('/dashboard/others/categories');
-      expect(SECTION_TO_PATH['servicios']).toBe('/dashboard/others/servicios');
     });
   });
 

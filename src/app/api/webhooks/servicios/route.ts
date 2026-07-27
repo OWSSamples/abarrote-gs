@@ -8,6 +8,10 @@ import { db } from '@/db';
 import { storeConfig } from '@/db/schema';
 import { readTextBodyWithLimit } from '@/lib/http/read-limited-body';
 import { updateServicioFromProvider } from '@/server/servicios-provider-update-service';
+import {
+  hasActiveServiciosPlugin,
+  hasCompleteServiciosProviderCredentials,
+} from '@/lib/plugins/system-service-plugins';
 
 const MAX_WEBHOOK_BYTES = 64 * 1024;
 const storeIdSchema = z.string().regex(/^(?:main|[a-f0-9]{32})$/);
@@ -72,12 +76,21 @@ export async function POST(req: NextRequest) {
       .limit(1);
 
     const providerId = row?.providerId ?? 'local';
-    if (!hasRequiredCredentials(providerId, row?.apiKey, row?.apiSecret)) {
+    const providerConfig = {
+      providerId,
+      apiKey: row?.apiKey,
+      apiSecret: row?.apiSecret,
+    };
+    if (
+      !hasRequiredCredentials(providerId, row?.apiKey, row?.apiSecret) ||
+      !hasCompleteServiciosProviderCredentials(providerConfig) ||
+      !(await hasActiveServiciosPlugin(storeId, providerConfig))
+    ) {
       logger.error('Servicios webhook provider credentials are incomplete', {
         action: 'servicios_webhook_incomplete_provider_config',
         provider: providerId,
       });
-      return NextResponse.json({ error: 'Provider configuration is incomplete' }, { status: 503 });
+      return NextResponse.json({ error: 'Provider plugin is not installed' }, { status: 503 });
     }
 
     const provider = getActiveProvider({

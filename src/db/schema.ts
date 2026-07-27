@@ -95,6 +95,7 @@ export const storeConfig = pgTable('store_config', {
   ticketDesignCorte: text('ticket_design_corte'),
   ticketDesignProveedor: text('ticket_design_proveedor'),
   // Métodos de pago adicionales
+  paymentCaptureMethod: text('payment_capture_method').notNull().default('payment_screen'),
   clabeNumber: text('clabe_number'),
   paypalUsername: text('paypal_username'),
   paypalQrUrl: text('paypal_qr_url'),
@@ -1515,6 +1516,32 @@ export const cfdiRecords = pgTable(
   ],
 );
 
+// ==================== PLUGINS DEL SISTEMA ====================
+export const storePlugins = pgTable(
+  'store_plugins',
+  {
+    id: text('id').primaryKey(),
+    storeId: text('store_id')
+      .notNull()
+      .references(() => stores.id, { onDelete: 'cascade' }),
+    pluginId: text('plugin_id').notNull(),
+    category: text('category').notNull(),
+    status: text('status').notNull().default('installed'),
+    providerId: text('provider_id'),
+    installedBy: text('installed_by'),
+    installedAt: timestamp('installed_at').notNull().defaultNow(),
+    configuredAt: timestamp('configured_at'),
+    disabledAt: timestamp('disabled_at'),
+    metadata: jsonb('metadata').notNull().default({}),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('store_plugins_store_plugin_unique_idx').on(t.storeId, t.pluginId),
+    index('store_plugins_store_idx').on(t.storeId),
+    index('store_plugins_category_idx').on(t.category),
+    index('store_plugins_status_idx').on(t.status),
+  ],
+);
+
 export * from './schema-delivery';
 export * from './schema-uber';
-

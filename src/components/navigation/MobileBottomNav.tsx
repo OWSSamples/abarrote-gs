@@ -45,7 +45,6 @@ const MORE_GROUPS = [
     items: [
       { label: 'Promociones', icon: AppsIcon, path: '/dashboard/others/promotions' },
       { label: 'Categorías', icon: AppsIcon, path: '/dashboard/others/categories' },
-      { label: 'Servicios', icon: AppsIcon, path: '/dashboard/others/servicios' },
     ],
   },
 ];

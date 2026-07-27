@@ -79,15 +79,6 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   reactStrictMode: true,
   poweredByHeader: false,
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'cdn.shopify.com',
-        pathname: '/shopifycloud/admin-ui-foundations/payment-icons/**',
-      },
-    ],
-  },
   productionBrowserSourceMaps: false,
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
   transpilePackages: [

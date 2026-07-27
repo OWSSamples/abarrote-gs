@@ -17,8 +17,8 @@ interface BrandLogoProps {
 }
 
 /**
- * Renderiza logos de marcas desde `thesvg`.
- * No usa archivos locales ni CDNs para logos de empresas o servicios.
+ * Renderiza logos desde el registro centralizado de marcas.
+ * Los medios de pago usan los assets oficiales del CDN de Shopify.
  */
 export function BrandLogo({ name, size = 24, alt, rounded = true, variant = 'light' }: BrandLogoProps) {
   const logo = getBrandLogo(name);
@@ -74,6 +74,25 @@ export function BrandLogo({ name, size = 24, alt, rounded = true, variant = 'lig
   }
 
   if (logo.url?.startsWith('/')) {
+    return (
+      <Image
+        src={logo.url}
+        alt={label}
+        width={size}
+        height={size}
+        unoptimized
+        style={{
+          width: size,
+          height: size,
+          objectFit: 'contain',
+          flexShrink: 0,
+          display: 'block',
+        }}
+      />
+    );
+  }
+
+  if (logo.url?.startsWith('https://')) {
     return (
       <Image
         src={logo.url}

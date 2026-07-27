@@ -209,6 +209,7 @@ function mapStoreConfigRow(row: any): StoreConfig {
     defaultMargin: row.defaultMargin ?? DEFAULT_STORE_CONFIG.defaultMargin,
     ticketTemplateVenta: row.ticketTemplateVenta ?? undefined,
     ticketTemplateProveedor: row.ticketTemplateProveedor ?? undefined,
+    paymentCaptureMethod: row.paymentCaptureMethod ?? DEFAULT_STORE_CONFIG.paymentCaptureMethod,
     clabeNumber: row.clabeNumber ?? undefined,
     paypalUsername: row.paypalUsername ?? undefined,
     paypalQrUrl: row.paypalQrUrl ?? undefined,

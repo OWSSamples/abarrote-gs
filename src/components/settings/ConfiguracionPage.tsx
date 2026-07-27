@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import Script from 'next/script';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm, useField } from '@shopify/react-form';
 import { Badge as KumoBadge } from '@cloudflare/kumo/components/badge';
 import { Banner as KumoBanner } from '@cloudflare/kumo/components/banner';
@@ -33,6 +35,8 @@ import {
   Tooltip,
   EmptyState,
   Bleed,
+  TextField,
+  UnstyledButton,
 } from '@shopify/polaris';
 import type { MercadoPagoConfig } from '@/lib/mercadopago';
 import { fetchMPDevices } from '@/app/actions/mercadopago-actions';
@@ -44,14 +48,17 @@ import {
   StoreFilledIcon,
   ReceiptDollarIcon,
   ReceiptDollarFilledIcon,
-  BillIcon,
+  WrenchIcon,
+  CartIcon,
+  CartFilledIcon,
+  WalletIcon,
+  WalletFilledIcon,
   InventoryIcon,
   InventoryFilledIcon,
   NotificationIcon,
   NotificationFilledIcon,
   EmailIcon,
   CreditCardIcon,
-  PaymentFilledIcon,
   PrintIcon,
   StarIcon,
   StarFilledIcon,
@@ -67,8 +74,13 @@ import {
   ShieldCheckMarkIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  AppsIcon,
+  SearchIcon,
+  XSmallIcon,
+  PersonIcon,
+  MenuIcon,
 } from '@shopify/polaris-icons';
+import { useAuth } from '@/lib/auth/AuthContext';
+import './ConfiguracionPage.css';
 
 // ── Dynamic imports for section components ──
 // Reduce initial bundle and dev-server compile time. Each section only loads
@@ -110,13 +122,6 @@ const CustomerDisplaySectionV4 = dynamic(
   () => import('./sections/CustomerDisplaySectionV4').then((m) => m.CustomerDisplaySectionV4),
   { loading: () => SectionLoader },
 );
-const ServiciosSection = dynamic(() => import('./sections/ServiciosSection').then((m) => m.ServiciosSection), {
-  loading: () => SectionLoader,
-});
-const DeliveryMarketplaceSection = dynamic(
-  () => import('./sections/DeliveryMarketplaceSection').then((m) => m.DeliveryMarketplaceSection),
-  { loading: () => SectionLoader },
-);
 const AISection = dynamic(() => import('./sections/AISection').then((m) => m.AISection), {
   loading: () => SectionLoader,
 });
@@ -153,16 +158,16 @@ const SETTINGS_CATEGORIES = [
     id: 'pos',
     title: 'Punto de Venta y Recibos',
     description: 'Personaliza los tickets impresos y la estructura de códigos de barras.',
-    icon: PrintIcon,
-    iconFilled: PrintIcon,
+    icon: CartIcon,
+    iconFilled: CartFilledIcon,
     beta: true,
   },
   {
     id: 'hardware',
     title: 'Hardware y Periféricos',
     description: 'Configura IPs de impresoras, cajones de dinero y básculas seriales.',
-    icon: PrintIcon,
-    iconFilled: PrintIcon,
+    icon: WrenchIcon,
+    iconFilled: WrenchIcon,
   },
   {
     id: 'loyalty',
@@ -194,18 +199,18 @@ const SETTINGS_CATEGORIES = [
   },
   {
     id: 'payments',
-    title: 'Pagos Integrados',
-    description: 'Vincula tu terminal Point de Mercado Pago para cobros físicos.',
+    title: 'Pagos',
+    description: 'Configura proveedores, métodos de cobro y operaciones de pago.',
     icon: CreditCardIcon,
-    iconFilled: PaymentFilledIcon,
+    iconFilled: CreditCardIcon,
     beta: true,
   },
   {
     id: 'billing',
     title: 'Suscripción y Facturación',
     description: 'Gestiona plan, método de pago, facturas y preferencias fiscales del negocio.',
-    icon: BillIcon,
-    iconFilled: ReceiptDollarFilledIcon,
+    icon: WalletIcon,
+    iconFilled: WalletFilledIcon,
   },
   {
     id: 'customer-display',
@@ -214,20 +219,6 @@ const SETTINGS_CATEGORIES = [
     icon: DesktopIcon,
     iconFilled: DesktopIcon,
     beta: true,
-  },
-  {
-    id: 'servicios',
-    title: 'Servicios y Recargas',
-    description: 'Configura el proveedor para recargas telefónicas y pagos de servicios.',
-    icon: SettingsIcon,
-    iconFilled: SettingsFilledIcon,
-  },
-  {
-    id: 'delivery',
-    title: 'Marketplace de Delivery',
-    description: 'Instala apps de delivery como Rappi o Uber Eats y gestiona pedidos desde Kiosko.',
-    icon: AppsIcon,
-    iconFilled: AppsIcon,
   },
   {
     id: 'ai',
@@ -240,14 +231,90 @@ const SETTINGS_CATEGORIES = [
     id: 'system',
     title: 'Sistema',
     description: 'Información del sistema, dependencias, licencias y vulnerabilidades resueltas.',
-    icon: InfoIcon,
-    iconFilled: InfoIcon,
+    icon: SettingsIcon,
+    iconFilled: SettingsFilledIcon,
   },
 ];
 
+type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number];
+
+interface SettingsRouteCrumb {
+  label: string;
+  href?: string;
+  onClick?: () => void;
+}
+
 import { uploadFile } from '@/lib/storage';
 
+function SettingsRouteHeader({
+  category,
+  crumbs,
+  rootOnClick,
+}: {
+  category: SettingsCategory;
+  crumbs: SettingsRouteCrumb[];
+  rootOnClick?: () => void;
+}) {
+  const RootIcon = category.iconFilled || category.icon;
+  const lastIndex = crumbs.length - 1;
+
+  return (
+    <nav className="settings-route-header" aria-label="Ruta de configuración">
+      <ol className="settings-route-list">
+        <li className="settings-route-item settings-route-root">
+          <span className="settings-route-icon" aria-hidden="true">
+            <Icon source={RootIcon} tone="base" />
+          </span>
+          {crumbs.length === 0 ? (
+            <span className="settings-route-current">{category.title}</span>
+          ) : (
+            <button
+              type="button"
+              className="settings-route-link"
+              onClick={rootOnClick}
+              aria-label={`Volver a ${category.title}`}
+            >
+              {category.title}
+            </button>
+          )}
+        </li>
+
+        {crumbs.map((crumb, index) => {
+          const isCurrent = index === lastIndex;
+          return (
+            <li
+              key={`${crumb.label}-${index}`}
+              className={`settings-route-item${isCurrent ? ' settings-route-item--current' : ''}`}
+            >
+              <span className="settings-route-separator" aria-hidden="true">
+                ›
+              </span>
+              {isCurrent ? (
+                <span className="settings-route-current" title={crumb.label}>
+                  {crumb.label}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="settings-route-link"
+                  onClick={crumb.onClick}
+                  title={crumb.label}
+                >
+                  {crumb.label}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 export function ConfiguracionPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
   const storeConfig = useDashboardStore((s) => s.storeConfig);
   const saveStoreConfig = useDashboardStore((s) => s.saveStoreConfig);
 
@@ -308,6 +375,7 @@ export function ConfiguracionPage() {
       closeSystemTime: useField(storeConfig.closeSystemTime || '23:00'),
       autoCorteTime: useField(storeConfig.autoCorteTime || '00:00'),
       defaultStartingFund: useField(storeConfig.defaultStartingFund ?? 500),
+      paymentCaptureMethod: useField(storeConfig.paymentCaptureMethod || 'payment_screen'),
       clabeNumber: useField(storeConfig.clabeNumber || ''),
       paypalUsername: useField(storeConfig.paypalUsername || ''),
       paypalQrUrl: useField(storeConfig.paypalQrUrl || ''),
@@ -379,9 +447,32 @@ export function ConfiguracionPage() {
   });
 
   const [saved, setSaved] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>('general');
+  const [settingsSearch, setSettingsSearch] = useState('');
+  const [showExternalPaymentProviders, setShowExternalPaymentProviders] = useState(false);
+  const [showManualPaymentMethods, setShowManualPaymentMethods] = useState(false);
+  const [externalProviderTitle, setExternalProviderTitle] = useState<string | null>(null);
+  const [paymentSubsectionTitle, setPaymentSubsectionTitle] = useState<string | null>(null);
+  const [isClosingSettings, setIsClosingSettings] = useState(false);
+  const [mobileSettingsNavOpen, setMobileSettingsNavOpen] = useState(false);
   const [_quickSavingDisplay, setQuickSavingDisplay] = useState(false);
   const [quickSaveError, setQuickSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedCategory !== 'payments') {
+      setShowExternalPaymentProviders(false);
+      setShowManualPaymentMethods(false);
+      setExternalProviderTitle(null);
+      setPaymentSubsectionTitle(null);
+    }
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    const requestedSection = searchParams.get('section');
+    if (requestedSection && SETTINGS_CATEGORIES.some((category) => category.id === requestedSection)) {
+      setSelectedCategory(requestedSection);
+    }
+  }, [searchParams]);
 
   // ══════════════════════════════════════════════════════════════════════════
   // STATUS_MAP — Computed EARLY to be available for both list and detail views
@@ -427,14 +518,6 @@ export function ConfiguracionPage() {
       payments: { configured: mpLinked, label: mpLinked ? 'Vinculado' : 'Sin vincular' },
       billing: { configured: true, label: 'Portal' },
       'customer-display': { configured: displayEnabled, label: displayEnabled ? 'Activo' : 'Inactivo' },
-      servicios: {
-        configured: storeConfig.serviciosProvider !== 'local',
-        label: storeConfig.serviciosProvider !== 'local' ? 'Vinculado' : 'Local',
-      },
-      delivery: {
-        configured: false,
-        label: 'Marketplace',
-      },
       ai: {
         configured: storeConfig.aiEnabled,
         label: storeConfig.aiEnabled ? 'Activo' : 'Inactivo',
@@ -676,9 +759,24 @@ export function ConfiguracionPage() {
             mpDevices={mpDevices}
             handleMPTest={handleMPTest}
             clabeNumberField={fields.clabeNumber}
+            paymentCaptureMethodField={fields.paymentCaptureMethod}
             paypalUsernameField={fields.paypalUsername}
             paypalQrUrlField={fields.paypalQrUrl}
             cobrarQrUrlField={fields.cobrarQrUrl}
+            savePatch={_savePatch}
+            saving={_quickSavingDisplay}
+            showExternalProviders={showExternalPaymentProviders}
+            showManualPaymentMethods={showManualPaymentMethods}
+            onExternalProvidersChange={(open) => {
+              setShowExternalPaymentProviders(open);
+              if (open) {
+                setPaymentSubsectionTitle(null);
+                setShowManualPaymentMethods(false);
+              }
+            }}
+            onManualPaymentMethodsChange={setShowManualPaymentMethods}
+            onExternalProviderNameChange={setExternalProviderTitle}
+            onSubsectionTitleChange={setPaymentSubsectionTitle}
           />
         );
       case 'billing':
@@ -694,10 +792,6 @@ export function ConfiguracionPage() {
         // CustomerDisplaySectionV4 is self-sufficient: uses store directly,
         // each field auto-saves independently. No props needed.
         return <CustomerDisplaySectionV4 />;
-      case 'servicios':
-        return <ServiciosSection />;
-      case 'delivery':
-        return <DeliveryMarketplaceSection />;
       case 'ai':
         return <AISection />;
       case 'system':
@@ -708,6 +802,259 @@ export function ConfiguracionPage() {
   };
 
   const activeCategory = SETTINGS_CATEGORIES.find((c) => c.id === selectedCategory);
+
+  const visibleCategories = useMemo(() => {
+    const normalizedQuery = settingsSearch.trim().toLocaleLowerCase('es-MX');
+    if (!normalizedQuery) return SETTINGS_CATEGORIES;
+
+    return SETTINGS_CATEGORIES.filter((category) =>
+      `${category.title} ${category.description}`.toLocaleLowerCase('es-MX').includes(normalizedQuery),
+    );
+  }, [settingsSearch]);
+
+  const handleCloseSettings = () => {
+    if (isClosingSettings) return;
+    setIsClosingSettings(true);
+    window.setTimeout(() => router.push('/dashboard'), 160);
+  };
+
+  const selectCategory = (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    setMobileSettingsNavOpen(false);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set('section', categoryId);
+    router.replace(`/dashboard/settings?${nextParams.toString()}`, { scroll: false });
+  };
+
+  if (selectedCategory && activeCategory) {
+    const isPaymentsExternalRoute = selectedCategory === 'payments' && showExternalPaymentProviders;
+    const isPaymentsManualRoute = selectedCategory === 'payments' && showManualPaymentMethods;
+    const isPaymentsProviderDetail = isPaymentsExternalRoute && Boolean(externalProviderTitle);
+    const routeCrumbs: SettingsRouteCrumb[] = isPaymentsProviderDetail
+      ? [
+          {
+            label: 'Proveedores de pagos',
+            onClick: () => setExternalProviderTitle(null),
+          },
+          {
+            label: externalProviderTitle || '',
+          },
+        ]
+      : isPaymentsExternalRoute
+        ? [
+            {
+              label: 'Proveedores de pagos externos',
+            },
+          ]
+        : isPaymentsManualRoute && paymentSubsectionTitle
+          ? [
+              {
+                label: paymentSubsectionTitle,
+              },
+            ]
+        : [];
+
+    return (
+      <section
+        className={`settings-overlay${isClosingSettings ? ' settings-overlay--closing' : ''}`}
+        aria-label="Configuración del negocio"
+      >
+        <Script
+          src="https://cdn.shopify.com/shopifycloud/polaris.js"
+          strategy="afterInteractive"
+        />
+        <button
+          type="button"
+          className="settings-overlay-close"
+          onClick={handleCloseSettings}
+          aria-label="Cerrar configuración"
+        >
+          <Icon source={XSmallIcon} tone="subdued" />
+        </button>
+
+        {mobileSettingsNavOpen && (
+          <button
+            type="button"
+            className="settings-overlay-mobile-backdrop"
+            aria-label="Cerrar navegación de configuración"
+            onClick={() => setMobileSettingsNavOpen(false)}
+          />
+        )}
+
+        <div className="settings-overlay-shell">
+          <aside
+            className={`settings-overlay-sidebar${mobileSettingsNavOpen ? ' settings-overlay-sidebar--open' : ''}`}
+            aria-label="Secciones de configuración"
+          >
+            <div className="settings-overlay-mobile-sidebar-header">
+              <Text as="h2" variant="headingMd">Configuración</Text>
+              <Button
+                variant="plain"
+                icon={XSmallIcon}
+                onClick={() => setMobileSettingsNavOpen(false)}
+                accessibilityLabel="Cerrar navegación de configuración"
+              />
+            </div>
+            <header className="settings-overlay-store-header">
+              <span className="settings-overlay-store-initials" aria-hidden="true">
+                {(config.storeName || 'TN')
+                  .trim()
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .map((word) => (/^\d+$/.test(word) ? word : word[0]))
+                  .join('')
+                  .toUpperCase()
+                  .slice(0, 3)}
+              </span>
+              <BlockStack gap="050">
+                <Text as="p" variant="bodyMd" fontWeight="semibold" truncate>
+                  {config.storeName || 'Mi tienda'}
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued" truncate>
+                  {config.legalName || 'Negocio activo'}
+                </Text>
+              </BlockStack>
+            </header>
+
+            <div className="settings-overlay-search">
+              <TextField
+                label="Buscar ajustes"
+                labelHidden
+                value={settingsSearch}
+                onChange={setSettingsSearch}
+                autoComplete="off"
+                placeholder="Buscar"
+                prefix={<Icon source={SearchIcon} tone="subdued" />}
+              />
+            </div>
+
+            <nav className="settings-overlay-nav" aria-label="Configuración">
+              {visibleCategories.map((category) => {
+                const isActive = category.id === selectedCategory;
+                return (
+                  <UnstyledButton
+                    key={category.id}
+                    onClick={() => selectCategory(category.id)}
+                    className={`settings-overlay-nav-item${isActive ? ' settings-overlay-nav-item--active' : ''}`}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <span className="settings-overlay-nav-icon" aria-hidden="true">
+                      <Icon source={isActive ? category.iconFilled : category.icon} tone="subdued" />
+                    </span>
+                    <span className="settings-overlay-nav-label">{category.title}</span>
+                  </UnstyledButton>
+                );
+              })}
+              {visibleCategories.length === 0 && (
+                <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                  No hay ajustes coincidentes.
+                </Text>
+              )}
+            </nav>
+
+            <footer className="settings-overlay-account">
+              <span className="settings-overlay-account-mark" aria-hidden="true">
+                <Icon source={PersonIcon} tone="base" />
+              </span>
+              <BlockStack gap="050">
+                <Text as="p" variant="bodySm" fontWeight="semibold" truncate>
+                  {user?.displayName || user?.email || 'Cuenta del negocio'}
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued" truncate>
+                  {user?.email || 'Sesión activa'}
+                </Text>
+              </BlockStack>
+            </footer>
+          </aside>
+
+          <main className="settings-overlay-main">
+            <div className="settings-overlay-main-header">
+              <Button
+                variant="plain"
+                icon={MenuIcon}
+                className="settings-mobile-nav-trigger"
+                onClick={() => setMobileSettingsNavOpen(true)}
+                accessibilityLabel="Abrir navegación de configuración"
+              />
+            </div>
+
+            <form
+              className="settings-overlay-content"
+              data-save-bar
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSave();
+              }}
+              onReset={(event) => {
+                event.preventDefault();
+                resetConfig();
+              }}
+            >
+              {!isPaymentsProviderDetail && (
+                <SettingsRouteHeader
+                  category={activeCategory}
+                  crumbs={routeCrumbs}
+                  rootOnClick={
+                    isPaymentsExternalRoute
+                      ? () => {
+                          setShowExternalPaymentProviders(false);
+                          setShowManualPaymentMethods(false);
+                          setExternalProviderTitle(null);
+                          setPaymentSubsectionTitle(null);
+                        }
+                      : isPaymentsManualRoute && paymentSubsectionTitle
+                        ? () => {
+                            setShowManualPaymentMethods(false);
+                            setPaymentSubsectionTitle(null);
+                        }
+                      : undefined
+                  }
+                />
+              )}
+
+              {(saved || quickSaveError || submitErrors.length > 0) && (
+                <BlockStack gap="300">
+                  {saved && (
+                    <Banner tone="success" title="Configuración guardada" onDismiss={() => setSaved(false)} />
+                  )}
+                  {quickSaveError && (
+                    <Banner tone="critical" title="No se pudo guardar" onDismiss={() => setQuickSaveError(null)}>
+                      <p>{quickSaveError}</p>
+                    </Banner>
+                  )}
+                  {submitErrors.length > 0 && (
+                    <Banner tone="critical" title="No se pudo guardar la configuración">
+                      {submitErrors.map((error, index) => (
+                        <p key={`${error.message}-${index}`}>{error.message}</p>
+                      ))}
+                    </Banner>
+                  )}
+                </BlockStack>
+              )}
+
+              {isDirty && (
+                <div className="settings-overlay-save-actions">
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Tienes cambios sin guardar.
+                  </Text>
+                  <InlineStack gap="200">
+                    <Button variant="plain" onClick={resetConfig} disabled={saving}>
+                      Descartar
+                    </Button>
+                    <Button variant="primary" onClick={handleSave} loading={saving}>
+                      Guardar
+                    </Button>
+                  </InlineStack>
+                </div>
+              )}
+
+              {getActiveView()}
+            </form>
+          </main>
+        </div>
+      </section>
+    );
+  }
 
   // ── Global stats (counts only — no progress bars) ──
   const totalModules = SETTINGS_CATEGORIES.length;
@@ -865,7 +1212,6 @@ export function ConfiguracionPage() {
       <Page
         fullWidth
         title={activeCategory.title}
-        subtitle={activeCategory.description}
         backAction={{
           content: 'Configuración del negocio',
           onAction: () => setSelectedCategory(null),
@@ -942,7 +1288,7 @@ export function ConfiguracionPage() {
           activeCategory ? activeCategory.title : config.storeName || 'Mi Tienda'
         }
         subtitle={
-          activeCategory ? activeCategory.description : pageSubtitle || undefined
+          activeCategory ? undefined : pageSubtitle || undefined
         }
         backAction={
           activeCategory

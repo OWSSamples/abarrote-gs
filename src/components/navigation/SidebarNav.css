@@ -1,0 +1,398 @@
+/* ================================================================
+   SIDEBAR — Cloudflare Kumo design rules applied:
+   - hover-color-transitions: NO color transitions on hover
+   - font-weight: max 600 (semibold), never bold/700
+   - content-text-size: 14px
+   - font-tracking: no letter-spacing
+   - concentric-border-radius: buttons 8px inside 12px rail
+   - collapse-content-size: inner div keeps fixed width during animation
+   - sticky-borders: border separates sticky footer from content
+   ================================================================ */
+
+/* ── Provider wrapper ─────────────────────────────────────────── */
+.odx-sidebar-provider {
+  min-height: 100vh;
+  width: 100%;
+  display: block;
+  background: #ffffff;
+}
+
+.odx-sidebar-provider .Polaris-Frame {
+  min-height: 100vh;
+}
+
+/* ── Sidebar root ─────────────────────────────────────────────── */
+.odx-sidebar {
+  --sidebar-bg: #ffffff;
+  height: 100%;
+  background: #ffffff;
+  color: #18181b;
+  font-family:
+    var(--font-sans),
+    'Inter Variable',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.odx-sidebar__surface {
+  height: 100%;
+  background: #ffffff;
+}
+
+/* ── Content ──────────────────────────────────────────────────── */
+.odx-sidebar__content {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* ── Menu button — Kumo pattern ───────────────────────────────── */
+.odx-sidebar__button {
+  min-height: 34px;
+  border-radius: 8px;
+  color: #18181b;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+/* Instant hover — NO transition (hover-color-transitions rule) */
+.odx-sidebar__button:hover {
+  background: #f4f4f5;
+}
+
+.odx-sidebar__button[data-active='true'] {
+  background: #e4e4e7;
+  color: #18181b;
+  font-weight: 600;
+}
+
+.odx-sidebar__button:focus-visible,
+.odx-sidebar__subbutton:focus-visible,
+.odx-sidebar__trigger:focus-visible {
+  outline: 2px solid #18181b;
+  outline-offset: -2px;
+}
+
+/* Icon alignment — Kumo icon-alignment rule */
+.odx-sidebar__button svg {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  color: #52525b;
+  opacity: 1;
+  /* h-lh flex items-center pattern: icon stays in line-height box */
+  display: flex;
+  align-items: center;
+}
+
+/* ── Label ────────────────────────────────────────────────────── */
+.odx-sidebar__label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Badge ────────────────────────────────────────────────────── */
+.odx-sidebar__badge {
+  margin-left: auto;
+  background: #f4f4f5;
+  color: #52525b;
+  box-shadow: inset 0 0 0 1px #e4e4e7;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ── Chevron ──────────────────────────────────────────────────── */
+.odx-sidebar__button .odx-sidebar__chevron {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+}
+
+/* ── Sub-navigation ───────────────────────────────────────────── */
+.odx-sidebar__subnav {
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+.odx-sidebar__subbutton {
+  min-height: 30px;
+  border-radius: 6px;
+  color: #52525b;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.odx-sidebar__subbutton:hover {
+  background: #f4f4f5;
+}
+
+.odx-sidebar__subbutton[data-active='true'] {
+  background: #e4e4e7;
+  color: #18181b;
+  font-weight: 600;
+}
+
+/* ── Group label ──────────────────────────────────────────────── */
+.odx-sidebar__group--fill {
+  flex: 1 1 auto;
+}
+
+/* ── Footer — sticky border (sticky-borders rule) ─────────────── */
+.odx-sidebar__footer {
+  color: #71717a;
+  border-top: 1px solid #e4e4e7;
+}
+
+/* ── Rail / collapse trigger ──────────────────────────────────── */
+.odx-sidebar__trigger {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 8px;
+}
+
+.odx-sidebar__footer-label {
+  overflow: hidden;
+  color: #71717a;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+/* ================================================================
+   COLLAPSE / EXPAND — Kumo collapse-content-size rule:
+   The OUTER wrapper animates width, the INNER div keeps its
+   content width fixed so nothing shifts during animation.
+   ================================================================ */
+
+@media (min-width: 48em) {
+  .odx-sidebar-provider .Polaris-Frame__Navigation {
+    width: var(--sidebar-width, 260px);
+    /* Only animate width/flex — NOT background/color (hover rule) */
+    transition:
+      width var(--sidebar-animation-duration, 180ms) var(--sidebar-easing, ease),
+      flex-basis var(--sidebar-animation-duration, 180ms) var(--sidebar-easing, ease);
+    overflow: hidden;
+  }
+
+  .odx-sidebar-provider[data-state='collapsed'] .Polaris-Frame__Navigation {
+    width: var(--sidebar-width-icon, 56px);
+  }
+}
+
+/* Collapsed: icon-only mode — buttons become square icon buttons */
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__label,
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__badge,
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__chevron,
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__footer-label {
+  display: none;
+}
+
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  margin-right: auto;
+  margin-left: auto;
+  justify-content: center;
+  padding: 0;
+}
+
+/* collapse-content-size: inner layout div keeps its dimensions */
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__button > div {
+  width: 34px;
+  justify-content: center;
+  gap: 0;
+  transform: none;
+}
+
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__button svg {
+  flex: 0 0 16px;
+}
+
+/* Hide sub-navigation when collapsed */
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__subnav {
+  display: none;
+}
+
+/* Group labels hidden when collapsed */
+.odx-sidebar-provider[data-state='collapsed'] [class*='GroupLabel'] {
+  display: none;
+}
+
+.odx-sidebar-provider[data-state='collapsed'] .odx-sidebar__footer {
+  justify-content: center;
+  padding-right: 11px;
+  padding-left: 11px;
+}
+
+/* Sync top-bar logo area width with sidebar */
+@media (min-width: 48em) {
+  .ctb-logo {
+    transition:
+      width var(--sidebar-animation-duration, 180ms) var(--sidebar-easing, ease),
+      flex-basis var(--sidebar-animation-duration, 180ms) var(--sidebar-easing, ease),
+      padding var(--sidebar-animation-duration, 180ms) var(--sidebar-easing, ease);
+  }
+}
+
+/* Reduced motion — strip all animations */
+@media (prefers-reduced-motion: reduce) {
+  .odx-sidebar-provider .Polaris-Frame__Navigation {
+    transition: none;
+  }
+}
+
+/* ================================================================
+   APP STORE MODAL — native Kumo-style overlay (no Polaris)
+   ================================================================ */
+.odx-appstore-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.odx-appstore-modal {
+  background: #ffffff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.15),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.odx-appstore-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid #e4e4e7;
+  flex-shrink: 0;
+}
+
+.odx-appstore-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #18181b;
+  margin: 0;
+}
+
+.odx-appstore-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #71717a;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.odx-appstore-close:hover {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.odx-appstore-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.odx-appstore-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+}
+
+.odx-appstore-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.odx-appstore-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.odx-appstore-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.odx-appstore-card-info strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: #18181b;
+}
+
+.odx-appstore-card-info span {
+  font-size: 13px;
+  color: #71717a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.odx-appstore-rating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #71717a;
+}
+
+.odx-appstore-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid #e4e4e7;
+  background: #fafafa;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #71717a;
+}

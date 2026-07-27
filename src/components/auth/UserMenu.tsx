@@ -1,99 +1,79 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { Icon, Popover, UnstyledButton } from '@shopify/polaris';
 import {
-  ActionList,
-  Popover,
-  Avatar,
-  Text,
-  InlineStack,
-  BlockStack,
-  Divider,
-  Badge,
-  Box,
-  Icon,
-  UnstyledButton,
-} from '@shopify/polaris';
-import { ProfileIcon, SettingsIcon, ExitIcon, SunIcon, MoonIcon, ChevronDownIcon } from '@shopify/polaris-icons';
+  ChevronDownIcon,
+  CodeIcon,
+  ExitIcon,
+  PlusCircleIcon,
+  QuestionCircleIcon,
+} from '@shopify/polaris-icons';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
+import { HelpDrawer } from '@/components/support/HelpDrawer';
 import { useDashboardStore } from '@/store/dashboardStore';
-import { ProfileModal } from '@/components/modals/ProfileModal';
-import { usePermissions } from '@/hooks/usePermissions';
+
+function getStoreInitials(storeName: string): string {
+  const initials = storeName
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (/^\d+$/.test(word) ? word : word[0]))
+    .join('')
+    .toUpperCase()
+    .slice(0, 3);
+
+  return initials || 'TN';
+}
 
 export function UserMenu() {
+  const router = useRouter();
   const { user, signOut } = useAuth();
-  const currentUserRole = useDashboardStore((s) => s.currentUserRole);
-  const { roleName } = usePermissions();
+  const activeStoreId = useDashboardStore((state) => state.activeStoreId);
+  const stores = useDashboardStore((state) => state.stores);
+  const configuredStoreName = useDashboardStore((state) => state.storeConfig.storeName);
   const [active, setActive] = useState(false);
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
+  const [helpOpen, setHelpOpen] = useState(false);
 
-  const toggleActive = useCallback(() => setActive((a) => !a), []);
+  const storeName = useMemo(
+    () => stores.find((store) => store.id === activeStoreId)?.name || configuredStoreName || 'Mi tienda',
+    [activeStoreId, configuredStoreName, stores],
+  );
+  const storeInitials = useMemo(() => getStoreInitials(storeName), [storeName]);
 
-  const handleToggleTheme = useCallback(() => {
-    const newMode = themeMode === 'light' ? 'dark' : 'light';
-    setThemeMode(newMode);
-    document.documentElement.setAttribute('data-color-scheme', newMode);
-    document.documentElement.setAttribute('data-theme', newMode);
-    if (newMode === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [themeMode]);
+  const toggleActive = useCallback(() => setActive((isActive) => !isActive), []);
+  const closeMenu = useCallback(() => setActive(false), []);
 
   if (!user) return null;
 
-  const rawDisplayName = currentUserRole?.displayName || user.displayName || user.email?.split('@')[0] || 'Usuario';
-  const displayName =
-    rawDisplayName === 'ERROR'
-      ? roleName === 'Propietario' || roleName === 'Administrador'
-        ? 'Admin'
-        : 'Usuario'
-      : rawDisplayName;
-
-  const initials = displayName
-    .split(' ')
-    .filter(Boolean)
-    .map((n: string) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-
-  const avatarSource = currentUserRole?.avatarUrl || undefined;
-
-  const getRoleBadgeTone = (): 'success' | 'info' | 'attention' => {
-    if (roleName === 'Propietario' || roleName === 'Administrador') return 'success';
-    if (roleName === 'Cajero') return 'info';
-    return 'attention';
+  const handleCreateStore = () => {
+    closeMenu();
+    router.push('/auth/register?mode=additional');
   };
 
-  const roleLabel = roleName === 'Sin rol' ? 'Usuario' : roleName;
+  const handleOpenHelp = () => {
+    closeMenu();
+    setHelpOpen(true);
+  };
+
+  const handleSignOut = () => {
+    closeMenu();
+    void signOut();
+  };
 
   const activator = (
     <UnstyledButton
       onClick={toggleActive}
-      accessibilityLabel="Abrir menú de usuario"
+      accessibilityLabel="Abrir menú del negocio"
       ariaExpanded={active}
-      className="ctb-user-menu-trigger"
+      className="ctb-workspace-menu-trigger"
     >
-      <Avatar initials={initials} size="sm" name={displayName} source={avatarSource} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <span
-          style={{
-            color: '#e3e5e7',
-            fontSize: '13px',
-            fontWeight: 500,
-            maxWidth: '120px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {displayName}
-        </span>
-        <Icon source={ChevronDownIcon} tone="inherit" />
-      </div>
+      <span className="ctb-workspace-initials" aria-hidden="true">
+        {storeInitials}
+      </span>
+      <span className="ctb-workspace-trigger-label">{storeName}</span>
+      <Icon source={ChevronDownIcon} tone="inherit" />
     </UnstyledButton>
   );
 
@@ -103,96 +83,54 @@ export function UserMenu() {
         active={active}
         activator={activator}
         autofocusTarget="first-node"
-        onClose={toggleActive}
+        onClose={closeMenu}
         preferredAlignment="right"
         zIndexOverride={200}
       >
-        <div style={{ width: '280px' }}>
-          {/* ── User Info Header ── */}
-          <Box padding="400">
-            <InlineStack gap="300" blockAlign="center">
-              <Avatar initials={initials} size="lg" name={displayName} source={avatarSource} />
-              <BlockStack gap="050">
-                <Text as="h2" variant="headingSm" fontWeight="semibold">
-                  {displayName}
-                </Text>
-                <Text as="p" variant="bodySm" tone="subdued">
-                  {user.email}
-                </Text>
-                <Box paddingBlockStart="100">
-                  <InlineStack gap="100">
-                    <Badge tone={getRoleBadgeTone()} size="small">
-                      {roleLabel}
-                    </Badge>
-                    {currentUserRole?.employeeNumber && (
-                      <Badge tone="info" size="small">{`#${currentUserRole.employeeNumber}`}</Badge>
-                    )}
-                  </InlineStack>
-                </Box>
-              </BlockStack>
-            </InlineStack>
-          </Box>
+        <div className="ctb-workspace-menu">
+          <div className="ctb-workspace-store-row" aria-current="true">
+            <span className="ctb-workspace-initials ctb-workspace-initials--large" aria-hidden="true">
+              {storeInitials}
+            </span>
+            <span className="ctb-workspace-store-name">{storeName}</span>
+            <span className="ctb-workspace-code" aria-label="Negocio actual">
+              <Icon source={CodeIcon} tone="subdued" />
+            </span>
+          </div>
 
-          <Divider />
+          <button type="button" className="ctb-workspace-row" onClick={handleCreateStore}>
+            <span className="ctb-workspace-row-content">
+              <Icon source={PlusCircleIcon} tone="subdued" />
+              <span>Crear tienda</span>
+            </span>
+          </button>
 
-          {/* ── Menu Actions ── */}
-          <ActionList
-            actionRole="menuitem"
-            sections={[
-              {
-                title: 'Cuenta',
-                items: [
-                  {
-                    content: 'Mi perfil',
-                    icon: ProfileIcon,
-                    onAction: () => {
-                      toggleActive();
-                      setProfileModalOpen(true);
-                    },
-                  },
-                  {
-                    content: 'Configuración',
-                    icon: SettingsIcon,
-                    onAction: () => {
-                      toggleActive();
-                    },
-                  },
-                ],
-              },
-              {
-                title: 'Preferencias',
-                items: [
-                  {
-                    content: themeMode === 'light' ? 'Tema oscuro' : 'Tema claro',
-                    icon: themeMode === 'light' ? MoonIcon : SunIcon,
-                    onAction: handleToggleTheme,
-                  },
-                ],
-              },
-            ]}
-          />
+          <div className="ctb-workspace-divider" />
 
-          <Divider />
+          <div className="ctb-workspace-account" title={user.email}>
+            <span className="ctb-workspace-account-mark" aria-hidden="true">
+              <img src="/login-brand.svg" alt="" />
+            </span>
+            <span className="ctb-workspace-account-email">{user.email || user.username}</span>
+          </div>
 
-          {/* ── Logout ── */}
-          <ActionList
-            actionRole="menuitem"
-            items={[
-              {
-                content: 'Cerrar sesión',
-                icon: ExitIcon,
-                destructive: true,
-                onAction: () => {
-                  toggleActive();
-                  signOut();
-                },
-              },
-            ]}
-          />
+          <button type="button" className="ctb-workspace-row" onClick={handleOpenHelp}>
+            <span className="ctb-workspace-row-content">
+              <Icon source={QuestionCircleIcon} tone="subdued" />
+              <span>Centro de ayuda</span>
+            </span>
+          </button>
+
+          <button type="button" className="ctb-workspace-row" onClick={handleSignOut}>
+            <span className="ctb-workspace-row-content">
+              <Icon source={ExitIcon} tone="subdued" />
+              <span>Cerrar sesión</span>
+            </span>
+          </button>
         </div>
       </Popover>
 
-      <ProfileModal open={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
     </>
   );
 }

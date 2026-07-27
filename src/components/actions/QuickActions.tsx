@@ -1,38 +1,30 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { LayerCard } from '@cloudflare/kumo/components/layer-card';
+import { Button } from '@cloudflare/kumo/components/button';
+import { Input } from '@cloudflare/kumo/components/input';
+import { Badge } from '@cloudflare/kumo/components/badge';
 import {
-  Card,
-  BlockStack,
-  Text,
-  Modal,
-  FormLayout,
-  TextField,
-  DatePicker,
-  Banner,
-  Icon,
-  InlineGrid,
-} from '@shopify/polaris';
+  Cart24Regular,
+  Add24Regular,
+  Money24Regular,
+  Archive24Regular,
+  Wrench24Regular,
+  Box24Regular,
+} from '@fluentui/react-icons';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
-import {
-  PlusIcon,
-  ArchiveIcon,
-  AdjustIcon,
-  CartIcon,
-  CashDollarIcon,
-  PlusIcon as PlusMinorIcon,
-} from '@shopify/polaris-icons';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { AperturaCajaModal } from '@/components/modals/AperturaCajaModal';
 import { useToast } from '@/components/notifications/ToastProvider';
 import { usePermissions } from '@/hooks/usePermissions';
 import { RegisterProductModal } from '@/components/modals/RegisterProductModal';
 import { SaleTicketModal } from '@/components/modals/SaleTicketModal';
-import { ServiciosModal } from '@/components/modals/ServiciosModal';
 import { PinPadModal } from '@/components/modals/PinPadModal';
 import { formatCurrency } from '@/lib/utils';
 import { useTicketPrinter } from '@/hooks/useTicketPrinter';
+import './QuickActions.css';
 
 export function QuickActions() {
   const inventoryAlerts = useDashboardStore((s) => s.inventoryAlerts);
@@ -47,7 +39,6 @@ export function QuickActions() {
   const canManageInventory = !permsLoaded || hasPermission('inventory.edit');
   const canCreateSales = !permsLoaded || hasPermission('sales.create');
   const canManagePedidos = !permsLoaded || hasPermission('pedidos.create');
-  const _canManageServicios = !permsLoaded || hasPermission('servicios.create');
   const canCreateFiado = !permsLoaded || hasPermission('fiado.create');
 
   const [mermaModalOpen, setMermaModalOpen] = useState(false);
@@ -55,7 +46,6 @@ export function QuickActions() {
   const [ajusteModalOpen, setAjusteModalOpen] = useState(false);
   const [registerProductOpen, setRegisterProductOpen] = useState(false);
   const [saleTicketOpen, setSaleTicketOpen] = useState(false);
-  const [serviciosOpen, setServiciosOpen] = useState(false);
   const [aperturaOpen, setAperturaOpen] = useState(false);
   const [pinPadOpen, setPinPadOpen] = useState(false);
   const { openDrawer } = useTicketPrinter();
@@ -70,9 +60,6 @@ export function QuickActions() {
   const [mermaProducto, setMermaProducto] = useState('');
   const [mermaCantidad, setMermaCantidad] = useState('');
   const [mermaRazon, setMermaRazon] = useState('expiration');
-  const [mermaDate, setMermaDate] = useState(new Date());
-  const [mermaMonth, setMermaMonth] = useState(new Date().getMonth());
-  const [mermaYear, setMermaYear] = useState(new Date().getFullYear());
 
   // Form states for Pedido
   const [pedidoProveedor, setPedidoProveedor] = useState('');
@@ -106,7 +93,6 @@ export function QuickActions() {
   ];
 
   const selectedMermaProduct = inventoryAlerts.find((a) => a.product.id === mermaProducto)?.product;
-
   const selectedAjusteProduct = inventoryAlerts.find((a) => a.product.id === ajusteProducto)?.product;
 
   const handleMermaSubmit = useCallback(async () => {
@@ -118,7 +104,7 @@ export function QuickActions() {
       productName: selectedMermaProduct.name,
       quantity: qty,
       reason: mermaRazon as 'expiration' | 'damage' | 'spoilage' | 'other',
-      date: mermaDate.toISOString(),
+      date: new Date().toISOString(),
       value: qty * selectedMermaProduct.unitPrice,
     });
 
@@ -127,7 +113,7 @@ export function QuickActions() {
     setMermaProducto('');
     setMermaCantidad('');
     setMermaRazon('expiration');
-  }, [mermaProducto, mermaCantidad, mermaRazon, mermaDate, selectedMermaProduct, registerMerma, toast]);
+  }, [mermaProducto, mermaCantidad, mermaRazon, selectedMermaProduct, registerMerma, toast]);
 
   const handlePedidoSubmit = useCallback(async () => {
     if (!pedidoProveedor) return;
@@ -189,420 +175,344 @@ export function QuickActions() {
 
   const actions = [
     canCreateSales && {
-      label: 'Punto de Venta',
+      label: 'Punto de venta',
       desc: 'Venta rápida',
-      icon: CartIcon,
+      icon: Cart24Regular,
       onClick: () => setSaleTicketOpen(true),
-      tone: 'var(--p-color-bg-fill-brand-subdued)',
-      color: 'var(--p-color-text-brand)',
-      disabled: false,
+      badgeTone: 'info',
     },
     {
-      label: 'Abrir Turno',
+      label: 'Abrir turno',
       desc: 'Fondo inicial',
-      icon: PlusMinorIcon,
+      icon: Add24Regular,
       onClick: () => setAperturaOpen(true),
-      tone: 'var(--p-color-bg-fill-success-subdued)',
-      color: 'var(--p-color-text-success)',
-      disabled: false,
+      badgeTone: 'success',
     },
     {
-      label: 'Abrir Cajón',
+      label: 'Abrir cajón',
       desc: 'Acceso físico',
-      icon: CashDollarIcon,
+      icon: Money24Regular,
       onClick: () => setPinPadOpen(true),
-      tone: 'var(--p-color-bg-fill-info-subdued)',
-      color: 'var(--p-color-text-info)',
-      disabled: false,
+      badgeTone: 'secondary',
     },
     canCreateFiado && {
       label: 'Abonos',
       desc: 'Registrar pagos',
-      icon: CashDollarIcon,
+      icon: Money24Regular,
       onClick: () => setAbonoOpen(true),
-      tone: 'var(--p-color-bg-fill-warning-subdued)',
-      color: 'var(--p-color-text-warning)',
-      disabled: false,
+      badgeTone: 'warning',
     },
     canManageInventory && {
       label: 'Mermas',
       desc: 'Control de pérdidas',
-      icon: ArchiveIcon,
+      icon: Archive24Regular,
       onClick: () => setMermaModalOpen(true),
-      tone: 'var(--p-color-bg-fill-critical-subdued)',
-      color: 'var(--p-color-text-critical)',
-      disabled: false,
+      badgeTone: 'error',
     },
     canManagePedidos && {
       label: 'Surtidos',
       desc: 'Pedido a proveedor',
-      icon: PlusIcon,
+      icon: Box24Regular,
       onClick: () => setPedidoModalOpen(true),
-      tone: 'var(--p-color-bg-fill-info-subdued)',
-      color: 'var(--p-color-text-info)',
-      disabled: false,
+      badgeTone: 'secondary',
     },
     canManageInventory && {
-      label: 'Ajuste Manual',
+      label: 'Ajuste manual',
       desc: 'Inventario físico',
-      icon: AdjustIcon,
+      icon: Wrench24Regular,
       onClick: () => setAjusteModalOpen(true),
-      tone: '#f4f6f8',
-      color: '#6d7175',
-      disabled: false,
+      badgeTone: 'secondary',
     },
   ].filter(Boolean) as {
     label: string;
     desc: string;
-    icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>;
+    icon: React.ComponentType<{ className?: string }>;
     onClick: () => void;
-    tone: string;
-    color: string;
-    disabled: boolean;
+    badgeTone: 'info' | 'success' | 'warning' | 'error' | 'secondary';
   }[];
 
   return (
     <>
-      <Card>
-        <BlockStack gap="400">
-          <BlockStack gap="100">
-            <Text as="h2" variant="headingMd" fontWeight="semibold">
-              Operaciones
-            </Text>
-            <Text as="p" variant="bodySm" tone="subdued">
-              Accesos directos a procesos del negocio
-            </Text>
-          </BlockStack>
+      <LayerCard className="kumo-quick-actions">
+        <LayerCard.Secondary className="kumo-quick-actions__header">
+          <h2 className="kumo-quick-actions__title">Operaciones</h2>
+          <p className="kumo-quick-actions__subtitle">Accesos directos a procesos del negocio</p>
+        </LayerCard.Secondary>
 
-          <InlineGrid columns={{ xs: 3, sm: 3, md: 6 }} gap="300">
-            {actions.map((action) => (
-              <div
-                key={action.label}
-                onClick={action.disabled ? undefined : action.onClick}
-                style={{
-                  cursor: action.disabled ? 'default' : 'pointer',
-                  padding: '14px 8px',
-                  borderRadius: '12px',
-                  border: '1px solid #e3e5e7',
-                  backgroundColor: '#fff',
-                  textAlign: 'center',
-                  transition: 'all 0.15s ease',
-                  opacity: action.disabled ? 0.5 : 1,
-                  WebkitTapHighlightColor: 'transparent',
-                }}
-                onMouseEnter={(e) => {
-                  if (!action.disabled) {
-                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                    e.currentTarget.style.borderColor = '#c9cccf';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#fff';
-                  e.currentTarget.style.borderColor = '#e3e5e7';
-                }}
-              >
-                <BlockStack gap="300" align="center" inlineAlign="center">
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: '10px',
-                      backgroundColor: action.tone,
-                      color: action.color,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Icon source={action.icon} />
+        <LayerCard.Primary className="kumo-quick-actions__body">
+          <div className="kumo-quick-actions__grid">
+            {actions.map((action) => {
+              const IconComp = action.icon;
+              return (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={action.onClick}
+                  className="kumo-quick-action-btn"
+                >
+                  <span className={`kumo-quick-action-icon kumo-quick-action-icon--${action.badgeTone}`}>
+                    <IconComp />
+                  </span>
+                  <div className="kumo-quick-action-text">
+                    <span className="kumo-quick-action-label">{action.label}</span>
+                    <span className="kumo-quick-action-desc">{action.desc}</span>
                   </div>
-                  <BlockStack gap="050">
-                    <Text as="p" variant="bodySm" fontWeight="semibold">
-                      {action.label}
-                    </Text>
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      {action.desc}
-                    </Text>
-                  </BlockStack>
-                </BlockStack>
-              </div>
-            ))}
-          </InlineGrid>
-        </BlockStack>
-      </Card>
+                </button>
+              );
+            })}
+          </div>
+        </LayerCard.Primary>
+      </LayerCard>
 
       {/* Modal para Registrar Merma */}
-      <Modal
-        open={mermaModalOpen}
-        onClose={() => setMermaModalOpen(false)}
-        title="Registrar Merma"
-        primaryAction={{
-          content: 'Guardar Merma',
-          onAction: handleMermaSubmit,
-          disabled: !mermaProducto || !mermaCantidad,
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancelar',
-            onAction: () => setMermaModalOpen(false),
-          },
-        ]}
-      >
-        <Modal.Section>
-          <FormLayout>
-            <Banner tone="warning">
-              <p>
-                Registrar una merma afectará el inventario y se reflejará en el cálculo de la tasa de merma del mes.
-              </p>
-            </Banner>
-
-            <SearchableSelect
-              label="Producto"
-              options={productOptions}
-              selected={mermaProducto}
-              onChange={setMermaProducto}
-            />
-
-            {selectedMermaProduct && (
-              <Text as="p" variant="bodySm" tone="subdued">
-                Stock actual: {selectedMermaProduct.currentStock} unidades — Precio: ${selectedMermaProduct.unitPrice}
-              </Text>
-            )}
-
-            <TextField
-              label="Cantidad"
-              value={mermaCantidad}
-              onChange={setMermaCantidad}
-              type="number"
-              autoComplete="off"
-              min={1}
-              max={selectedMermaProduct?.currentStock}
-              helpText={selectedMermaProduct ? `Máximo: ${selectedMermaProduct.currentStock}` : undefined}
-            />
-
-            <FormSelect label="Razón de la merma" options={razonOptions} value={mermaRazon} onChange={setMermaRazon} />
-
-            <div>
-              <Text as="p" variant="bodyMd">
-                Fecha de la merma
-              </Text>
-              <DatePicker
-                month={mermaMonth}
-                year={mermaYear}
-                onChange={({ start }) => {
-                  if (start) {
-                    setMermaDate(start);
-                  }
-                }}
-                onMonthChange={(month, year) => {
-                  setMermaMonth(month);
-                  setMermaYear(year);
-                }}
-                selected={{ start: mermaDate, end: mermaDate }}
-              />
+      {mermaModalOpen && (
+        <div className="kumo-modal-overlay" onClick={() => setMermaModalOpen(false)}>
+          <div className="kumo-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="kumo-modal-header">
+              <h3>Registrar merma</h3>
+              <button type="button" className="kumo-modal-close" onClick={() => setMermaModalOpen(false)}>
+                ✕
+              </button>
             </div>
+            <div className="kumo-modal-body">
+              <p className="kumo-modal-hint">
+                Registrar una merma afectará el inventario y se reflejará en el cálculo de la tasa del mes.
+              </p>
 
-            {selectedMermaProduct && mermaCantidad && (
-              <Banner tone="info">
-                <p>
-                  Valor de la merma: ${(parseInt(mermaCantidad, 10) * selectedMermaProduct.unitPrice).toFixed(2)} MXN
-                </p>
-              </Banner>
-            )}
-          </FormLayout>
-        </Modal.Section>
-      </Modal>
+              <div className="kumo-form-group">
+                <SearchableSelect
+                  label="Producto"
+                  options={productOptions}
+                  selected={mermaProducto}
+                  onChange={setMermaProducto}
+                />
+                {selectedMermaProduct && (
+                  <span className="kumo-form-help">
+                    Stock actual: {selectedMermaProduct.currentStock} uds — Precio: ${selectedMermaProduct.unitPrice}
+                  </span>
+                )}
+              </div>
+
+              <div className="kumo-form-group">
+                <label className="kumo-form-label">Cantidad</label>
+                <Input
+                  type="number"
+                  value={mermaCantidad}
+                  onChange={(e) => setMermaCantidad(e.target.value)}
+                  placeholder="0"
+                  min="1"
+                  max={selectedMermaProduct?.currentStock?.toString()}
+                />
+              </div>
+
+              <div className="kumo-form-group">
+                <FormSelect label="Razón de la merma" options={razonOptions} value={mermaRazon} onChange={setMermaRazon} />
+              </div>
+            </div>
+            <div className="kumo-modal-footer">
+              <Button type="button" variant="secondary" onClick={() => setMermaModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                disabled={!mermaProducto || !mermaCantidad}
+                onClick={handleMermaSubmit}
+              >
+                Guardar merma
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal para Crear Pedido */}
-      <Modal
-        open={pedidoModalOpen}
-        onClose={() => setPedidoModalOpen(false)}
-        title="Crear Pedido a Proveedor"
-        primaryAction={{
-          content: 'Crear Pedido',
-          onAction: handlePedidoSubmit,
-          disabled: !pedidoProveedor,
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancelar',
-            onAction: () => setPedidoModalOpen(false),
-          },
-        ]}
-      >
-        <Modal.Section>
-          <FormLayout>
-            <Banner tone="info">
-              <p>Se generará un pedido automático con {lowStockCount} productos con stock bajo.</p>
-            </Banner>
+      {pedidoModalOpen && (
+        <div className="kumo-modal-overlay" onClick={() => setPedidoModalOpen(false)}>
+          <div className="kumo-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="kumo-modal-header">
+              <h3>Crear pedido a proveedor</h3>
+              <button type="button" className="kumo-modal-close" onClick={() => setPedidoModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="kumo-modal-body">
+              <p className="kumo-modal-hint">
+                Se generará un pedido automático con {lowStockCount} productos con stock bajo.
+              </p>
 
-            <TextField
-              label="Proveedor"
-              value={pedidoProveedor}
-              onChange={setPedidoProveedor}
-              autoComplete="off"
-              placeholder="Nombre del proveedor..."
-            />
+              <div className="kumo-form-group">
+                <label className="kumo-form-label">Proveedor</label>
+                <Input
+                  type="text"
+                  value={pedidoProveedor}
+                  onChange={(e) => setPedidoProveedor(e.target.value)}
+                  placeholder="Nombre del proveedor..."
+                />
+              </div>
 
-            {lowStockCount > 0 && (
-              <BlockStack gap="100">
-                <Text as="p" variant="bodySm" fontWeight="semibold">
-                  Productos a pedir:
-                </Text>
-                {inventoryAlerts
-                  .filter((a) => a.product.currentStock < a.product.minStock)
-                  .map((a) => (
-                    <Text key={a.id} as="p" variant="bodySm" tone="subdued">
-                      • {a.product.name} — Pedir {a.product.minStock - a.product.currentStock} unidades
-                    </Text>
-                  ))}
-              </BlockStack>
-            )}
+              {lowStockCount > 0 && (
+                <div className="kumo-pedido-preview">
+                  <strong>Productos a pedir:</strong>
+                  <ul>
+                    {inventoryAlerts
+                      .filter((a) => a.product.currentStock < a.product.minStock)
+                      .map((a) => (
+                        <li key={a.id}>
+                          {a.product.name} — Pedir {a.product.minStock - a.product.currentStock} unidades
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
 
-            <TextField
-              label="Notas adicionales"
-              value={pedidoNotas}
-              onChange={setPedidoNotas}
-              multiline={4}
-              autoComplete="off"
-            />
-          </FormLayout>
-        </Modal.Section>
-      </Modal>
+              <div className="kumo-form-group">
+                <label className="kumo-form-label">Notas adicionales</label>
+                <textarea
+                  className="kumo-textarea"
+                  value={pedidoNotas}
+                  onChange={(e) => setPedidoNotas(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="kumo-modal-footer">
+              <Button type="button" variant="secondary" onClick={() => setPedidoModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" variant="primary" disabled={!pedidoProveedor} onClick={handlePedidoSubmit}>
+                Crear pedido
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Modal para Ajuste de Inventario */}
-      <Modal
-        open={ajusteModalOpen}
-        onClose={() => setAjusteModalOpen(false)}
-        title="Ajuste de Inventario"
-        primaryAction={{
-          content: 'Guardar Ajuste',
-          onAction: handleAjusteSubmit,
-          disabled: !ajusteProducto || !ajusteNuevaCantidad || !ajusteRazon,
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancelar',
-            onAction: () => setAjusteModalOpen(false),
-          },
-        ]}
-      >
-        <Modal.Section>
-          <FormLayout>
-            <Banner tone="warning">
-              <p>Los ajustes de inventario deben estar justificados y serán registrados en el historial.</p>
-            </Banner>
+      {/* Modal para Ajuste Manual */}
+      {ajusteModalOpen && (
+        <div className="kumo-modal-overlay" onClick={() => setAjusteModalOpen(false)}>
+          <div className="kumo-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="kumo-modal-header">
+              <h3>Ajuste de inventario</h3>
+              <button type="button" className="kumo-modal-close" onClick={() => setAjusteModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="kumo-modal-body">
+              <p className="kumo-modal-hint">
+                Los ajustes de inventario deben estar justificados y serán registrados en el historial.
+              </p>
 
-            <SearchableSelect
-              label="Producto"
-              options={productOptions}
-              selected={ajusteProducto}
-              onChange={(value) => {
-                setAjusteProducto(value);
-                setAjusteNuevaCantidad('');
-              }}
-            />
+              <div className="kumo-form-group">
+                <SearchableSelect
+                  label="Producto"
+                  options={productOptions}
+                  selected={ajusteProducto}
+                  onChange={(val) => {
+                    setAjusteProducto(val);
+                    setAjusteNuevaCantidad('');
+                  }}
+                />
+              </div>
 
-            {selectedAjusteProduct && (
-              <TextField
-                label="Cantidad actual"
-                value={selectedAjusteProduct.currentStock.toString()}
-                onChange={() => {}}
-                type="number"
-                autoComplete="off"
-                disabled
-              />
-            )}
+              {selectedAjusteProduct && (
+                <div className="kumo-form-group">
+                  <label className="kumo-form-label">Cantidad actual</label>
+                  <Input type="text" value={selectedAjusteProduct.currentStock.toString()} readOnly disabled />
+                </div>
+              )}
 
-            <TextField
-              label="Nueva cantidad"
-              value={ajusteNuevaCantidad}
-              onChange={setAjusteNuevaCantidad}
-              type="number"
-              autoComplete="off"
-              min={0}
-            />
+              <div className="kumo-form-group">
+                <label className="kumo-form-label">Nueva cantidad</label>
+                <Input
+                  type="number"
+                  value={ajusteNuevaCantidad}
+                  onChange={(e) => setAjusteNuevaCantidad(e.target.value)}
+                  placeholder="0"
+                  min="0"
+                />
+              </div>
 
-            {selectedAjusteProduct && ajusteNuevaCantidad && (
-              <Text
-                as="p"
-                variant="bodySm"
-                tone={
-                  parseInt(ajusteNuevaCantidad, 10) - selectedAjusteProduct.currentStock >= 0 ? 'success' : 'critical'
-                }
+              <div className="kumo-form-group">
+                <FormSelect
+                  label="Razón del ajuste"
+                  options={ajusteRazonOptions}
+                  value={ajusteRazon}
+                  onChange={setAjusteRazon}
+                />
+              </div>
+            </div>
+            <div className="kumo-modal-footer">
+              <Button type="button" variant="secondary" onClick={() => setAjusteModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                disabled={!ajusteProducto || !ajusteNuevaCantidad || !ajusteRazon}
+                onClick={handleAjusteSubmit}
               >
-                Diferencia: {parseInt(ajusteNuevaCantidad, 10) - selectedAjusteProduct.currentStock >= 0 ? '+' : ''}
-                {parseInt(ajusteNuevaCantidad, 10) - selectedAjusteProduct.currentStock} unidades
-              </Text>
-            )}
-
-            <FormSelect
-              label="Razón del ajuste"
-              options={ajusteRazonOptions}
-              value={ajusteRazon}
-              onChange={setAjusteRazon}
-            />
-          </FormLayout>
-        </Modal.Section>
-      </Modal>
+                Guardar ajuste
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal para Registrar Abono */}
-      <Modal
-        open={abonoOpen}
-        onClose={() => setAbonoOpen(false)}
-        title="Registrar Abono"
-        primaryAction={{ content: 'Registrar Abono', onAction: handleAbono, disabled: !abonoClienteId || !abonoAmount }}
-        secondaryActions={[{ content: 'Cancelar', onAction: () => setAbonoOpen(false) }]}
-      >
-        <Modal.Section>
-          <FormLayout>
-            <Banner tone="success">
-              <p>El abono reducirá la deuda del cliente dado de alta.</p>
-            </Banner>
-            <FormSelect
-              label="Cliente"
-              options={clientesWithDebtOptions}
-              value={abonoClienteId}
-              onChange={setAbonoClienteId}
-            />
-            {abonoClienteId &&
-              (() => {
-                const c = clientes.find((cl) => cl.id === abonoClienteId);
-                return c ? (
-                  <Text as="p" variant="bodySm" tone="critical">
-                    Deuda actual: {formatCurrency(c.balance)}
-                  </Text>
-                ) : null;
-              })()}
-            <TextField
-              label="Monto del abono (MXN)"
-              type="number"
-              value={abonoAmount}
-              onChange={setAbonoAmount}
-              autoComplete="off"
-              prefix="$"
-              placeholder="0.00"
-            />
-            <TextField
-              label="Descripción (opcional)"
-              value={abonoDescription}
-              onChange={setAbonoDescription}
-              autoComplete="off"
-              placeholder="Ej: Abono semanal"
-            />
-          </FormLayout>
-        </Modal.Section>
-      </Modal>
+      {abonoOpen && (
+        <div className="kumo-modal-overlay" onClick={() => setAbonoOpen(false)}>
+          <div className="kumo-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="kumo-modal-header">
+              <h3>Registrar abono</h3>
+              <button type="button" className="kumo-modal-close" onClick={() => setAbonoOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="kumo-modal-body">
+              <div className="kumo-form-group">
+                <FormSelect
+                  label="Cliente"
+                  options={clientesWithDebtOptions}
+                  value={abonoClienteId}
+                  onChange={setAbonoClienteId}
+                />
+              </div>
 
-      {/* Modal para Registrar Producto */}
+              <div className="kumo-form-group">
+                <label className="kumo-form-label">Monto del abono (MXN)</label>
+                <Input
+                  type="number"
+                  value={abonoAmount}
+                  onChange={(e) => setAbonoAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="kumo-form-group">
+                <label className="kumo-form-label">Descripción (opcional)</label>
+                <Input
+                  type="text"
+                  value={abonoDescription}
+                  onChange={(e) => setAbonoDescription(e.target.value)}
+                  placeholder="Ej: Abono semanal"
+                />
+              </div>
+            </div>
+            <div className="kumo-modal-footer">
+              <Button type="button" variant="secondary" onClick={() => setAbonoOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" variant="primary" disabled={!abonoClienteId || !abonoAmount} onClick={handleAbono}>
+                Registrar abono
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <RegisterProductModal open={registerProductOpen} onClose={() => setRegisterProductOpen(false)} />
-
-      {/* Modal para Registrar Venta y Generar Ticket */}
       <SaleTicketModal open={saleTicketOpen} onClose={() => setSaleTicketOpen(false)} />
-
-      {/* Modal para Recargas y Servicios */}
-      <ServiciosModal open={serviciosOpen} onClose={() => setServiciosOpen(false)} />
-
       <AperturaCajaModal open={aperturaOpen} onClose={() => setAperturaOpen(false)} />
 
       <PinPadModal
@@ -611,18 +521,11 @@ export function QuickActions() {
         requiredPermission="cashdrawer.open"
         onSuccess={(_uid: string, _name: string) => {
           setPinPadOpen(false);
-          // Apertura autorizada — señal enviada al driver
-          // Resolve drawer pin from storeConfig (defaults to pin 2; users
-          // with Nextep/Bematech variants can write "pin5" in the Hardware
-          // settings field to switch).
           const pin =
-            storeConfig.cashDrawerPort &&
-            /pin\s*5|^5$/i.test(storeConfig.cashDrawerPort.trim())
-              ? 5
-              : 2;
+            storeConfig.cashDrawerPort && /pin\s*5|^5$/i.test(storeConfig.cashDrawerPort.trim()) ? 5 : 2;
           openDrawer(pin);
         }}
-        title="Autorizar Apertura de Cajón"
+        title="Autorizar apertura de cajón"
         label="Ingresa PIN para abrir cajón de dinero"
       />
     </>

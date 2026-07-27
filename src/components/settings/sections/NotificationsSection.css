@@ -1,0 +1,153 @@
+.notifications-shopify-panel {
+  width: min(718px, 100%);
+  color: #303030;
+}
+
+.notifications-shopify-card {
+  width: 100%;
+  border: 1px solid #d8dadd;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(31, 33, 36, 0.08);
+}
+
+.notifications-shopify-sender-card {
+  padding: 20px 16px 16px;
+}
+
+.notifications-shopify-sender-card .Polaris-Labelled__LabelWrapper {
+  margin-bottom: 6px;
+}
+
+.notifications-shopify-sender-card .Polaris-Label__Text {
+  color: #303030;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 18px;
+}
+
+.notifications-shopify-sender-card .Polaris-Labelled__HelpText {
+  margin: 0 0 17px;
+  color: #5f6368;
+  font-size: 13.5px;
+  line-height: 20px;
+}
+
+.notifications-shopify-sender-card .Polaris-TextField__Input {
+  min-height: 32px;
+  padding: 5px 11px;
+  color: #303030;
+  font-size: 13.5px;
+  line-height: 20px;
+}
+
+.notifications-shopify-options-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 16px;
+}
+
+.notifications-shopify-option-group {
+  overflow: hidden;
+  border: 1px solid #dfe1e5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.notifications-shopify-option {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 20px;
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+  min-height: 65px;
+  padding: 12px 12px;
+  border: 0;
+  border-bottom: 1px solid #e1e3e5;
+  background: transparent;
+  color: #303030;
+  cursor: pointer;
+  text-align: left;
+}
+
+.notifications-shopify-option:last-child {
+  border-bottom: 0;
+}
+
+.notifications-shopify-option:hover {
+  background: #f7f7f8;
+}
+
+.notifications-shopify-option:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #005bd3;
+  outline-offset: -2px;
+}
+
+.notifications-shopify-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: #4a4a4a;
+}
+
+.notifications-shopify-option-icon .Polaris-Icon {
+  width: 19px;
+  height: 19px;
+}
+
+.notifications-shopify-option-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.notifications-shopify-option-copy strong {
+  overflow: hidden;
+  color: #303030;
+  font-size: 13.5px;
+  font-weight: 450;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notifications-shopify-option-copy span {
+  overflow: hidden;
+  color: #5f6368;
+  font-size: 13.5px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notifications-shopify-option-chevron {
+  display: inline-flex;
+  justify-content: flex-end;
+  color: #4a4a4a;
+}
+
+.notifications-shopify-option-chevron .Polaris-Icon {
+  width: 18px;
+  height: 18px;
+}
+
+@media (max-width: 760px) {
+  .notifications-shopify-panel {
+    width: 100%;
+  }
+
+  .notifications-shopify-option {
+    grid-template-columns: 24px minmax(0, 1fr) 18px;
+    gap: 12px;
+  }
+
+  .notifications-shopify-option-copy strong,
+  .notifications-shopify-option-copy span {
+    white-space: normal;
+  }
+}

@@ -1,0 +1,134 @@
+.kumo-top-products {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.kumo-top-products__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.kumo-top-products__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #18181b;
+  margin: 0;
+}
+
+.kumo-top-products__body {
+  padding: 0;
+}
+
+.kumo-top-products__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.kumo-top-products__item {
+  position: relative;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.kumo-top-products__item:last-child {
+  border-bottom: none;
+}
+
+.kumo-top-products__bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.kumo-top-products__item-content {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.kumo-top-products__rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  background: #f4f4f5;
+  color: #71717a;
+
+  &.is-first {
+    background: #16a34a;
+    color: #ffffff;
+  }
+}
+
+.kumo-top-products__details {
+  flex: 1;
+  min-width: 0;
+}
+
+.kumo-top-products__name {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #18181b;
+  line-height: 1.35;
+
+  &.is-first {
+    font-weight: 600;
+  }
+}
+
+.kumo-top-products__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #71717a;
+  font-variant-numeric: tabular-nums;
+}
+
+.kumo-top-products__meta .dot {
+  opacity: 0.4;
+}
+
+.kumo-top-products__meta .trend {
+  font-weight: 600;
+}
+
+.kumo-top-products__revenue {
+  font-size: 14px;
+  font-weight: 600;
+  color: #18181b;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.kumo-top-products__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-top: 1px solid #e4e4e7;
+  font-size: 13px;
+  color: #71717a;
+}
+
+.kumo-top-products__footer strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: #18181b;
+  font-variant-numeric: tabular-nums;
+}

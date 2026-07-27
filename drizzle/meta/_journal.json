@@ -295,6 +295,20 @@
       "when": 1785014400000,
       "tag": "0041_uber_oauth_store_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1785014401000,
+      "tag": "0042_payment_capture_method",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1785014402000,
+      "tag": "0043_store_plugins",
+      "breakpoints": true
     }
   ]
 }

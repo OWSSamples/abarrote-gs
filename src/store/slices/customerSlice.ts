@@ -17,6 +17,7 @@ export const createCustomerSlice = (set: StoreSet, get: StoreGet): CustomerSlice
       set({ clientes: [...state.clientes, newCliente] });
     } catch (error) {
       console.error('[store:customer] addCliente failed', error);
+      throw error;
     }
   },
 
@@ -52,6 +53,7 @@ export const createCustomerSlice = (set: StoreSet, get: StoreGet): CustomerSlice
       set({ clientes, fiadoTransactions: fiadoTxns });
     } catch (error) {
       console.error('[store:customer] registerFiado failed', error);
+      throw error;
     }
   },
 
@@ -62,6 +64,7 @@ export const createCustomerSlice = (set: StoreSet, get: StoreGet): CustomerSlice
       set({ clientes, fiadoTransactions: fiadoTxns });
     } catch (error) {
       console.error('[store:customer] registerAbono failed', error);
+      throw error;
     }
   },
 });

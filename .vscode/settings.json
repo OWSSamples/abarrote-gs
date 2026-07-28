@@ -3,5 +3,9 @@
         "aws": true
     },
     "snyk.advanced.autoSelectOrganization": true,
-    "chat.agent.sandbox.enabled": "on"
+    "chat.agent.sandbox.enabled": "on",
+    "terminal.integrated.suggest.enabled": true,
+    "terminal.integrated.sendKeybindingsToShell": true,
+    "terminal.integrated.shellIntegration.enabled": false,
+    "terminal.integrated.shellIntegration.environmentReporting": true
 }

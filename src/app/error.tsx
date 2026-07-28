@@ -1,8 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Page, Banner, Button, BlockStack, Text, InlineStack, Box } from '@shopify/polaris';
+import { Text }   from '@cloudflare/kumo/components/text';
+import { Button } from '@cloudflare/kumo/components/button';
+import { Banner } from '@cloudflare/kumo/components/banner';
 import { SessionExpiredScreen } from '@/components/auth/SessionExpiredScreen';
+import {
+  ArrowClockwise24Regular,
+  Home24Regular,
+} from '@fluentui/react-icons';
 
 /**
  * Root error boundary — catches unhandled errors in all routes.
@@ -76,40 +82,58 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
   const info = categorizeError(error);
 
   useEffect(() => {
-    // Log error digest for server-side correlation
-    // In production, this could send to an observability platform
     if (error.digest) {
       console.error(`[ErrorBoundary] digest=${error.digest}`);
     }
   }, [error.digest]);
 
-  // Premium full-screen experience for session expired
   if (info.title === 'Sesión expirada') {
     return <SessionExpiredScreen reference={error.digest} />;
   }
 
   return (
-    <Page title="Error" fullWidth>
-      <BlockStack gap="400">
-        <Banner tone={info.tone} title={info.title}>
-          <p>{info.message}</p>
+    <div className="gerr-shell">
+      <div className="gerr-card">
+        <Banner variant={info.tone === 'critical' ? 'error' : 'warning'}>
+          <Text as="span">{info.title}</Text>
         </Banner>
 
-        {error.digest && (
-          <Box paddingInlineStart="400">
-            <Text as="p" variant="bodySm" tone="subdued">
-              Referencia: {error.digest}
-            </Text>
-          </Box>
-        )}
+        <div className="gerr-body">
+          <Text as="p" className="gerr-message">{info.message}</Text>
 
-        <InlineStack gap="200">
-          {info.recoverable && <Button onClick={reset}>Reintentar</Button>}
-          <Button url="/dashboard" variant="plain">
-            Ir al Dashboard
-          </Button>
-        </InlineStack>
-      </BlockStack>
-    </Page>
+          {error.digest && (
+            <Text as="p" className="gerr-ref">
+              Referencia: <code className="gerr-code">{error.digest}</code>
+            </Text>
+          )}
+
+          <div className="gerr-actions">
+            {info.recoverable && (
+              <Button type="button" variant="primary" icon={<ArrowClockwise24Regular />} onClick={reset}>
+                Reintentar
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              icon={<Home24Regular />}
+              onClick={() => { window.location.href = '/dashboard'; }}
+            >
+              Ir al Dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        .gerr-shell { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; background:#f9fafb; }
+        .gerr-card  { width:100%; max-width:520px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 2px 12px rgba(0,0,0,0.06); }
+        .gerr-body  { padding:24px 28px 28px; display:flex; flex-direction:column; gap:16px; }
+        .gerr-message { font-size:14px !important; color:#4b5563 !important; line-height:1.6 !important; margin:0 !important; }
+        .gerr-ref   { font-size:13px !important; color:#9ca3af !important; margin:0 !important; }
+        .gerr-code  { font-family:ui-monospace,monospace; font-size:12px; padding:2px 8px; border-radius:4px; background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
+        .gerr-actions { display:flex; gap:8px; flex-wrap:wrap; }
+      `}</style>
+    </div>
   );
 }

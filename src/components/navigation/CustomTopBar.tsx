@@ -2,81 +2,77 @@
 
 import './CustomTopBar.css';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { InputGroup, Text } from '@cloudflare/kumo';
-import { QuestionCircle24Regular, Search24Regular, Sparkle24Regular } from '@fluentui/react-icons';
-import { ActionList, Icon, Popover } from '@shopify/polaris';
-import { OptimizedImage } from '@/components/ui/OptimizedImage';
+import { Toolbar }    from '@cloudflare/kumo/components/toolbar';
+import { InputGroup } from '@cloudflare/kumo/components/input';
+import { Text }       from '@cloudflare/kumo/components/text';
+import { Tooltip }    from '@cloudflare/kumo/components/tooltip';
 import {
-  MenuIcon,
-  ProductIcon,
-  OrderIcon,
-  FinanceIcon,
-  SettingsIcon,
-  HomeIcon,
-  InventoryIcon,
-} from '@shopify/polaris-icons';
+  QuestionCircle24Regular,
+  Search24Regular,
+  Sparkle24Regular,
+  Home24Regular,
+  Cart24Regular,
+  Box24Regular,
+  People24Regular,
+  Money24Regular,
+  Settings24Regular,
+  ChartMultiple24Regular,
+} from '@fluentui/react-icons';
 import Image from 'next/image';
 import { useDashboardStore } from '@/store/dashboardStore';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency }    from '@/lib/utils';
+import { OptimizedImage }    from '@/components/ui/OptimizedImage';
 
+// ─── Tipos ────────────────────────────────────────────────────────────────
 interface CustomTopBarProps {
   userMenu: React.ReactNode;
   onNavigationToggle?: () => void;
   onSectionSelect?: (section: string) => void;
-  onProductClick?: (product: { id: string; name: string; sku: string; barcode: string; category: string }) => void;
+  onProductClick?: (product: {
+    id: string; name: string; sku: string; barcode: string;
+    category: string; imageUrl?: string; unitPrice?: number;
+    currentStock?: number; minStock?: number;
+  }) => void;
 }
 
+// ─── Accesos rápidos ──────────────────────────────────────────────────────
 const QUICK_ACTIONS = [
-  { label: 'Inicio', section: 'overview', icon: HomeIcon, keywords: 'inicio dashboard resumen principal' },
-  { label: 'Punto de venta', section: 'sales', icon: OrderIcon, keywords: 'venta cobrar ticket pos punto' },
-  { label: 'Inventario', section: 'inventory', icon: InventoryIcon, keywords: 'inventario stock productos almacen' },
-  { label: 'Productos', section: 'catalog', icon: ProductIcon, keywords: 'catalogo productos lista articulos' },
-  {
-    label: 'Historial de ventas',
-    section: 'sales-history',
-    icon: OrderIcon,
-    keywords: 'historial ventas registros transacciones',
-  },
-  { label: 'Gastos', section: 'expenses', icon: FinanceIcon, keywords: 'gastos egresos pagos finanzas' },
-  { label: 'Proveedores', section: 'suppliers', icon: FinanceIcon, keywords: 'proveedores distribuidores compras' },
-  {
-    label: 'Analíticas',
-    section: 'analytics',
-    icon: FinanceIcon,
-    keywords: 'analiticas reportes estadisticas graficas',
-  },
-  {
-    label: 'Configuración',
-    section: 'settings',
-    icon: SettingsIcon,
-    keywords: 'configuracion ajustes preferencias tienda',
-  },
-  { label: 'Corte de caja', section: 'sales-corte', icon: FinanceIcon, keywords: 'corte caja cierre turno' },
+  { label: 'Inicio',           section: 'overview',      icon: Home24Regular,         keywords: 'inicio dashboard resumen principal' },
+  { label: 'Punto de venta',   section: 'sales',         icon: Cart24Regular,          keywords: 'venta cobrar ticket pos punto' },
+  { label: 'Inventario',       section: 'inventory',     icon: Box24Regular,           keywords: 'inventario stock productos almacen' },
+  { label: 'Historial ventas', section: 'sales-history', icon: Cart24Regular,          keywords: 'historial ventas registros transacciones' },
+  { label: 'Gastos',           section: 'expenses',      icon: Money24Regular,         keywords: 'gastos egresos pagos finanzas' },
+  { label: 'Proveedores',      section: 'suppliers',     icon: People24Regular,        keywords: 'proveedores distribuidores compras' },
+  { label: 'Analíticas',       section: 'analytics',     icon: ChartMultiple24Regular, keywords: 'analiticas reportes estadisticas graficas' },
+  { label: 'Configuración',    section: 'settings',      icon: Settings24Regular,      keywords: 'configuracion ajustes preferencias tienda' },
 ];
 
+// ─── Componente ───────────────────────────────────────────────────────────
 export function CustomTopBar({
   userMenu,
   onNavigationToggle,
   onSectionSelect,
   onProductClick,
 }: CustomTopBarProps) {
-  const [query, setQuery] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
+  const [query,         setQuery]         = useState('');
+  const [isFocused,     setIsFocused]     = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const products = useDashboardStore((s) => s.products);
-  const _shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
 
+  const inputRef    = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const products = useDashboardStore((s) => s.products ?? []);
+
+  // ── Filtros ───────────────────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
     if (!query.trim() || query.length < 2) return [];
     const q = query.toLowerCase();
     return products
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.sku.toLowerCase().includes(q) ||
-          p.barcode.includes(q) ||
-          p.category.toLowerCase().includes(q),
+      .filter((p) =>
+        p.name?.toLowerCase().includes(q) ||
+        p.sku?.toLowerCase().includes(q) ||
+        p.barcode?.includes(q) ||
+        p.category?.toLowerCase().includes(q),
       )
       .slice(0, 5);
   }, [query, products]);
@@ -84,19 +80,15 @@ export function CustomTopBar({
   const filteredActions = useMemo(() => {
     if (!query.trim()) return QUICK_ACTIONS.slice(0, 5);
     const q = query.toLowerCase();
-    return QUICK_ACTIONS.filter((a) => a.label.toLowerCase().includes(q) || a.keywords.includes(q)).slice(0, 5);
+    return QUICK_ACTIONS.filter(
+      (a) => a.label.toLowerCase().includes(q) || a.keywords.includes(q),
+    ).slice(0, 5);
   }, [query]);
 
   const totalResults = filteredProducts.length + filteredActions.length;
-  const shouldShowSearchPopover = isFocused && (query.length >= 1 || isFocused);
-  const searchPopoverActive = shouldShowSearchPopover && (totalResults > 0 || query.length >= 2);
+  const showDropdown = isFocused && totalResults > 0;
 
-  /* eslint-disable react-hooks/set-state-in-effect -- reset on query change */
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
+  // ── Atajos globales ───────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -110,8 +102,20 @@ export function CustomTopBar({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isFocused]);
+  }, []);
 
+  // ── Click fuera ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // ── Selección ─────────────────────────────────────────────────────────
   const handleSelect = useCallback(
     (type: 'product' | 'action', index: number) => {
       if (type === 'action') {
@@ -128,6 +132,7 @@ export function CustomTopBar({
     [filteredActions, filteredProducts, onSectionSelect, onProductClick],
   );
 
+  // ── Teclado ───────────────────────────────────────────────────────────
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
@@ -148,161 +153,172 @@ export function CustomTopBar({
     [totalResults, selectedIndex, filteredActions.length, handleSelect],
   );
 
-  const actionItems = useMemo(
-    () =>
-      filteredActions.map((action, index) => ({
-        content: action.label,
-        prefix: <Icon source={action.icon} tone="subdued" />,
-        suffix: selectedIndex === index ? '↵' : undefined,
-        active: selectedIndex === index,
-        onAction: () => handleSelect('action', index),
-      })),
-    [filteredActions, handleSelect, selectedIndex],
-  );
-
-  const productItems = useMemo(
-    () =>
-      filteredProducts.map((product, index) => {
-        const itemIndex = filteredActions.length + index;
-        return {
-          content: product.name,
-          helpText: `${product.sku} · ${product.category}`,
-          prefix: <OptimizedImage source={product.imageUrl} alt={product.name} size="extraSmall" />,
-          suffix: (
-            <span className="ctb-result-suffix">
-              <strong>{formatCurrency(product.unitPrice)}</strong>
-              <span className={product.currentStock <= product.minStock ? 'critical' : undefined}>
-                {product.currentStock} uds
-              </span>
-            </span>
-          ),
-          active: selectedIndex === itemIndex,
-          onAction: () => handleSelect('product', index),
-        };
-      }),
-    [filteredActions.length, filteredProducts, handleSelect, selectedIndex],
-  );
-
-  const searchActivator = (
-    <InputGroup
-      size="base"
-      className={`ctb-search-input-row${isFocused ? ' focused' : ''}`}
-      onClick={() => inputRef.current?.focus()}
-    >
-      <InputGroup.Addon className="ctb-search-icon">
-        <Search24Regular aria-hidden="true" />
-      </InputGroup.Addon>
-      <InputGroup.Input
-        ref={inputRef}
-        id="global-search"
-        type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onFocus={() => setIsFocused(true)}
-        onKeyDown={handleKeyDown}
-        placeholder="Buscar"
-        className="ctb-search-native"
-        autoComplete="off"
-        spellCheck={false}
-        aria-label="Buscar productos, clientes o secciones"
-      />
-      {!isFocused && (
-        <InputGroup.Addon align="end" className="ctb-kbd-addon">
-          <div className="ctb-kbd" aria-hidden="true">
-            <span>CTRL</span>
-            <span>K</span>
-          </div>
-        </InputGroup.Addon>
-      )}
-    </InputGroup>
-  );
-
   return (
-    <div className="ctb-root">
-      {/* Left */}
+    // Header nativo — Toolbar de Kumo es w-fit y no sirve como topbar completo
+    <header className="ctb-root" role="banner">
+
+      {/* ── Hamburguesa móvil ── */}
       {onNavigationToggle && (
-        <button className="ctb-ham" onClick={onNavigationToggle} aria-label="Abrir menú">
-          <Icon source={MenuIcon} tone="inherit" />
+        <button
+          type="button"
+          className="ctb-ham"
+          onClick={onNavigationToggle}
+          aria-label="Abrir menú"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+            <path d="M3 7h18M3 12h18M3 17h18" />
+          </svg>
         </button>
       )}
+
+      {/* ── Logo — alineado con el ancho del sidebar ── */}
       <div className="ctb-logo">
         <Image
           src="/icon/cloudflare.svg"
-          alt=""
-          width={34}
-          height={16}
+          alt="Opendex"
+          width={26}
+          height={15}
           priority
           className="ctb-logo-mark"
         />
-        <Text as="span" truncate>
-          Opendex, Inc.
+        <Text as="span" className="ctb-logo-name">
+          Opendex
         </Text>
       </div>
 
-      {/* Center: Search */}
-      <div className="ctb-search-wrap">
-        <div className="ctb-search-box">
-          <Popover
-            active={searchPopoverActive}
-            activator={searchActivator}
-            onClose={() => setIsFocused(false)}
-            fullWidth
-            preferredAlignment="center"
-            preferredPosition="below"
-            preventFocusOnClose
-          >
-            <Popover.Pane fixed>
-              {actionItems.length > 0 && (
-                <ActionList
-                  actionRole="menuitem"
-                  sections={[
-                    {
-                      title: query.length < 2 ? 'Accesos rápidos' : 'Secciones',
-                      items: actionItems,
-                    },
-                  ]}
-                />
-              )}
-              {productItems.length > 0 && (
-                <ActionList
-                  actionRole="menuitem"
-                  sections={[
-                    {
-                      title: `Productos (${filteredProducts.length})`,
-                      items: productItems,
-                    },
-                  ]}
-                />
-              )}
-              {query.length >= 2 && totalResults === 0 && (
-                <Popover.Section>
-                  <div className="ctb-dd-empty">Sin resultados para &quot;{query}&quot;</div>
-                </Popover.Section>
-              )}
-              <Popover.Section>
-                <div className="ctb-dd-footer">
-                  <span>↑↓ navegar</span>
-                  <span>↵ seleccionar</span>
-                  <span>esc cerrar</span>
-                </div>
-              </Popover.Section>
-            </Popover.Pane>
-          </Popover>
-        </div>
+      {/* ── Buscador centrado — InputGroup de Kumo ── */}
+      <div className="ctb-search-wrap" ref={dropdownRef}>
+        <InputGroup
+          size="sm"
+          className={`ctb-search-ig${isFocused ? ' ctb-search-ig--focused' : ''}`}
+          onClick={() => inputRef.current?.focus()}
+        >
+          <InputGroup.Addon className="ctb-search-addon">
+            <Search24Regular aria-hidden="true" />
+          </InputGroup.Addon>
+
+          <InputGroup.Input
+            ref={inputRef}
+            id="global-search"
+            type="search"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
+            onFocus={() => setIsFocused(true)}
+            onKeyDown={handleKeyDown}
+            placeholder="Buscar productos, acciones..."
+            className="ctb-search-input"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="Buscar productos, clientes o secciones"
+            aria-autocomplete="list"
+            aria-expanded={showDropdown}
+            aria-controls={showDropdown ? 'search-results' : undefined}
+          />
+
+          {!isFocused && (
+            <InputGroup.Addon align="end" className="ctb-search-kbd-addon">
+              <div className="ctb-kbd" aria-hidden="true">
+                <kbd>Ctrl</kbd><kbd>K</kbd>
+              </div>
+            </InputGroup.Addon>
+          )}
+        </InputGroup>
+
+        {/* Dropdown */}
+        {showDropdown && (
+          <div id="search-results" className="ctb-dropdown" role="listbox" aria-label="Resultados">
+
+            {filteredActions.length > 0 && (
+              <div className="ctb-dd-section">
+                <p className="ctb-dd-label">{query.length < 2 ? 'Accesos rápidos' : 'Secciones'}</p>
+                {filteredActions.map((action, index) => {
+                  const Icon = action.icon;
+                  const active = selectedIndex === index;
+                  return (
+                    <button
+                      key={action.section}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={`ctb-dd-item${active ? ' ctb-dd-item--active' : ''}`}
+                      onClick={() => handleSelect('action', index)}
+                    >
+                      <span className="ctb-dd-icon"><Icon /></span>
+                      <span className="ctb-dd-text">{action.label}</span>
+                      {active && <span className="ctb-dd-enter" aria-hidden="true">⏎</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {filteredProducts.length > 0 && (
+              <div className="ctb-dd-section">
+                <p className="ctb-dd-label">Productos ({filteredProducts.length})</p>
+                {filteredProducts.map((product, index) => {
+                  const itemIndex = filteredActions.length + index;
+                  const active = selectedIndex === itemIndex;
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={`ctb-dd-item${active ? ' ctb-dd-item--active' : ''}`}
+                      onClick={() => handleSelect('product', index)}
+                    >
+                      <span className="ctb-dd-icon">
+                        <OptimizedImage source={product.imageUrl || '/placeholder.png'} alt={product.name} size="extraSmall" />
+                      </span>
+                      <span className="ctb-dd-content">
+                        <span className="ctb-dd-text">{product.name}</span>
+                        <span className="ctb-dd-meta">{product.sku} · {product.category}</span>
+                      </span>
+                      <span className="ctb-dd-price">
+                        <strong>{formatCurrency(product.unitPrice ?? 0)}</strong>
+                        <span className={(product.currentStock ?? 0) <= (product.minStock ?? 0) ? 'ctb-dd-critical' : ''}>
+                          {product.currentStock ?? 0} uds
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {query.length >= 2 && totalResults === 0 && (
+              <p className="ctb-dd-empty">Sin resultados para &quot;{query}&quot;</p>
+            )}
+
+            <div className="ctb-dd-footer" aria-hidden="true">
+              <span>↑↓ navegar</span>
+              <span>⏎ seleccionar</span>
+              <span>Esc cerrar</span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Right */}
+      {/* ── Acciones derechas — Toolbar de Kumo para el grupo de botones ── */}
       <div className="ctb-actions">
-        <button className="ctb-header-action" type="button">
-          <Sparkle24Regular aria-hidden="true" />
-          <span>Ask AI</span>
-        </button>
-        <button className="ctb-header-action" type="button">
-          <QuestionCircle24Regular aria-hidden="true" />
-          <span>Asistencia</span>
-        </button>
+        {/* Toolbar de Kumo: aquí sí aplica porque es un grupo compacto de botones */}
+        <Toolbar size="sm" className="ctb-toolbar-actions">
+          <Tooltip content="Asistente de IA">
+            <Toolbar.Button type="button" className="ctb-action-btn" aria-label="Asistente de IA">
+              <Sparkle24Regular />
+              <span className="ctb-action-label">Ask AI</span>
+            </Toolbar.Button>
+          </Tooltip>
+          <Tooltip content="Centro de ayuda">
+            <Toolbar.Button type="button" className="ctb-action-btn" aria-label="Centro de ayuda">
+              <QuestionCircle24Regular />
+              <span className="ctb-action-label">Ayuda</span>
+            </Toolbar.Button>
+          </Tooltip>
+        </Toolbar>
+
         {userMenu}
       </div>
-    </div>
+    </header>
   );
 }

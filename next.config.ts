@@ -4,9 +4,8 @@ import type { NextConfig } from 'next';
 import { withWorkflow } from 'workflow/next';
 
 /** ─── Security Headers ──────────────────────────────────────────────────────
- * NOTE: Content-Security-Policy is managed by proxy.ts (supports dev/prod variants).
- * These headers are set here as a fallback layer for routes the proxy may not cover
- * (e.g. Next.js internal routes, static asset error pages).
+ * Applied in production only. In development all headers are skipped so
+ * Turbopack HMR and the error overlay work without CSP interference.
  */
 const SECURITY_HEADERS = [
   {
@@ -191,22 +190,20 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     const isProd = process.env.NODE_ENV === 'production';
+
+    // In development, skip ALL custom headers so Turbopack HMR, the error
+    // overlay, and dev tools work without CSP interference.
+    if (!isProd) return [];
+
     return [
       {
-        // Apply security headers to ALL routes
         source: '/(.*)',
         headers: SECURITY_HEADERS,
       },
-      // Cache headers ONLY in production — they break Turbopack HMR in dev
-      ...(isProd
-        ? [
-            {
-              // Public icons / illustrations served from /public
-              source: '/(icon|illustrations)/(.*)',
-              headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }],
-            },
-          ]
-        : []),
+      {
+        source: '/(icon|illustrations)/(.*)',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }],
+      },
     ];
   },
 };

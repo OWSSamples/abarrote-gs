@@ -1,79 +1,81 @@
+/* ═══════════════════════════════════════════════════════════════
+   TOPBAR — barra de navegación superior, ancho completo
+   Kumo se usa para: InputGroup (buscador) + Toolbar (botones)
+   El <header> nativo toma el 100% del ancho — Toolbar de Kumo
+   no puede ser el root porque es w-fit por diseño.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Root ────────────────────────────────────────────────────── */
 .ctb-root {
-  height: 56px;
-  background: #ffffff;
-  border-bottom: 1px solid #dedede;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px 0 0;
   position: sticky;
   top: 0;
-  z-index: 1000;
-  gap: 8px;
+  z-index: 30;
+  height: 56px;
+  width: 100%;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  /* Sin padding lateral — cada zona tiene el suyo */
+  padding: 0;
+  gap: 0;
+  box-sizing: border-box;
 }
 
-/* ============================================================
-   BOTÓN HAMBURGUESA (solo visible en móvil)
-   ============================================================ */
+/* ── Hamburguesa (solo móvil) ─────────────────────────────────── */
 .ctb-ham {
-  background: transparent;
-  border: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
   display: none;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  color: #4a4a4a;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
+  margin: 0 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
 }
-.ctb-ham:hover {
-  background: #f1f1f1;
-  color: #303030;
-}
+.ctb-ham:hover   { background: #f3f4f6; }
+.ctb-ham:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; }
+
 @media (max-width: 768px) {
-  .ctb-ham {
-    display: flex;
-  }
+  .ctb-ham { display: flex; }
 }
 
-/* ============================================================
-   LOGO
-   ============================================================ */
+/* ── Logo — mismo ancho que el sidebar ────────────────────────── */
 .ctb-logo {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  align-self: stretch;
+  gap: 10px;
+  align-self: stretch;            /* Ocupa toda la altura de 56px */
   width: var(--sidebar-width, 260px);
   flex: 0 0 var(--sidebar-width, 260px);
-  flex-shrink: 0;
   padding: 0 18px;
-  border-right: 1px solid #dedede;
-  color: #111111;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
+  border-right: 1px solid #e5e7eb;
+  overflow: hidden;
+  /* Sincroniza con el colapso del sidebar */
   transition:
-    width var(--sidebar-animation-duration, 180ms) var(--sidebar-easing, ease),
-    flex-basis var(--sidebar-animation-duration, 180ms) var(--sidebar-easing, ease),
-    padding var(--sidebar-animation-duration, 180ms) var(--sidebar-easing, ease);
+    width 180ms ease,
+    flex-basis 180ms ease,
+    padding 180ms ease;
 }
 
-.ctb-logo-mark {
-  display: block;
-  width: 34px;
-  height: auto;
-}
+.ctb-logo-mark { display: block; width: 26px; height: auto; flex-shrink: 0; }
 
-.ctb-logo span {
-  display: block;
-  min-width: 0;
+/* Text de Kumo — override para el nombre */
+.ctb-logo-name {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #111827 !important;
+  line-height: 20px !important;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* Sidebar colapsado: logo se reduce */
 .odx-sidebar-provider[data-state='collapsed'] .ctb-logo {
   width: var(--sidebar-width-icon, 56px);
   flex-basis: var(--sidebar-width-icon, 56px);
@@ -81,629 +83,275 @@
   gap: 0;
   padding: 0;
 }
-
-.odx-sidebar-provider[data-state='collapsed'] .ctb-logo span {
+.odx-sidebar-provider[data-state='collapsed'] .ctb-logo .ctb-logo-name {
   display: none;
 }
 
-/* ============================================================
-   BARRA DE BÚSQUEDA — contenedor y caja
-   ============================================================ */
+/* ── Buscador — centrado absoluto en el topbar ────────────────── */
 .ctb-search-wrap {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: calc(100vw - 640px);
-  max-width: 560px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none; /* Dejar pasar clics si no es en el input */
+  /* Ancho dinámico: evitar solapar logo (izq) y acciones (der) */
+  width: clamp(280px, calc(100vw - 640px), 560px);
   z-index: 10;
+  pointer-events: none;   /* Solo el InputGroup captura eventos */
 }
 
+.ctb-search-wrap > *,
+.ctb-search-wrap > div { pointer-events: auto; }
+
+/* Sidebar colapsado: más espacio para el buscador */
 .odx-sidebar-provider[data-state='collapsed'] .ctb-search-wrap {
-  width: calc(100vw - 440px);
-}
-.ctb-search-box {
-  width: 100%;
-  padding: 2px;
-  border-radius: 12px;
-  background: #ffffff;
-  pointer-events: auto;
+  width: clamp(280px, calc(100vw - 440px), 600px);
 }
 
-/* Fila del input: ícono + campo + atajo de teclado */
-.ctb-search-input-row {
-  height: 36px;
-  min-height: 36px;
-  background: #ffffff;
-  border: 0;
-  border-radius: 10px;
-  outline: 1px solid #e4e4e7;
-  outline-offset: -1px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  gap: 8px;
+/* ── InputGroup de Kumo — override para look de buscador ─────── */
+.ctb-search-ig {
+  /* Anular el ring/border de Kumo y usar el nuestro */
+  --kumo-input-group-ring: transparent !important;
+  width: 100% !important;
+  background: #f9fafb !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  transition: border-color 100ms ease, background 100ms ease, box-shadow 100ms ease !important;
   cursor: text;
-  box-shadow: none;
-}
-.ctb-search-input-row:hover {
-  background: #ffffff;
-  outline-color: #a1a1aa;
-}
-.ctb-search-input-row.focused {
-  background: #ffffff;
-  outline-color: #18181b;
-  box-shadow: inset 0 0 0 1px #18181b;
 }
 
-/* Ícono de lupa */
-.ctb-search-icon {
-  color: #71717a;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  padding: 0;
+.ctb-search-ig:hover {
+  background: #f3f4f6 !important;
+  border-color: #d1d5db !important;
 }
 
-.ctb-search-icon svg {
-  width: 16px;
-  height: 16px;
+.ctb-search-ig--focused {
+  background: #ffffff !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
 }
 
-/* Campo de texto nativo */
-.ctb-search-native {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #18181b;
-  font-family:
-    var(--font-sans),
-    'Inter Variable',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
-  width: 100%;
-  height: 34px;
-  padding: 0;
+/* Addon izquierdo — ícono lupa */
+.ctb-search-addon {
+  color: #9ca3af !important;
+  padding: 0 0 0 10px !important;
+  display: flex !important;
+  align-items: center !important;
 }
-.ctb-search-native::placeholder {
-  color: #71717a;
-}
+.ctb-search-addon svg { width: 16px !important; height: 16px !important; }
 
-.ctb-kbd-addon {
-  margin-left: auto;
-  padding: 0;
+/* Input nativo dentro de InputGroup.Input */
+.ctb-search-input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  color: #111827 !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  padding: 0 8px !important;
+  width: 100% !important;
 }
+.ctb-search-input::placeholder { color: #9ca3af !important; }
+/* Eliminar el ícono nativo de búsqueda del browser */
+.ctb-search-input::-webkit-search-cancel-button,
+.ctb-search-input::-webkit-search-decoration { display: none; }
 
-/* Badges de atajo de teclado (CTRL + K) */
+/* Addon derecho — atajo de teclado */
+.ctb-search-kbd-addon {
+  padding: 0 10px 0 0 !important;
+  display: flex !important;
+  align-items: center !important;
+}
 .ctb-kbd {
   display: flex;
   gap: 3px;
   align-items: center;
-  flex-shrink: 0;
-  margin-left: auto;
 }
-.ctb-kbd span {
-  min-width: 18px;
-  background: #f4f4f5;
-  border: 1px solid #e4e4e7;
+.ctb-kbd kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
   border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
   font-weight: 500;
-  color: #71717a;
-  padding: 1px 4px;
-  line-height: 14px;
-  text-align: center;
+  color: #9ca3af;
+  line-height: 1;
 }
 
-/* Pie del menú de búsqueda con atajos de navegación */
-.ctb-dd-footer {
+/* ── Dropdown de resultados ───────────────────────────────────── */
+.ctb-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow:
+    0 4px 6px -1px rgba(0,0,0,0.07),
+    0 10px 30px -5px rgba(0,0,0,0.1);
+  z-index: 50;
+  overflow: hidden;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.ctb-dd-section { padding: 4px 0; }
+.ctb-dd-section + .ctb-dd-section { border-top: 1px solid #f3f4f6; }
+
+.ctb-dd-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  padding: 8px 14px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.ctb-dd-item {
   display: flex;
-  gap: 14px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  color: #111827;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition: background 60ms ease;
 }
-.ctb-dd-footer span {
-  font-size: 12px;
-  color: #71717a;
-}
+.ctb-dd-item:hover,
+.ctb-dd-item--active { background: #f3f4f6; }
 
-/* Mensaje sin resultados */
-.ctb-dd-empty {
-  text-align: center;
-  color: #71717a;
-  font-size: 14px;
+.ctb-dd-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #6b7280;
 }
+.ctb-dd-icon svg  { width: 16px; height: 16px; }
+.ctb-dd-icon img  { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }
 
-.ctb-result-suffix {
-  display: grid;
-  gap: 2px;
-  text-align: right;
+.ctb-dd-content { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ctb-dd-text    { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctb-dd-meta    { font-size: 12px; color: #9ca3af; }
+.ctb-dd-enter   { margin-left: auto; color: #9ca3af; font-size: 13px; }
+
+.ctb-dd-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
   white-space: nowrap;
 }
+.ctb-dd-price strong { color: #059669; font-size: 13px; font-weight: 600; }
+.ctb-dd-price span   { color: #6b7280; font-size: 12px; }
+.ctb-dd-critical     { color: #dc2626 !important; }
 
-.ctb-result-suffix strong {
-  color: #047857;
+.ctb-dd-empty {
+  text-align: center;
+  color: #9ca3af;
   font-size: 14px;
-  font-weight: 600;
+  padding: 20px 14px;
+  margin: 0;
 }
 
-.ctb-result-suffix span {
-  color: #6b7280;
-  font-size: 14px;
+.ctb-dd-footer {
+  display: flex;
+  gap: 16px;
+  padding: 7px 14px;
+  border-top: 1px solid #f3f4f6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: #9ca3af;
 }
 
-.ctb-result-suffix span.critical {
-  color: #b42318;
-}
-
-/* ============================================================
-   ZONA DERECHA — iconos de acción y separadores
-   ============================================================ */
+/* ── Acciones derecha ─────────────────────────────────────────── */
 .ctb-actions {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 8px;
+  margin-left: auto;
+  padding-right: 14px;
   flex-shrink: 0;
-  color: #303030;
 }
 
-.ctb-header-action {
-  display: inline-flex;
-  height: 32px;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #303030;
-  cursor: pointer;
-  font: inherit;
-  font-family:
-    var(--font-sans),
-    'Inter Variable',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
+/* Toolbar de Kumo para el grupo de botones — override de ring y fondo */
+.ctb-toolbar-actions {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  /* Quitar el ring de Kumo en el toolbar de acciones */
+  --tw-ring-color: transparent !important;
+  ring: 0 !important;
 }
 
-.ctb-header-action:hover {
-  color: #111111;
+/* Botones dentro del Toolbar — override */
+.ctb-action-btn {
+  color: #374151 !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  gap: 5px !important;
+  padding: 0 10px !important;
+  height: 34px !important;
 }
-
-.ctb-header-action:focus-visible {
-  border-radius: 6px;
-  outline: 2px solid #303030;
-  outline-offset: 2px;
+.ctb-action-btn:hover {
+  background: #f3f4f6 !important;
+  color: #111827 !important;
 }
+.ctb-action-btn svg { width: 16px !important; height: 16px !important; }
 
-.ctb-header-action svg {
-  width: 16px;
-  height: 16px;
-  color: #616161;
-}
+.ctb-action-label { font-size: 13.5px; font-weight: 500; }
 
-.ctb-workspace-menu-trigger {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  height: 36px;
-  padding: 4px 8px 4px 5px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #303030;
-  cursor: pointer;
-}
-
-.ctb-workspace-menu-trigger:hover {
-  background: #f1f1f1;
-  border-color: transparent;
-}
-
-.ctb-workspace-menu-trigger[aria-expanded='true'] {
-  background: #f1f1f1;
-  border-color: #dedede;
-}
-
-.ctb-workspace-menu-trigger:focus-visible {
-  outline: 2px solid #303030;
-  outline-offset: 2px;
-}
-
-.ctb-workspace-initials {
-  display: inline-flex;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  background: #2dd4bf;
-  color: #115e59;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.ctb-workspace-initials--large {
-  width: 28px;
-  height: 28px;
-  flex-basis: 28px;
-}
-
-.ctb-workspace-trigger-label {
-  max-width: 116px;
-  overflow: hidden;
-  color: #303030;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ctb-workspace-menu {
-  width: 316px;
-  padding: 6px 0 7px;
-  background: #fff;
-  color: #27272a;
-}
-
-.ctb-workspace-store-row,
-.ctb-workspace-account,
-.ctb-workspace-row {
-  display: flex;
-  width: 100%;
-  min-height: 40px;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border: 0;
-  background: transparent;
-  color: #3f3f46;
-  font: inherit;
-  font-size: 14px;
-  line-height: 20px;
-  text-align: left;
-}
-
-.ctb-workspace-store-row {
-  width: calc(100% - 12px);
-  margin: 0 6px;
-  border-radius: 8px;
-  background: #f1f1f1;
-}
-
-.ctb-workspace-store-name {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  color: #3f3f46;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ctb-workspace-code {
-  display: inline-flex;
-  width: 18px;
-  align-items: center;
-  justify-content: center;
-}
-
-.ctb-workspace-row {
-  box-sizing: border-box;
-  justify-content: flex-start !important;
-  cursor: pointer;
-}
-
-.ctb-workspace-row-content {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  min-width: 0;
-  color: inherit;
-}
-
-.ctb-workspace-row-content > .Polaris-Icon {
-  flex: 0 0 18px;
-}
-
-.ctb-workspace-row-content > span:last-child {
-  min-width: 0;
-  flex: 0 1 auto;
-}
-
-.ctb-workspace-row:hover {
-  background: #f4f4f5;
-}
-
-.ctb-workspace-row:focus-visible {
-  position: relative;
-  z-index: 1;
-  outline: 2px solid #2563eb;
-  outline-offset: -2px;
-}
-
-.ctb-workspace-divider {
-  height: 1px;
-  margin: 5px 0 7px;
-  background: #e4e4e7;
-}
-
-.ctb-workspace-account {
-  min-width: 0;
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-
-.ctb-workspace-account-mark {
-  display: inline-flex;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: 6px;
-  background: #111827;
-}
-
-.ctb-workspace-account-mark img {
-  width: 78px;
-  max-width: none;
-  height: auto;
-  transform: translateX(-29px);
-}
-
-.ctb-workspace-account-email {
-  min-width: 0;
-  overflow: hidden;
-  color: #3f3f46;
-  font-size: 14px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (min-width: 769px) and (max-width: 1100px) {
-  .ctb-search-wrap {
-    width: calc(100vw - 470px);
-  }
-
-  .odx-sidebar-provider[data-state='collapsed'] .ctb-search-wrap {
-    width: calc(100vw - 280px);
-  }
-
-  .ctb-actions {
-    gap: 12px;
-  }
-
-  .ctb-header-action span {
-    display: none;
-  }
-}
-
-/* ============================================================
-   PANEL DE NOTIFICACIONES / ALERTAS DE INVENTARIO
-   ============================================================ */
-.ctb-notif-panel {
-  width: 400px;
-}
-
-/* ── Mobile responsive overrides ── */
+/* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .ctb-notif-panel {
-    width: calc(100vw - 24px) !important;
-    max-width: 400px;
-  }
-
   .ctb-search-wrap {
     position: relative;
-    left: 0;
-    top: 0;
+    left: auto;
+    top: auto;
     transform: none;
-    width: auto;
     flex: 1;
     min-width: 0;
+    width: auto;
     max-width: none;
   }
-
-  .ctb-kbd {
-    display: none;
-  }
-
-  .ctb-root {
-    padding: 0 8px;
-    gap: 6px;
-  }
-
+  .ctb-kbd { display: none; }
   .ctb-logo {
     width: 44px;
     flex-basis: 44px;
     min-width: 44px;
     padding: 0;
-    border-right: 0;
+    border-right: none;
+    justify-content: center;
   }
+  .ctb-logo .ctb-logo-name { display: none; }
+  .ctb-actions { padding-right: 8px; gap: 4px; }
+  .ctb-action-label { display: none; }
+  .ctb-root { padding: 0 8px; gap: 6px; }
+}
 
-  .ctb-logo span {
-    display: none;
-  }
-
-  .ctb-actions {
-    gap: 6px;
-  }
-
-  .ctb-header-action span {
-    display: none;
-  }
+@media (min-width: 769px) and (max-width: 1100px) {
+  .ctb-search-wrap { width: clamp(200px, calc(100vw - 480px), 440px); }
+  .ctb-action-label { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ctb-logo {
-    transition: none;
-  }
-}
-
-/* Encabezado del panel */
-.ctb-notif-header {
-  padding: 14px 16px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #18181b;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-}
-.ctb-notif-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #f4f4f5;
-}
-
-/* Contadores de severidad en el encabezado */
-.ctb-notif-counters {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.ctb-notif-count {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 20px;
-}
-.ctb-notif-count.critical {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
-}
-.ctb-notif-count.warning {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-}
-.ctb-notif-count.neutral {
-  background: rgba(255, 255, 255, 0.07);
-  color: #71717a;
-}
-
-/* Punto de color indicador de severidad */
-.ctb-notif-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-
-/* Lista scrolleable de alertas */
-.ctb-notif-list {
-  max-height: 380px;
-  overflow-y: auto;
-}
-.ctb-notif-list::-webkit-scrollbar {
-  width: 4px;
-}
-.ctb-notif-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-.ctb-notif-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-}
-
-/* Fila individual de alerta */
-.ctb-notif-item {
-  display: flex;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.ctb-notif-item:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-.ctb-notif-item:last-child {
-  border-bottom: none;
-}
-
-/* Ícono de la alerta con fondo coloreado según severidad */
-.ctb-notif-icon-wrap {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-/* Cuerpo de texto de la alerta */
-.ctb-notif-body {
-  flex: 1;
-  min-width: 0;
-}
-.ctb-notif-type {
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  margin-bottom: 2px;
-}
-.ctb-notif-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: #e4e4e7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ctb-notif-desc {
-  font-size: 11.5px;
-  color: #71717a;
-  margin-top: 2px;
-}
-
-/* Timestamp relativo de la alerta */
-.ctb-notif-time {
-  font-size: 10.5px;
-  color: #52525b;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-/* Estado vacío: sin alertas */
-.ctb-notif-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: #52525b;
-  font-size: 13px;
-}
-
-/* Pie del panel con conteo total */
-.ctb-notif-footer {
-  padding: 10px 16px;
-  background: #18181b;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  text-align: center;
-  font-size: 12px;
-  color: #52525b;
+  .ctb-logo,
+  .ctb-search-ig { transition: none !important; }
 }

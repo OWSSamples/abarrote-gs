@@ -1,21 +1,197 @@
-PROPETARITY LICENSE (OWS LICENSE) 
+PROPIETARY SOFTWARE LICENSE AGREEMENT
+Version 2.0 - OWS LICENSE
 
-Copyright (c) 2026 Opendex, Inc.
+Copyright (c) 2026 Opendex, Inc. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+IMPORTANT: READ THIS AGREEMENT CAREFULLY BEFORE USING THE SOFTWARE
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This Proprietary Software License Agreement ("Agreement") is a legal agreement between you (either an individual or a legal entity, "Licensee") and Opendex, Inc. ("Licensor", "we", "us", or "our") for the use of the software identified above, including any associated documentation, source code, binary files, and any updates, modifications, or derivative works (collectively, the "Software").
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+BY INSTALLING, COPYING, ACCESSING, OR USING THE SOFTWARE, YOU AGREE TO BE BOUND BY THE TERMS OF THIS AGREEMENT. IF YOU DO NOT AGREE TO THE TERMS OF THIS AGREEMENT, DO NOT INSTALL, COPY, ACCESS, OR USE THE SOFTWARE.
+
+================================================================================
+SECTION 1: GRANT OF LICENSE
+================================================================================
+
+1.1 LIMITED LICENSE. Subject to the terms and conditions of this Agreement and payment of applicable fees, Licensor hereby grants Licensee a limited, non-exclusive, non-transferable, non-sublicensable, revocable license to:
+    (a) Install and use the Software on the number of devices specified in the applicable order or agreement;
+    (b) Make a reasonable number of copies of the Software solely for backup and archival purposes;
+    (c) Use the Software solely for Licensee's internal business purposes as expressly authorized in writing by Licensor.
+
+1.2 NO IMPLIED LICENSES. Except as expressly granted herein, no other licenses or rights are granted, whether by implication, estoppel, or otherwise. Licensor reserves all rights not expressly granted herein.
+
+================================================================================
+SECTION 2: RESTRICTIONS AND LIMITATIONS
+================================================================================
+
+Licensee SHALL NOT, and shall not permit any third party to:
+
+2.1 SOURCE CODE RESTRICTIONS:
+    (a) Reverse engineer, decompile, disassemble, or attempt to derive the source code of the Software, except and only to the extent that such activity is expressly permitted by applicable law despite this limitation;
+    (b) Analyze, study, or examine the Software for the purpose of developing a competing product, service, or technology;
+    (c) Use any automated process, tool, or methodology to extract, scrape, mine, or harvest data, code, or any other content from the Software;
+    (d) Bypass, circumvent, or disable any security features, access controls, or technological protection measures implemented in the Software.
+
+2.2 MODIFICATION AND DERIVATIVE WORKS:
+    (a) Modify, alter, adapt, translate, or create derivative works based on the Software without prior written consent from Licensor;
+    (b) Combine, integrate, or merge the Software with any other software, code, or content in a manner that would cause the Software or any portion thereof to become subject to any open-source or copyleft license;
+    (c) Remove, alter, or obscure any proprietary notices, labels, marks, or identifiers on the Software or any copies thereof.
+
+2.3 DISTRIBUTION AND TRANSFER:
+    (a) Sell, resell, lease, rent, loan, lend, sublicense, or otherwise distribute or transfer the Software or any portion thereof to any third party;
+    (b) Host, operate, or make available the Software as a service, application service provider (ASP), software-as-a-service (SaaS), platform-as-a-service (PaaS), or similar service without explicit written authorization and applicable commercial agreements;
+    (c) Transfer, assign, or convey this Agreement or any rights or obligations hereunder, whether by operation of law or otherwise, without prior written consent of Licensor;
+    (d) Share, publish, or disclose the Software, including but not limited to source code, object code, algorithms, APIs, or any other technical information related to the Software, to any third party.
+
+2.4 COMPETING USES:
+    (a) Use the Software for any purpose that competes with or undermines Licensor's business, products, or services;
+    (b) Use the Software to develop, test, or validate any competing product, service, or technology;
+    (c) Benchmark, test, or evaluate the performance of the Software for the purpose of promoting or marketing any competing product or service without prior written consent.
+
+2.5 UNLAWFUL AND HARMFUL USES:
+    (a) Use the Software for any unlawful, illegal, fraudulent, or harmful purpose;
+    (b) Use the Software to violate any applicable local, state, national, or international law, regulation, or ordinance;
+    (c) Use the Software to infringe upon the intellectual property rights, privacy rights, or any other rights of any person or entity;
+    (d) Use the Software to distribute malware, spam, or engage in any form of cyberattack, harassment, or abuse;
+    (e) Use the Software in connection with the development, production, or distribution of weapons of mass destruction, nuclear materials, or any other harmful or dangerous materials.
+
+2.6 DATA AND PRIVACY:
+    (a) Process, collect, store, or transmit any personal data, sensitive data, or protected health information through the Software in violation of applicable data protection laws, including but not limited to GDPR, CCPA, HIPAA, or similar regulations;
+    (b) Use the Software to facilitate unauthorized surveillance, tracking, or monitoring of individuals without proper consent or legal authority.
+
+2.7 GOVERNMENT USE RESTRICTIONS:
+    (a) If Licensee is a government entity or contractor, use of the Software is subject to additional restrictions and may require separate agreements. Licensee represents and warrants that it will comply with all applicable government procurement regulations and restrictions.
+
+================================================================================
+SECTION 3: INTELLECTUAL PROPERTY RIGHTS
+================================================================================
+
+3.1 OWNERSHIP. Licensor retains all right, title, and interest in and to the Software, including all intellectual property rights therein. The Software is protected by copyright laws, trade secret laws, and other intellectual property laws and treaties. Licensee acquires only the limited license rights expressly granted herein and does not acquire any ownership interest in the Software.
+
+3.2 FEEDBACK. If Licensee provides any suggestions, comments, improvements, modifications, or other feedback to Licensor regarding the Software, Licensor shall own all rights, title, and interest in and to such feedback and may use such feedback without restriction or obligation to Licensee.
+
+3.3 TRADEMARKS. "Opendex," the Opendex logo, and other trademarks, service marks, logos, and trade names used in connection with the Software are trademarks or registered trademarks of Licensor. Licensee may not use such trademarks without prior written consent.
+
+================================================================================
+SECTION 4: CONFIDENTIALITY
+================================================================================
+
+4.1 CONFIDENTIAL INFORMATION. Licensee acknowledges that the Software, including its source code, object code, structure, organization, algorithms, APIs, technical information, and any related documentation, constitutes valuable confidential information and trade secrets of Licensor ("Confidential Information").
+
+4.2 NON-DISCLOSURE. Licensee shall:
+    (a) Maintain the confidentiality of the Confidential Information using at least the same degree of care it uses to protect its own confidential information, but in no event less than reasonable care;
+    (b) Not disclose, disseminate, or otherwise make available any Confidential Information to any third party without prior written consent of Licensor;
+    (c) Restrict access to the Confidential Information to those of its employees, contractors, or agents who have a legitimate need to know and who are bound by confidentiality obligations no less restrictive than those contained herein;
+    (d) Immediately notify Licensor upon discovery of any unauthorized use or disclosure of Confidential Information.
+
+4.3 EXCEPTIONS. Confidential Information does not include information that:
+    (a) Is or becomes publicly available through no fault of Licensee;
+    (b) Was rightfully known to Licensee prior to disclosure by Licensor;
+    (c) Is independently developed by Licensee without use of or reference to the Confidential Information;
+    (d) Is rightfully received by Licensee from a third party without breach of any obligation of confidentiality.
+
+================================================================================
+SECTION 5: TERM AND TERMINATION
+================================================================================
+
+5.1 TERM. This Agreement shall remain in effect until terminated in accordance with this Section 5.
+
+5.2 TERMINATION:
+    (a) Licensor may terminate this Agreement immediately upon written notice if Licensee breaches any term or condition of this Agreement;
+    (b) Either party may terminate this Agreement for convenience upon thirty (30) days' prior written notice to the other party;
+    (c) Licensor may terminate this Agreement immediately if Licensee becomes insolvent, files for bankruptcy, or ceases to conduct business in the normal course.
+
+5.3 EFFECT OF TERMINATION. Upon termination or expiration of this Agreement:
+    (a) All licenses and rights granted herein shall immediately terminate;
+    (b) Licensee shall immediately cease all use of the Software and destroy all copies thereof, including any backup or archival copies;
+    (c) Licensee shall certify in writing to Licensor within ten (10) days that all copies have been destroyed;
+    (d) Sections 2, 3, 4, 6, 7, and 8 shall survive termination or expiration of this Agreement.
+
+================================================================================
+SECTION 6: WARRANTY DISCLAIMER
+================================================================================
+
+6.1 DISCLAIMER. THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, ACCURACY, COMPLETENESS, RELIABILITY, OR SECURITY. LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE UNINTERRUPTED, ERROR-FREE, FREE OF VIRUSES OR OTHER HARMFUL COMPONENTS, OR THAT THE SOFTWARE WILL MEET LICENSEE'S REQUIREMENTS OR EXPECTATIONS.
+
+6.2 NO OTHER WARRANTIES. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR DISCLAIMS ALL OTHER WARRANTIES, WHETHER EXPRESS, IMPLIED, STATUTORY, OR ARISING FROM COURSE OF DEALING, USAGE, OR TRADE PRACTICE.
+
+================================================================================
+SECTION 7: LIMITATION OF LIABILITY
+================================================================================
+
+7.1 EXCLUSION OF CONSEQUENTIAL DAMAGES. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, LOSS OF DATA, LOSS OF USE, COST OF SUBSTITUTE GOODS OR SERVICES, BUSINESS INTERRUPTION, OR ANY OTHER LOSSES ARISING OUT OF OR RELATED TO THIS AGREEMENT OR THE SOFTWARE, WHETHER BASED ON CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY, OR ANY OTHER THEORY, EVEN IF LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+7.2 CAP ON LIABILITY. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR'S TOTAL AGGREGATE LIABILITY ARISING OUT OF OR RELATED TO THIS AGREEMENT OR THE SOFTWARE SHALL NOT EXCEED THE GREATER OF: (A) THE TOTAL FEES PAID BY LICENSEE TO LICENSOR FOR THE SOFTWARE DURING THE TWELVE (12) MONTH PERIOD IMMEDIATELY PRECEDING THE CLAIM, OR (B) USD $100.00.
+
+7.3 BASIS OF BARGAIN. THE FOREGOING LIMITATIONS SHALL APPLY REGARDLESS OF WHETHER A CLAIM ARISES IN CONTRACT, TORT, STRICT LIABILITY, OR ANY OTHER THEORY AND EVEN IF REMEDIES FAIL OF THEIR ESSENTIAL PURPOSE.
+
+================================================================================
+SECTION 8: INDEMNIFICATION
+================================================================================
+
+8.1 INDEMNIFICATION BY LICENSEE. Licensee shall defend, indemnify, and hold harmless Licensor and its officers, directors, employees, agents, affiliates, successors, and assigns from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising out of or related to:
+    (a) Licensee's use of the Software in violation of this Agreement or any applicable law;
+    (b) Licensee's breach of any term or condition of this Agreement;
+    (c) Any claim that Licensee's use of the Software infringes upon the rights of any third party;
+    (d) Any modification or derivative work created by Licensee;
+    (e) Any content, data, or materials Licensee processes using the Software.
+
+================================================================================
+SECTION 9: AUDIT AND COMPLIANCE
+================================================================================
+
+9.1 AUDIT RIGHTS. Licensor shall have the right, upon reasonable notice and during normal business hours, to audit Licensee's use of the Software to verify compliance with this Agreement. Licensee shall cooperate fully with any such audit and provide access to relevant records, systems, and personnel.
+
+9.2 REMEDIES FOR NON-COMPLIANCE. If an audit reveals any material non-compliance with this Agreement, Licensee shall immediately remedy such non-compliance and pay all costs associated with the audit, plus any applicable fees, penalties, or damages.
+
+================================================================================
+SECTION 10: GOVERNING LAW AND DISPUTE RESOLUTION
+================================================================================
+
+10.1 GOVERNING LAW. This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, United States, without regard to its conflict of laws principles.
+
+10.2 DISPUTE RESOLUTION. Any dispute arising out of or relating to this Agreement shall be resolved exclusively through binding arbitration administered by the American Arbitration Association ("AAA") under its Commercial Arbitration Rules, conducted in Wilmington, Delaware, United States. The arbitration shall be conducted by a single arbitrator appointed in accordance with AAA rules. Judgment upon the award rendered by the arbitrator may be entered in any court having jurisdiction.
+
+10.3 INJUNCTIVE RELIEF. Notwithstanding Section 10.2, Licensor shall be entitled to seek immediate injunctive or equitable relief from any court of competent jurisdiction to protect its intellectual property rights or prevent any breach or threatened breach of this Agreement, without the need for posting a bond or other security.
+
+================================================================================
+SECTION 11: EXPORT COMPLIANCE
+================================================================================
+
+11.1 EXPORT RESTRICTIONS. Licensee shall comply with all applicable export control laws, regulations, and orders, including but not limited to those administered by the U.S. Department of Commerce, U.S. Department of Treasury, and U.S. Department of State. Licensee represents and warrants that it is not located in, or a national or resident of, any country subject to comprehensive U.S. sanctions or embargoes, and that it will not use the Software in violation of any applicable export laws.
+
+================================================================================
+SECTION 12: MISCELLANEOUS
+================================================================================
+
+12.1 ENTIRE AGREEMENT. This Agreement constitutes the entire agreement between the parties concerning the subject matter hereof and supersedes all prior or contemporaneous agreements, representations, warranties, and understandings, whether written or oral.
+
+12.2 AMENDMENTS. This Agreement may only be amended or modified by a written instrument signed by authorized representatives of both parties.
+
+12.3 SEVERABILITY. If any provision of this Agreement is held to be invalid, illegal, or unenforceable, the remaining provisions shall continue in full force and effect, and the invalid provision shall be modified to the minimum extent necessary to make it valid and enforceable.
+
+12.4 WAIVER. The failure of either party to enforce any right or provision of this Agreement shall not constitute a waiver of such right or provision. Any waiver must be in writing and signed by the waiving party to be effective.
+
+12.5 NO THIRD-PARTY BENEFICIARIES. This Agreement is for the sole benefit of the parties and does not create any rights in or remedies for any third party.
+
+12.6 ASSIGNMENT. Licensee may not assign or transfer this Agreement without prior written consent of Licensor. Licensor may assign this Agreement without consent.
+
+12.7 FORCE MAJEURE. Neither party shall be liable for any delay or failure to perform due to causes beyond its reasonable control, including but not limited to acts of God, natural disasters, war, terrorism, riots, embargoes, acts of government, or failures of the Internet or power grid.
+
+12.8 NOTICES. All notices required or permitted under this Agreement shall be in writing and delivered by certified mail, return receipt requested, or by recognized overnight courier to the addresses set forth in the applicable order or agreement.
+
+12.9 ELECTRONIC ACCEPTANCE. Licensee's electronic acceptance of this Agreement, including clicking "I Agree" or similar button, installing, copying, or using the Software, shall have the same legal effect as a physical signature on a written agreement.
+
+================================================================================
+SECTION 13: CONTACT INFORMATION
+================================================================================
+
+For questions regarding this Agreement or to request permissions beyond the scope of this license, contact:
+
+Opendex Web Services
+Legal Department
+Email: legal@opendex.com
+
+================================================================================
+END OF LICENSE AGREEMENT
+================================================================================
